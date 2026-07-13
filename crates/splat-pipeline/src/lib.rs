@@ -12,7 +12,7 @@ pub mod stage;
 pub mod stages;
 
 pub use lock::{LockGuard, LockInfo, LockStatus, ProjectLock};
-pub use orchestrator::{OrchestratorEvent, PipelineOrchestrator, SkeletonStage};
+pub use orchestrator::{OrchestratorEvent, PipelineConfig, PipelineOrchestrator, SkeletonStage};
 pub use recovery::{CrashRecovery, RecoveryAction, RecoveryActionType};
 pub use stage::{PipelineStage, StageContext, StagePaths};
 pub use stages::{

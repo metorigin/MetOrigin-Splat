@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use splat_domain::error::AppResult;
+use splat_domain::hardware::EnginePaths;
 use splat_domain::pipeline::{PipelineStageId, StageState};
 use splat_domain::progress::TaskProgress;
 use tokio::sync::broadcast;
@@ -113,6 +114,8 @@ pub struct StageContext {
     pub log_path: PathBuf,
     /// Training preset name (e.g. "fast", "balanced", "quality").
     pub preset: Option<String>,
+    /// Executable paths resolved once when the pipeline is created.
+    pub engine_paths: EnginePaths,
     /// Shared cancellation token for the active pipeline run.
     pub cancellation: CancellationToken,
 }
@@ -129,6 +132,22 @@ impl StageContext {
         preset: Option<String>,
         cancellation: CancellationToken,
     ) -> Self {
+        Self::with_configuration(
+            stage_id,
+            project_dir,
+            preset,
+            EnginePaths::default(),
+            cancellation,
+        )
+    }
+
+    pub fn with_configuration(
+        stage_id: PipelineStageId,
+        project_dir: &Path,
+        preset: Option<String>,
+        engine_paths: EnginePaths,
+        cancellation: CancellationToken,
+    ) -> Self {
         let paths = StagePaths::new(project_dir);
         let log_path = paths.stage_log(&stage_id);
         Self {
@@ -137,6 +156,7 @@ impl StageContext {
             paths,
             log_path,
             preset,
+            engine_paths,
             cancellation,
         }
     }

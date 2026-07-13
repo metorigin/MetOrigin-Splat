@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
@@ -85,7 +85,8 @@ pub fn validate_frames(
         .filter(|e| {
             e.path()
                 .extension()
-                .map(|ext| ext == "jpg" || ext == "jpeg")
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.eq_ignore_ascii_case("jpg") || ext.eq_ignore_ascii_case("jpeg"))
                 .unwrap_or(false)
         })
         .collect();
@@ -136,8 +137,19 @@ pub fn validate_frames(
             .retryable(true));
         }
 
-        // Try to read JPEG dimensions from the file header
-        let (width, height) = read_jpeg_dimensions(&path).unwrap_or((0, 0));
+        let (width, height) = read_jpeg_dimensions(&path)
+            .filter(|(width, height)| *width > 0 && *height > 0)
+            .ok_or_else(|| {
+                AppError::new(
+                    "E-1103",
+                    ErrorCategory::Media,
+                    "Invalid Frame File",
+                    format!(
+                        "Frame file '{}' is not a readable JPEG image.",
+                        path.display()
+                    ),
+                )
+            })?;
 
         frames.push(FrameEntry {
             filename: entry.file_name().to_string_lossy().to_string(),
@@ -159,13 +171,20 @@ pub fn validate_frames(
         0
     };
 
-    if deviation > 10 && expected > 0 {
-        tracing::warn!(
-            "Frame count mismatch: expected ~{}, got {} (deviation: {})",
-            expected,
-            actual,
-            deviation
-        );
+    let allowed_deviation = ((expected as f64 * 0.05).ceil() as u64).max(3);
+    if expected > 0 && deviation > allowed_deviation {
+        return Err(AppError::new(
+            "E-1103",
+            ErrorCategory::Media,
+            "Unexpected Frame Count",
+            format!(
+                "FFmpeg produced {actual} frames, but the extraction plan expected approximately {expected}."
+            ),
+        )
+        .with_technical(format!(
+            "frame count deviation {deviation} exceeds tolerance {allowed_deviation}"
+        ))
+        .retryable(true));
     }
 
     tracing::info!(
@@ -182,6 +201,77 @@ pub fn validate_frames(
         extraction_plan: plan.clone(),
         frames,
         total_size_bytes: total_size,
+    })
+}
+
+/// Persist a frame manifest using a temporary file followed by a rename.
+pub fn write_manifest_atomic(manifest: &FrameManifest, destination: &Path) -> AppResult<()> {
+    let parent = destination.parent().ok_or_else(|| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Invalid Manifest Path",
+            "The frame manifest path has no parent directory.",
+        )
+    })?;
+    std::fs::create_dir_all(parent).map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Create Frames Directory",
+            "Could not create the directory for the frame manifest.",
+        )
+        .with_technical(error.to_string())
+    })?;
+
+    let temporary = destination.with_extension("json.tmp");
+    let json = serde_json::to_vec_pretty(manifest).map_err(|error| {
+        AppError::new(
+            "E-9001",
+            ErrorCategory::Internal,
+            "Failed to Serialize Frame Manifest",
+            "Could not prepare the frame manifest for saving.",
+        )
+        .with_technical(error.to_string())
+    })?;
+    let mut file = std::fs::File::create(&temporary).map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Write Frame Manifest",
+            "Could not create the temporary frame manifest.",
+        )
+        .with_technical(error.to_string())
+    })?;
+    file.write_all(&json).map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Write Frame Manifest",
+            "Could not write the frame manifest.",
+        )
+        .with_technical(error.to_string())
+    })?;
+    file.sync_all().map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Flush Frame Manifest",
+            "Could not finish writing the frame manifest.",
+        )
+        .with_technical(error.to_string())
+    })?;
+    drop(file);
+
+    std::fs::rename(&temporary, destination).map_err(|error| {
+        let _ = std::fs::remove_file(&temporary);
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Save Frame Manifest",
+            "Could not move the completed frame manifest into place.",
+        )
+        .with_technical(error.to_string())
     })
 }
 
@@ -211,7 +301,7 @@ fn read_jpeg_dimensions(path: &Path) -> Option<(u32, u32)> {
     file.take(64 * 1024).read_to_end(&mut full_buf).ok()?;
 
     // Search for SOF0 (0xFFC0) or SOF2 (0xFFC2) marker
-    for window in full_buf.windows(5) {
+    for window in full_buf.windows(9) {
         if (window[0] == 0xFF && (window[1] == 0xC0 || window[1] == 0xC2))
             || (window[0] == 0xC0 && window[1] == 0xFF)
         {
@@ -219,9 +309,9 @@ fn read_jpeg_dimensions(path: &Path) -> Option<(u32, u32)> {
             // Layout after marker: 2 bytes length, 1 byte precision, 2 bytes height, 2 bytes width
             if window[0] == 0xFF {
                 // Normal: FF C0
-                let h = u16::from_be_bytes([window[3], window[4]]);
-                if window.len() >= 7 {
-                    let w = u16::from_be_bytes([window[5], window[6]]);
+                let h = u16::from_be_bytes([window[5], window[6]]);
+                if window.len() >= 9 {
+                    let w = u16::from_be_bytes([window[7], window[8]]);
                     return Some((w as u32, h as u32));
                 }
                 return Some((0, h as u32));
@@ -267,10 +357,14 @@ mod tests {
 
     fn create_test_frame(dir: &Path, name: &str, size: usize) -> PathBuf {
         let path = dir.join(name);
-        let _content = vec![0xFFu8; size]; // Fake JPEG (just FF bytes)
         if size > 0 {
-            let mut file_content = vec![0xFF, 0xD8]; // SOI marker
-            file_content.extend(std::iter::repeat_n(0xFFu8, size.saturating_sub(2)));
+            let mut file_content = vec![0u8; size.max(20)];
+            file_content[0..2].copy_from_slice(&[0xFF, 0xD8]);
+            file_content[2..4].copy_from_slice(&[0xFF, 0xC0]);
+            file_content[4..6].copy_from_slice(&[0x00, 0x11]);
+            file_content[6] = 8;
+            file_content[7..9].copy_from_slice(&1080u16.to_be_bytes());
+            file_content[9..11].copy_from_slice(&1920u16.to_be_bytes());
             let mut file = std::fs::File::create(&path).unwrap();
             file.write_all(&file_content).unwrap();
         } else {
@@ -416,6 +510,36 @@ mod tests {
         assert_eq!(deserialized.total_frames, 2);
         assert_eq!(deserialized.frames.len(), 2);
         assert_eq!(deserialized.total_size_bytes, 18432);
+    }
+
+    #[test]
+    fn test_validate_rejects_large_frame_count_deviation() {
+        let dir = std::env::temp_dir().join("splat-manifest-deviation");
+        let _ = std::fs::create_dir_all(&dir);
+        create_test_frame(&dir, "000000.jpg", 100);
+        let mut plan = sample_plan();
+        plan.target_frame_count = 100;
+
+        assert!(validate_frames(&dir, &plan, &sample_metadata()).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_write_manifest_atomic_roundtrip() {
+        let dir = std::env::temp_dir().join("splat-manifest-atomic");
+        let _ = std::fs::create_dir_all(&dir);
+        create_test_frame(&dir, "000000.jpg", 100);
+        let mut plan = sample_plan();
+        plan.target_frame_count = 1;
+        let manifest = validate_frames(&dir, &plan, &sample_metadata()).unwrap();
+        let path = dir.join("frames.json");
+
+        write_manifest_atomic(&manifest, &path).unwrap();
+        write_manifest_atomic(&manifest, &path).unwrap();
+        let saved: FrameManifest =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(saved.total_frames, 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

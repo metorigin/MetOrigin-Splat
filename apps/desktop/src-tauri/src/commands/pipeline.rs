@@ -2,10 +2,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use splat_domain::PipelineState;
+use splat_hardware::EngineLocator;
 use splat_pipeline::orchestrator::OrchestratorEvent;
-use splat_pipeline::{CrashRecovery, PipelineOrchestrator};
+use splat_pipeline::{CrashRecovery, PipelineConfig, PipelineOrchestrator};
 use splat_project::ProjectManager;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tokio::sync::broadcast;
 
 use crate::state::{ActivePipeline, AppState};
@@ -22,11 +23,23 @@ pub async fn start_pipeline(
         return Err("项目文件不存在，请重新打开有效项目。".to_string());
     }
 
-    let orchestrator = Arc::new(PipelineOrchestrator::new_default(project_dir.clone()));
     let manager = project_manager_for(&project_dir);
     let project = manager
         .open_project(&project_dir)
         .map_err(|error| error.user_message_zh())?;
+    let resource_engines = app_handle
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|path| path.join("engines"));
+    let config = PipelineConfig {
+        preset: project.settings.preset.clone(),
+        engine_paths: EngineLocator::resolve(resource_engines.as_deref()),
+    };
+    let orchestrator = Arc::new(PipelineOrchestrator::new_default_with_config(
+        project_dir.clone(),
+        config,
+    ));
     let recovery = CrashRecovery::detect(&project.pipeline_state, &project_dir);
     orchestrator.initialize_from(recovery.state).await;
     let (completion_tx, completion_rx) = tokio::sync::watch::channel(false);

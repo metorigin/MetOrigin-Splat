@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
+use splat_domain::hardware::EnginePaths;
 use splat_domain::pipeline::{PipelineStageId, PipelineState, StageState, StageStatus};
 use splat_domain::progress::TaskProgress;
 use tokio::sync::{broadcast, RwLock};
@@ -35,6 +36,22 @@ pub enum OrchestratorEvent {
     PipelineCancelled,
 }
 
+/// Immutable settings shared by every stage in one pipeline run.
+#[derive(Debug, Clone)]
+pub struct PipelineConfig {
+    pub preset: String,
+    pub engine_paths: EnginePaths,
+}
+
+impl Default for PipelineConfig {
+    fn default() -> Self {
+        Self {
+            preset: "balanced".to_string(),
+            engine_paths: EnginePaths::default(),
+        }
+    }
+}
+
 /// Orchestrates the execution of all pipeline stages.
 ///
 /// Manages the pipeline state machine, stage dependencies, retries,
@@ -52,11 +69,17 @@ pub struct PipelineOrchestrator {
     lock_guard: Arc<RwLock<Option<LockGuard>>>,
     /// Shared cancellation signal propagated to every stage.
     cancellation: CancellationToken,
+    /// Preset and resolved engine paths for this run.
+    config: PipelineConfig,
 }
 
 impl PipelineOrchestrator {
     /// Create a new pipeline orchestrator for a project.
     pub fn new(project_dir: std::path::PathBuf) -> Self {
+        Self::new_with_config(project_dir, PipelineConfig::default())
+    }
+
+    pub fn new_with_config(project_dir: std::path::PathBuf, config: PipelineConfig) -> Self {
         let (event_tx, _) = broadcast::channel(64);
         Self {
             state: Arc::new(RwLock::new(PipelineState::new())),
@@ -65,6 +88,7 @@ impl PipelineOrchestrator {
             project_dir,
             lock_guard: Arc::new(RwLock::new(None)),
             cancellation: CancellationToken::new(),
+            config,
         }
     }
 
@@ -79,13 +103,21 @@ impl PipelineOrchestrator {
     /// 5. ColmapMatching       11. PreviewGeneration (TODO)
     /// 6. ColmapMapping        12. Export (TODO)
     pub fn new_default(project_dir: std::path::PathBuf) -> Self {
-        let mut orch = Self::new(project_dir);
+        Self::new_default_with_config(project_dir, PipelineConfig::default())
+    }
+
+    pub fn new_default_with_config(
+        project_dir: std::path::PathBuf,
+        config: PipelineConfig,
+    ) -> Self {
+        let preset = config.preset.clone();
+        let mut orch = Self::new_with_config(project_dir, config);
 
         // Stage 1: Media validation
         orch.register_stage(Box::new(MediaValidationStage::new()));
 
         // Stage 2: Frame extraction
-        orch.register_stage(Box::new(FrameExtractionStage::new("balanced")));
+        orch.register_stage(Box::new(FrameExtractionStage::new(&preset)));
 
         // Stage 3: Image preprocessing (copy frames → processed/)
         orch.register_stage(Box::new(ImagePreprocessingStage::new()));
@@ -103,10 +135,10 @@ impl PipelineOrchestrator {
         orch.register_stage(Box::new(ColmapValidationStage::new()));
 
         // Stage 8: Training preparation
-        orch.register_stage(Box::new(TrainingPreparationStage::new("balanced")));
+        orch.register_stage(Box::new(TrainingPreparationStage::new(&preset)));
 
         // Stage 9: Brush training
-        orch.register_stage(Box::new(BrushTrainingStage::new("balanced")));
+        orch.register_stage(Box::new(BrushTrainingStage::new(&preset)));
 
         // Stage 10: Model validation
         orch.register_stage(Box::new(ModelValidationStage::new()));
@@ -189,10 +221,11 @@ impl PipelineOrchestrator {
             let sid = stage_reg.id();
 
             // Build stage context
-            let ctx = StageContext::with_cancellation(
+            let ctx = StageContext::with_configuration(
                 sid,
                 &self.project_dir,
-                None,
+                Some(self.config.preset.clone()),
+                self.config.engine_paths.clone(),
                 self.cancellation.clone(),
             );
 

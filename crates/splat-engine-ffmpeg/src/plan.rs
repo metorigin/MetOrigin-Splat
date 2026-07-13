@@ -1,4 +1,5 @@
 use crate::probe::VideoMetadata;
+use splat_domain::error::{AppError, AppResult, ErrorCategory};
 
 /// Frame extraction parameters from a training preset.
 ///
@@ -103,7 +104,7 @@ pub fn plan_extraction(metadata: &VideoMetadata, preset: &FrameExtractionPreset)
     // Add scale filter if needed
     if will_scale {
         filter_parts.push(format!(
-            "scale='min({},iw)':min'({},ih)':force_original_aspect_ratio=decrease",
+            "scale='min({},iw)':'min({},ih)':force_original_aspect_ratio=decrease",
             out_w, out_h
         ));
     }
@@ -169,6 +170,32 @@ pub fn load_preset(path: &std::path::Path) -> Result<Preset, Box<dyn std::error:
     let content = std::fs::read_to_string(path)?;
     let preset: Preset = serde_json::from_str(&content)?;
     Ok(preset)
+}
+
+/// Load one of the presets embedded in the application build.
+pub fn load_builtin_preset(name: &str) -> AppResult<Preset> {
+    let json = match name.to_ascii_lowercase().as_str() {
+        "fast" => include_str!("../../../presets/fast.json"),
+        "balanced" => include_str!("../../../presets/balanced.json"),
+        "quality" => include_str!("../../../presets/quality.json"),
+        _ => {
+            return Err(AppError::new(
+                "E-1002",
+                ErrorCategory::User,
+                "Unknown Pipeline Preset",
+                format!("The project refers to an unsupported preset: '{name}'."),
+            ));
+        }
+    };
+    serde_json::from_str(json).map_err(|error| {
+        AppError::new(
+            "E-9001",
+            ErrorCategory::Internal,
+            "Invalid Built-in Preset",
+            "The selected built-in preset could not be loaded.",
+        )
+        .with_technical(error.to_string())
+    })
 }
 
 #[cfg(test)]
@@ -338,6 +365,9 @@ mod tests {
         let plan = plan_extraction(&meta, &balanced_preset());
         assert!(!plan.filter_graph.contains("fps"));
         assert!(plan.filter_graph.contains("scale"));
+        assert!(plan
+            .filter_graph
+            .contains("scale='min(1920,iw)':'min(1080,ih)'"));
     }
 
     #[test]
@@ -364,5 +394,17 @@ mod tests {
         let plan = plan_extraction(&meta, &fast_preset());
         assert!(plan.estimated_bytes > 0);
         assert!(plan.estimated_bytes < 1_000_000_000); // sanity check
+    }
+
+    #[test]
+    fn test_load_builtin_fast_preset() {
+        let preset = load_builtin_preset("fast").unwrap();
+        assert_eq!(preset.id, "fast");
+        assert_eq!(preset.frame_extraction.max_frames, 300);
+    }
+
+    #[test]
+    fn test_load_builtin_preset_rejects_unknown_name() {
+        assert!(load_builtin_preset("turbo").is_err());
     }
 }

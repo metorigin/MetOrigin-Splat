@@ -2,13 +2,15 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
+use splat_domain::progress::TaskProgress;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::{broadcast, Mutex};
+use tokio_util::sync::CancellationToken;
 
 use crate::command::CommandSpec;
 use crate::encoding::decode_process_output;
-use crate::event::ProcessEvent;
+use crate::event::{ProcessEvent, ProcessResult};
 use crate::handle::ProcessHandle;
 use crate::log_writer::LogWriter;
 use crate::parser::CompositeParser;
@@ -129,6 +131,84 @@ impl ProcessRunner {
         Ok(handle)
     }
 
+    /// Execute a command and wait for success, failure, cancellation, or timeout.
+    ///
+    /// Parsed progress events from either stdout or stderr are optionally
+    /// forwarded to the supplied pipeline progress channel.
+    pub async fn run_to_completion(
+        &self,
+        spec: CommandSpec,
+        cancellation: CancellationToken,
+        progress_tx: Option<broadcast::Sender<TaskProgress>>,
+    ) -> AppResult<ProcessResult> {
+        let started = std::time::Instant::now();
+        let log_path = spec.log_file.to_string_lossy().to_string();
+        let mut handle = self.execute(spec).await?;
+
+        loop {
+            tokio::select! {
+                _ = cancellation.cancelled() => {
+                    self.cancel(&mut handle).await?;
+                    return Ok(ProcessResult {
+                        exit_code: None,
+                        cancelled: true,
+                        timed_out: false,
+                        duration_ms: started.elapsed().as_millis() as u64,
+                        log_path: Some(log_path),
+                    });
+                }
+                event = handle.events.recv() => {
+                    match event {
+                        Ok(ProcessEvent::Progress(progress)) => {
+                            if let Some(sender) = &progress_tx {
+                                let _ = sender.send(progress);
+                            }
+                        }
+                        Ok(ProcessEvent::Exited { code, .. }) => {
+                            return Ok(ProcessResult {
+                                exit_code: Some(code),
+                                cancelled: false,
+                                timed_out: false,
+                                duration_ms: started.elapsed().as_millis() as u64,
+                                log_path: Some(log_path),
+                            });
+                        }
+                        Ok(ProcessEvent::Cancelled { .. }) => {
+                            return Ok(ProcessResult {
+                                exit_code: None,
+                                cancelled: true,
+                                timed_out: false,
+                                duration_ms: started.elapsed().as_millis() as u64,
+                                log_path: Some(log_path),
+                            });
+                        }
+                        Ok(ProcessEvent::TimedOut { .. }) => {
+                            return Ok(ProcessResult {
+                                exit_code: None,
+                                cancelled: false,
+                                timed_out: true,
+                                duration_ms: started.elapsed().as_millis() as u64,
+                                log_path: Some(log_path),
+                            });
+                        }
+                        Ok(ProcessEvent::Started { .. }
+                            | ProcessEvent::StdoutLine { .. }
+                            | ProcessEvent::StderrLine { .. }) => {}
+                        Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(broadcast::error::RecvError::Closed) => {
+                            return Err(AppError::new(
+                                "E-2103",
+                                ErrorCategory::Engine,
+                                "Process Monitoring Failed",
+                                "The external process event stream closed before a result was reported.",
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Cancel a running process.
     ///
     /// On Windows, uses `taskkill /T /F` to terminate the entire process tree.
@@ -212,41 +292,35 @@ async fn run_process(
     let stderr_task = if let Some(stderr) = stderr {
         let tx = event_tx.clone();
         let log = log_writer.clone();
+        let p = parser.clone();
         tokio::spawn(async move {
-            read_stream(
-                BufReader::new(stderr),
-                tx,
-                log,
-                Arc::new(CompositeParser::new()),
-                "stderr",
-            )
-            .await;
+            read_stream(BufReader::new(stderr), tx, log, p, "stderr").await;
         })
     } else {
         return;
     };
 
-    // Poll when a timeout is configured so cancellation never leaves a
-    // `Child::wait` future holding the child mutex on Windows.
-    let wait_result = if let Some(dur) = timeout {
-        let deadline = tokio::time::Instant::now() + dur;
-        loop {
-            let status = {
-                let mut guard = child.lock().await;
-                guard.try_wait()
-            };
-            match status {
-                Ok(Some(status)) => break Some(Ok(status)),
-                Err(error) => break Some(Err(error)),
-                Ok(None) if tokio::time::Instant::now() >= deadline => break None,
-                Ok(None) => {
-                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-                }
+    // Poll without holding the child mutex across an await. Cancellation may
+    // need that mutex for the direct-kill fallback when process-tree killing
+    // is unavailable or denied by the operating system.
+    let deadline = timeout.map(|duration| tokio::time::Instant::now() + duration);
+    let wait_result = loop {
+        let status = {
+            let mut guard = child.lock().await;
+            guard.try_wait()
+        };
+        match status {
+            Ok(Some(status)) => break Some(Ok(status)),
+            Err(error) => break Some(Err(error)),
+            Ok(None)
+                if deadline
+                    .map(|deadline| tokio::time::Instant::now() >= deadline)
+                    .unwrap_or(false) =>
+            {
+                break None;
             }
+            Ok(None) => tokio::time::sleep(std::time::Duration::from_millis(20)).await,
         }
-    } else {
-        let mut guard = child.lock().await;
-        Some(guard.wait().await)
     };
 
     // A timed-out process must be terminated before waiting for EOF from its pipes.
@@ -432,6 +506,7 @@ async fn kill_process_tree(pid: u32) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::PercentageParser;
     use std::path::PathBuf;
 
     fn test_log_path(name: &str) -> PathBuf {
@@ -598,5 +673,56 @@ mod tests {
             child.try_wait().unwrap().is_some(),
             "timed-out process must be terminated"
         );
+    }
+
+    #[tokio::test]
+    async fn test_run_to_completion_parses_stderr_progress() {
+        let mut parser = CompositeParser::new();
+        parser.add(Box::new(PercentageParser::new("test")));
+        let runner = ProcessRunner::with_parser(parser);
+        let (cmd, args) = if cfg!(target_os = "windows") {
+            ("cmd.exe", vec!["/C", "echo Progress: 45% complete 1>&2"])
+        } else {
+            ("sh", vec!["-c", "echo 'Progress: 45% complete' >&2"])
+        };
+        let spec = CommandSpec::new(cmd, args, test_log_path("stderr-progress"));
+        let (progress_tx, mut progress_rx) = broadcast::channel(8);
+
+        let result = runner
+            .run_to_completion(spec, CancellationToken::new(), Some(progress_tx))
+            .await
+            .unwrap();
+
+        assert!(result.is_success());
+        let progress = progress_rx.try_recv().unwrap();
+        assert!((progress.percent - 0.45).abs() < 0.001);
+    }
+
+    #[tokio::test]
+    async fn test_run_to_completion_cancels_process_tree() {
+        let runner = ProcessRunner::new();
+        let (cmd, args) = if cfg!(target_os = "windows") {
+            (
+                "powershell.exe",
+                vec!["-NoProfile", "-Command", "Start-Sleep -Seconds 60"],
+            )
+        } else {
+            ("sleep", vec!["60"])
+        };
+        let spec = CommandSpec::new(cmd, args, test_log_path("token-cancel"));
+        let cancellation = CancellationToken::new();
+        let trigger = cancellation.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            trigger.cancel();
+        });
+
+        let result = runner
+            .run_to_completion(spec, cancellation, None)
+            .await
+            .unwrap();
+
+        assert!(result.cancelled);
+        assert_eq!(result.exit_code, None);
     }
 }

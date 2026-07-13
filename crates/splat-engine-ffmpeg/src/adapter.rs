@@ -181,11 +181,15 @@ impl FfmpegAdapter {
         output_dir: &Path,
         log_path: &Path,
     ) -> CommandSpec {
-        let mut args: Vec<std::ffi::OsString> = Vec::new();
-
-        // Input file
-        args.push("-i".into());
-        args.push(video_path.as_os_str().to_owned());
+        // Machine-readable progress on stderr, one key/value pair per line.
+        let mut args: Vec<std::ffi::OsString> = vec![
+            "-progress".into(),
+            "pipe:2".into(),
+            "-nostats".into(),
+            // Input file
+            "-i".into(),
+            video_path.as_os_str().to_owned(),
+        ];
 
         // Video filter graph (fps, scale, rotation)
         if !plan.filter_graph.is_empty() {
@@ -197,12 +201,16 @@ impl FfmpegAdapter {
         args.push("-q:v".into()); // JPEG quality (2-31, lower = better)
         args.push("2".into()); // high quality
 
+        // Enforce the preset's maximum frame count.
+        args.push("-frames:v".into());
+        args.push(plan.target_frame_count.to_string().into());
+
         // Start numbering from 0
         args.push("-start_number".into());
         args.push("0".into());
 
         // Video sync method
-        args.push("-vsync".into());
+        args.push("-fps_mode".into());
         args.push("vfr".into()); // variable frame rate
 
         // Overwrite output files
@@ -354,7 +362,7 @@ mod tests {
             output_width: 1920,
             output_height: 1080,
             filter_graph:
-                "fps=3,scale='min(1920,iw)':min'(1080,ih)':force_original_aspect_ratio=decrease"
+                "fps=3,scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease"
                     .into(),
             estimated_bytes: 250_000_000,
             output_pattern: "%06d.jpg".into(),
@@ -384,6 +392,8 @@ mod tests {
         assert!(args_str.contains("0"));
         assert!(args_str.contains("-y"));
         assert!(args_str.contains("%06d.jpg"));
+        assert!(args_str.contains("-progress pipe:2"));
+        assert!(args_str.contains("-frames:v 800"));
     }
 
     #[test]

@@ -12,7 +12,9 @@ pub mod probe;
 pub mod progress;
 
 pub use adapter::FfmpegAdapter;
-pub use manifest::{FrameEntry, FrameManifest};
-pub use plan::{plan_extraction, ExtractionPlan, FrameExtractionPreset, Preset};
+pub use manifest::{validate_frames, write_manifest_atomic, FrameEntry, FrameManifest};
+pub use plan::{
+    load_builtin_preset, plan_extraction, ExtractionPlan, FrameExtractionPreset, Preset,
+};
 pub use probe::{probe_video, probe_video_with, VideoMetadata};
 pub use progress::FfmpegFrameParser;

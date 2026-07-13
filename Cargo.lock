@@ -3029,6 +3029,7 @@ dependencies = [
  "serde",
  "serde_json",
  "splat-domain",
+ "splat-engine-ffmpeg",
  "splat-process",
  "splat-project",
  "tempfile",
@@ -3051,6 +3052,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 

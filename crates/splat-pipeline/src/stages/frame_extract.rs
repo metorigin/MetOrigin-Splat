@@ -1,6 +1,14 @@
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::pipeline::{PipelineStageId, StageState, StageStatus};
 use splat_domain::progress::TaskProgress;
+use splat_engine_ffmpeg::progress::FfmpegFrameParser;
+use splat_engine_ffmpeg::{
+    load_builtin_preset, validate_frames, write_manifest_atomic, FfmpegAdapter, FrameManifest,
+};
+use splat_process::{CompositeParser, ProcessRunner};
 use tokio::sync::broadcast;
 
 use crate::stage::{PipelineStage, StageContext};
@@ -14,7 +22,6 @@ use crate::stage::{PipelineStage, StageContext};
 /// - Parsing frame extraction progress
 /// - Validating and generating the frame manifest
 ///
-/// TODO: Full implementation requires FfmpegAdapter + ProcessRunner integration.
 pub struct FrameExtractionStage {
     /// The FFmpeg preset to use for extraction parameters.
     preset_name: String,
@@ -48,29 +55,87 @@ impl PipelineStage for FrameExtractionStage {
     }
 
     fn check_cached(&self, ctx: &StageContext) -> AppResult<bool> {
-        // Frames exist and manifest is present
-        let manifest_ok = ctx.paths.frames_manifest.exists();
-        let frames_ok = ctx.paths.frames_dir.exists() && has_frames(&ctx.paths.frames_dir);
-        Ok(manifest_ok && frames_ok)
+        if !ctx.paths.frames_manifest.exists() || !has_frames(&ctx.paths.frames_dir) {
+            return Ok(false);
+        }
+        let manifest = match read_manifest(&ctx.paths.frames_manifest) {
+            Ok(manifest) => manifest,
+            Err(_) => return Ok(false),
+        };
+        let validated = match validate_frames(
+            &ctx.paths.frames_dir,
+            &manifest.extraction_plan,
+            &manifest.source_metadata,
+        ) {
+            Ok(validated) => validated,
+            Err(_) => return Ok(false),
+        };
+        Ok(validated.total_frames == manifest.total_frames)
     }
 
     async fn execute(
         &self,
-        _ctx: &StageContext,
-        _progress_tx: broadcast::Sender<TaskProgress>,
+        ctx: &StageContext,
+        progress_tx: broadcast::Sender<TaskProgress>,
     ) -> AppResult<StageState> {
-        tracing::info!("Frame extraction started (preset: {})", self.preset_name);
+        let preset_name = ctx.preset.as_deref().unwrap_or(&self.preset_name);
+        tracing::info!("Frame extraction started (preset: {})", preset_name);
 
-        // TODO: Full implementation:
-        // 1. ffmpeg_adapter.probe_metadata(source_video)
-        // 2. preset = load_preset(self.preset_name)
-        // 3. plan = plan_extraction(metadata, preset.frame_extraction)
-        // 4. spec = ffmpeg_adapter.build_command(plan, video, frames_dir)
-        // 5. runner = ProcessRunner::new()
-        // 6. handle = runner.execute(spec).await?
-        // 7. monitor events + forward progress
-        // 8. manifest = validate_frames(frames_dir, plan, metadata)?
-        // 9. write manifest to frames/frames.json
+        let video_path = find_unique_video(&ctx.paths.source_dir)?;
+        let ffmpeg_path = require_engine(ctx.engine_paths.ffmpeg.as_ref(), "FFmpeg")?;
+        let ffprobe_path = require_engine(ctx.engine_paths.ffprobe.as_ref(), "FFprobe")?;
+        let adapter = FfmpegAdapter::from_paths(ffmpeg_path.clone(), ffprobe_path.clone())?;
+        let metadata = adapter.probe_metadata(&video_path)?;
+        let preset = load_builtin_preset(preset_name)?;
+        let plan = adapter.plan_extraction(&metadata, &preset.frame_extraction);
+
+        prepare_output_directory(&ctx.paths.frames_dir, &ctx.paths.frames_manifest)?;
+        let command = adapter
+            .build_command(&plan, &video_path, &ctx.paths.frames_dir, &ctx.log_path)
+            .with_timeout(Duration::from_secs(2 * 60 * 60));
+        let mut parsers = CompositeParser::new();
+        parsers.add(Box::new(FfmpegFrameParser::new(
+            format!("{:?}", self.id()),
+            plan.target_frame_count as u64,
+        )));
+        let runner = ProcessRunner::with_parser(parsers);
+        let result = runner
+            .run_to_completion(command, ctx.cancellation.clone(), Some(progress_tx))
+            .await?;
+
+        if result.cancelled {
+            return Err(AppError::new(
+                "E-2104",
+                ErrorCategory::Engine,
+                "FFmpeg Cancelled",
+                "Frame extraction was cancelled by the user.",
+            ));
+        }
+        if result.timed_out {
+            return Err(AppError::new(
+                "E-2105",
+                ErrorCategory::Engine,
+                "FFmpeg Timed Out",
+                "Frame extraction exceeded the two-hour safety timeout.",
+            )
+            .retryable(true));
+        }
+        if !result.is_success() {
+            return Err(AppError::new(
+                "E-2102",
+                ErrorCategory::Engine,
+                "FFmpeg Frame Extraction Failed",
+                "FFmpeg could not extract frames from the source video. Check the stage log for details.",
+            )
+            .with_technical(format!(
+                "exit_code={:?}, log_path={:?}",
+                result.exit_code, result.log_path
+            ))
+            .retryable(true));
+        }
+
+        let manifest = validate_frames(&ctx.paths.frames_dir, &plan, &metadata)?;
+        write_manifest_atomic(&manifest, &ctx.paths.frames_manifest)?;
 
         let mut state = StageState::new(self.id());
         state.status = StageStatus::Completed;
@@ -87,8 +152,158 @@ impl PipelineStage for FrameExtractionStage {
                 "The frame manifest (frames/frames.json) was not created. Extraction may have failed.",
             ));
         }
+        let manifest = read_manifest(&ctx.paths.frames_manifest)?;
+        let validated = validate_frames(
+            &ctx.paths.frames_dir,
+            &manifest.extraction_plan,
+            &manifest.source_metadata,
+        )?;
+        if validated.total_frames != manifest.total_frames {
+            return Err(AppError::new(
+                "E-1103",
+                ErrorCategory::Media,
+                "Frame Manifest Mismatch",
+                "The frame manifest does not match the extracted JPEG files.",
+            ));
+        }
         Ok(())
     }
+}
+
+fn require_engine<'a>(path: Option<&'a PathBuf>, name: &str) -> AppResult<&'a PathBuf> {
+    path.ok_or_else(|| {
+        AppError::new(
+            "E-2101",
+            ErrorCategory::Engine,
+            format!("{name} Not Found"),
+            format!(
+                "{name} is required for frame extraction but was not found in the configured engine directory, application resources, or PATH."
+            ),
+        )
+    })
+}
+
+fn find_unique_video(source_dir: &Path) -> AppResult<PathBuf> {
+    let mut videos: Vec<PathBuf> = std::fs::read_dir(source_dir)
+        .map_err(|error| {
+            AppError::new(
+                "E-1201",
+                ErrorCategory::Filesystem,
+                "Failed to Read Source Directory",
+                "Could not inspect the project's source media directory.",
+            )
+            .with_technical(error.to_string())
+        })?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .filter(|path| {
+            path.extension()
+                .and_then(|extension| extension.to_str())
+                .map(|extension| {
+                    matches!(
+                        extension.to_ascii_lowercase().as_str(),
+                        "mp4" | "mov" | "avi" | "mkv" | "m4v"
+                    )
+                })
+                .unwrap_or(false)
+        })
+        .collect();
+    videos.sort();
+    match videos.len() {
+        1 => Ok(videos.remove(0)),
+        0 => Err(AppError::new(
+            "E-1101",
+            ErrorCategory::Media,
+            "Source Video Missing",
+            "Frame extraction requires exactly one supported video in the project source directory.",
+        )),
+        count => Err(AppError::new(
+            "E-1101",
+            ErrorCategory::Media,
+            "Multiple Source Videos",
+            format!(
+                "Found {count} videos in the project source directory; select a project with exactly one source video."
+            ),
+        )),
+    }
+}
+
+fn prepare_output_directory(frames_dir: &Path, manifest_path: &Path) -> AppResult<()> {
+    std::fs::create_dir_all(frames_dir).map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Create Frames Directory",
+            "Could not create the frame extraction output directory.",
+        )
+        .with_technical(error.to_string())
+    })?;
+    for entry in std::fs::read_dir(frames_dir)
+        .map_err(|error| {
+            AppError::new(
+                "E-1201",
+                ErrorCategory::Filesystem,
+                "Failed to Read Frames Directory",
+                "Could not prepare the frame extraction output directory.",
+            )
+            .with_technical(error.to_string())
+        })?
+        .filter_map(Result::ok)
+    {
+        let path = entry.path();
+        let is_jpeg = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| {
+                extension.eq_ignore_ascii_case("jpg") || extension.eq_ignore_ascii_case("jpeg")
+            })
+            .unwrap_or(false);
+        if path.is_file() && is_jpeg {
+            std::fs::remove_file(&path).map_err(|error| {
+                AppError::new(
+                    "E-1201",
+                    ErrorCategory::Filesystem,
+                    "Failed to Clear Previous Frames",
+                    "Could not remove a previous frame before extraction.",
+                )
+                .with_technical(format!("{}: {error}", path.display()))
+            })?;
+        }
+    }
+    if manifest_path.exists() {
+        std::fs::remove_file(manifest_path).map_err(|error| {
+            AppError::new(
+                "E-1201",
+                ErrorCategory::Filesystem,
+                "Failed to Clear Previous Manifest",
+                "Could not remove the previous frame manifest before extraction.",
+            )
+            .with_technical(error.to_string())
+        })?;
+    }
+    Ok(())
+}
+
+fn read_manifest(path: &Path) -> AppResult<FrameManifest> {
+    let json = std::fs::read_to_string(path).map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Read Frame Manifest",
+            "Could not read the frame extraction manifest.",
+        )
+        .with_technical(error.to_string())
+    })?;
+    serde_json::from_str(&json).map_err(|error| {
+        AppError::new(
+            "E-1103",
+            ErrorCategory::Media,
+            "Invalid Frame Manifest",
+            "The frame extraction manifest is malformed or incompatible.",
+        )
+        .with_technical(error.to_string())
+    })
 }
 
 fn has_frames(dir: &std::path::Path) -> bool {
