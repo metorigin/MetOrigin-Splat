@@ -121,6 +121,74 @@ impl AppError {
         self.log_path = Some(path);
         self
     }
+
+    /// Return a localized copy safe for presentation in the UI.
+    ///
+    /// Technical details remain available through `technical_message` and
+    /// diagnostic logs, but are intentionally not exposed to end users.
+    pub fn localized_for_ui(&self) -> Self {
+        let mut localized = self.clone();
+        let (title, message, suggestion) = match self.category {
+            ErrorCategory::User => (
+                "输入内容有误",
+                "输入内容或项目数据无效，请检查后重试。",
+                "检查输入内容和项目设置后重试。",
+            ),
+            ErrorCategory::Environment => (
+                "运行环境异常",
+                "运行环境不满足要求，请检查系统配置后重试。",
+                "检查系统环境、驱动程序和依赖工具。",
+            ),
+            ErrorCategory::Media => (
+                "媒体文件异常",
+                "媒体文件无效、损坏或缺失，请检查源媒体后重试。",
+                "确认媒体文件存在、可读取且格式受支持。",
+            ),
+            ErrorCategory::Engine => (
+                "处理引擎执行失败",
+                "处理引擎执行失败，请检查引擎状态并查看日志。",
+                "确认处理引擎可用，并查看日志了解详细信息。",
+            ),
+            ErrorCategory::Filesystem => (
+                "文件操作失败",
+                "文件或目录操作失败，请检查路径和访问权限。",
+                "检查文件路径、磁盘空间和目录访问权限。",
+            ),
+            ErrorCategory::Resource => (
+                "系统资源不足",
+                "系统资源不足，请释放内存或磁盘空间后重试。",
+                "关闭其他程序或释放磁盘空间后重试。",
+            ),
+            ErrorCategory::Internal => (
+                "应用内部错误",
+                "应用内部发生错误，请重试并查看日志。",
+                "重新执行操作；如果问题持续出现，请保留日志。",
+            ),
+        };
+
+        if !contains_chinese(&localized.title) {
+            localized.title = title.to_string();
+        }
+        if !contains_chinese(&localized.user_message) {
+            localized.user_message = format!("{}（错误代码：{}）", message, self.code);
+        }
+        localized.suggestions.retain(|item| contains_chinese(item));
+        if localized.suggestions.is_empty() {
+            localized.suggestions = vec![suggestion.to_string()];
+        }
+        localized
+    }
+
+    /// Return the Simplified Chinese user message for an application error.
+    pub fn user_message_zh(&self) -> String {
+        self.localized_for_ui().user_message.clone()
+    }
+}
+
+fn contains_chinese(value: &str) -> bool {
+    value
+        .chars()
+        .any(|character| ('\u{3400}'..='\u{9fff}').contains(&character))
 }
 
 impl fmt::Display for AppError {
@@ -136,8 +204,8 @@ impl From<serde_json::Error> for AppError {
         Self::new(
             "E-9003",
             ErrorCategory::Internal,
-            "JSON Serialization Failed",
-            "Application data could not be serialized.",
+            "JSON 序列化失败",
+            "应用数据无法序列化，请重试并查看日志。",
         )
         .with_technical(error.to_string())
     }
@@ -209,6 +277,36 @@ mod tests {
         let display = format!("{}", err);
         assert!(display.contains("E-1001"));
         assert!(display.contains("Invalid Input"));
+    }
+
+    #[test]
+    fn test_error_has_safe_chinese_user_message() {
+        let err = AppError::new(
+            "E-2101",
+            ErrorCategory::Engine,
+            "Engine Failed",
+            "The external engine returned an error.",
+        );
+        let message = err.user_message_zh();
+        assert!(message.contains("处理引擎执行失败"));
+        assert!(message.contains("E-2101"));
+        assert!(!message.contains("external engine"));
+
+        let localized = err.localized_for_ui();
+        assert_eq!(localized.title, "处理引擎执行失败");
+        assert!(localized.suggestions[0].contains("处理引擎"));
+        assert_eq!(localized.technical_message, err.technical_message);
+    }
+
+    #[test]
+    fn test_existing_chinese_user_message_is_preserved() {
+        let err = AppError::new(
+            "E-1001",
+            ErrorCategory::User,
+            "输入无效",
+            "请选择有效的媒体文件。",
+        );
+        assert_eq!(err.user_message_zh(), "请选择有效的媒体文件。");
     }
 
     #[test]

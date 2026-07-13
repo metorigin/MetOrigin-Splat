@@ -1,5 +1,10 @@
 import type { StageState } from "../types";
-import { STAGE_LABELS, STAGE_ICONS } from "../types";
+import { STAGE_ICONS } from "../types";
+import {
+  formatCommandError,
+  getStageLabel,
+  STAGE_STATUS_LABELS,
+} from "../localization";
 
 interface StageProgressProps {
   stage: StageState;
@@ -14,7 +19,7 @@ export function StageProgress({
   latestLog,
   onRetry,
 }: StageProgressProps) {
-  const label = STAGE_LABELS[stage.stage_id] || stage.stage_id;
+  const label = getStageLabel(stage.stage_id);
   const icon = STAGE_ICONS[stage.status] || "○";
   const statusClass = stage.status;
   const progressPct = Math.round(stage.progress * 100);
@@ -23,13 +28,15 @@ export function StageProgress({
     <div className={`stage-progress ${statusClass} ${isActive ? "active" : ""}`}>
       <div className="stage-row">
         <span className="stage-icon">{icon}</span>
-        <span className="stage-label">{label}</span>
+        <span className="stage-label" title={STAGE_STATUS_LABELS[stage.status]}>
+          {label}
+        </span>
         {stage.status === "running" && (
           <span className="stage-percent">{progressPct}%</span>
         )}
         {stage.status === "failed" && (
           <button className="retry-button" onClick={onRetry}>
-            Retry
+            重试
           </button>
         )}
       </div>
@@ -42,7 +49,9 @@ export function StageProgress({
         </div>
       )}
       {stage.status === "failed" && stage.error && (
-        <div className="stage-error">{stage.error}</div>
+        <div className="stage-error">
+          {formatCommandError(stage.error, "start_pipeline")}
+        </div>
       )}
       {isActive && latestLog && (
         <div className="stage-log">{latestLog}</div>

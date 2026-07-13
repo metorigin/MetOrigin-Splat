@@ -21,7 +21,7 @@ function AppRouter() {
       {state.loading && (
         <div className="loading-overlay">
           <div className="loading-spinner" />
-          <p>Loading...</p>
+          <p>正在加载…</p>
         </div>
       )}
 

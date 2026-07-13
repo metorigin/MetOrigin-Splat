@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useRef, useState } from "react";
+import { formatCommandError } from "../localization";
 
 /**
  * Hook for calling Tauri backend commands with loading/error state.
@@ -27,9 +28,9 @@ export function useTauriCommand<T>(
         setData(result as T);
         return result;
       } catch (e) {
-        const msg = typeof e === "string" ? e : String(e);
+        const msg = formatCommandError(e, command);
         setError(msg);
-        throw e;
+        throw msg;
       } finally {
         setLoading(false);
       }

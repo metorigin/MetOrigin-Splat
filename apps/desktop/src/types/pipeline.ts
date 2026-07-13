@@ -18,22 +18,6 @@ export const PIPELINE_STAGE_IDS = [
 
 export type PipelineStageId = (typeof PIPELINE_STAGE_IDS)[number];
 
-/** Human-readable label for each stage ID. */
-export const STAGE_LABELS: Record<PipelineStageId, string> = {
-  MediaValidation: "Media Validation",
-  FrameExtraction: "Frame Extraction",
-  ImagePreprocessing: "Image Preprocessing",
-  ColmapFeatureExtraction: "COLMAP Feature Extraction",
-  ColmapMatching: "COLMAP Matching",
-  ColmapMapping: "COLMAP Mapping",
-  ColmapValidation: "COLMAP Validation",
-  TrainingPreparation: "Training Preparation",
-  BrushTraining: "Brush Training",
-  ModelValidation: "Model Validation",
-  PreviewGeneration: "Preview Generation",
-  Export: "Export",
-};
-
 /** Emoji / icon for each stage status. */
 export const STAGE_ICONS: Record<StageStatus, string> = {
   pending: "○",

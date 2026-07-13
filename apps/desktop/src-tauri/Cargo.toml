@@ -24,6 +24,7 @@ splat-engine-ffmpeg = { path = "../../../crates/splat-engine-ffmpeg" }
 splat-engine-colmap = { path = "../../../crates/splat-engine-colmap" }
 splat-engine-brush = { path = "../../../crates/splat-engine-brush" }
 tokio = { workspace = true, features = ["full"] }
+tracing.workspace = true
 dirs-next = "2"
 
 [features]

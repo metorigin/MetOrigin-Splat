@@ -21,7 +21,7 @@ export function PipelineProgress({
       <div className="pipeline-header">
         <div className="pipeline-overall">
           <span className="pipeline-pct">{overallPct}%</span>
-          <span className="pipeline-label">Overall Progress</span>
+          <span className="pipeline-label">总体进度</span>
         </div>
         <div className="pipeline-bar-track">
           <div

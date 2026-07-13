@@ -31,7 +31,10 @@ pub fn check_engines() -> Vec<serde_json::Value> {
 /// Returns a list of recent projects from application state.
 #[tauri::command]
 pub fn get_app_state(state: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let inner = state.0.lock().map_err(|e| e.to_string())?;
+    let inner = state
+        .0
+        .lock()
+        .map_err(|_| "读取应用状态失败，请重启应用后重试。".to_string())?;
     Ok(serde_json::json!({
         "recent_projects": inner.recent_projects,
     }))

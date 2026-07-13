@@ -74,8 +74,8 @@ impl CrashRecovery {
                             s.progress = 1.0;
                         }
                         messages.push(format!(
-                            "Stage '{}' had completed but was not recorded. Marking as completed.",
-                            stage_id.label()
+                            "阶段“{}”已完成但尚未记录，现已标记为完成。",
+                            stage_label_zh(stage_id)
                         ));
                     } else {
                         // Outputs are not intact — mark as failed for retry
@@ -85,8 +85,8 @@ impl CrashRecovery {
                                 Some("Pipeline was interrupted (crash or shutdown).".to_string());
                         }
                         messages.push(format!(
-                            "Stage '{}' was interrupted. It will be retried.",
-                            stage_id.label()
+                            "阶段“{}”被中断，将重新执行。",
+                            stage_label_zh(stage_id)
                         ));
                     }
                 }
@@ -95,14 +95,14 @@ impl CrashRecovery {
                 StageStatus::Completed if !Self::verify_stage_outputs(stage_id, project_dir) => {
                     tracing::warn!(
                         "Stage '{}' is marked completed but outputs are missing. Re-executing.",
-                        stage_id.label()
+                        stage_label_zh(stage_id)
                     );
                     if let Some(s) = recovered_state.stages.get_mut(stage_id) {
                         s.status = StageStatus::Pending;
                         s.progress = 0.0;
                     }
                     messages.push(format!(
-                        "Stage '{}' output missing — will re-execute.",
+                        "阶段“{}”的输出缺失，将重新执行。",
                         stage_id.label()
                     ));
                 }
@@ -113,10 +113,10 @@ impl CrashRecovery {
         }
 
         // Build the recovery action
-        if found_running || messages.iter().any(|m| m.contains("re-execute")) {
+        if found_running || !messages.is_empty() {
             let message = if found_running {
                 format!(
-                    "The previous pipeline run was interrupted. {} stages will be re-executed.",
+                    "上一次处理流程被中断，将重新执行 {} 个阶段。",
                     recovered_state
                         .stages
                         .values()
@@ -135,7 +135,7 @@ impl CrashRecovery {
         } else {
             RecoveryAction {
                 action: RecoveryActionType::NoActionNeeded,
-                message: "Project is in a clean state.".to_string(),
+                message: "项目状态正常，无需恢复。".to_string(),
                 state: recovered_state,
             }
         }
@@ -239,6 +239,23 @@ impl CrashRecovery {
 
 fn has_media_files(dir: &Path) -> bool {
     count_files_with_extensions(dir, &["mp4", "mov", "avi", "mkv", "jpg", "jpeg", "png"]) > 0
+}
+
+fn stage_label_zh(stage_id: &PipelineStageId) -> &'static str {
+    match stage_id {
+        PipelineStageId::MediaValidation => "媒体校验",
+        PipelineStageId::FrameExtraction => "帧提取",
+        PipelineStageId::ImagePreprocessing => "图像预处理",
+        PipelineStageId::ColmapFeatureExtraction => "COLMAP 特征提取",
+        PipelineStageId::ColmapMatching => "COLMAP 特征匹配",
+        PipelineStageId::ColmapMapping => "COLMAP 稀疏重建",
+        PipelineStageId::ColmapValidation => "COLMAP 结果校验",
+        PipelineStageId::TrainingPreparation => "训练准备",
+        PipelineStageId::BrushTraining => "Brush 训练",
+        PipelineStageId::ModelValidation => "模型校验",
+        PipelineStageId::PreviewGeneration => "预览生成",
+        PipelineStageId::Export => "导出",
+    }
 }
 
 fn has_image_files(dir: &Path) -> bool {

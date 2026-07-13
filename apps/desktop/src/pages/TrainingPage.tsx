@@ -3,6 +3,12 @@ import { useAppContext } from "../context";
 import { useTauriCommand, useTauriEvent } from "../hooks";
 import { PipelineProgress } from "../components";
 import type { PipelineState, TaskProgress } from "../types";
+import {
+  formatCommandError,
+  formatElapsedTime,
+  formatProgressMessage,
+  normalizeProgressStageId,
+} from "../localization";
 
 interface TrainingPageProps {
   projectId: string;
@@ -37,7 +43,7 @@ export function TrainingPage({ projectId, projectPath }: TrainingPageProps) {
   useTauriEvent<TaskProgress>("pipeline://progress", (progress) => {
     setLatestLogs((prev) => ({
       ...prev,
-      [progress.stage_id]: progress.message,
+      [normalizeProgressStageId(progress.stage_id)]: formatProgressMessage(progress),
     }));
   });
 
@@ -54,7 +60,10 @@ export function TrainingPage({ projectId, projectPath }: TrainingPageProps) {
   });
 
   useTauriEvent<{ error: string }>("pipeline://failed", (payload) => {
-    dispatch({ type: "SET_ERROR", error: payload.error });
+    dispatch({
+      type: "SET_ERROR",
+      error: formatCommandError(payload.error, "start_pipeline"),
+    });
   });
 
   // Poll pipeline state
@@ -94,12 +103,6 @@ export function TrainingPage({ projectId, projectPath }: TrainingPageProps) {
     }
   }, [cancelPipeline, dispatch]);
 
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}m ${sec}s`;
-  };
-
   const progressPct = pipelineState
     ? Math.round(pipelineState.overall_progress * 100)
     : 0;
@@ -116,16 +119,16 @@ export function TrainingPage({ projectId, projectPath }: TrainingPageProps) {
         }
         disabled={!completed}
       >
-        ← Back
+        ← 返回
       </button>
 
-      <h1 className="page-title">Training — {projectId}</h1>
+      <h1 className="page-title">训练 — {projectId}</h1>
 
       {completed ? (
         <div className="training-completed">
           <div className="completed-icon">🎉</div>
-          <h2>Training Completed!</h2>
-          <p>Your 3D Gaussian Splat model is ready.</p>
+          <h2>训练已完成！</h2>
+          <p>3D Gaussian Splat 模型已准备就绪。</p>
           <div className="completed-actions">
             <button
               className="btn btn-primary"
@@ -136,7 +139,7 @@ export function TrainingPage({ projectId, projectPath }: TrainingPageProps) {
                 })
               }
             >
-              View Results
+              查看结果
             </button>
           </div>
         </div>
@@ -146,7 +149,7 @@ export function TrainingPage({ projectId, projectPath }: TrainingPageProps) {
           <div className="overall-progress">
             <div className="progress-header">
               <span className="progress-pct">{progressPct}%</span>
-              <span className="progress-time">Elapsed: {formatTime(elapsed)}</span>
+              <span className="progress-time">已用时间：{formatElapsedTime(elapsed)}</span>
             </div>
             <div className="pipeline-bar-track overall-track">
               <div
@@ -168,7 +171,7 @@ export function TrainingPage({ projectId, projectPath }: TrainingPageProps) {
               onClick={handleCancel}
               disabled={cancelling}
             >
-              {cancelling ? "Cancelling..." : "■ Cancel Training"}
+              {cancelling ? "正在取消…" : "■ 取消训练"}
             </button>
           </div>
         </>

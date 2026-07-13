@@ -3,6 +3,11 @@ import { useAppContext } from "../context";
 import { useTauriCommand } from "../hooks";
 import { PipelineProgress } from "../components";
 import type { Project, PipelineState } from "../types";
+import {
+  formatDate,
+  getPresetLabel,
+  getProjectStatusLabel,
+} from "../localization";
 
 interface ProjectDetailPageProps {
   projectId: string;
@@ -67,7 +72,7 @@ export function ProjectDetailPage({
   };
 
   if (openCmd.loading) {
-    return <div className="page"><div className="loading-indicator">Loading project...</div></div>;
+    return <div className="page"><div className="loading-indicator">正在加载项目…</div></div>;
   }
 
   if (openCmd.error) {
@@ -75,7 +80,7 @@ export function ProjectDetailPage({
       <div className="page">
         <div className="error-message">{openCmd.error}</div>
         <button className="btn btn-text" onClick={() => dispatch({ type: "NAVIGATE", page: { type: "home" } })}>
-          ← Back to Home
+          ← 返回首页
         </button>
       </div>
     );
@@ -87,32 +92,32 @@ export function ProjectDetailPage({
         className="btn btn-text back-button"
         onClick={() => dispatch({ type: "NAVIGATE", page: { type: "home" } })}
       >
-        ← Back
+        ← 返回
       </button>
 
-      <h1 className="page-title">{project?.name || "Project"}</h1>
+      <h1 className="page-title">{project?.name || "项目"}</h1>
 
       {/* Project info card */}
       {project && (
         <div className="project-info-card">
           <div className="info-row">
-            <span className="info-label">Status</span>
+            <span className="info-label">状态</span>
             <span className={`status-indicator ${project.status}`}>
-              {project.status}
+              {getProjectStatusLabel(project.status)}
             </span>
           </div>
           <div className="info-row">
-            <span className="info-label">Preset</span>
-            <span>{project.settings.preset}</span>
+            <span className="info-label">质量预设</span>
+            <span>{getPresetLabel(project.settings.preset)}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">Created</span>
-            <span>{new Date(project.created_at).toLocaleDateString()}</span>
+            <span className="info-label">创建日期</span>
+            <span>{formatDate(project.created_at)}</span>
           </div>
           {project.source && (
             <div className="info-row">
-              <span className="info-label">Source</span>
-              <span>{project.source.type === "Video" ? project.source.filename : `${project.source.folder_name} (images)`}</span>
+              <span className="info-label">源媒体</span>
+              <span>{project.source.type === "Video" ? project.source.filename : `${project.source.folder_name}（${project.source.image_count} 张图片）`}</span>
             </div>
           )}
         </div>
@@ -125,17 +130,17 @@ export function ProjectDetailPage({
           onClick={handleStartTraining}
           disabled={pipelineRunning}
         >
-          {pipelineRunning ? "Running..." : "▶ Start Training"}
+          {pipelineRunning ? "正在运行…" : "▶ 开始训练"}
         </button>
         <button className="btn btn-secondary">
-          📂 Open Output Directory
+          📂 打开输出目录
         </button>
       </div>
 
       {/* Pipeline progress */}
       {pipelineState && (
         <section className="section">
-          <h2 className="section-title">Pipeline Progress</h2>
+          <h2 className="section-title">处理进度</h2>
           <PipelineProgress state={pipelineState} />
         </section>
       )}

@@ -6,23 +6,23 @@ import type { CreateProjectResult, MediaAnalysis, PresetOption } from "../types"
 const PRESETS: PresetOption[] = [
   {
     id: "fast",
-    name: "Quick Preview",
-    description: "Low resolution, ~3 minutes",
-    estimated_time: "~3 min",
+    name: "快速预览",
+    description: "低分辨率，适合快速查看效果",
+    estimated_time: "约 3 分钟",
     iterations: 3000,
   },
   {
     id: "balanced",
-    name: "Balanced",
-    description: "Good quality, ~10 minutes",
-    estimated_time: "~10 min",
+    name: "均衡",
+    description: "兼顾质量与处理速度",
+    estimated_time: "约 10 分钟",
     iterations: 7000,
   },
   {
     id: "quality",
-    name: "High Quality",
-    description: "Best quality, ~45 minutes",
-    estimated_time: "~45 min",
+    name: "高质量",
+    description: "最高质量，处理时间较长",
+    estimated_time: "约 45 分钟",
     iterations: 30000,
   },
 ];
@@ -42,7 +42,7 @@ export function NewProjectPage() {
   const handleFileSelect = useCallback(async () => {
     // In Tauri v2, we use the dialog API or an input
     // For now, use a prompt or file input
-    const path = window.prompt("Enter the path to your video or image folder:");
+    const path = window.prompt("请输入视频文件或图片文件夹的完整路径：");
     if (!path) return;
 
     setSelectedFile(path);
@@ -89,14 +89,14 @@ export function NewProjectPage() {
         className="btn btn-text back-button"
         onClick={() => dispatch({ type: "NAVIGATE", page: { type: "home" } })}
       >
-        ← Back
+        ← 返回
       </button>
 
-      <h1 className="page-title">New Project</h1>
+      <h1 className="page-title">新建项目</h1>
 
       {/* Step 1: Select Source */}
       <section className="form-section">
-        <h2 className="form-step">Step 1: Select Source Media</h2>
+        <h2 className="form-step">第 1 步：选择源媒体</h2>
         <div className="file-select-area" onClick={handleFileSelect}>
           {selectedFile ? (
             <div className="file-selected">
@@ -106,14 +106,14 @@ export function NewProjectPage() {
           ) : (
             <div className="file-prompt">
               <span className="file-icon">🎥</span>
-              <p>Click to select a video or image folder</p>
-              <p className="file-hint">Supported: MP4, MOV, JPG, PNG</p>
+              <p>点击选择视频或图片文件夹</p>
+              <p className="file-hint">支持格式：MP4、MOV、JPG、PNG</p>
             </div>
           )}
         </div>
 
         {analyzeCmd.loading && (
-          <div className="loading-indicator">Analyzing media...</div>
+          <div className="loading-indicator">正在分析媒体…</div>
         )}
 
         {analyzeCmd.error && (
@@ -127,16 +127,16 @@ export function NewProjectPage() {
                 <span>
                   {analysisResult.video_metadata.width}×
                   {analysisResult.video_metadata.height},{" "}
-                  {analysisResult.video_metadata.fps.toFixed(1)}fps,{" "}
-                  {analysisResult.video_metadata.duration_seconds.toFixed(0)}s
+                  {analysisResult.video_metadata.fps.toFixed(1)} 帧/秒，{" "}
+                  {analysisResult.video_metadata.duration_seconds.toFixed(0)} 秒
                 </span>
-                <span>~{analysisResult.estimated_frames} frames</span>
-                <span>~{analysisResult.estimated_disk_mb} MB estimated</span>
+                <span>预计 {analysisResult.estimated_frames} 帧</span>
+                <span>预计占用 {analysisResult.estimated_disk_mb} MB</span>
               </div>
             ) : (
               <div className="image-info">
-                <span>{analysisResult.image_count} images found</span>
-                <span>~{analysisResult.estimated_disk_mb} MB estimated</span>
+                <span>找到 {analysisResult.image_count} 张图片</span>
+                <span>预计占用 {analysisResult.estimated_disk_mb} MB</span>
               </div>
             )}
           </div>
@@ -145,7 +145,7 @@ export function NewProjectPage() {
 
       {/* Step 2: Choose Preset */}
       <section className="form-section">
-        <h2 className="form-step">Step 2: Choose Quality Preset</h2>
+        <h2 className="form-step">第 2 步：选择质量预设</h2>
         <div className="preset-cards">
           {PRESETS.map((preset) => (
             <div
@@ -163,11 +163,11 @@ export function NewProjectPage() {
 
       {/* Step 3: Project Name */}
       <section className="form-section">
-        <h2 className="form-step">Step 3: Project Name</h2>
+        <h2 className="form-step">第 3 步：填写项目名称</h2>
         <input
           type="text"
           className="text-input"
-          placeholder="e.g. museum-room"
+          placeholder="例如：博物馆展厅"
           value={projectName}
           onChange={(e) => setProjectName(e.target.value)}
         />
@@ -179,7 +179,7 @@ export function NewProjectPage() {
         onClick={handleCreate}
         disabled={!selectedFile || !projectName.trim() || createCmd.loading}
       >
-        {createCmd.loading ? "Creating..." : "✦ Create Project"}
+        {createCmd.loading ? "正在创建…" : "✦ 创建项目"}
       </button>
 
       {createCmd.error && (

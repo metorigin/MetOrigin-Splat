@@ -10,7 +10,7 @@ pub fn analyze_media(path: String) -> Result<serde_json::Value, String> {
     let path = PathBuf::from(&path);
 
     if !path.exists() {
-        return Err(format!("File not found: {}", path.display()));
+        return Err(format!("未找到文件或目录：{}", path.display()));
     }
 
     // Check if it's a video file
@@ -54,7 +54,7 @@ pub fn analyze_media(path: String) -> Result<serde_json::Value, String> {
                     "video_metadata": null,
                     "estimated_frames": 0,
                     "estimated_disk_mb": 0,
-                    "warning": format!("Could not read metadata: {}", e.user_message),
+                    "warning": format!("无法读取媒体元数据：{}", e.user_message_zh()),
                 }))
             }
         }
@@ -74,7 +74,7 @@ pub fn analyze_media(path: String) -> Result<serde_json::Value, String> {
             "estimated_disk_mb": (image_count as f64 * 1.5).ceil(),
         }))
     } else {
-        Err(format!("Unsupported file format: {}", path.display()))
+        Err(format!("不支持的文件格式：{}", path.display()))
     }
 }
 
@@ -91,20 +91,22 @@ pub fn create_project(
         .join("MetaOrigin Projects");
 
     let manager = ProjectManager::new(default_dir);
-    let (project, project_dir) = manager.create_project(&name).map_err(|e| e.to_string())?;
+    let (project, project_dir) = manager
+        .create_project(&name)
+        .map_err(|e| e.user_message_zh())?;
 
     // Copy source media into the project
     let source = PathBuf::from(&source_path);
     let project_source_dir = project_dir.join("source");
     std::fs::create_dir_all(&project_source_dir)
-        .map_err(|e| format!("Failed to create source dir: {}", e))?;
+        .map_err(|_| "创建项目源媒体目录失败，请检查目录权限。".to_string())?;
 
     if source.is_file() {
         let dest = project_source_dir.join(source.file_name().unwrap_or_default());
         let _ = std::fs::copy(&source, &dest);
     } else if source.is_dir() {
         for entry in std::fs::read_dir(&source)
-            .map_err(|e| format!("Failed to read source: {}", e))?
+            .map_err(|_| "读取源媒体目录失败，请检查路径和访问权限。".to_string())?
             .flatten()
         {
             let file_path = entry.path();
@@ -126,7 +128,7 @@ pub fn create_project(
     project.settings.preset = preset;
     manager
         .save_project(&project, &project_dir)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.user_message_zh())?;
 
     // Add to recent projects
     let info = ProjectInfo {
@@ -163,9 +165,10 @@ pub fn open_project(
     let manager = ProjectManager::new(default_dir);
     let project = manager
         .open_project(&project_dir)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.user_message_zh())?;
 
-    let json = serde_json::to_value(&project).map_err(|e| e.to_string())?;
+    let json = serde_json::to_value(&project)
+        .map_err(|_| "读取项目数据失败，请重试并查看日志。".to_string())?;
 
     // Update state
     if let Ok(mut inner) = state.0.lock() {
@@ -178,7 +181,10 @@ pub fn open_project(
 /// List recent projects from state.
 #[tauri::command]
 pub fn list_recent_projects(state: tauri::State<'_, AppState>) -> Result<Vec<ProjectInfo>, String> {
-    let inner = state.0.lock().map_err(|e| e.to_string())?;
+    let inner = state
+        .0
+        .lock()
+        .map_err(|_| "读取最近项目列表失败，请重启应用后重试。".to_string())?;
     let mut projects = inner.recent_projects.clone();
     projects.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     Ok(projects)

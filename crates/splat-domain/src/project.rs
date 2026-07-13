@@ -99,7 +99,7 @@ impl ProjectSource {
     pub fn label(&self) -> String {
         match self {
             Self::Video(src) => src.filename.clone(),
-            Self::ImageFolder(src) => format!("{} ({} images)", src.folder_name, src.image_count),
+            Self::ImageFolder(src) => format!("{}（{} 张图片）", src.folder_name, src.image_count),
         }
     }
 }
@@ -235,7 +235,7 @@ mod tests {
             image_count: 42,
             copied_to_project: false,
         });
-        assert_eq!(source.label(), "photos (42 images)");
+        assert_eq!(source.label(), "photos（42 张图片）");
     }
 
     #[test]

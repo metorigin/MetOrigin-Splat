@@ -34,7 +34,7 @@ export function HomePage() {
       <header className="hero">
         <h1 className="hero-title">MetaOrigin Splat</h1>
         <p className="hero-subtitle">
-          Turn photos and videos into 3D Gaussian Splats
+          将照片和视频转换为 3D Gaussian Splat
         </p>
       </header>
 
@@ -43,10 +43,10 @@ export function HomePage() {
           className="btn btn-primary btn-large"
           onClick={() => dispatch({ type: "NAVIGATE", page: { type: "new-project" } })}
         >
-          ✦ New Project
+          ✦ 新建项目
         </button>
         <button className="btn btn-secondary btn-large">
-          📂 Open Project
+          📂 打开项目
         </button>
       </div>
 
@@ -68,10 +68,10 @@ export function HomePage() {
 
       {/* Recent projects */}
       <section className="section">
-        <h2 className="section-title">Recent Projects</h2>
+        <h2 className="section-title">最近项目</h2>
 
         {projectsCmd.loading && (
-          <div className="loading-indicator">Loading projects...</div>
+          <div className="loading-indicator">正在加载项目…</div>
         )}
 
         {projectsCmd.error && (
@@ -81,9 +81,9 @@ export function HomePage() {
         {projectsCmd.data && projectsCmd.data.length === 0 && (
           <EmptyState
             icon="📸"
-            title="No Projects Yet"
-            description="Create a new project to start converting your media into 3D Gaussian Splats."
-            actionLabel="Create Project"
+            title="还没有项目"
+            description="新建项目，即可开始将媒体素材转换为 3D Gaussian Splat。"
+            actionLabel="新建项目"
             onAction={() =>
               dispatch({ type: "NAVIGATE", page: { type: "new-project" } })
             }

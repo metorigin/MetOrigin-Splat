@@ -46,11 +46,11 @@ pub async fn start_pipeline(
                                 "stage_id": format!("{:?}", id),
                             }),
                         ),
-                        OrchestratorEvent::StageFailed(id, error) => handle_clone.emit(
+                        OrchestratorEvent::StageFailed(id, _error) => handle_clone.emit(
                             "pipeline://stage-failed",
                             serde_json::json!({
                                 "stage_id": format!("{:?}", id),
-                                "error": error,
+                                "error": "处理阶段失败，请查看日志了解详细信息。",
                             }),
                         ),
                         OrchestratorEvent::StageSkipped(id) => handle_clone.emit(
@@ -72,10 +72,10 @@ pub async fn start_pipeline(
                         OrchestratorEvent::PipelineCompleted => {
                             handle_clone.emit("pipeline://completed", serde_json::json!({}))
                         }
-                        OrchestratorEvent::PipelineFailed(error) => handle_clone.emit(
+                        OrchestratorEvent::PipelineFailed(_error) => handle_clone.emit(
                             "pipeline://failed",
                             serde_json::json!({
-                                "error": error,
+                                "error": "处理流程失败，请查看日志了解详细信息。",
                             }),
                         ),
                         OrchestratorEvent::PipelineCancelled => {
@@ -99,13 +99,15 @@ pub async fn start_pipeline(
             Ok(())
         }
         Err(e) => {
+            tracing::error!(error = %e, "pipeline execution failed");
+            let user_message = e.user_message_zh();
             let _ = app_handle.emit(
                 "pipeline://failed",
                 serde_json::json!({
-                    "error": e.to_string(),
+                    "error": user_message,
                 }),
             );
-            Err(e.to_string())
+            Err(e.user_message_zh())
         }
     }
 }

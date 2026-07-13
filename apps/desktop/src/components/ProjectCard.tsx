@@ -1,4 +1,5 @@
 import type { ProjectInfo } from "../types";
+import { formatRelativeTime, getProjectStatusLabel, getStageLabel } from "../localization";
 
 interface ProjectCardProps {
   project: ProjectInfo;
@@ -13,18 +14,10 @@ const STATUS_COLORS: Record<string, string> = {
   paused: "#ff9800",
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  ready: "Ready",
-  running: "Running",
-  completed: "Completed",
-  failed: "Failed",
-  paused: "Paused",
-};
-
 export function ProjectCard({ project, onClick }: ProjectCardProps) {
   const color = STATUS_COLORS[project.status] || "var(--text-secondary)";
-  const label = STATUS_LABELS[project.status] || project.status;
-  const timeAgo = getTimeAgo(project.updated_at);
+  const label = getProjectStatusLabel(project.status);
+  const timeAgo = formatRelativeTime(project.updated_at);
 
   return (
     <div className="project-card" onClick={onClick}>
@@ -38,28 +31,14 @@ export function ProjectCard({ project, onClick }: ProjectCardProps) {
         </span>
       </div>
       {project.stage_label && (
-        <div className="project-stage">{project.stage_label}</div>
+        <div className="project-stage">{getStageLabel(project.stage_label)}</div>
       )}
       <div className="project-meta">
         <span className="project-time">{timeAgo}</span>
         <button className="text-button" onClick={(e) => { e.stopPropagation(); onClick(); }}>
-          {project.status === "completed" ? "View Results →" : "Continue →"}
+          {project.status === "completed" ? "查看结果 →" : "继续 →"}
         </button>
       </div>
     </div>
   );
-}
-
-function getTimeAgo(isoString: string): string {
-  const now = Date.now();
-  const then = new Date(isoString).getTime();
-  const diffMs = now - then;
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return "Just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  if (diffDay < 7) return `${diffDay}d ago`;
-  return new Date(isoString).toLocaleDateString();
 }
