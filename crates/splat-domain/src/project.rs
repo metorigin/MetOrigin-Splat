@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::pipeline::PipelineState;
+
 /// Globally unique project identifier (UUID v7 for time-ordered values).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ProjectId(Uuid);
@@ -146,6 +148,9 @@ pub struct Project {
     pub status: ProjectStatus,
     /// ID of the currently active pipeline stage
     pub current_stage: Option<String>,
+    /// Persisted pipeline state used for progress reporting and crash recovery.
+    #[serde(default)]
+    pub pipeline_state: PipelineState,
 }
 
 impl Project {
@@ -162,6 +167,7 @@ impl Project {
             settings: ProjectSettings::default(),
             status: ProjectStatus::Creating,
             current_stage: None,
+            pipeline_state: PipelineState::new(),
         }
     }
 
@@ -208,6 +214,19 @@ mod tests {
         assert_eq!(deserialized.schema_version, 1);
         assert!(json.contains("schema_version"));
         assert!(json.contains("museum-room"));
+        assert!(json.contains("pipeline_state"));
+    }
+
+    #[test]
+    fn test_legacy_project_without_pipeline_state_uses_default() {
+        let project = Project::new("legacy");
+        let mut value = serde_json::to_value(&project).unwrap();
+        value.as_object_mut().unwrap().remove("pipeline_state");
+        let restored: Project = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            restored.pipeline_state.stages.len(),
+            crate::pipeline::PipelineStageId::all().len()
+        );
     }
 
     #[test]

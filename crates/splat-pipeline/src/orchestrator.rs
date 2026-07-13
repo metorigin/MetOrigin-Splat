@@ -4,6 +4,7 @@ use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::pipeline::{PipelineStageId, PipelineState, StageState, StageStatus};
 use splat_domain::progress::TaskProgress;
 use tokio::sync::{broadcast, RwLock};
+use tokio_util::sync::CancellationToken;
 
 use crate::lock::{LockGuard, ProjectLock};
 use crate::stage::{PipelineStage, StageContext};
@@ -49,6 +50,8 @@ pub struct PipelineOrchestrator {
     project_dir: std::path::PathBuf,
     /// Optional project lock guard (held while pipeline runs)
     lock_guard: Arc<RwLock<Option<LockGuard>>>,
+    /// Shared cancellation signal propagated to every stage.
+    cancellation: CancellationToken,
 }
 
 impl PipelineOrchestrator {
@@ -61,6 +64,7 @@ impl PipelineOrchestrator {
             event_tx,
             project_dir,
             lock_guard: Arc::new(RwLock::new(None)),
+            cancellation: CancellationToken::new(),
         }
     }
 
@@ -178,10 +182,19 @@ impl PipelineOrchestrator {
 
         // Execute stages in order
         for stage_reg in &self.stages {
+            if self.cancellation.is_cancelled() {
+                self.finish_cancelled().await?;
+                return Ok(());
+            }
             let sid = stage_reg.id();
 
             // Build stage context
-            let ctx = StageContext::new(sid, &self.project_dir, None);
+            let ctx = StageContext::with_cancellation(
+                sid,
+                &self.project_dir,
+                None,
+                self.cancellation.clone(),
+            );
 
             // Check stage status from state
             let should_run = {
@@ -205,10 +218,12 @@ impl PipelineOrchestrator {
                 if let Some(s) = state.stages.get_mut(&sid) {
                     s.status = StageStatus::Skipped;
                     s.progress = 1.0;
+                    s.ended_at = Some(chrono::Utc::now());
                 }
                 let _ = self.event_tx.send(OrchestratorEvent::StageSkipped(sid));
                 drop(state);
                 self.update_overall_progress().await;
+                self.persist_state().await?;
                 continue;
             }
 
@@ -217,13 +232,27 @@ impl PipelineOrchestrator {
                 let mut state = self.state.write().await;
                 if let Some(s) = state.stages.get_mut(&sid) {
                     s.status = StageStatus::Running;
+                    s.started_at = Some(chrono::Utc::now());
+                    s.ended_at = None;
+                    s.error = None;
+                    s.log_path = Some(
+                        ctx.log_path
+                            .strip_prefix(&self.project_dir)
+                            .unwrap_or(&ctx.log_path)
+                            .to_string_lossy()
+                            .to_string(),
+                    );
                 }
                 state.current_stage = Some(sid);
             }
             let _ = self.event_tx.send(OrchestratorEvent::StageStarted(sid));
+            self.persist_state().await?;
 
             // Validate inputs
-            stage_reg.validate_inputs(&ctx)?;
+            if let Err(error) = stage_reg.validate_inputs(&ctx) {
+                self.fail_stage(sid, &error).await?;
+                return Err(error);
+            }
 
             // Execute the stage
             let (progress_tx, mut progress_rx) = broadcast::channel(64);
@@ -236,57 +265,68 @@ impl PipelineOrchestrator {
             let result = stage_reg.execute(&ctx, progress_tx).await;
             progress_forwarder.abort();
 
+            if self.cancellation.is_cancelled() {
+                self.finish_cancelled().await?;
+                return Ok(());
+            }
+
             match result {
                 Ok(stage_state) => {
                     // Validate outputs
-                    stage_reg.validate_outputs(&ctx)?;
+                    if let Err(error) = stage_reg.validate_outputs(&ctx) {
+                        self.fail_stage(sid, &error).await?;
+                        return Err(error);
+                    }
 
                     let mut state = self.state.write().await;
-                    state.stages.insert(sid, stage_state);
+                    let mut completed = stage_state;
+                    completed.status = StageStatus::Completed;
+                    completed.progress = 1.0;
+                    completed.ended_at = Some(chrono::Utc::now());
+                    completed.log_path = Some(
+                        ctx.log_path
+                            .strip_prefix(&self.project_dir)
+                            .unwrap_or(&ctx.log_path)
+                            .to_string_lossy()
+                            .to_string(),
+                    );
+                    state.stages.insert(sid, completed);
                     state.current_stage = None;
 
                     let _ = self.event_tx.send(OrchestratorEvent::StageCompleted(sid));
                     drop(state);
                     self.update_overall_progress().await;
+                    self.persist_state().await?;
                 }
                 Err(e) => {
-                    let mut state = self.state.write().await;
-                    if let Some(s) = state.stages.get_mut(&sid) {
-                        s.status = StageStatus::Failed;
-                        s.error = Some(e.to_string());
-                    }
-                    let _ = self
-                        .event_tx
-                        .send(OrchestratorEvent::StageFailed(sid, e.to_string()));
-                    let _ = self
-                        .event_tx
-                        .send(OrchestratorEvent::PipelineFailed(format!(
-                            "Stage {} failed: {}",
-                            sid.label(),
-                            e
-                        )));
+                    self.fail_stage(sid, &e).await?;
                     return Err(e);
                 }
             }
         }
 
+        self.persist_state().await?;
         let _ = self.event_tx.send(OrchestratorEvent::PipelineCompleted);
         Ok(())
     }
 
     /// Cancel the running pipeline.
     pub async fn cancel(&self) -> AppResult<()> {
+        self.cancellation.cancel();
         let mut state = self.state.write().await;
-        state.current_stage = None;
-        let _ = self.event_tx.send(OrchestratorEvent::PipelineCancelled);
-
-        // Release lock
-        let mut lock = self.lock_guard.write().await;
-        if let Some(g) = lock.take() {
-            g.release();
+        if let Some(stage_id) = state.current_stage {
+            if let Some(stage) = state.stages.get_mut(&stage_id) {
+                stage.status = StageStatus::Cancelling;
+            }
         }
+        drop(state);
+        self.persist_state().await?;
 
         Ok(())
+    }
+
+    pub fn cancellation_token(&self) -> CancellationToken {
+        self.cancellation.clone()
     }
 
     /// Get the current pipeline state.
@@ -309,6 +349,58 @@ impl PipelineOrchestrator {
             let sum: f64 = state.stages.values().map(|s| s.progress).sum();
             state.overall_progress = (sum / total).clamp(0.0, 1.0);
         }
+    }
+
+    async fn finish_cancelled(&self) -> AppResult<()> {
+        let mut state = self.state.write().await;
+        if let Some(stage_id) = state.current_stage {
+            if let Some(stage) = state.stages.get_mut(&stage_id) {
+                stage.status = StageStatus::Cancelled;
+                stage.ended_at = Some(chrono::Utc::now());
+            }
+        }
+        state.current_stage = None;
+        drop(state);
+        self.persist_state().await?;
+        let _ = self.event_tx.send(OrchestratorEvent::PipelineCancelled);
+        Ok(())
+    }
+
+    async fn fail_stage(&self, stage_id: PipelineStageId, error: &AppError) -> AppResult<()> {
+        let mut state = self.state.write().await;
+        if let Some(stage) = state.stages.get_mut(&stage_id) {
+            stage.status = StageStatus::Failed;
+            stage.error = Some(error.to_string());
+            stage.ended_at = Some(chrono::Utc::now());
+        }
+        state.current_stage = None;
+        drop(state);
+        self.persist_state().await?;
+        let _ = self
+            .event_tx
+            .send(OrchestratorEvent::StageFailed(stage_id, error.to_string()));
+        let _ = self
+            .event_tx
+            .send(OrchestratorEvent::PipelineFailed(format!(
+                "Stage {} failed: {}",
+                stage_id.label(),
+                error
+            )));
+        Ok(())
+    }
+
+    async fn persist_state(&self) -> AppResult<()> {
+        if !self.project_dir.join("project.json").exists() {
+            return Ok(());
+        }
+        let state = self.state.read().await.clone();
+        let projects_dir = self
+            .project_dir
+            .parent()
+            .unwrap_or(&self.project_dir)
+            .to_path_buf();
+        splat_project::ProjectManager::new(projects_dir)
+            .save_pipeline_state(&self.project_dir, &state)
     }
 }
 
@@ -551,5 +643,15 @@ mod tests {
         let _ = orch.start().await;
         let state = orch.get_state().await;
         assert!(state.overall_progress > 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_cancel_before_start_keeps_pipeline_non_running() {
+        let orch = PipelineOrchestrator::new(std::path::PathBuf::from("/test"));
+        orch.cancel().await.unwrap();
+        orch.start().await.unwrap();
+        let state = orch.get_state().await;
+        assert!(state.current_stage.is_none());
+        assert!(orch.cancellation_token().is_cancelled());
     }
 }

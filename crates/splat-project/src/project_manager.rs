@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::project::{Project, ProjectStatus};
+use splat_domain::PipelineState;
 
 use crate::migration::{self, CURRENT_SCHEMA_VERSION};
 use crate::paths;
@@ -134,6 +135,39 @@ impl ProjectManager {
         self.save_project_internal(project, project_dir)
     }
 
+    /// Atomically update the persisted pipeline and project lifecycle state.
+    pub fn save_pipeline_state(
+        &self,
+        project_dir: &Path,
+        pipeline_state: &PipelineState,
+    ) -> AppResult<()> {
+        let mut project = self.open_project(project_dir)?;
+        project.pipeline_state = pipeline_state.clone();
+        project.current_stage = pipeline_state
+            .current_stage
+            .map(|stage| format!("{stage:?}"));
+        project.status = if pipeline_state
+            .stages
+            .values()
+            .any(|stage| stage.status == splat_domain::StageStatus::Failed)
+        {
+            ProjectStatus::Failed
+        } else if pipeline_state.stages.values().all(|stage| {
+            matches!(
+                stage.status,
+                splat_domain::StageStatus::Completed | splat_domain::StageStatus::Skipped
+            )
+        }) {
+            ProjectStatus::Completed
+        } else if pipeline_state.current_stage.is_some() {
+            ProjectStatus::Running
+        } else {
+            ProjectStatus::Ready
+        };
+        project.touch();
+        self.save_project_internal(&project, project_dir)
+    }
+
     /// Internal save with atomic write pattern:
     /// 1. Write to temp file
     /// 2. Flush
@@ -228,9 +262,13 @@ impl ProjectManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static TEMP_DIR_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
     fn temp_dir() -> PathBuf {
-        std::env::temp_dir().join(format!("splat-test-{}", std::process::id()))
+        let sequence = TEMP_DIR_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!("splat-test-{}-{sequence}", std::process::id()))
     }
 
     #[test]
@@ -285,6 +323,32 @@ mod tests {
         let reopened = manager.open_project(&project_dir).unwrap();
         assert_eq!(reopened.name, "updated-name");
         assert_eq!(reopened.settings.preset, "quality");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_save_pipeline_state_updates_project() {
+        let dir = temp_dir();
+        let manager = ProjectManager::new(dir.clone());
+        let (_, project_dir) = manager.create_project("pipeline-state").unwrap();
+        let mut pipeline = PipelineState::new();
+        pipeline.current_stage = Some(splat_domain::PipelineStageId::FrameExtraction);
+        pipeline
+            .stages
+            .get_mut(&splat_domain::PipelineStageId::FrameExtraction)
+            .unwrap()
+            .status = splat_domain::StageStatus::Running;
+
+        manager
+            .save_pipeline_state(&project_dir, &pipeline)
+            .unwrap();
+        let reopened = manager.open_project(&project_dir).unwrap();
+        assert_eq!(reopened.status, ProjectStatus::Running);
+        assert_eq!(
+            reopened.pipeline_state.current_stage,
+            pipeline.current_stage
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

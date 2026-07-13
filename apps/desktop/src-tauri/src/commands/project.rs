@@ -141,6 +141,7 @@ pub fn create_project(
     };
 
     if let Ok(mut inner) = state.0.lock() {
+        inner.project_dir = Some(project_dir.clone());
         inner.recent_projects.push(info);
     }
 

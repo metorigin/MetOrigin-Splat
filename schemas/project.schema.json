@@ -98,6 +98,16 @@
     "current_stage": {
       "type": ["string", "null"],
       "description": "ID of the currently active pipeline stage"
+    },
+    "pipeline_state": {
+      "type": "object",
+      "description": "Persisted state of all pipeline stages",
+      "required": ["stages", "current_stage", "overall_progress"],
+      "properties": {
+        "stages": { "type": "object" },
+        "current_stage": { "type": ["string", "null"] },
+        "overall_progress": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
     }
   }
 }

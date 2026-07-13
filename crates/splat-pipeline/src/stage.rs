@@ -4,6 +4,7 @@ use splat_domain::error::AppResult;
 use splat_domain::pipeline::{PipelineStageId, StageState};
 use splat_domain::progress::TaskProgress;
 use tokio::sync::broadcast;
+use tokio_util::sync::CancellationToken;
 
 /// Standard subdirectory and file names within a `.splat-project` directory.
 pub const DIR_SOURCE: &str = "source";
@@ -112,11 +113,22 @@ pub struct StageContext {
     pub log_path: PathBuf,
     /// Training preset name (e.g. "fast", "balanced", "quality").
     pub preset: Option<String>,
+    /// Shared cancellation token for the active pipeline run.
+    pub cancellation: CancellationToken,
 }
 
 impl StageContext {
     /// Create a new stage context for the given stage and project.
     pub fn new(stage_id: PipelineStageId, project_dir: &Path, preset: Option<String>) -> Self {
+        Self::with_cancellation(stage_id, project_dir, preset, CancellationToken::new())
+    }
+
+    pub fn with_cancellation(
+        stage_id: PipelineStageId,
+        project_dir: &Path,
+        preset: Option<String>,
+        cancellation: CancellationToken,
+    ) -> Self {
         let paths = StagePaths::new(project_dir);
         let log_path = paths.stage_log(&stage_id);
         Self {
@@ -125,6 +137,7 @@ impl StageContext {
             paths,
             log_path,
             preset,
+            cancellation,
         }
     }
 }
