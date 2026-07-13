@@ -3,14 +3,16 @@ use std::path::{Path, PathBuf};
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_process::CommandSpec;
 
+use crate::database::inspect_database;
 use crate::types::{CameraModel, FeatureExtractionResult};
 
 /// Configuration options for COLMAP feature extraction.
 ///
-/// Maps to COLMAP's `--SiftExtraction.*` and `--ImageReader.*` CLI flags.
+/// Maps to COLMAP's `--FeatureExtraction.*`, `--SiftExtraction.*`, and
+/// `--ImageReader.*` CLI flags.
 #[derive(Debug, Clone)]
 pub struct FeatureExtractionOptions {
-    /// Enable GPU acceleration (`--SiftExtraction.use_gpu`)
+    /// Enable GPU acceleration (`--FeatureExtraction.use_gpu`)
     pub use_gpu: bool,
     /// Maximum number of features per image (`--SiftExtraction.max_num_features`)
     pub max_num_features: u32,
@@ -54,7 +56,7 @@ impl FeatureExtractor {
     /// colmap feature_extractor \
     ///     --database_path <database_path> \
     ///     --image_path <image_path> \
-    ///     --SiftExtraction.use_gpu <1|0> \
+    ///     --FeatureExtraction.use_gpu <1|0> \
     ///     --SiftExtraction.max_num_features <N> \
     ///     --ImageReader.single_camera <1|0> \
     ///     --ImageReader.camera_model <MODEL>
@@ -80,7 +82,7 @@ impl FeatureExtractor {
         args.push(image_path.as_os_str().to_owned());
 
         // GPU acceleration
-        args.push("--SiftExtraction.use_gpu".into());
+        args.push("--FeatureExtraction.use_gpu".into());
         args.push(if options.use_gpu { "1" } else { "0" }.into());
 
         // Max features per image
@@ -122,10 +124,9 @@ impl FeatureExtractor {
             ));
         }
 
-        // Verify the database has keypoints
-        let images_with_features = Self::count_images_in_database(database_path)?;
+        let stats = inspect_database(database_path)?;
 
-        if images_with_features == 0 {
+        if stats.images == 0 || stats.keypoints == 0 {
             return Err(AppError::new(
                 "E-3010",
                 ErrorCategory::Engine,
@@ -141,53 +142,24 @@ impl FeatureExtractor {
             ]));
         }
 
+        if stats.images != total_images {
+            return Err(AppError::new(
+                "E-3010",
+                ErrorCategory::Engine,
+                "Incomplete Feature Extraction",
+                format!(
+                    "COLMAP stored features for {} of {} input images.",
+                    stats.images, total_images
+                ),
+            )
+            .retryable(true));
+        }
+
         Ok(FeatureExtractionResult {
-            images_processed: images_with_features,
+            images_processed: stats.images,
             database_path: database_path.to_path_buf(),
             gpu_used,
         })
-    }
-
-    /// Query the database for the number of images with keypoints.
-    ///
-    /// Uses `colmap database_info` to get a summary of the database contents,
-    /// then parses the "Number of images" line.
-    fn count_images_in_database(database_path: &Path) -> AppResult<usize> {
-        let output = std::process::Command::new("colmap")
-            .args(["database_info", "--database_path"])
-            .arg(database_path.as_os_str())
-            .output()
-            .map_err(|e| {
-                AppError::new(
-                    "E-3002",
-                    ErrorCategory::Engine,
-                    "Failed to Query Database",
-                    format!("Could not run colmap database_info: {}", e),
-                )
-            })?;
-
-        if !output.status.success() {
-            return Err(AppError::new(
-                "E-3002",
-                ErrorCategory::Engine,
-                "Database Query Failed",
-                "colmap database_info returned an error. The database may be corrupted.",
-            ));
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        // Parse "Number of images: <N>" from the output
-        for line in stdout.lines() {
-            let line = line.trim();
-            if let Some(count_str) = line.strip_prefix("Number of images:") {
-                if let Ok(count) = count_str.trim().parse::<usize>() {
-                    return Ok(count);
-                }
-            }
-        }
-
-        // If we can't find the image count, just check if database is non-empty
-        Ok(0)
     }
 }
 
@@ -283,7 +255,7 @@ mod tests {
             .collect();
         let args_str = args.join(" ");
 
-        assert!(args_str.contains("--SiftExtraction.use_gpu 1"));
+        assert!(args_str.contains("--FeatureExtraction.use_gpu 1"));
     }
 
     #[test]
@@ -308,7 +280,7 @@ mod tests {
             .collect();
         let args_str = args.join(" ");
 
-        assert!(args_str.contains("--SiftExtraction.use_gpu 0"));
+        assert!(args_str.contains("--FeatureExtraction.use_gpu 0"));
     }
 
     #[test]

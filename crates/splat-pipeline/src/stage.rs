@@ -21,7 +21,9 @@ pub const DIR_LOGS: &str = "logs";
 pub const FILE_FRAMES_MANIFEST: &str = "frames.json";
 pub const FILE_OUTPUT_MANIFEST: &str = "manifest.json";
 pub const FILE_COLMAP_DB: &str = "database.db";
-pub const FILE_SPARSE_MODEL: &str = "0"; // first model dir under sparse/
+pub const FILE_COLMAP_RESULT: &str = "result.json";
+pub const FILE_COLMAP_VALIDATION: &str = "validation.json";
+pub const FILE_SPARSE_MODEL: &str = "0";
 pub const FILE_PLY: &str = "scene.ply";
 
 /// Convenience path builder for project subdirectories.
@@ -45,6 +47,8 @@ pub struct StagePaths {
     pub colmap_db: PathBuf,
     pub colmap_sparse: PathBuf,
     pub colmap_logs: PathBuf,
+    pub colmap_result: PathBuf,
+    pub colmap_validation: PathBuf,
 
     // Training
     pub training_dir: PathBuf,
@@ -77,6 +81,8 @@ impl StagePaths {
             colmap_db: project_dir.join(DIR_COLMAP).join(FILE_COLMAP_DB),
             colmap_sparse: project_dir.join(DIR_COLMAP).join("sparse"),
             colmap_logs: project_dir.join(DIR_COLMAP).join("logs"),
+            colmap_result: project_dir.join(DIR_COLMAP).join(FILE_COLMAP_RESULT),
+            colmap_validation: project_dir.join(DIR_COLMAP).join(FILE_COLMAP_VALIDATION),
             training_dir: project_dir.join(DIR_TRAINING),
             training_checkpoints: project_dir.join(DIR_TRAINING_CHECKPOINTS),
             training_config: project_dir.join(DIR_TRAINING_CONFIG),

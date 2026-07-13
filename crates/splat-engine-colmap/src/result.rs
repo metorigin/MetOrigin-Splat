@@ -1,4 +1,7 @@
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+use splat_domain::error::{AppError, AppResult, ErrorCategory};
 
 /// Result of a COLMAP sparse reconstruction.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -71,6 +74,78 @@ impl ColmapResult {
         self.mean_reprojection_error = Some(error);
         self
     }
+}
+
+pub fn read_colmap_result(path: &Path) -> AppResult<ColmapResult> {
+    let json = std::fs::read_to_string(path).map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Read COLMAP Result",
+            "Could not read colmap/result.json.",
+        )
+        .with_technical(error.to_string())
+    })?;
+    serde_json::from_str(&json).map_err(|error| {
+        AppError::new(
+            "E-3030",
+            ErrorCategory::Engine,
+            "Invalid COLMAP Result",
+            "colmap/result.json is malformed or incompatible.",
+        )
+        .with_technical(error.to_string())
+    })
+}
+
+pub fn write_colmap_result_atomic(result: &ColmapResult, path: &Path) -> AppResult<()> {
+    let temporary = path.with_extension("json.tmp");
+    let json = serde_json::to_vec_pretty(result).map_err(|error| {
+        AppError::new(
+            "E-9001",
+            ErrorCategory::Internal,
+            "Failed to Serialize COLMAP Result",
+            "Could not prepare colmap/result.json.",
+        )
+        .with_technical(error.to_string())
+    })?;
+    let mut file = std::fs::File::create(&temporary).map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Write COLMAP Result",
+            "Could not create the temporary COLMAP result file.",
+        )
+        .with_technical(error.to_string())
+    })?;
+    file.write_all(&json).map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Write COLMAP Result",
+            "Could not write colmap/result.json.",
+        )
+        .with_technical(error.to_string())
+    })?;
+    file.sync_all().map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Flush COLMAP Result",
+            "Could not finish writing colmap/result.json.",
+        )
+        .with_technical(error.to_string())
+    })?;
+    drop(file);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        let _ = std::fs::remove_file(&temporary);
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Save COLMAP Result",
+            "Could not move colmap/result.json into place.",
+        )
+        .with_technical(error.to_string())
+    })
 }
 
 #[cfg(test)]

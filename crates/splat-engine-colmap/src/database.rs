@@ -3,6 +3,62 @@ use std::path::{Path, PathBuf};
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_process::CommandSpec;
 
+/// Counts read directly from a COLMAP SQLite database.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DatabaseStats {
+    pub images: usize,
+    pub keypoints: usize,
+    pub matched_pairs: usize,
+    pub verified_matches: usize,
+}
+
+/// Inspect a COLMAP database without relying on version-specific CLI commands.
+pub fn inspect_database(database_path: &Path) -> AppResult<DatabaseStats> {
+    let connection = rusqlite::Connection::open_with_flags(
+        database_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .map_err(|error| database_error(database_path, error))?;
+
+    Ok(DatabaseStats {
+        images: query_count(&connection, "SELECT COUNT(*) FROM images")?,
+        keypoints: query_count(&connection, "SELECT COALESCE(SUM(rows), 0) FROM keypoints")?,
+        matched_pairs: query_count(
+            &connection,
+            "SELECT COUNT(*) FROM two_view_geometries WHERE rows > 0",
+        )?,
+        verified_matches: query_count(
+            &connection,
+            "SELECT COALESCE(SUM(rows), 0) FROM two_view_geometries",
+        )?,
+    })
+}
+
+fn query_count(connection: &rusqlite::Connection, sql: &str) -> AppResult<usize> {
+    connection
+        .query_row(sql, [], |row| row.get::<_, i64>(0))
+        .map(|value| value.max(0) as usize)
+        .map_err(|error| {
+            AppError::new(
+                "E-3002",
+                ErrorCategory::Engine,
+                "Failed to Inspect COLMAP Database",
+                "The COLMAP database schema could not be queried.",
+            )
+            .with_technical(format!("query={sql}, error={error}"))
+        })
+}
+
+fn database_error(path: &Path, error: rusqlite::Error) -> AppError {
+    AppError::new(
+        "E-3002",
+        ErrorCategory::Engine,
+        "Failed to Open COLMAP Database",
+        "The COLMAP database could not be opened for validation.",
+    )
+    .with_technical(format!("path={}, error={error}", path.display()))
+}
+
 /// Creates and manages the COLMAP SQLite database.
 ///
 /// Responsible for:
@@ -117,6 +173,39 @@ impl DatabaseCreator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_inspect_database_reads_standard_colmap_schema() {
+        let dir = std::env::temp_dir().join(format!("splat-colmap-inspect-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("database.db");
+        let connection = rusqlite::Connection::open(&db_path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE images (image_id INTEGER PRIMARY KEY);\
+                 CREATE TABLE keypoints (image_id INTEGER PRIMARY KEY, rows INTEGER);\
+                 CREATE TABLE two_view_geometries (pair_id INTEGER PRIMARY KEY, rows INTEGER);\
+                 INSERT INTO images VALUES (1), (2), (3);\
+                 INSERT INTO keypoints VALUES (1, 100), (2, 250), (3, 0);\
+                 INSERT INTO two_view_geometries VALUES (1, 42), (2, 0), (3, 17);",
+            )
+            .unwrap();
+        drop(connection);
+
+        let stats = inspect_database(&db_path).unwrap();
+        assert_eq!(
+            stats,
+            DatabaseStats {
+                images: 3,
+                keypoints: 350,
+                matched_pairs: 2,
+                verified_matches: 59,
+            }
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn test_build_command_contains_database_creator() {

@@ -13,6 +13,7 @@ pub mod brush_training;
 pub mod colmap_feature;
 pub mod colmap_mapping;
 pub mod colmap_matching;
+mod colmap_support;
 pub mod colmap_validation;
 pub mod export;
 pub mod frame_extract;

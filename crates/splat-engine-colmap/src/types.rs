@@ -122,7 +122,9 @@ impl ModelInfo {
 }
 
 /// Diagnostic severity level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum DiagnosticLevel {
     Info,
     Warning,

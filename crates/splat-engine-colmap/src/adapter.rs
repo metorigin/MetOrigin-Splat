@@ -6,6 +6,7 @@ use splat_process::CommandSpec;
 
 use crate::database::DatabaseCreator;
 use crate::feature::{FeatureExtractionOptions, FeatureExtractor};
+use crate::mapper::ColmapMapper;
 use crate::types::MatchingStrategy;
 
 /// COLMAP engine adapter.
@@ -194,19 +195,13 @@ impl ColmapAdapter {
         output_path: &Path,
         log_path: &Path,
     ) -> CommandSpec {
-        CommandSpec::new(
-            &self.colmap_path,
-            vec![
-                "mapper".into(),
-                "--database_path".into(),
-                database_path.as_os_str().to_owned(),
-                "--image_path".into(),
-                image_path.as_os_str().to_owned(),
-                "--output_path".into(),
-                output_path.as_os_str().to_owned(),
-            ],
-            log_path,
-        )
+        self.mapper()
+            .build_command(database_path, image_path, output_path, log_path)
+    }
+
+    /// Create a sparse mapper using the resolved COLMAP executable.
+    pub fn mapper(&self) -> ColmapMapper {
+        ColmapMapper::new(self.colmap_path.clone())
     }
 
     // ─── Internal helpers ───────────────────────────────────────────────
@@ -280,8 +275,15 @@ impl ColmapAdapter {
                 )
             })?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let first_line = stdout.lines().next().unwrap_or("");
+        let version_output = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let first_line = version_output
+            .lines()
+            .find(|line| line.starts_with("COLMAP "))
+            .unwrap_or("");
 
         // Parse "COLMAP <version>" from the first line
         let version = first_line

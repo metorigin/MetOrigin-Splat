@@ -17,13 +17,13 @@ pub mod types;
 pub mod validator;
 
 pub use adapter::ColmapAdapter;
-pub use database::DatabaseCreator;
+pub use database::{inspect_database, DatabaseCreator, DatabaseStats};
 pub use diagnostics::{ColmapDiagnosticReport, DiagnosticItem};
 pub use feature::{FeatureExtractionOptions, FeatureExtractor};
 pub use mapper::ColmapMapper;
 pub use matching::MatchingValidator;
 pub use progress::{ColmapFeatureParser, ColmapMapperParser};
-pub use result::ColmapResult;
+pub use result::{read_colmap_result, write_colmap_result_atomic, ColmapResult};
 pub use types::{
     CameraInfo, CameraModel, DiagnosticLevel, DiagnosticMessage, FeatureExtractionResult,
     MatchingResult, MatchingStrategy, ModelInfo,

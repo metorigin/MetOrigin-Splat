@@ -26,7 +26,7 @@ impl Default for ValidationOptions {
 }
 
 /// Result of a single validation check.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ValidationCheck {
     /// Short check name (e.g. "registration_rate", "point_count")
     pub name: String,
@@ -39,7 +39,7 @@ pub struct ValidationCheck {
 }
 
 /// Complete report from model validation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ValidationReport {
     /// Whether all critical checks passed
     pub passed: bool,

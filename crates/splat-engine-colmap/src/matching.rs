@@ -2,6 +2,7 @@ use std::path::Path;
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 
+use crate::database::inspect_database;
 use crate::types::MatchingResult;
 
 /// Validates the result of COLMAP feature matching.
@@ -21,35 +22,10 @@ impl MatchingValidator {
     ///
     /// Returns `E-3020` if no matches were found (matching failed).
     pub fn validate_matching(database_path: &Path) -> AppResult<MatchingResult> {
-        let output = std::process::Command::new("colmap")
-            .args(["database_info", "--database_path"])
-            .arg(database_path.as_os_str())
-            .output()
-            .map_err(|e| {
-                AppError::new(
-                    "E-3021",
-                    ErrorCategory::Engine,
-                    "Failed to Query Database",
-                    format!("Could not run colmap database_info: {}", e),
-                )
-            })?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(AppError::new(
-                "E-3022",
-                ErrorCategory::Engine,
-                "Database Query Failed",
-                "colmap database_info returned an error. The COLMAP database may be corrupted.",
-            )
-            .with_technical(format!("stderr: {}", stderr)));
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        let total_images = parse_database_field(&stdout, "Number of images:");
-        let total_keypoints = parse_database_field(&stdout, "Number of keypoints:");
-        let total_matches = parse_database_field(&stdout, "Number of matches:");
+        let stats = inspect_database(database_path)?;
+        let total_images = stats.images;
+        let total_keypoints = stats.keypoints;
+        let total_matches = stats.verified_matches;
 
         if total_matches == 0 {
             let reason = if total_keypoints == 0 {

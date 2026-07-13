@@ -2,9 +2,11 @@ use chrono::Utc;
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::pipeline::{PipelineStageId, StageState, StageStatus};
 use splat_domain::progress::TaskProgress;
+use splat_engine_colmap::read_colmap_result;
 use tokio::sync::broadcast;
 
 use crate::stage::{PipelineStage, StageContext};
+use crate::stages::colmap_support;
 
 /// Training preparation stage.
 ///
@@ -33,11 +35,9 @@ impl PipelineStage for TrainingPreparationStage {
     }
 
     fn validate_inputs(&self, ctx: &StageContext) -> AppResult<()> {
-        // Need COLMAP sparse model
-        let model_dir = ctx.paths.colmap_model_dir();
-        let has_colmap =
-            model_dir.join("cameras.bin").exists() || model_dir.join("cameras.txt").exists();
-        if !has_colmap {
+        let result = read_colmap_result(&ctx.paths.colmap_result)?;
+        let model_dir = colmap_support::model_path(&ctx.project_dir, &result.model_path);
+        if !colmap_support::has_complete_model(&model_dir) {
             return Err(AppError::new(
                 "E-4001",
                 ErrorCategory::Engine,
@@ -85,15 +85,9 @@ impl PipelineStage for TrainingPreparationStage {
             ));
         }
 
-        let model_dir = ctx.paths.colmap_model_dir();
-        let cameras_ok =
-            model_dir.join("cameras.bin").exists() || model_dir.join("cameras.txt").exists();
-        let images_ok =
-            model_dir.join("images.bin").exists() || model_dir.join("images.txt").exists();
-        let points_ok =
-            model_dir.join("points3D.bin").exists() || model_dir.join("points3D.txt").exists();
-
-        if !cameras_ok || !images_ok || !points_ok {
+        let colmap_result = read_colmap_result(&ctx.paths.colmap_result)?;
+        let model_dir = colmap_support::model_path(&ctx.project_dir, &colmap_result.model_path);
+        if !colmap_support::has_complete_model(&model_dir) {
             return Err(AppError::new(
                 "E-4001",
                 ErrorCategory::Engine,
@@ -214,6 +208,7 @@ fn count_images(dir: &std::path::Path) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use splat_engine_colmap::{write_colmap_result_atomic, ColmapResult};
     use std::path::Path;
 
     #[tokio::test]
@@ -238,6 +233,8 @@ mod tests {
         std::fs::write(model_dir.join("cameras.bin"), b"data").unwrap();
         std::fs::write(model_dir.join("images.bin"), b"data").unwrap();
         std::fs::write(model_dir.join("points3D.bin"), b"data").unwrap();
+        let result = ColmapResult::new(2, 2, 10, std::path::PathBuf::from("colmap/sparse/0"));
+        write_colmap_result_atomic(&result, &dir.join("colmap/result.json")).unwrap();
 
         // Create frames
         std::fs::create_dir_all(dir.join("frames")).unwrap();

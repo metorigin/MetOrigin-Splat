@@ -1,16 +1,18 @@
+use std::time::Duration;
+
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::pipeline::{PipelineStageId, StageState, StageStatus};
 use splat_domain::progress::TaskProgress;
+use splat_engine_colmap::{
+    inspect_database, ColmapFeatureParser, MatchingStrategy, MatchingValidator,
+};
+use splat_process::{CompositeParser, ProcessRunner};
 use tokio::sync::broadcast;
 
 use crate::stage::{PipelineStage, StageContext};
+use crate::stages::colmap_support;
 
-/// COLMAP feature matching stage.
-///
-/// Matches features between images using the configured strategy.
-/// For video frames, uses sequential matching. For photo sets, uses exhaustive matching.
-///
-/// TODO: Full implementation with ColmapAdapter + ProcessRunner.
+/// Matches ordered video frames with COLMAP's sequential matcher.
 pub struct ColmapMatchingStage;
 
 impl Default for ColmapMatchingStage {
@@ -40,30 +42,49 @@ impl PipelineStage for ColmapMatchingStage {
                 "The COLMAP database was not found. Run feature extraction before matching.",
             ));
         }
+        let stats = inspect_database(&ctx.paths.colmap_db)?;
+        if stats.images == 0 || stats.keypoints == 0 {
+            return Err(AppError::new(
+                "E-3010",
+                ErrorCategory::Engine,
+                "COLMAP Features Missing",
+                "The COLMAP database does not contain extracted image features.",
+            ));
+        }
         Ok(())
     }
 
     fn check_cached(&self, ctx: &StageContext) -> AppResult<bool> {
-        // Use MatchingValidator to check if database has matches
-        // For now, a lightweight check: database exists and has keypoints
         if !ctx.paths.colmap_db.exists() {
             return Ok(false);
         }
-        Ok(ctx.paths.colmap_db.exists())
+        Ok(inspect_database(&ctx.paths.colmap_db)
+            .map(|stats| stats.matched_pairs > 0 && stats.verified_matches > 0)
+            .unwrap_or(false))
     }
 
     async fn execute(
         &self,
-        _ctx: &StageContext,
-        _progress_tx: broadcast::Sender<TaskProgress>,
+        ctx: &StageContext,
+        progress_tx: broadcast::Sender<TaskProgress>,
     ) -> AppResult<StageState> {
-        tracing::info!("COLMAP feature matching started");
-
-        // TODO: Full implementation:
-        // 1. Determine matching strategy (sequential for video, exhaustive for photos)
-        // 2. build_matching_command(database_path, strategy)
-        // 3. ProcessRunner.execute(matching_spec) + progress
-        // 4. MatchingValidator.validate_matching(database_path)
+        let adapter = colmap_support::adapter(ctx)?;
+        let stats = inspect_database(&ctx.paths.colmap_db)?;
+        let strategy = MatchingStrategy::Sequential { overlap: 10 };
+        let command = adapter
+            .build_matching_command(&ctx.paths.colmap_db, &strategy, &ctx.log_path)
+            .with_cwd(&ctx.paths.colmap_dir)
+            .with_timeout(Duration::from_secs(2 * 60 * 60));
+        let mut parsers = CompositeParser::new();
+        parsers.add(Box::new(ColmapFeatureParser::new(
+            "ColmapMatching",
+            stats.images as u64,
+        )));
+        let result = ProcessRunner::with_parser(parsers)
+            .run_to_completion(command, ctx.cancellation.clone(), Some(progress_tx))
+            .await?;
+        colmap_support::ensure_success(&result, "feature matching")?;
+        MatchingValidator::validate_matching(&ctx.paths.colmap_db)?;
 
         let mut state = StageState::new(self.id());
         state.status = StageStatus::Completed;
@@ -72,14 +93,7 @@ impl PipelineStage for ColmapMatchingStage {
     }
 
     fn validate_outputs(&self, ctx: &StageContext) -> AppResult<()> {
-        if !ctx.paths.colmap_db.exists() {
-            return Err(AppError::new(
-                "E-3001",
-                ErrorCategory::Engine,
-                "COLMAP Database Missing After Matching",
-                "The COLMAP database is missing after matching. The process may have failed.",
-            ));
-        }
+        MatchingValidator::validate_matching(&ctx.paths.colmap_db)?;
         Ok(())
     }
 }
@@ -89,8 +103,8 @@ mod tests {
     use super::*;
     use std::path::Path;
 
-    #[tokio::test]
-    async fn test_matching_no_db() {
+    #[test]
+    fn test_matching_no_db() {
         let stage = ColmapMatchingStage::new();
         let ctx = StageContext::new(
             PipelineStageId::ColmapMatching,
