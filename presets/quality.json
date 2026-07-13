@@ -1,0 +1,15 @@
+{
+  "id": "quality",
+  "name": "High Quality",
+  "description": "Maximum quality preset. Uses higher resolution and more training iterations. May require significant GPU memory and disk space.",
+  "frameExtraction": {
+    "fps": 4,
+    "maxFrames": 1200,
+    "targetLongEdge": 2560
+  },
+  "training": {
+    "iterations": 30000,
+    "quality": "quality",
+    "shDegree": 2
+  }
+}

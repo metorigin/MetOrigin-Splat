@@ -1,0 +1,15 @@
+{
+  "id": "balanced",
+  "name": "Balanced",
+  "description": "Default preset with good quality and reasonable processing time. Suitable for most scenes.",
+  "frameExtraction": {
+    "fps": 3,
+    "maxFrames": 800,
+    "targetLongEdge": 1920
+  },
+  "training": {
+    "iterations": 7000,
+    "quality": "balanced",
+    "shDegree": 1
+  }
+}

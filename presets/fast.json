@@ -1,0 +1,15 @@
+{
+  "id": "fast",
+  "name": "Quick Preview",
+  "description": "Low-resolution preview for rapid validation. Use this to quickly check if your media can produce a reconstruction.",
+  "frameExtraction": {
+    "fps": 2,
+    "maxFrames": 300,
+    "targetLongEdge": 1280
+  },
+  "training": {
+    "iterations": 3000,
+    "quality": "preview",
+    "shDegree": 0
+  }
+}

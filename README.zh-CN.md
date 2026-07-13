@@ -53,15 +53,15 @@ Checkpoint / PLY
 ## 快速开始
 
 ```bash
-# 前置要求：Rust stable、Node.js 18+、pnpm
+# 前置要求：Rust 1.97.0、Node.js 22、pnpm 11.12.0
 
 # 克隆仓库
 git clone https://github.com/metorigin/splat.git
 cd splat
 
 # 构建并以开发模式运行
-pnpm install
-pnpm tauri dev
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
 详细开发环境搭建请参考 [docs/development.md](docs/development.md)。
@@ -98,4 +98,4 @@ splat/
 
 ## 许可证
 
-[待确定](LICENSE)
+本项目采用 [MIT](LICENSE-MIT) 或 [Apache-2.0](LICENSE-APACHE) 双重许可，您可任选其一。

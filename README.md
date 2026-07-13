@@ -53,15 +53,15 @@ Cloud training, multi-GPU training, dynamic 3DGS, mobile training, full Gaussian
 ## Quick Start
 
 ```bash
-# Prerequisites: Rust stable, Node.js 18+, pnpm
+# Prerequisites: Rust 1.97.0, Node.js 22, pnpm 11.12.0
 
 # Clone the repository
 git clone https://github.com/metorigin/splat.git
 cd splat
 
 # Build and run in development mode
-pnpm install
-pnpm tauri dev
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
 See [docs/development.md](docs/development.md) for detailed setup instructions.
@@ -98,4 +98,4 @@ splat/
 
 ## License
 
-[License to be determined](LICENSE)
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.

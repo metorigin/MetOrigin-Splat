@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metorigin.dev/schemas/preset.json",
+  "title": "Training Preset",
+  "description": "Schema for MetaOrigin Splat training presets",
+  "type": "object",
+  "required": ["id", "name", "frameExtraction", "training"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Preset identifier",
+      "examples": ["fast", "balanced", "quality"]
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable preset name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of when to use this preset"
+    },
+    "frameExtraction": {
+      "type": "object",
+      "description": "Frame extraction parameters",
+      "required": ["fps", "maxFrames"],
+      "properties": {
+        "fps": {
+          "type": "number",
+          "description": "Frames per second to extract",
+          "minimum": 0.1
+        },
+        "maxFrames": {
+          "type": "integer",
+          "description": "Maximum number of frames to extract",
+          "minimum": 1
+        },
+        "targetLongEdge": {
+          "type": "integer",
+          "description": "Target long edge dimension in pixels",
+          "minimum": 256
+        }
+      }
+    },
+    "training": {
+      "type": "object",
+      "description": "Training parameters",
+      "required": ["iterations", "quality"],
+      "properties": {
+        "iterations": {
+          "type": "integer",
+          "description": "Number of training iterations",
+          "minimum": 100
+        },
+        "quality": {
+          "type": "string",
+          "description": "Quality level",
+          "enum": ["preview", "balanced", "quality"]
+        },
+        "shDegree": {
+          "type": "integer",
+          "description": "Spherical harmonics degree",
+          "minimum": 0,
+          "maximum": 3
+        }
+      }
+    }
+  }
+}

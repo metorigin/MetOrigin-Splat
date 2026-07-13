@@ -1,0 +1,13 @@
+[package]
+name = "splat-engine-colmap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+splat-domain = { path = "../splat-domain" }
+splat-process = { path = "../splat-process" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metorigin.dev/schemas/event.json",
+  "title": "Pipeline Event",
+  "description": "Schema for MetaOrigin Splat pipeline and process events",
+  "type": "object",
+  "required": ["type", "timestamp"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "description": "Event type identifier",
+      "enum": [
+        "stage_started",
+        "stage_completed",
+        "stage_failed",
+        "stage_skipped",
+        "stage_progress",
+        "pipeline_completed",
+        "pipeline_failed",
+        "pipeline_cancelled",
+        "process_started",
+        "process_exited",
+        "process_cancelled",
+        "process_timed_out",
+        "process_stdout",
+        "process_stderr"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 event timestamp"
+    },
+    "stage_id": {
+      "type": "string",
+      "description": "Related pipeline stage ID"
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable event message"
+    },
+    "progress": {
+      "type": "object",
+      "description": "Progress information (for progress events)",
+      "properties": {
+        "percent": {
+          "type": "number",
+          "description": "Progress percentage (0.0 – 1.0)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "current_item": {
+          "type": "integer",
+          "description": "Current item being processed"
+        },
+        "total_items": {
+          "type": "integer",
+          "description": "Total items to process"
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "description": "Error information (for failure events)",
+      "properties": {
+        "code": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    }
+  }
+}

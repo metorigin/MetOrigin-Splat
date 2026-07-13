@@ -1,0 +1,31 @@
+[package]
+name = "splat-desktop"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "tauri_app"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+splat-domain = { path = "../../../crates/splat-domain" }
+splat-project = { path = "../../../crates/splat-project" }
+splat-pipeline = { path = "../../../crates/splat-pipeline" }
+splat-process = { path = "../../../crates/splat-process" }
+splat-hardware = { path = "../../../crates/splat-hardware" }
+splat-engine-ffmpeg = { path = "../../../crates/splat-engine-ffmpeg" }
+splat-engine-colmap = { path = "../../../crates/splat-engine-colmap" }
+splat-engine-brush = { path = "../../../crates/splat-engine-brush" }
+tokio = { workspace = true, features = ["full"] }
+dirs-next = "2"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

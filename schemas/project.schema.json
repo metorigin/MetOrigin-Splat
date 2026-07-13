@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metorigin.dev/schemas/project.json",
+  "title": "MetaOrigin Splat Project",
+  "description": "Schema for MetaOrigin Splat project.json files",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "name",
+    "created_at",
+    "updated_at",
+    "settings",
+    "status"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "description": "Schema version for migration support",
+      "minimum": 1,
+      "examples": [1]
+    },
+    "id": {
+      "type": "string",
+      "description": "UUID v7 project identifier",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable project name",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 creation timestamp"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 last update timestamp"
+    },
+    "source": {
+      "description": "Source media metadata",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "Video" },
+            "filename": { "type": "string" },
+            "copied_to_project": { "type": "boolean" }
+          },
+          "required": ["type", "filename", "copied_to_project"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "ImageFolder" },
+            "folder_name": { "type": "string" },
+            "image_count": { "type": "integer", "minimum": 1 },
+            "copied_to_project": { "type": "boolean" }
+          },
+          "required": ["type", "folder_name", "image_count", "copied_to_project"]
+        }
+      ]
+    },
+    "settings": {
+      "type": "object",
+      "description": "Project settings",
+      "required": ["preset"],
+      "properties": {
+        "preset": {
+          "type": "string",
+          "description": "Training preset ID",
+          "enum": ["fast", "balanced", "quality"]
+        },
+        "max_frames": {
+          "type": "integer",
+          "description": "Maximum number of frames to extract",
+          "minimum": 0
+        },
+        "max_long_edge": {
+          "type": "integer",
+          "description": "Maximum dimension of the long edge of extracted images",
+          "minimum": 256
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "description": "Project lifecycle status",
+      "enum": ["creating", "ready", "running", "paused", "completed", "failed"]
+    },
+    "current_stage": {
+      "type": ["string", "null"],
+      "description": "ID of the currently active pipeline stage"
+    }
+  }
+}

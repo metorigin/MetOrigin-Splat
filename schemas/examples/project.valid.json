@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "018f47a2-4b6c-7abc-8def-1234567890ab",
+  "name": "Schema validation project",
+  "created_at": "2026-07-13T10:00:00Z",
+  "updated_at": "2026-07-13T10:00:00Z",
+  "source": null,
+  "settings": {
+    "preset": "balanced",
+    "max_frames": 800,
+    "max_long_edge": 1920
+  },
+  "status": "ready",
+  "current_stage": null
+}

@@ -1,0 +1,20 @@
+[package]
+name = "splat-pipeline"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+splat-domain = { path = "../splat-domain" }
+splat-project = { path = "../splat-project" }
+splat-process = { path = "../splat-process" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+async-trait = "0.1"
+
+[dev-dependencies]
+tempfile = "3"

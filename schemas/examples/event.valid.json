@@ -1,0 +1,11 @@
+{
+  "type": "stage_progress",
+  "timestamp": "2026-07-13T10:00:00Z",
+  "stage_id": "FrameExtraction",
+  "message": "Extracting frames",
+  "progress": {
+    "percent": 0.5,
+    "current_item": 50,
+    "total_items": 100
+  }
+}

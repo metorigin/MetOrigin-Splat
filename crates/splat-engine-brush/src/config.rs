@@ -1,0 +1,282 @@
+use std::path::Path;
+
+use splat_domain::error::{AppError, AppResult, ErrorCategory};
+
+/// Training parameters parsed from a preset JSON file.
+///
+/// Maps to the `training` section of preset JSON files:
+/// ```json
+/// { "iterations": 7000, "quality": "balanced", "shDegree": 1 }
+/// ```
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct TrainingPreset {
+    /// Number of training iterations
+    pub iterations: u32,
+    /// Quality level label (preview / balanced / quality)
+    pub quality: String,
+    /// Spherical harmonics degree (0/1/2)
+    #[serde(rename = "shDegree")]
+    pub sh_degree: u32,
+}
+
+/// Complete training configuration for the Brush engine.
+///
+/// Generated from a `TrainingPreset` (loaded from preset JSON) combined
+/// with hardware information and user options.
+///
+/// # CLI Parameter Warning
+///
+/// Brush CLI parameter names (marked with ⚠️ in the source) are initial
+/// estimates based on known 3DGS implementations. They MUST be verified
+/// against the output of `brush train --help` for the specific pinned
+/// version of Brush used in the project.
+#[derive(Debug, Clone)]
+pub struct TrainingConfig {
+    /// Number of training iterations
+    pub iterations: u32,
+    /// Spherical harmonics maximum degree
+    pub sh_degree: u32,
+    /// Quality level label
+    pub quality: String,
+    /// Whether to enable antialiasing (reduces artifacts)
+    pub antialiasing: bool,
+    /// Whether to enable densification (grows Gaussians)
+    pub densify: bool,
+    /// Frequency (in iterations) to save training checkpoints
+    pub checkpoint_interval: u32,
+    /// Frequency (in iterations) to output render previews
+    pub render_interval: u32,
+}
+
+impl TrainingConfig {
+    /// Create a training config from a parsed preset.
+    pub fn from_preset(preset: &TrainingPreset) -> Self {
+        Self {
+            iterations: preset.iterations,
+            sh_degree: preset.sh_degree,
+            quality: preset.quality.clone(),
+            antialiasing: true,
+            densify: true,
+            checkpoint_interval: Self::calc_checkpoint_interval(preset.iterations),
+            render_interval: Self::calc_render_interval(preset.iterations),
+        }
+    }
+
+    /// Load a preset from a JSON file path.
+    pub fn load_preset(path: &Path) -> AppResult<TrainingPreset> {
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            AppError::new(
+                "E-1201",
+                ErrorCategory::Filesystem,
+                "Failed to Read Preset",
+                format!("Could not read training preset '{}': {}", path.display(), e),
+            )
+        })?;
+
+        let preset: TrainingPreset = serde_json::from_str(&content).map_err(|e| {
+            AppError::new(
+                "E-1002",
+                ErrorCategory::User,
+                "Invalid Preset JSON",
+                format!(
+                    "The preset file '{}' contains invalid JSON: {}",
+                    path.display(),
+                    e
+                ),
+            )
+        })?;
+
+        if preset.iterations == 0 {
+            return Err(AppError::new(
+                "E-1002",
+                ErrorCategory::User,
+                "Invalid Preset",
+                "Training iterations must be greater than 0.",
+            ));
+        }
+
+        Ok(preset)
+    }
+
+    /// Build CLI argument vector for Brush.
+    ///
+    /// ⚠️ CLI flags must be verified with `brush train --help` for the
+    /// pinned Brush version before production use.
+    pub fn to_cli_args(
+        &self,
+        colmap_path: &Path,
+        image_path: &Path,
+        output_path: &Path,
+    ) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<std::ffi::OsString> = vec![
+            // ⚠️ Verify these arguments against the pinned Brush CLI before M1.
+            "train".into(),
+            "--colmap".into(),
+            colmap_path.as_os_str().to_owned(),
+            "--images".into(),
+            image_path.as_os_str().to_owned(),
+            "--output".into(),
+            output_path.as_os_str().to_owned(),
+            "--iterations".into(),
+            self.iterations.to_string().into(),
+            "--sh_degree".into(),
+            self.sh_degree.to_string().into(),
+        ];
+
+        // Antialiasing: ⚠️ --antialiasing (flag, no value)
+        if self.antialiasing {
+            args.push("--antialiasing".into());
+        }
+
+        // Densification: ⚠️ --densification / --densify / --no-densify
+        if self.densify {
+            args.push("--densification".into());
+        }
+
+        args
+    }
+
+    fn calc_checkpoint_interval(iterations: u32) -> u32 {
+        if iterations <= 1000 {
+            100
+        } else if iterations <= 7000 {
+            1000
+        } else {
+            5000
+        }
+    }
+
+    fn calc_render_interval(iterations: u32) -> u32 {
+        if iterations <= 1000 {
+            100
+        } else {
+            (iterations / 10).max(1)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fast_preset() -> TrainingPreset {
+        TrainingPreset {
+            iterations: 3000,
+            quality: "preview".into(),
+            sh_degree: 0,
+        }
+    }
+
+    fn balanced_preset() -> TrainingPreset {
+        TrainingPreset {
+            iterations: 7000,
+            quality: "balanced".into(),
+            sh_degree: 1,
+        }
+    }
+
+    fn quality_preset() -> TrainingPreset {
+        TrainingPreset {
+            iterations: 30000,
+            quality: "quality".into(),
+            sh_degree: 2,
+        }
+    }
+
+    #[test]
+    fn test_from_preset_fast() {
+        let config = TrainingConfig::from_preset(&fast_preset());
+        assert_eq!(config.iterations, 3000);
+        assert_eq!(config.sh_degree, 0);
+        assert_eq!(config.quality, "preview");
+        assert!(config.antialiasing);
+        assert!(config.densify);
+    }
+
+    #[test]
+    fn test_from_preset_balanced() {
+        let config = TrainingConfig::from_preset(&balanced_preset());
+        assert_eq!(config.iterations, 7000);
+        assert_eq!(config.sh_degree, 1);
+        assert_eq!(config.checkpoint_interval, 1000);
+    }
+
+    #[test]
+    fn test_from_preset_quality() {
+        let config = TrainingConfig::from_preset(&quality_preset());
+        assert_eq!(config.iterations, 30000);
+        assert_eq!(config.sh_degree, 2);
+        assert_eq!(config.checkpoint_interval, 5000);
+        assert_eq!(config.render_interval, 3000);
+    }
+
+    #[test]
+    fn test_to_cli_args() {
+        let config = TrainingConfig::from_preset(&balanced_preset());
+        let args = config.to_cli_args(
+            Path::new("colmap/sparse/0"),
+            Path::new("frames"),
+            Path::new("training/output"),
+        );
+
+        let args_str: Vec<String> = args
+            .iter()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        let joined = args_str.join(" ");
+
+        assert!(joined.contains("--colmap"));
+        assert!(joined.contains("colmap/sparse/0"));
+        assert!(joined.contains("--images"));
+        assert!(joined.contains("frames"));
+        assert!(joined.contains("--output"));
+        assert!(joined.contains("training/output"));
+        assert!(joined.contains("--iterations"));
+        assert!(joined.contains("7000"));
+        assert!(joined.contains("--sh_degree"));
+        assert!(joined.contains("1"));
+        assert!(joined.contains("--antialiasing"));
+        assert!(joined.contains("--densification"));
+    }
+
+    #[test]
+    fn test_to_cli_args_without_densify() {
+        let mut config = TrainingConfig::from_preset(&balanced_preset());
+        config.densify = false;
+        let args = config.to_cli_args(Path::new("colmap"), Path::new("frames"), Path::new("out"));
+        let joined: String = args
+            .iter()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(!joined.contains("--densification"));
+    }
+
+    #[test]
+    fn test_checkpoint_interval() {
+        assert_eq!(TrainingConfig::calc_checkpoint_interval(500), 100);
+        assert_eq!(TrainingConfig::calc_checkpoint_interval(3000), 1000);
+        assert_eq!(TrainingConfig::calc_checkpoint_interval(30000), 5000);
+    }
+
+    #[test]
+    fn test_render_interval() {
+        assert_eq!(TrainingConfig::calc_render_interval(500), 100);
+        assert_eq!(TrainingConfig::calc_render_interval(7000), 700);
+        assert_eq!(TrainingConfig::calc_render_interval(30000), 3000);
+    }
+
+    #[test]
+    fn test_load_preset_file_nonexistent() {
+        let result = TrainingConfig::load_preset(Path::new("/nonexistent/preset.json"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deserialize_preset() {
+        let json = r#"{"iterations": 7000, "quality": "balanced", "shDegree": 1}"#;
+        let preset: TrainingPreset = serde_json::from_str(json).unwrap();
+        assert_eq!(preset.iterations, 7000);
+        assert_eq!(preset.sh_degree, 1);
+    }
+}

@@ -1,0 +1,39 @@
+# Rust / Cargo
+target/
+**/*.rs.bk
+
+# Node / pnpm
+node_modules/
+dist/
+.vite/
+
+# Pnpm
+.pnpm-store/
+
+# Tauri
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/schemas/
+
+# Project files
+*.splat-project/
+**/*.splat-project/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+.vscode/
+.helm/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+logs/

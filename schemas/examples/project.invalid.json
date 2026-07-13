@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "not-a-uuid-v7",
+  "name": "Invalid schema fixture",
+  "created_at": "2026-07-13T10:00:00Z",
+  "updated_at": "2026-07-13T10:00:00Z",
+  "source": null,
+  "settings": {
+    "preset": "balanced"
+  },
+  "status": "ready",
+  "current_stage": null
+}

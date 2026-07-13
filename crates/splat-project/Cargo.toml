@@ -1,0 +1,17 @@
+[package]
+name = "splat-project"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+splat-domain = { path = "../splat-domain" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
