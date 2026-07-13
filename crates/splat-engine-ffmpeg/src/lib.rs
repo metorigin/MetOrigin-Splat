@@ -14,5 +14,5 @@ pub mod progress;
 pub use adapter::FfmpegAdapter;
 pub use manifest::{FrameEntry, FrameManifest};
 pub use plan::{plan_extraction, ExtractionPlan, FrameExtractionPreset, Preset};
-pub use probe::{probe_video, VideoMetadata};
+pub use probe::{probe_video, probe_video_with, VideoMetadata};
 pub use progress::FfmpegFrameParser;

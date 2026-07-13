@@ -71,6 +71,26 @@ impl BrushAdapter {
         })
     }
 
+    /// Create an adapter from a path resolved by the application.
+    pub fn from_path(brush_path: PathBuf) -> AppResult<Self> {
+        let brush_version = Self::get_brush_version(&brush_path)?;
+        let adapter = Self {
+            brush_path,
+            brush_version,
+        };
+        adapter.validate()?;
+        Ok(adapter)
+    }
+
+    pub fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
+            name: "brush".into(),
+            version: Some(self.brush_version.clone()),
+            path: Some(self.brush_path.to_string_lossy().to_string()),
+            available: true,
+        }
+    }
+
     /// Validate that Brush is functional by running a basic check.
     pub fn validate(&self) -> AppResult<()> {
         let output = std::process::Command::new(&self.brush_path)

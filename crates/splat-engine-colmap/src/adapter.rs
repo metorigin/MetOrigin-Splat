@@ -63,6 +63,26 @@ impl ColmapAdapter {
         })
     }
 
+    /// Create an adapter from a path resolved by the application.
+    pub fn from_path(colmap_path: PathBuf) -> AppResult<Self> {
+        let colmap_version = Self::get_colmap_version(&colmap_path)?;
+        let adapter = Self {
+            colmap_path,
+            colmap_version,
+        };
+        adapter.validate()?;
+        Ok(adapter)
+    }
+
+    pub fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
+            name: "colmap".into(),
+            version: Some(self.colmap_version.clone()),
+            path: Some(self.colmap_path.to_string_lossy().to_string()),
+            available: true,
+        }
+    }
+
     /// Validate that COLMAP is functional by running `colmap -h`.
     pub fn validate(&self) -> AppResult<()> {
         let output = std::process::Command::new(&self.colmap_path)

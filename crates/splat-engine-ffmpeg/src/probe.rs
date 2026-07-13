@@ -76,6 +76,11 @@ struct FfprobeFormat {
 /// - no video stream is found (`E-1101`)
 /// - ffprobe returns a non-zero exit code (`E-2102`)
 pub fn probe_video(path: &Path) -> AppResult<VideoMetadata> {
+    probe_video_with(Path::new("ffprobe"), path)
+}
+
+/// Probe video metadata with an explicitly resolved FFprobe executable.
+pub fn probe_video_with(ffprobe_path: &Path, path: &Path) -> AppResult<VideoMetadata> {
     if !path.exists() {
         return Err(AppError::new(
             "E-1201",
@@ -85,7 +90,7 @@ pub fn probe_video(path: &Path) -> AppResult<VideoMetadata> {
         ));
     }
 
-    let output = std::process::Command::new("ffprobe")
+    let output = std::process::Command::new(ffprobe_path)
         .args(["-v", "quiet"])
         .args(["-print_format", "json"])
         .args(["-show_format", "-show_streams"])

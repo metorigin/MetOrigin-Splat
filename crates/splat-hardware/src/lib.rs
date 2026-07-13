@@ -4,5 +4,7 @@
 //! The primary compatibility check is whether the engine self-test passes.
 
 pub mod detector;
+pub mod locator;
 
 pub use detector::HardwareDetector;
+pub use locator::EngineLocator;

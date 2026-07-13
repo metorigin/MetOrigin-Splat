@@ -10,6 +10,10 @@ dist/
 # Pnpm
 .pnpm-store/
 
+# Local engines and technical-spike artifacts
+.engines/
+.artifacts/
+
 # Tauri
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/schemas/

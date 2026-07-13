@@ -5,7 +5,7 @@ use splat_domain::hardware::EngineInfo;
 use splat_process::CommandSpec;
 
 use crate::plan::{plan_extraction, ExtractionPlan, FrameExtractionPreset};
-use crate::probe::probe_video;
+use crate::probe::probe_video_with;
 use crate::probe::VideoMetadata;
 
 /// FFmpeg engine adapter.
@@ -74,6 +74,27 @@ impl FfmpegAdapter {
         })
     }
 
+    /// Create an adapter from paths resolved by the application.
+    pub fn from_paths(ffmpeg_path: PathBuf, ffprobe_path: PathBuf) -> AppResult<Self> {
+        let ffmpeg_version = Self::get_ffmpeg_version(&ffmpeg_path)?;
+        let adapter = Self {
+            ffmpeg_path,
+            ffprobe_path,
+            ffmpeg_version,
+        };
+        adapter.validate()?;
+        Ok(adapter)
+    }
+
+    pub fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
+            name: "ffmpeg".into(),
+            version: Some(self.ffmpeg_version.clone()),
+            path: Some(self.ffmpeg_path.to_string_lossy().to_string()),
+            available: true,
+        }
+    }
+
     /// Validate that FFmpeg is functional by running a simple check.
     pub fn validate(&self) -> AppResult<()> {
         let output = std::process::Command::new(&self.ffmpeg_path)
@@ -126,7 +147,7 @@ impl FfmpegAdapter {
     ///
     /// Delegates to [`probe_video`] — see that function for details.
     pub fn probe_metadata(&self, video_path: &Path) -> AppResult<VideoMetadata> {
-        probe_video(video_path)
+        probe_video_with(&self.ffprobe_path, video_path)
     }
 
     // ─── Planning ───────────────────────────────────────────────────────

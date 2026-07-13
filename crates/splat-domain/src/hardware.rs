@@ -1,3 +1,23 @@
+use std::path::PathBuf;
+
+/// Resolved executable paths for all external processing engines.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct EnginePaths {
+    pub ffmpeg: Option<PathBuf>,
+    pub ffprobe: Option<PathBuf>,
+    pub colmap: Option<PathBuf>,
+    pub brush: Option<PathBuf>,
+}
+
+impl EnginePaths {
+    pub fn is_complete(&self) -> bool {
+        self.ffmpeg.is_some()
+            && self.ffprobe.is_some()
+            && self.colmap.is_some()
+            && self.brush.is_some()
+    }
+}
+
 /// Information about a detected external engine.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EngineInfo {

@@ -12,7 +12,7 @@ pub mod progress;
 pub mod project;
 
 pub use error::{AppError, AppErrorData, AppResult, ErrorCategory};
-pub use hardware::{EngineInfo, GpuDevice, HardwareProfile};
+pub use hardware::{EngineInfo, EnginePaths, GpuDevice, HardwareProfile};
 pub use pipeline::{PipelineStageId, StageState, StageStatus};
 pub use progress::TaskProgress;
 pub use project::{Project, ProjectId, ProjectSettings, ProjectSource, ProjectStatus};
