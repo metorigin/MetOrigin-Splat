@@ -1,6 +1,14 @@
+import {
+  ArrowLeft,
+  CheckCircle,
+  FilmStrip,
+  Images,
+  Sparkle,
+} from "@phosphor-icons/react";
 import { useCallback, useState } from "react";
 import { useAppContext } from "../context";
 import { useTauriCommand } from "../hooks";
+import { selectImageDirectory, selectVideoFile } from "../services/desktop";
 import type { CreateProjectResult, MediaAnalysis, PresetOption } from "../types";
 
 const PRESETS: PresetOption[] = [
@@ -39,19 +47,19 @@ export function NewProjectPage() {
   const analyzeMedia = analyzeCmd.execute;
   const createProject = createCmd.execute;
 
-  const handleFileSelect = useCallback(async () => {
-    // In Tauri v2, we use the dialog API or an input
-    // For now, use a prompt or file input
-    const path = window.prompt("请输入视频文件或图片文件夹的完整路径：");
-    if (!path) return;
-
-    setSelectedFile(path);
+  const handleSourceSelect = useCallback(async (kind: "video" | "images") => {
     try {
+      const path =
+        kind === "video"
+          ? await selectVideoFile()
+          : await selectImageDirectory();
+      if (!path) return;
+      setSelectedFile(path);
       await analyzeMedia({ path });
-    } catch {
-      // Error is handled by the hook
+    } catch (error) {
+      dispatch({ type: "SET_ERROR", error: String(error) });
     }
-  }, [analyzeMedia]);
+  }, [analyzeMedia, dispatch]);
 
   const handleCreate = useCallback(async () => {
     if (!selectedFile || !projectName.trim()) return;
@@ -89,7 +97,7 @@ export function NewProjectPage() {
         className="btn btn-text back-button"
         onClick={() => dispatch({ type: "NAVIGATE", page: { type: "home" } })}
       >
-        ← 返回
+        <ArrowLeft size={16} /> 返回工作区
       </button>
 
       <h1 className="page-title">新建项目</h1>
@@ -97,19 +105,38 @@ export function NewProjectPage() {
       {/* Step 1: Select Source */}
       <section className="form-section">
         <h2 className="form-step">第 1 步：选择源媒体</h2>
-        <div className="file-select-area" onClick={handleFileSelect}>
+        <div className={`file-select-area ${selectedFile ? "has-selection" : ""}`}>
           {selectedFile ? (
             <div className="file-selected">
-              <span className="file-icon">📁</span>
-              <span className="file-path">{selectedFile}</span>
+              <span className="file-selected-icon"><CheckCircle size={24} weight="fill" /></span>
+              <div>
+                <strong>已选择素材</strong>
+                <span className="file-path">{selectedFile}</span>
+              </div>
             </div>
           ) : (
             <div className="file-prompt">
-              <span className="file-icon">🎥</span>
-              <p>点击选择视频或图片文件夹</p>
-              <p className="file-hint">支持格式：MP4、MOV、JPG、PNG</p>
+              <FilmStrip className="file-prompt-icon" size={32} />
+              <p>从视频或一组照片创建重建项目</p>
+              <p className="file-hint">选择器会在 Windows 原生窗口中打开</p>
             </div>
           )}
+          <div className="source-select-actions">
+            <button
+              type="button"
+              className="button button-primary"
+              onClick={() => void handleSourceSelect("video")}
+            >
+              <FilmStrip size={18} /> 选择视频
+            </button>
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={() => void handleSourceSelect("images")}
+            >
+              <Images size={18} /> 选择图片文件夹
+            </button>
+          </div>
         </div>
 
         {analyzeCmd.loading && (
@@ -175,11 +202,15 @@ export function NewProjectPage() {
 
       {/* Create button */}
       <button
-        className="btn btn-primary btn-large btn-create"
+        className="button button-primary button-large btn-create"
         onClick={handleCreate}
         disabled={!selectedFile || !projectName.trim() || createCmd.loading}
       >
-        {createCmd.loading ? "正在创建…" : "✦ 创建项目"}
+        {createCmd.loading ? (
+          "正在创建…"
+        ) : (
+          <><Sparkle size={18} weight="fill" /> 创建项目</>
+        )}
       </button>
 
       {createCmd.error && (

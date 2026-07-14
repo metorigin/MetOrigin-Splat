@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "MetaOrigin Splat",
-        "width": 1024,
-        "height": 768,
-        "minWidth": 800,
-        "minHeight": 600,
+        "width": 1440,
+        "height": 1024,
+        "minWidth": 1024,
+        "minHeight": 768,
         "center": true
       }
     ],

@@ -37,6 +37,7 @@ export interface Project {
   settings: ProjectSettings;
   status: ProjectStatus;
   current_stage: string | null;
+  pipeline_state: import("./pipeline").PipelineState;
 }
 
 /** Lightweight project info for the recent projects list. */

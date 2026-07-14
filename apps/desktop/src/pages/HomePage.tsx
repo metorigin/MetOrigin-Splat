@@ -1,116 +1,53 @@
-import { useEffect } from "react";
+import { ArrowRight, FolderOpen, Plus, Stack } from "@phosphor-icons/react";
+
 import { useAppContext } from "../context";
-import { useTauriCommand } from "../hooks";
-import { EmptyState, ProjectCard } from "../components";
-import type { ProjectInfo, EngineInfo } from "../types";
 
 export function HomePage() {
-  const { dispatch } = useAppContext();
-
-  const versionCmd = useTauriCommand<string>("app_version");
-  const enginesCmd = useTauriCommand<EngineInfo[]>("check_engines");
-  const projectsCmd = useTauriCommand<ProjectInfo[]>("list_recent_projects");
-  const loadVersion = versionCmd.execute;
-  const loadEngines = enginesCmd.execute;
-  const loadProjects = projectsCmd.execute;
-
-  // Load data on mount
-  useEffect(() => {
-    void loadVersion().catch(() => undefined);
-    void loadEngines()
-      .then((engines) => {
-        if (engines) dispatch({ type: "SET_ENGINES", engines });
-      })
-      .catch(() => undefined);
-    void loadProjects()
-      .then((projects) => {
-        if (projects) dispatch({ type: "SET_RECENT_PROJECTS", projects });
-      })
-      .catch(() => undefined);
-  }, [dispatch, loadEngines, loadProjects, loadVersion]);
+  const { state, dispatch } = useAppContext();
+  const firstProject = state.recentProjects[0];
 
   return (
-    <div className="page home-page">
-      <header className="hero">
-        <h1 className="hero-title">MetaOrigin Splat</h1>
-        <p className="hero-subtitle">
-          将照片和视频转换为 3D Gaussian Splat
+    <div className="home-workspace">
+      <div className="home-workspace-card">
+        <span className="home-mark" aria-hidden="true">
+          <Stack size={30} weight="fill" />
+        </span>
+        <p className="eyebrow">3D Gaussian Splat 重建工作区</p>
+        <h2>{firstProject ? "继续最近的重建项目" : "创建第一个重建项目"}</h2>
+        <p className="home-description">
+          导入视频或照片后，在一个工作区内完成素材准备、相机重建、模型训练和结果导出。
         </p>
-      </header>
-
-      <div className="actions-row">
-        <button
-          className="btn btn-primary btn-large"
-          onClick={() => dispatch({ type: "NAVIGATE", page: { type: "new-project" } })}
-        >
-          ✦ 新建项目
-        </button>
-        <button className="btn btn-secondary btn-large">
-          📂 打开项目
-        </button>
-      </div>
-
-      {/* Engine status bar */}
-      <div className="engine-status-bar">
-        {enginesCmd.data?.map((engine) => (
-          <span
-            key={engine.name}
-            className={`engine-badge ${engine.available ? "available" : "missing"}`}
-          >
-            {engine.available ? "✅" : "⚠️"} {engine.name}
-            {engine.version && ` ${engine.version}`}
-          </span>
-        ))}
-        {versionCmd.data && (
-          <span className="version-badge">v{versionCmd.data}</span>
-        )}
-      </div>
-
-      {/* Recent projects */}
-      <section className="section">
-        <h2 className="section-title">最近项目</h2>
-
-        {projectsCmd.loading && (
-          <div className="loading-indicator">正在加载项目…</div>
-        )}
-
-        {projectsCmd.error && (
-          <div className="error-message">{projectsCmd.error}</div>
-        )}
-
-        {projectsCmd.data && projectsCmd.data.length === 0 && (
-          <EmptyState
-            icon="📸"
-            title="还没有项目"
-            description="新建项目，即可开始将媒体素材转换为 3D Gaussian Splat。"
-            actionLabel="新建项目"
-            onAction={() =>
+        <div className="home-actions">
+          <button
+            type="button"
+            className="button button-primary button-large"
+            onClick={() =>
               dispatch({ type: "NAVIGATE", page: { type: "new-project" } })
             }
-          />
-        )}
-
-        {projectsCmd.data && projectsCmd.data.length > 0 && (
-          <div className="project-list">
-            {projectsCmd.data.map((project) => (
-              <ProjectCard
-                key={project.id}
-                project={project}
-                onClick={() =>
-                  dispatch({
-                    type: "NAVIGATE",
-                    page: {
-                      type: "project-detail",
-                      projectId: project.id,
-                      projectPath: project.path,
-                    },
-                  })
-                }
-              />
-            ))}
-          </div>
-        )}
-      </section>
+          >
+            <Plus size={18} weight="bold" /> 新建项目
+          </button>
+          {firstProject && (
+            <button
+              type="button"
+              className="button button-secondary button-large"
+              onClick={() =>
+                dispatch({
+                  type: "NAVIGATE",
+                  page: {
+                    type: "project-detail",
+                    projectId: firstProject.id,
+                    projectPath: firstProject.path,
+                  },
+                })
+              }
+            >
+              <FolderOpen size={18} /> {firstProject.name}
+              <ArrowRight size={16} />
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
