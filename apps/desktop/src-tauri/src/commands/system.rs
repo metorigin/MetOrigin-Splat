@@ -79,7 +79,9 @@ pub fn resolve_engine_paths(app_handle: &tauri::AppHandle) -> EnginePaths {
         .path()
         .resource_dir()
         .ok()
-        .map(|path| path.join("engines"));
+        .map(|path| path.join("engines"))
+        .filter(|path| path.is_dir())
+        .or_else(local_engine_dir);
     let mut paths = EngineLocator::resolve_with_configured(
         settings.engine_directory.as_deref().map(Path::new),
         resource_engines.as_deref(),
@@ -100,6 +102,26 @@ pub fn resolve_engine_paths(app_handle: &tauri::AppHandle) -> EnginePaths {
         }
     }
     paths
+}
+
+/// Finds a portable/developer `.engines` pack without embedding a machine
+/// path into the application. This covers launching from the repository root
+/// and launching `target/debug/splat-desktop.exe` directly.
+fn local_engine_dir() -> Option<PathBuf> {
+    let current_directory = std::env::current_dir()
+        .ok()
+        .map(|path| path.join(".engines"));
+    if let Some(path) = current_directory.filter(|path| path.is_dir()) {
+        return Some(path);
+    }
+
+    std::env::current_exe().ok().and_then(|executable| {
+        executable
+            .ancestors()
+            .take(6)
+            .map(|ancestor| ancestor.join(".engines"))
+            .find(|path| path.is_dir())
+    })
 }
 
 /// Detects all engines and returns their availability status.
@@ -180,7 +202,22 @@ pub fn set_engine_executable(
         return Err("未知引擎名称。".into());
     }
     let mut settings = read_settings(&app_handle)?;
-    settings.engine_executables.insert(name, path);
+    settings
+        .engine_executables
+        .insert(name.clone(), path.clone());
+    if name == "ffmpeg" {
+        let executable_name = if cfg!(windows) {
+            "ffprobe.exe"
+        } else {
+            "ffprobe"
+        };
+        let ffprobe = Path::new(&path).with_file_name(executable_name);
+        if ffprobe.is_file() {
+            settings
+                .engine_executables
+                .insert("ffprobe".into(), ffprobe.to_string_lossy().to_string());
+        }
+    }
     write_settings(&app_handle, &settings)?;
     Ok(settings)
 }

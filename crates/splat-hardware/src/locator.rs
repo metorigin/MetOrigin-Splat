@@ -58,7 +58,14 @@ impl EngineLocator {
             candidates.push(root.join("brush_app.exe"));
             candidates.push(root.join("bin").join("brush_app.exe"));
         }
-        for parent in [root.to_path_buf(), root.join(name)] {
+        let mut search_parents = vec![root.to_path_buf(), root.join(name)];
+        // FFmpeg distributions keep ffprobe beside ffmpeg inside the same
+        // versioned package (for example ffmpeg/<version>/bin/ffprobe.exe),
+        // rather than under a separate ffprobe directory.
+        if name == "ffprobe" {
+            search_parents.push(root.join("ffmpeg"));
+        }
+        for parent in search_parents {
             let Ok(entries) = std::fs::read_dir(parent) else {
                 continue;
             };
@@ -129,21 +136,28 @@ mod tests {
     fn candidates_include_versioned_engine_pack_layouts() {
         let root =
             std::env::temp_dir().join(format!("metorigin-engine-locator-{}", std::process::id()));
-        let executable = if cfg!(windows) {
+        let ffmpeg_executable = if cfg!(windows) {
             "ffmpeg.exe"
         } else {
             "ffmpeg"
         };
-        let expected = root
+        let ffprobe_executable = if cfg!(windows) {
+            "ffprobe.exe"
+        } else {
+            "ffprobe"
+        };
+        let expected_ffmpeg = root
             .join("ffmpeg")
             .join("ffmpeg-8.1.2")
             .join("bin")
-            .join(executable);
-        std::fs::create_dir_all(expected.parent().unwrap()).unwrap();
-        std::fs::write(&expected, b"test").unwrap();
+            .join(ffmpeg_executable);
+        let expected_ffprobe = expected_ffmpeg.with_file_name(ffprobe_executable);
+        std::fs::create_dir_all(expected_ffmpeg.parent().unwrap()).unwrap();
+        std::fs::write(&expected_ffmpeg, b"test").unwrap();
+        std::fs::write(&expected_ffprobe, b"test").unwrap();
 
-        let candidates = EngineLocator::candidates(&root, "ffmpeg");
-        assert!(candidates.contains(&expected));
+        assert!(EngineLocator::candidates(&root, "ffmpeg").contains(&expected_ffmpeg));
+        assert!(EngineLocator::candidates(&root, "ffprobe").contains(&expected_ffprobe));
 
         let _ = std::fs::remove_dir_all(root);
     }
