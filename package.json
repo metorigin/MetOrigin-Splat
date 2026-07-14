@@ -8,6 +8,7 @@
     "build": "pnpm --dir apps/desktop build",
     "lint": "pnpm --dir apps/desktop lint",
     "typecheck": "pnpm --dir apps/desktop typecheck",
+    "test": "pnpm --dir apps/desktop test",
     "tauri": "pnpm --dir apps/desktop tauri"
   }
 }

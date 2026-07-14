@@ -1,5 +1,5 @@
 import type { StageState } from "../types";
-import { STAGE_ICONS } from "../types";
+import { CheckCircle, Circle, SpinnerGap, WarningCircle, XCircle } from "@phosphor-icons/react";
 import {
   formatCommandError,
   getStageLabel,
@@ -20,7 +20,15 @@ export function StageProgress({
   onRetry,
 }: StageProgressProps) {
   const label = getStageLabel(stage.stage_id);
-  const icon = STAGE_ICONS[stage.status] || "○";
+  const icon = stage.status === "completed" || stage.status === "skipped"
+    ? <CheckCircle size={16} weight="fill" />
+    : stage.status === "failed"
+      ? <WarningCircle size={16} weight="fill" />
+      : stage.status === "cancelled"
+        ? <XCircle size={16} weight="fill" />
+        : stage.status === "running" || stage.status === "preparing"
+          ? <SpinnerGap size={16} className="spin" />
+          : <Circle size={16} />;
   const statusClass = stage.status;
   const progressPct = Math.round(stage.progress * 100);
 

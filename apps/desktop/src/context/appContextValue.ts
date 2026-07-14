@@ -1,18 +1,17 @@
 import { createContext } from "react";
 import type { Dispatch } from "react";
 
-import type { EngineInfo, PipelineState, ProjectInfo } from "../types";
+import type { EngineInfo, PipelineSnapshot, ProjectInfo } from "../types";
 
 export type Page =
   | { type: "home" }
   | { type: "new-project" }
-  | { type: "project-detail"; projectId: string; projectPath: string }
-  | { type: "training"; projectId: string; projectPath: string };
+  | { type: "project-detail"; projectId: string; projectPath: string };
 
 export interface AppState {
   page: Page;
   recentProjects: ProjectInfo[];
-  pipelineState: PipelineState | null;
+  pipelineSnapshot: PipelineSnapshot | null;
   engines: EngineInfo[];
   loading: boolean;
   error: string | null;
@@ -22,7 +21,7 @@ export type Action =
   | { type: "NAVIGATE"; page: Page }
   | { type: "SET_RECENT_PROJECTS"; projects: ProjectInfo[] }
   | { type: "ADD_RECENT_PROJECT"; project: ProjectInfo }
-  | { type: "SET_PIPELINE_STATE"; state: PipelineState | null }
+  | { type: "SET_PIPELINE_SNAPSHOT"; snapshot: PipelineSnapshot | null }
   | { type: "SET_ENGINES"; engines: EngineInfo[] }
   | { type: "SET_LOADING"; loading: boolean }
   | { type: "SET_ERROR"; error: string | null };
@@ -35,7 +34,7 @@ export interface AppContextValue {
 export const initialState: AppState = {
   page: { type: "home" },
   recentProjects: [],
-  pipelineState: null,
+  pipelineSnapshot: null,
   engines: [],
   loading: false,
   error: null,
@@ -60,8 +59,8 @@ export function reducer(state: AppState, action: Action): AppState {
           : [action.project, ...state.recentProjects],
       };
     }
-    case "SET_PIPELINE_STATE":
-      return { ...state, pipelineState: action.state };
+    case "SET_PIPELINE_SNAPSHOT":
+      return { ...state, pipelineSnapshot: action.snapshot };
     case "SET_ENGINES":
       return { ...state, engines: action.engines };
     case "SET_LOADING":

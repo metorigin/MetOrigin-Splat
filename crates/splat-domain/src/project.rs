@@ -41,12 +41,22 @@ impl std::fmt::Display for ProjectId {
 pub enum ProjectStatus {
     /// Project is being created (directory setup in progress)
     Creating,
+    /// Pipeline start has been accepted but execution has not begun yet
+    Starting,
     /// Project is ready and no pipeline is running
     Ready,
     /// Pipeline is currently executing
     Running,
+    /// A pause request is being applied to the active process
+    Pausing,
     /// Pipeline has been paused by the user
     Paused,
+    /// A cancellation request is being applied to the active process
+    Cancelling,
+    /// Pipeline execution was cancelled by the user
+    Cancelled,
+    /// Persisted state is being validated after an interrupted run
+    Recovering,
     /// All pipeline stages completed successfully
     Completed,
     /// Pipeline finished with one or more failures
@@ -57,9 +67,14 @@ impl std::fmt::Display for ProjectStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Creating => write!(f, "creating"),
+            Self::Starting => write!(f, "starting"),
             Self::Ready => write!(f, "ready"),
             Self::Running => write!(f, "running"),
+            Self::Pausing => write!(f, "pausing"),
             Self::Paused => write!(f, "paused"),
+            Self::Cancelling => write!(f, "cancelling"),
+            Self::Cancelled => write!(f, "cancelled"),
+            Self::Recovering => write!(f, "recovering"),
             Self::Completed => write!(f, "completed"),
             Self::Failed => write!(f, "failed"),
         }
@@ -108,6 +123,7 @@ impl ProjectSource {
 
 /// Configurable settings for a project.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct ProjectSettings {
     /// Training preset identifier (e.g. "fast", "balanced", "quality")
     pub preset: String,
@@ -115,6 +131,14 @@ pub struct ProjectSettings {
     pub max_frames: u32,
     /// Maximum dimension of the long edge of extracted images
     pub max_long_edge: u32,
+    /// Optional custom frame extraction rate. `None` uses the selected preset.
+    pub frame_fps: Option<f64>,
+    /// Optional custom Brush iteration count. `None` uses the selected preset.
+    pub iterations: Option<u32>,
+    /// Optional custom spherical harmonics degree. `None` uses the selected preset.
+    pub sh_degree: Option<u32>,
+    /// Optional custom checkpoint interval. `None` uses the selected preset.
+    pub checkpoint_interval: Option<u32>,
 }
 
 impl Default for ProjectSettings {
@@ -123,6 +147,10 @@ impl Default for ProjectSettings {
             preset: "balanced".to_string(),
             max_frames: 800,
             max_long_edge: 1920,
+            frame_fps: None,
+            iterations: None,
+            sh_degree: None,
+            checkpoint_interval: None,
         }
     }
 }

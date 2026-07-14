@@ -2,25 +2,33 @@ import {
   CaretDown,
   CaretUp,
   Check,
-  CheckCircle,
   Circle,
   Cube,
+  Database,
+  Eye,
   FolderOpen,
   ImageSquare,
   Info,
   SpinnerGap,
+  X,
 } from "@phosphor-icons/react";
-import { useEffect, useMemo, useState } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { useEffect, useState } from "react";
 
+import { ActivityWorkbench, CheckpointDrawer, PointCloudPreview } from "../components/workspace";
 import { useAppContext } from "../context";
 import { useTauriCommand } from "../hooks";
-import { getPresetLabel, getStageLabel } from "../localization";
-import { openDirectory } from "../services/desktop";
+import { getStageLabel } from "../localization";
+import { desktopApi, openDirectory } from "../services/desktop";
 import type {
-  MediaAnalysis,
+  ArtifactSummary,
+  CheckpointSummary,
+  FramePreview,
   PipelineStageId,
+  PlyPreview,
   Project,
   ProjectStatus,
+  SparsePreviewPack,
   StageStatus,
 } from "../types";
 
@@ -70,14 +78,14 @@ const PHASES: PhaseDefinition[] = [
 
 function normalizeStatus(status: string): ProjectStatus {
   const value = status.toLowerCase() as ProjectStatus;
-  return ["creating", "ready", "running", "paused", "completed", "failed"].includes(value)
+  return ["creating", "starting", "ready", "running", "pausing", "paused", "cancelling", "cancelled", "recovering", "completed", "failed"].includes(value)
     ? value
     : "ready";
 }
 
-function phaseStatus(project: Project, phase: PhaseDefinition): StageStatus {
+function phaseStatus(pipelineState: Project["pipeline_state"], phase: PhaseDefinition): StageStatus {
   const states = phase.stages.map(
-    (stage) => project.pipeline_state.stages[stage]?.status ?? "pending",
+    (stage) => pipelineState.stages[stage]?.status ?? "pending",
   );
   if (states.includes("failed")) return "failed";
   if (states.includes("running")) return "running";
@@ -89,13 +97,21 @@ function phaseStatus(project: Project, phase: PhaseDefinition): StageStatus {
 }
 
 export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
-  const { dispatch } = useAppContext();
+  const { state, dispatch } = useAppContext();
   const openCmd = useTauriCommand<Project>("open_project");
-  const analyzeCmd = useTauriCommand<MediaAnalysis>("analyze_media");
   const openProject = openCmd.execute;
-  const analyzeMedia = analyzeCmd.execute;
   const [project, setProject] = useState<Project | null>(null);
   const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
+  const [selectedStage, setSelectedStage] = useState<PipelineStageId | null>(null);
+  const [artifacts, setArtifacts] = useState<ArtifactSummary | null>(null);
+  const [checkpoints, setCheckpoints] = useState<CheckpointSummary[]>([]);
+  const [framePreview, setFramePreview] = useState<FramePreview | null>(null);
+  const [sparsePreview, setSparsePreview] = useState<SparsePreviewPack | null>(null);
+  const [plyPreview, setPlyPreview] = useState<PlyPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [checkpointOpen, setCheckpointOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
 
   useEffect(() => {
     void openProject({ path: projectPath })
@@ -106,7 +122,19 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
           status: normalizeStatus(loadedProject.status),
         };
         setProject(normalizedProject);
-        dispatch({ type: "SET_PIPELINE_STATE", state: normalizedProject.pipeline_state });
+        dispatch({
+          type: "SET_PIPELINE_SNAPSHOT",
+          snapshot: {
+            project_id: normalizedProject.id,
+            project_path: projectPath,
+            status: normalizedProject.status,
+            state: normalizedProject.pipeline_state,
+            sequence: 0,
+            accepted_at: null,
+            started_at: null,
+            control_intent: "none",
+          },
+        });
         dispatch({
           type: "ADD_RECENT_PROJECT",
           project: {
@@ -123,12 +151,6 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
   }, [dispatch, openProject, projectPath]);
 
   useEffect(() => {
-    if (project?.source?.type !== "Video") return;
-    const sourcePath = `${projectPath}\\source\\${project.source.filename}`;
-    void analyzeMedia({ path: sourcePath }).catch(() => undefined);
-  }, [analyzeMedia, project?.source, projectPath]);
-
-  useEffect(() => {
     if (!project?.current_stage) return;
     const current = PHASES.find((phase) =>
       phase.stages.includes(project.current_stage as PipelineStageId),
@@ -136,16 +158,76 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
     setExpandedPhase(current?.id ?? null);
   }, [project?.current_stage]);
 
-  const currentStage = project?.current_stage ?? null;
-  const currentStageLabel = currentStage ? getStageLabel(currentStage) : "尚未开始";
-  const sourceLabel = useMemo(() => {
-    if (!project?.source) return "尚未导入";
-    return project.source.type === "Video"
-      ? project.source.filename
-      : `${project.source.folder_name}（${project.source.image_count} 张）`;
-  }, [project?.source]);
-  const videoMetadata = analyzeCmd.data?.video_metadata;
+  useEffect(() => {
+    let disposed = false;
+    const refresh = async () => {
+      const [artifactResult, checkpointResult] = await Promise.allSettled([
+        desktopApi.getProjectArtifacts(projectPath),
+        desktopApi.listCheckpoints(projectPath),
+      ]);
+      if (disposed) return;
+      if (artifactResult.status === "fulfilled") {
+        setArtifacts(artifactResult.value);
+        setSelectedStage((current) => current
+          ?? (artifactResult.value.scene_ply.validated
+            ? "Export"
+            : artifactResult.value.colmap_result.validated
+              ? "ColmapValidation"
+              : artifactResult.value.frames_manifest.validated
+                ? "FrameExtraction"
+                : "MediaValidation"));
+      }
+      if (checkpointResult.status === "fulfilled") setCheckpoints(checkpointResult.value);
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 3000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [projectPath]);
 
+  const liveSnapshot = project && state.pipelineSnapshot?.project_id === project.id
+    ? state.pipelineSnapshot
+    : null;
+  const pipelineState = liveSnapshot?.state ?? project?.pipeline_state;
+  const currentStage = pipelineState?.current_stage ?? project?.current_stage ?? null;
+  const latestCheckpointPath = checkpoints[checkpoints.length - 1]?.relative_path ?? null;
+  useEffect(() => {
+    if (currentStage) setSelectedStage(currentStage as PipelineStageId);
+  }, [currentStage]);
+
+  useEffect(() => {
+    if (!selectedStage) return;
+    let disposed = false;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setFramePreview(null);
+    setSparsePreview(null);
+    setPlyPreview(null);
+    const load = async () => {
+      try {
+        if (["MediaValidation", "FrameExtraction", "ImagePreprocessing"].includes(selectedStage)) {
+          const preview = await desktopApi.getFramePreview(projectPath);
+          if (!disposed) setFramePreview(preview);
+        } else if (["ColmapFeatureExtraction", "ColmapMatching", "ColmapMapping", "ColmapValidation"].includes(selectedStage)) {
+          const preview = await desktopApi.getSparsePreviewPack(projectPath);
+          if (!disposed) setSparsePreview(preview);
+        } else if (["TrainingPreparation", "BrushTraining", "ModelValidation"].includes(selectedStage)) {
+          if (!latestCheckpointPath) throw new Error("训练 Checkpoint 尚未生成。");
+          const preview = await desktopApi.inspectPly(projectPath, latestCheckpointPath);
+          if (!disposed) setPlyPreview(preview);
+        } else {
+          const preview = await desktopApi.inspectPly(projectPath);
+          if (!disposed) setPlyPreview(preview);
+        }
+      } catch (error) {
+        if (!disposed) setPreviewError(String(error));
+      } finally {
+        if (!disposed) setPreviewLoading(false);
+      }
+    };
+    void load();
+    return () => { disposed = true; };
+  }, [latestCheckpointPath, projectPath, selectedStage]);
+  const currentStageLabel = currentStage ? getStageLabel(currentStage) : "尚未开始";
   if (openCmd.loading && !project) {
     return (
       <div className="workspace-loading">
@@ -166,6 +248,14 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
 
   return (
     <div className="project-workspace-grid">
+      <div className="mobile-workspace-actions">
+        <button type="button" className="button button-secondary" onClick={() => setInspectorOpen(true)}>
+          <Eye size={16} /> 预览与质量
+        </button>
+        <button type="button" className="button button-secondary" disabled={checkpoints.length === 0} onClick={() => setCheckpointOpen(true)}>
+          <Database size={16} /> Checkpoint
+        </button>
+      </div>
       <section className="timeline-panel panel">
         <div className="panel-heading-row">
           <span>里程碑 / 阶段</span>
@@ -173,7 +263,7 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
         </div>
         <div className="pipeline-timeline">
           {PHASES.map((phase, index) => {
-            const status = phaseStatus(project, phase);
+            const status = phaseStatus(pipelineState ?? project.pipeline_state, phase);
             const expanded = expandedPhase === phase.id;
             return (
               <article
@@ -213,10 +303,10 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
                 {expanded && (
                   <div className="stage-list">
                     {phase.stages.map((stage) => {
-                      const stageState = project.pipeline_state.stages[stage];
+                      const stageState = pipelineState?.stages[stage] ?? project.pipeline_state.stages[stage];
                       const stageStatus = stageState?.status ?? "pending";
                       return (
-                        <button type="button" className="stage-list-row" key={stage}>
+                        <button type="button" className={`stage-list-row ${selectedStage === stage ? "is-selected" : ""}`} key={stage} onClick={() => setSelectedStage(stage)}>
                           <span className={`stage-dot status-${stageStatus}`} />
                           <span>{getStageLabel(stage)}</span>
                           <span className="stage-list-progress">
@@ -237,40 +327,33 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
         </div>
       </section>
 
-      <aside className="inspector-column">
+      {inspectorOpen && <button type="button" className="mobile-drawer-backdrop" aria-label="关闭预览与质量" onClick={() => setInspectorOpen(false)} />}
+      <aside className={`inspector-column ${inspectorOpen ? "is-mobile-open" : ""}`}>
+        <div className="mobile-inspector-heading">
+          <strong>预览与质量</strong>
+          <button type="button" className="icon-button" aria-label="关闭预览与质量" onClick={() => setInspectorOpen(false)}><X size={18} /></button>
+        </div>
         <section className="preview-panel panel">
           <div className="panel-title">
-            <span>实时重建预览</span>
-            <span className="panel-subtitle">{currentStageLabel}</span>
+            <span>真实产物预览</span>
+            <span className="panel-subtitle">{selectedStage ? getStageLabel(selectedStage) : currentStageLabel}</span>
           </div>
-          <div className="preview-empty">
-            <Cube size={42} weight="thin" />
-            <strong>预览尚未生成</strong>
-            <span>完成相机重建后，将在此显示真实点云与相机轨迹。</span>
-          </div>
+          {previewLoading ? <div className="preview-empty"><SpinnerGap size={35} className="spin" /><strong>正在读取真实产物</strong><span>解析完成后将上传到 GPU。</span></div>
+            : sparsePreview ? <PointCloudPreview points={sparsePreview.points} cameras={sparsePreview.cameras} label={`${sparsePreview.point_count.toLocaleString()} 稀疏点 · ${sparsePreview.registered_images} 相机`} />
+              : plyPreview ? <PointCloudPreview points={plyPreview.points} label={`${plyPreview.vertex_count.toLocaleString()} splats · 点模式`} />
+                : framePreview && framePreview.items.length > 0 ? <div className="frame-contact-sheet">{framePreview.items.map((path) => <img key={path} src={convertFileSrc(path)} alt="抽取帧缩略图" />)}<span>从 {framePreview.total_frames} 帧中均匀显示 {framePreview.items.length} 帧</span></div>
+                  : <div className="preview-empty"><Cube size={42} weight="thin" /><strong>预览尚未生成</strong><span>{previewError ?? "选择已完成阶段后，将在此读取真实产物。"}</span></div>}
         </section>
 
         <section className="quality-panel panel">
           <div className="panel-title">当前质量</div>
           <div className="quality-metric-grid">
-            <div><span>输入素材</span><strong>{sourceLabel}</strong></div>
-            <div>
-              <span>视频规格</span>
-              <strong>
-                {videoMetadata
-                  ? `${videoMetadata.width}×${videoMetadata.height} · ${videoMetadata.fps.toFixed(1)} fps`
-                  : "尚未测量"}
-              </strong>
-            </div>
-            <div>
-              <span>视频时长</span>
-              <strong>
-                {videoMetadata
-                  ? `${videoMetadata.duration_seconds.toFixed(1)} 秒`
-                  : "尚未测量"}
-              </strong>
-            </div>
-            <div><span>质量预设</span><strong>{getPresetLabel(project.settings.preset)}</strong></div>
+            <div><span>注册图像</span><strong>{artifacts?.registered_images != null && artifacts.total_images != null ? `${artifacts.registered_images} / ${artifacts.total_images}` : "尚未测量"}</strong></div>
+            <div><span>注册率</span><strong>{artifacts?.registered_images != null && artifacts.total_images ? `${(artifacts.registered_images / artifacts.total_images * 100).toFixed(1)}%` : "尚未测量"}</strong></div>
+            <div><span>稀疏点</span><strong>{artifacts?.sparse_points?.toLocaleString() ?? "尚未测量"}</strong></div>
+            <div><span>重投影误差</span><strong>{artifacts?.mean_reprojection_error != null ? `${artifacts.mean_reprojection_error.toFixed(3)} px` : "尚未测量"}</strong></div>
+            <div><span>Checkpoint</span><strong>{artifacts?.latest_checkpoint ? `${artifacts.latest_checkpoint.iteration.toLocaleString()} step` : "尚未生成"}</strong></div>
+            <div><span>最终 Splat</span><strong>{artifacts?.splat_count?.toLocaleString() ?? "尚未测量"}</strong></div>
           </div>
           <div className="quality-actions">
             <button
@@ -280,31 +363,16 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
             >
               <FolderOpen size={17} /> 打开输出目录
             </button>
-            <button type="button" className="button button-secondary" disabled>
+            <button type="button" className="button button-secondary" disabled={!artifacts?.scene_ply.validated} onClick={() => void openDirectory(`${projectPath}\\output\\scene.ply`)}>
               <ImageSquare size={17} /> 打开 PLY
             </button>
+            <button type="button" className="button button-secondary" disabled={checkpoints.length === 0} onClick={() => setCheckpointOpen(true)}><Database size={17} /> Checkpoint</button>
           </div>
         </section>
       </aside>
 
-      <section className="activity-panel panel">
-        <div className="activity-tabs">
-          <button type="button" className="is-active">活动日志</button>
-          <button type="button">事件</button>
-          <button type="button">警告 (0)</button>
-          <button type="button">错误 (0)</button>
-        </div>
-        <div className="activity-content">
-          <div className="activity-table-header">
-            <span>时间</span><span>级别</span><span>阶段</span><span>消息</span>
-          </div>
-          <div className="activity-empty-row">
-            <CheckCircle size={17} weight="fill" />
-            <span>项目已就绪</span>
-            <span>当前阶段：{currentStageLabel}</span>
-          </div>
-        </div>
-      </section>
+      <ActivityWorkbench projectPath={projectPath} />
+      {checkpointOpen && <CheckpointDrawer checkpoints={checkpoints} onClose={() => setCheckpointOpen(false)} onPreview={(checkpoint) => { setSelectedStage("BrushTraining"); void desktopApi.inspectPly(projectPath, checkpoint.relative_path).then(setPlyPreview); }} onRestore={(checkpoint) => void desktopApi.restoreCheckpoint(projectPath, checkpoint.iteration).then(setCheckpoints).catch((error) => dispatch({ type: "SET_ERROR", error: String(error) }))} onDelete={(checkpoint) => void desktopApi.deleteCheckpoint(projectPath, checkpoint.iteration).then(() => desktopApi.listCheckpoints(projectPath).then(setCheckpoints)).catch((error) => dispatch({ type: "SET_ERROR", error: String(error) }))} onOpen={(checkpoint) => void openDirectory(`${projectPath}\\${checkpoint.relative_path.replaceAll("/", "\\")}`)} />}
     </div>
   );
 }

@@ -3,9 +3,14 @@
 /** Project lifecycle status, matching `splat_domain::project::ProjectStatus`. */
 export type ProjectStatus =
   | "creating"
+  | "starting"
   | "ready"
   | "running"
+  | "pausing"
   | "paused"
+  | "cancelling"
+  | "cancelled"
+  | "recovering"
   | "completed"
   | "failed";
 
@@ -24,6 +29,10 @@ export interface ProjectSettings {
   preset: string;
   max_frames: number;
   max_long_edge: number;
+  frame_fps: number | null;
+  iterations: number | null;
+  sh_degree: number | null;
+  checkpoint_interval: number | null;
 }
 
 /** Full project data, matching `splat_domain::project::Project`. */
@@ -56,15 +65,22 @@ export interface CreateProjectResult {
   name: string;
   path: string;
   status: ProjectStatus;
+  start_after_create: boolean;
 }
 
 /** Preset option presented in the UI. */
-export interface PresetOption {
+export interface PresetEstimate {
   id: string;
   name: string;
   description: string;
-  estimated_time: string;
+  fps: number;
+  max_frames: number;
+  target_long_edge: number;
   iterations: number;
+  sh_degree: number;
+  checkpoint_interval: number;
+  estimated_frames: number;
+  estimated_disk_bytes: number;
 }
 
 /** Video metadata from FFprobe, matching `splat_engine_ffmpeg::probe::VideoMetadata`. */
@@ -80,12 +96,55 @@ export interface VideoMetadata {
 
 /** Result of media analysis before project creation. */
 export interface MediaAnalysis {
-  type: "video" | "images";
-  video_metadata?: VideoMetadata;
-  image_count?: number;
-  estimated_frames: number;
-  estimated_disk_mb: number;
+  source_kind: "video" | "images";
+  source_path: string;
+  display_name: string;
+  size_bytes: number;
   valid: boolean;
-  error?: string;
-  warning?: string;
+  video_metadata: VideoMetadata | null;
+  image_set_metadata: ImageSetMetadata | null;
+  preset_estimates: PresetEstimate[];
+  preview_items: string[];
+  warnings: string[];
+  blockers: string[];
+}
+
+export interface ImageSetMetadata {
+  image_count: number;
+  ignored_count: number;
+  total_size_bytes: number;
+  formats: Record<string, number>;
+}
+
+export interface EngineCheck {
+  name: string;
+  available: boolean;
+  path: string | null;
+}
+
+export interface ProjectPreflight {
+  can_continue: boolean;
+  engine_checks: EngineCheck[];
+  estimated_frames: number;
+  estimated_disk_bytes: number;
+  available_disk_bytes: number;
+  recommended_preset: string;
+  warnings: string[];
+  blockers: string[];
+}
+
+export interface CreateProjectRequest {
+  name: string;
+  sourcePath: string;
+  preset: string;
+  projectRoot: string | null;
+  startAfterCreate: boolean;
+}
+
+export interface ProjectCopyProgress {
+  project_id: string;
+  copied_bytes: number;
+  total_bytes: number;
+  percent: number;
+  completed: boolean;
 }

@@ -6,14 +6,20 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 
-import type { EngineInfo } from "../../types";
+import type { EngineInfo, ResourceMetrics } from "../../types";
 
 interface SystemStatusBarProps {
   engines: EngineInfo[];
   version: string | null;
+  metrics: ResourceMetrics | null;
+  onOpenSettings: () => void;
 }
 
-export function SystemStatusBar({ engines, version }: SystemStatusBarProps) {
+function gib(bytes: number) {
+  return (bytes / 1024 / 1024 / 1024).toFixed(1);
+}
+
+export function SystemStatusBar({ engines, version, metrics, onOpenSettings }: SystemStatusBarProps) {
   return (
     <footer className="system-status-bar">
       <div className="status-bar-group engine-status-group">
@@ -29,6 +35,7 @@ export function SystemStatusBar({ engines, version }: SystemStatusBarProps) {
             className={`status-item ${engine.available ? "is-success" : "is-warning"}`}
             key={engine.name}
             title={engine.path ?? `${engine.name} 未定位`}
+            onClick={onOpenSettings}
           >
             {engine.available ? (
               <CheckCircle size={14} weight="fill" />
@@ -39,21 +46,21 @@ export function SystemStatusBar({ engines, version }: SystemStatusBarProps) {
           </button>
         ))}
       </div>
-      <div className="status-bar-group">
+      <button type="button" className="status-bar-group" onClick={onOpenSettings}>
         <Cpu size={15} />
         <span className="status-bar-label">GPU</span>
-        <span>尚未测量</span>
-      </div>
-      <div className="status-bar-group">
+        <span>{metrics?.gpu ? `${metrics.gpu.name} · ${metrics.gpu.utilization_percent?.toFixed(0) ?? "—"}%` : "指标不可用"}</span>
+      </button>
+      <button type="button" className="status-bar-group" onClick={onOpenSettings}>
         <HardDrives size={15} />
         <span className="status-bar-label">VRAM</span>
-        <span>尚未测量</span>
-      </div>
-      <div className="status-bar-group status-system-group">
+        <span>{metrics?.gpu ? `${gib(metrics.gpu.memory_used_bytes)} / ${gib(metrics.gpu.memory_total_bytes)} GB` : "尚未测量"}</span>
+      </button>
+      <button type="button" className="status-bar-group status-system-group" onClick={onOpenSettings}>
         <Monitor size={15} />
-        <span>Windows</span>
+        <span>{metrics?.operating_system ?? "Windows"}</span>
         {version && <span>应用 v{version}</span>}
-      </div>
+      </button>
     </footer>
   );
 }

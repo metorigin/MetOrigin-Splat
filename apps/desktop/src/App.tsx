@@ -4,23 +4,29 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ProjectSidebar } from "./components/shell/ProjectSidebar";
 import { SystemStatusBar } from "./components/shell/SystemStatusBar";
 import { TitleRunBar } from "./components/shell/TitleRunBar";
+import { SettingsDrawer } from "./components/settings";
 import { AppProvider, useAppContext } from "./context";
-import { HomePage, NewProjectPage, ProjectDetailPage, TrainingPage } from "./pages";
+import { HomePage, NewProjectPage, ProjectDetailPage } from "./pages";
 import {
   confirmSafeCancel,
   desktopApi,
   selectProjectDirectory,
 } from "./services/desktop";
-import type { Project, ProjectInfo, ProjectStatus } from "./types";
+import type { AppSettings, Project, ProjectInfo, ProjectStatus, ResourceMetrics } from "./types";
 import "./App.css";
 
 function normalizeProjectStatus(status: string): ProjectStatus {
   const normalized = status.toLowerCase();
   if (
     normalized === "creating" ||
+    normalized === "starting" ||
     normalized === "ready" ||
     normalized === "running" ||
+    normalized === "pausing" ||
     normalized === "paused" ||
+    normalized === "cancelling" ||
+    normalized === "cancelled" ||
+    normalized === "recovering" ||
     normalized === "completed" ||
     normalized === "failed"
   ) {
@@ -44,12 +50,12 @@ function AppWorkspace() {
   const { state, dispatch } = useAppContext();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [metrics, setMetrics] = useState<ResourceMetrics | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const activeProjectPath =
-    state.page.type === "project-detail" || state.page.type === "training"
-      ? state.page.projectPath
-      : null;
+    state.page.type === "project-detail" ? state.page.projectPath : null;
   const activeProject = useMemo(
     () =>
       state.recentProjects.find(
@@ -57,13 +63,15 @@ function AppWorkspace() {
       ) ?? null,
     [activeProjectPath, state.recentProjects],
   );
+  const pipelineStatus = state.pipelineSnapshot?.status ?? null;
 
   const loadApplicationData = useCallback(async () => {
-    const [versionResult, enginesResult, projectsResult] =
+    const [versionResult, enginesResult, projectsResult, settingsResult] =
       await Promise.allSettled([
         desktopApi.appVersion(),
         desktopApi.checkEngines(),
         desktopApi.listRecentProjects(),
+        desktopApi.getAppSettings(),
       ]);
 
     if (versionResult.status === "fulfilled") {
@@ -75,31 +83,57 @@ function AppWorkspace() {
     if (projectsResult.status === "fulfilled") {
       dispatch({ type: "SET_RECENT_PROJECTS", projects: projectsResult.value });
     }
+    if (settingsResult.status === "fulfilled") setSettings(settingsResult.value);
   }, [dispatch]);
+
+  useEffect(() => {
+    let disposed = false;
+    let timer = 0;
+    const sample = async () => {
+      try {
+        const result = await desktopApi.getResourceMetrics(activeProjectPath ?? undefined);
+        if (!disposed) setMetrics(result);
+      } catch {
+        if (!disposed) setMetrics(null);
+      }
+      if (disposed) return;
+      const active = pipelineStatus && ["starting", "running", "pausing", "cancelling", "recovering"].includes(pipelineStatus);
+      timer = window.setTimeout(sample, document.hidden ? 15_000 : active ? 2_000 : 5_000);
+    };
+    void sample();
+    return () => { disposed = true; window.clearTimeout(timer); };
+  }, [activeProjectPath, pipelineStatus]);
 
   useEffect(() => {
     void loadApplicationData();
   }, [loadApplicationData]);
 
   useEffect(() => {
-    if (!running) return;
-    const timer = window.setInterval(() => {
-      void desktopApi
-        .getPipelineState()
-        .then((pipelineState) => {
-          dispatch({ type: "SET_PIPELINE_STATE", state: pipelineState });
-          if (
-            pipelineState.current_stage === null &&
-            pipelineState.overall_progress >= 1
-          ) {
-            setRunning(false);
-            void loadApplicationData();
-          }
-        })
-        .catch(() => undefined);
-    }, 1200);
-    return () => window.clearInterval(timer);
-  }, [dispatch, loadApplicationData, running]);
+    if (!activeProjectPath) {
+      dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot: null });
+      return;
+    }
+    let disposed = false;
+    const refresh = async () => {
+      try {
+        const snapshot = await desktopApi.getPipelineState(activeProjectPath);
+        if (disposed) return;
+        dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot });
+        const current = state.recentProjects.find((project) => project.id === snapshot.project_id);
+        if (current && current.status !== snapshot.status) {
+          dispatch({ type: "ADD_RECENT_PROJECT", project: { ...current, status: snapshot.status } });
+        }
+      } catch {
+        // The project page will surface persistent load failures.
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 1200);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [activeProjectPath, dispatch, state.recentProjects]);
 
   const openSelectedProject = useCallback(
     async (project: ProjectInfo) => {
@@ -111,7 +145,6 @@ function AppWorkspace() {
           projectPath: project.path,
         },
       });
-      setRunning(project.status === "running");
     },
     [dispatch],
   );
@@ -132,14 +165,36 @@ function AppWorkspace() {
   const handleStart = useCallback(async () => {
     if (!activeProject) return;
     try {
-      setRunning(true);
-      await desktopApi.startPipeline(activeProject.path);
+      const snapshot = await desktopApi.startPipeline(activeProject.path);
+      dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot });
       dispatch({
         type: "ADD_RECENT_PROJECT",
         project: { ...activeProject, status: "running" },
       });
     } catch (error) {
-      setRunning(false);
+      dispatch({ type: "SET_ERROR", error: String(error) });
+    }
+  }, [activeProject, dispatch]);
+
+  const handlePause = useCallback(async () => {
+    if (!activeProject) return;
+    try {
+      await desktopApi.pausePipeline();
+      const snapshot = await desktopApi.getPipelineState(activeProject.path);
+      dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot });
+      dispatch({ type: "ADD_RECENT_PROJECT", project: { ...activeProject, status: snapshot.status } });
+    } catch (error) {
+      dispatch({ type: "SET_ERROR", error: String(error) });
+    }
+  }, [activeProject, dispatch]);
+
+  const handleResume = useCallback(async () => {
+    if (!activeProject) return;
+    try {
+      const snapshot = await desktopApi.resumePipeline(activeProject.path);
+      dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot });
+      dispatch({ type: "ADD_RECENT_PROJECT", project: { ...activeProject, status: snapshot.status } });
+    } catch (error) {
       dispatch({ type: "SET_ERROR", error: String(error) });
     }
   }, [activeProject, dispatch]);
@@ -152,7 +207,6 @@ function AppWorkspace() {
       );
       if (!confirmed) return;
       await desktopApi.cancelPipeline();
-      setRunning(false);
       void loadApplicationData();
     } catch (error) {
       dispatch({ type: "SET_ERROR", error: String(error) });
@@ -180,17 +234,10 @@ function AppWorkspace() {
       case "home":
         return <HomePage />;
       case "new-project":
-        return <NewProjectPage />;
+        return <NewProjectPage settings={settings} />;
       case "project-detail":
         return (
           <ProjectDetailPage
-            projectId={state.page.projectId}
-            projectPath={state.page.projectPath}
-          />
-        );
-      case "training":
-        return (
-          <TrainingPage
             projectId={state.page.projectId}
             projectPath={state.page.projectPath}
           />
@@ -216,15 +263,30 @@ function AppWorkspace() {
       <section className="workspace-surface">
         <TitleRunBar
           project={activeProject}
-          pipelineState={state.pipelineState}
-          running={running}
+          pipelineSnapshot={state.pipelineSnapshot}
           onStart={() => void handleStart()}
+          onPause={() => void handlePause()}
+          onResume={() => void handleResume()}
           onCancel={() => void handleCancel()}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
         <main className="workspace-content">{page}</main>
       </section>
 
-      <SystemStatusBar engines={state.engines} version={version} />
+      <SystemStatusBar engines={state.engines} version={version} metrics={metrics} onOpenSettings={() => setSettingsOpen(true)} />
+
+      {settingsOpen && settings && (
+        <SettingsDrawer
+          engines={state.engines}
+          settings={settings}
+          metrics={metrics}
+          projectPath={activeProjectPath}
+          onClose={() => setSettingsOpen(false)}
+          onSettings={setSettings}
+          onEngines={(engines) => dispatch({ type: "SET_ENGINES", engines })}
+          onError={(error) => dispatch({ type: "SET_ERROR", error })}
+        />
+      )}
 
       {state.error && (
         <div className="global-error" role="alert">

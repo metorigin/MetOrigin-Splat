@@ -7,9 +7,14 @@ import type {
 
 export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
   creating: "创建中",
+  starting: "正在启动",
   ready: "就绪",
   running: "运行中",
+  pausing: "正在暂停",
   paused: "已暂停",
+  cancelling: "正在取消",
+  cancelled: "已取消",
+  recovering: "正在恢复",
   completed: "已完成",
   failed: "失败",
 };

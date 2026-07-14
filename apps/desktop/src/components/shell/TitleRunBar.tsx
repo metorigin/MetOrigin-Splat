@@ -7,26 +7,33 @@ import {
 } from "@phosphor-icons/react";
 
 import { getProjectStatusLabel } from "../../localization";
-import type { PipelineState, ProjectInfo } from "../../types";
+import type { PipelineSnapshot, ProjectInfo } from "../../types";
 
 interface TitleRunBarProps {
   project: ProjectInfo | null;
-  pipelineState: PipelineState | null;
-  running: boolean;
+  pipelineSnapshot: PipelineSnapshot | null;
   onStart: () => void;
+  onPause: () => void;
+  onResume: () => void;
   onCancel: () => void;
+  onOpenSettings: () => void;
 }
 
 export function TitleRunBar({
   project,
-  pipelineState,
-  running,
+  pipelineSnapshot,
   onStart,
+  onPause,
+  onResume,
   onCancel,
+  onOpenSettings,
 }: TitleRunBarProps) {
-  const isRunning = running && project !== null;
+  const status = pipelineSnapshot?.status ?? project?.status ?? "ready";
+  const isRunning = ["starting", "running", "pausing", "cancelling", "recovering"].includes(status) && project !== null;
+  const isControlling = ["starting", "pausing", "cancelling", "recovering"].includes(status);
+  const canResume = status === "paused" || status === "cancelled";
   const progress = project
-    ? Math.round((pipelineState?.overall_progress ?? 0) * 100)
+    ? Math.round((pipelineSnapshot?.state.overall_progress ?? 0) * 100)
     : 0;
 
   return (
@@ -53,25 +60,27 @@ export function TitleRunBar({
               type="button"
               className="button button-danger"
               onClick={onCancel}
+              disabled={isControlling}
             >
               <StopCircle size={17} />
-              取消（安全）
+              {status === "cancelling" ? "正在取消…" : "取消（安全）"}
             </button>
           )}
           <button
             type="button"
             className="button button-secondary"
-            onClick={onStart}
-            disabled={!project || isRunning}
-            title={isRunning ? "暂停功能将在运行控制阶段接入" : "开始重建"}
+            onClick={isRunning ? onPause : canResume ? onResume : onStart}
+            disabled={!project || isControlling}
+            title={isRunning ? "安全暂停并保留有效产物" : canResume ? "校验产物后继续重建" : "开始重建"}
           >
             {isRunning ? <Pause size={17} weight="fill" /> : <Play size={17} weight="fill" />}
-            {isRunning ? "暂停" : "开始重建"}
+            {isControlling ? "正在处理…" : isRunning ? "暂停" : canResume ? "继续" : "开始重建"}
           </button>
           <button
             type="button"
             className="button button-secondary"
             disabled={!project}
+            onClick={onOpenSettings}
           >
             操作
             <CaretDown size={14} />
@@ -91,7 +100,7 @@ export function TitleRunBar({
         </button>
         <div className="run-time-copy">
           <span>状态</span>
-          <strong>{project ? getProjectStatusLabel(project.status) : "未选择项目"}</strong>
+          <strong>{project ? getProjectStatusLabel(status) : "未选择项目"}</strong>
           <span>剩余约</span>
           <strong>尚未测量</strong>
         </div>

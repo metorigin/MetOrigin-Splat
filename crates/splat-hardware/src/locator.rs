@@ -8,12 +8,22 @@ pub struct EngineLocator;
 
 impl EngineLocator {
     pub fn resolve(resource_dir: Option<&Path>) -> EnginePaths {
-        let configured = std::env::var_os("METORIGIN_ENGINE_DIR").map(PathBuf::from);
+        Self::resolve_with_configured(None, resource_dir)
+    }
+
+    /// Resolve with an application-configured engine directory. The explicit
+    /// environment variable remains the highest-priority source.
+    pub fn resolve_with_configured(
+        configured_dir: Option<&Path>,
+        resource_dir: Option<&Path>,
+    ) -> EnginePaths {
+        let environment = std::env::var_os("METORIGIN_ENGINE_DIR").map(PathBuf::from);
+        let configured = environment.as_deref().or(configured_dir);
         EnginePaths {
-            ffmpeg: Self::resolve_one("ffmpeg", configured.as_deref(), resource_dir),
-            ffprobe: Self::resolve_one("ffprobe", configured.as_deref(), resource_dir),
-            colmap: Self::resolve_one("colmap", configured.as_deref(), resource_dir),
-            brush: Self::resolve_one("brush", configured.as_deref(), resource_dir),
+            ffmpeg: Self::resolve_one("ffmpeg", configured, resource_dir),
+            ffprobe: Self::resolve_one("ffprobe", configured, resource_dir),
+            colmap: Self::resolve_one("colmap", configured, resource_dir),
+            brush: Self::resolve_one("brush", configured, resource_dir),
         }
     }
 

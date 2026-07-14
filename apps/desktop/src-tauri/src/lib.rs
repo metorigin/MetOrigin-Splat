@@ -17,15 +17,38 @@ pub fn run() {
             commands::system::app_version,
             commands::system::check_engines,
             commands::system::get_app_state,
+            commands::system::get_app_settings,
+            commands::system::save_app_settings,
+            commands::system::set_engine_directory,
+            commands::system::set_engine_executable,
+            commands::system::clear_engine_override,
+            commands::system::get_resource_metrics,
+            commands::system::export_diagnostics,
             // Project
             commands::project::analyze_media,
+            commands::project::preflight_project,
             commands::project::create_project,
+            commands::project::cancel_project_creation,
             commands::project::open_project,
             commands::project::list_recent_projects,
             // Pipeline
             commands::pipeline::start_pipeline,
             commands::pipeline::cancel_pipeline,
+            commands::pipeline::pause_pipeline,
+            commands::pipeline::resume_pipeline,
             commands::pipeline::get_pipeline_state,
+            commands::pipeline::retry_stage,
+            commands::pipeline::rerun_from_stage,
+            // Workspace data
+            commands::workspace::get_pipeline_events,
+            commands::workspace::read_stage_log,
+            commands::workspace::list_checkpoints,
+            commands::workspace::delete_checkpoint,
+            commands::workspace::restore_checkpoint,
+            commands::workspace::get_project_artifacts,
+            commands::workspace::get_frame_preview,
+            commands::workspace::get_sparse_preview_pack,
+            commands::workspace::inspect_ply,
         ])
         .setup(|_app| {
             #[cfg(debug_assertions)]
