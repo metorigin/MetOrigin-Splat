@@ -1,5 +1,7 @@
 # Implementation Roadmap
 
+Checkboxes were reconciled on 2026-07-14. A checked item has implementation and test or runtime evidence; partially implemented or unverified work remains unchecked. See `technical-spike.md` for the real FFmpeg, COLMAP, Brush, cancellation, recovery, and caching evidence.
+
 ## 12-Week Development Plan
 
 ### Week 0 — Project Setup
@@ -29,12 +31,12 @@ Licenses preliminarily confirmed
 
 **Tasks**:
 - [ ] Prepare 3 test datasets
-- [ ] Manual FFmpeg frame extraction
-- [ ] Manual COLMAP execution
-- [ ] Verify COLMAP output
-- [ ] Manual Brush execution
-- [ ] Verify output model
-- [ ] Record all commands, versions, errors, GPU/time/disk metrics
+- [x] Manual FFmpeg frame extraction
+- [x] Manual COLMAP execution
+- [x] Verify COLMAP output
+- [x] Manual Brush execution
+- [x] Verify output model
+- [x] Record all commands, versions, errors, GPU/time/disk metrics
 
 **Deliverables**:
 ```
@@ -49,17 +51,17 @@ Version compatibility record
 **Goal**: Complete basic code skeleton.
 
 **Tasks**:
-- [ ] Initialize Rust workspace
-- [ ] Initialize Tauri application
-- [ ] Initialize React + TypeScript frontend
-- [ ] Create `splat-domain` crate
-- [ ] Create `splat-project` crate
-- [ ] Define Project schema
-- [ ] Define Stage and Status types
-- [ ] Define AppError
-- [ ] Add JSON Schema definitions
-- [ ] Add serialization tests
-- [ ] Add project migration interface
+- [x] Initialize Rust workspace
+- [x] Initialize Tauri application
+- [x] Initialize React + TypeScript frontend
+- [x] Create `splat-domain` crate
+- [x] Create `splat-project` crate
+- [x] Define Project schema
+- [x] Define Stage and Status types
+- [x] Define AppError
+- [x] Add JSON Schema definitions
+- [x] Add serialization tests
+- [x] Add project migration interface
 
 **Deliverables**:
 ```
@@ -74,15 +76,15 @@ Basic unit tests
 **Goal**: Reliably launch and manage external programs.
 
 **Tasks**:
-- [ ] Implement shell-free command execution
-- [ ] Implement stdout/stderr streaming
-- [ ] Implement log file writing
-- [ ] Implement exit code handling
-- [ ] Implement cancellation
-- [ ] Implement Windows process tree termination
-- [ ] Implement UTF-8 and system encoding compatibility
-- [ ] Implement event notification
-- [ ] Add fake process test utility
+- [x] Implement shell-free command execution
+- [x] Implement stdout/stderr streaming
+- [x] Implement log file writing
+- [x] Implement exit code handling
+- [x] Implement cancellation
+- [x] Implement Windows process tree termination
+- [x] Implement UTF-8 and system encoding compatibility
+- [x] Implement event notification
+- [x] Add fake process test utility
 - [ ] Test CJK, space, and long paths
 
 **Deliverables**:
@@ -97,16 +99,16 @@ Log file specification
 **Goal**: Video import and automatic frame extraction.
 
 **Tasks**:
-- [ ] FFmpeg capability detection
-- [ ] FFprobe metadata reading
-- [ ] Video metadata parsing
-- [ ] Frame extraction plan calculation
-- [ ] Space estimation
-- [ ] Real-time progress parsing
-- [ ] Output frame validation
-- [ ] Rotation metadata handling
-- [ ] Failure error mapping
-- [ ] UI video import flow
+- [x] FFmpeg capability detection
+- [x] FFprobe metadata reading
+- [x] Video metadata parsing
+- [x] Frame extraction plan calculation
+- [x] Space estimation
+- [x] Real-time progress parsing
+- [x] Output frame validation
+- [x] Rotation metadata handling
+- [x] Failure error mapping
+- [x] UI video import flow
 
 **Deliverables**:
 ```
@@ -121,15 +123,15 @@ Frame extraction UI
 **Goal**: Complete first half of COLMAP pipeline.
 
 **Tasks**:
-- [ ] COLMAP version detection
-- [ ] Database creation
-- [ ] Feature Extraction
-- [ ] Sequential Matching
+- [x] COLMAP version detection
+- [x] Database creation
+- [x] Feature Extraction
+- [x] Sequential Matching
 - [ ] Exhaustive Matching
-- [ ] Log parsing
-- [ ] Progress estimation
-- [ ] Input image validation
-- [ ] Database output verification
+- [x] Log parsing
+- [x] Progress estimation
+- [x] Input image validation
+- [x] Database output verification
 - [ ] Failure retry strategy
 
 **Deliverables**:
@@ -144,14 +146,14 @@ Structured logs
 **Goal**: Output complete Sparse Reconstruction.
 
 **Tasks**:
-- [ ] Mapper execution
-- [ ] Model directory detection
-- [ ] Best model selection
-- [ ] Registered image count parsing
-- [ ] Camera count parsing
-- [ ] Sparse point count parsing
-- [ ] Success threshold definition
-- [ ] Diagnostic report output
+- [x] Mapper execution
+- [x] Model directory detection
+- [x] Best model selection
+- [x] Registered image count parsing
+- [x] Camera count parsing
+- [x] Sparse point count parsing
+- [x] Success threshold definition
+- [x] Diagnostic report output
 - [ ] Mapping retry support
 - [ ] Re-execution after extraction parameter change
 
@@ -167,17 +169,17 @@ Reconstruction quality report
 **Goal**: Complete local training loop.
 
 **Tasks**:
-- [ ] Pin Brush version
-- [ ] Implement Brush detection
-- [ ] Check data compatibility
-- [ ] Generate training configuration
-- [ ] Start training
-- [ ] Parse training progress
-- [ ] Detect output
-- [ ] Detect checkpoints
-- [ ] Training cancellation
-- [ ] Training resume verification
-- [ ] Output model validation
+- [x] Pin Brush version
+- [x] Implement Brush detection
+- [x] Check data compatibility
+- [x] Generate training configuration
+- [x] Start training
+- [x] Parse training progress
+- [x] Detect output
+- [x] Detect checkpoints
+- [x] Training cancellation
+- [x] Training resume verification
+- [x] Output model validation
 
 **Deliverables**:
 ```
@@ -192,16 +194,16 @@ PLY output
 **Goal**: One-click pipeline and failure recovery.
 
 **Tasks**:
-- [ ] Implement Pipeline Orchestrator
-- [ ] Implement dependency resolution
-- [ ] Implement stage skipping
-- [ ] Implement stage retry
-- [ ] Implement crash recovery
-- [ ] Implement incomplete project detection on startup
-- [ ] Implement output integrity validation
-- [ ] Implement cancel-with-data-preservation
-- [ ] Implement project lock
-- [ ] Prevent concurrent runs on the same project
+- [x] Implement Pipeline Orchestrator
+- [x] Implement dependency resolution
+- [x] Implement stage skipping
+- [x] Implement stage retry
+- [x] Implement crash recovery
+- [x] Implement incomplete project detection on startup
+- [x] Implement output integrity validation
+- [x] Implement cancel-with-data-preservation
+- [x] Implement project lock
+- [x] Prevent concurrent runs on the same project
 
 **Deliverables**:
 ```
@@ -215,17 +217,17 @@ Project lock mechanism
 **Goal**: Complete usable desktop product flow.
 
 **Tasks**:
-- [ ] Home page
-- [ ] New project wizard
-- [ ] Recent projects
-- [ ] Media analysis page
-- [ ] Preset selection
-- [ ] Training page
-- [ ] Log page
+- [x] Home page
+- [x] New project wizard
+- [x] Recent projects
+- [x] Media analysis page
+- [x] Preset selection
+- [x] Training page
+- [x] Log page
 - [ ] Results page
 - [ ] Settings page
-- [ ] User-facing error prompts
-- [ ] Loading / Empty / Error states
+- [x] User-facing error prompts
+- [x] Loading / Empty / Error states
 - [ ] Keyboard and window adaptations
 
 **Deliverables**:
@@ -241,11 +243,11 @@ English and Chinese basic copy
 **Tasks**:
 - [ ] Windows installer
 - [ ] Windows portable build
-- [ ] Engine pack structure
+- [x] Engine pack structure
 - [ ] Engine integrity validation
-- [ ] SHA-256 checksums
+- [x] SHA-256 checksums
 - [ ] Third-party license page
-- [ ] Engine version info
+- [x] Engine version info
 - [ ] Crash log collection notice
 - [ ] Auto-update design (manual check initially)
 
