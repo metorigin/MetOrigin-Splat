@@ -147,19 +147,28 @@ export function NewProjectPage() {
           <div className="error-message">{analyzeCmd.error}</div>
         )}
 
+        {analysisResult?.warning && (
+          <div className="warning-message">{analysisResult.warning}</div>
+        )}
+
         {analysisResult && analysisResult.valid && (
           <div className="analysis-result">
-            {analysisResult.type === "video" && analysisResult.video_metadata ? (
-              <div className="video-info">
-                <span>
-                  {analysisResult.video_metadata.width}×
-                  {analysisResult.video_metadata.height},{" "}
-                  {analysisResult.video_metadata.fps.toFixed(1)} 帧/秒，{" "}
-                  {analysisResult.video_metadata.duration_seconds.toFixed(0)} 秒
-                </span>
-                <span>预计 {analysisResult.estimated_frames} 帧</span>
-                <span>预计占用 {analysisResult.estimated_disk_mb} MB</span>
-              </div>
+            {analysisResult.type === "video" ? (
+              analysisResult.video_metadata ? (
+                <div className="video-info">
+                  <span>
+                    {analysisResult.video_metadata.width}×
+                    {analysisResult.video_metadata.height},{" "}
+                    {analysisResult.video_metadata.fps.toFixed(1)} 帧/秒，{" "}
+                    {analysisResult.video_metadata.duration_seconds.toFixed(1)} 秒
+                  </span>
+                  <span>编码 {analysisResult.video_metadata.codec.toUpperCase()}</span>
+                  <span>预计 {analysisResult.estimated_frames} 帧</span>
+                  <span>预计占用 {analysisResult.estimated_disk_mb} MB</span>
+                </div>
+              ) : (
+                <div className="video-info"><span>视频元数据尚未读取</span></div>
+              )
             ) : (
               <div className="image-info">
                 <span>找到 {analysisResult.image_count} 张图片</span>

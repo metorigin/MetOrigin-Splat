@@ -87,4 +87,5 @@ export interface MediaAnalysis {
   estimated_disk_mb: number;
   valid: boolean;
   error?: string;
+  warning?: string;
 }

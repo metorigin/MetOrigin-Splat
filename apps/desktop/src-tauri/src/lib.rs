@@ -6,6 +6,7 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    configure_debug_engine_dir();
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -38,3 +39,17 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(debug_assertions)]
+fn configure_debug_engine_dir() {
+    if std::env::var_os("METORIGIN_ENGINE_DIR").is_some() {
+        return;
+    }
+    let engine_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../.engines");
+    if engine_dir.is_dir() {
+        std::env::set_var("METORIGIN_ENGINE_DIR", engine_dir);
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn configure_debug_engine_dir() {}

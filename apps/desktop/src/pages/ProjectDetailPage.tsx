@@ -16,7 +16,13 @@ import { useAppContext } from "../context";
 import { useTauriCommand } from "../hooks";
 import { getPresetLabel, getStageLabel } from "../localization";
 import { openDirectory } from "../services/desktop";
-import type { PipelineStageId, Project, ProjectStatus, StageStatus } from "../types";
+import type {
+  MediaAnalysis,
+  PipelineStageId,
+  Project,
+  ProjectStatus,
+  StageStatus,
+} from "../types";
 
 interface ProjectDetailPageProps {
   projectId: string;
@@ -85,7 +91,9 @@ function phaseStatus(project: Project, phase: PhaseDefinition): StageStatus {
 export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
   const { dispatch } = useAppContext();
   const openCmd = useTauriCommand<Project>("open_project");
+  const analyzeCmd = useTauriCommand<MediaAnalysis>("analyze_media");
   const openProject = openCmd.execute;
+  const analyzeMedia = analyzeCmd.execute;
   const [project, setProject] = useState<Project | null>(null);
   const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
 
@@ -115,6 +123,12 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
   }, [dispatch, openProject, projectPath]);
 
   useEffect(() => {
+    if (project?.source?.type !== "Video") return;
+    const sourcePath = `${projectPath}\\source\\${project.source.filename}`;
+    void analyzeMedia({ path: sourcePath }).catch(() => undefined);
+  }, [analyzeMedia, project?.source, projectPath]);
+
+  useEffect(() => {
     if (!project?.current_stage) return;
     const current = PHASES.find((phase) =>
       phase.stages.includes(project.current_stage as PipelineStageId),
@@ -130,6 +144,7 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
       ? project.source.filename
       : `${project.source.folder_name}（${project.source.image_count} 张）`;
   }, [project?.source]);
+  const videoMetadata = analyzeCmd.data?.video_metadata;
 
   if (openCmd.loading && !project) {
     return (
@@ -239,9 +254,23 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
           <div className="panel-title">当前质量</div>
           <div className="quality-metric-grid">
             <div><span>输入素材</span><strong>{sourceLabel}</strong></div>
+            <div>
+              <span>视频规格</span>
+              <strong>
+                {videoMetadata
+                  ? `${videoMetadata.width}×${videoMetadata.height} · ${videoMetadata.fps.toFixed(1)} fps`
+                  : "尚未测量"}
+              </strong>
+            </div>
+            <div>
+              <span>视频时长</span>
+              <strong>
+                {videoMetadata
+                  ? `${videoMetadata.duration_seconds.toFixed(1)} 秒`
+                  : "尚未测量"}
+              </strong>
+            </div>
             <div><span>质量预设</span><strong>{getPresetLabel(project.settings.preset)}</strong></div>
-            <div><span>注册图像</span><strong>尚未测量</strong></div>
-            <div><span>稀疏点</span><strong>尚未测量</strong></div>
           </div>
           <div className="quality-actions">
             <button

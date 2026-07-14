@@ -1134,6 +1134,15 @@ button:disabled {
   font-size: 12px;
 }
 
+.warning-message {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid #6b5226;
+  color: #f3bd61;
+  background: #251f16;
+  font-size: 12px;
+}
+
 .global-error {
   position: fixed;
   z-index: 50;

@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use splat_domain::project::{ImageFolderSource, ProjectSource, VideoSource};
 use splat_hardware::EngineLocator;
 use splat_project::ProjectManager;
 use tauri::Manager;
@@ -117,37 +118,77 @@ pub fn create_project(
         .create_project(&name)
         .map_err(|e| e.user_message_zh())?;
 
-    // Copy source media into the project
+    // Copy source media into the project and persist what was imported.
     let source = PathBuf::from(&source_path);
     let project_source_dir = project_dir.join("source");
-    std::fs::create_dir_all(&project_source_dir)
-        .map_err(|_| "创建项目源媒体目录失败，请检查目录权限。".to_string())?;
+    let imported_source = (|| -> Result<ProjectSource, String> {
+        std::fs::create_dir_all(&project_source_dir)
+            .map_err(|_| "创建项目源媒体目录失败，请检查目录权限。".to_string())?;
 
-    if source.is_file() {
-        let dest = project_source_dir.join(source.file_name().unwrap_or_default());
-        let _ = std::fs::copy(&source, &dest);
-    } else if source.is_dir() {
-        for entry in std::fs::read_dir(&source)
-            .map_err(|_| "读取源媒体目录失败，请检查路径和访问权限。".to_string())?
-            .flatten()
-        {
-            let file_path = entry.path();
-            if file_path.is_file() {
-                if let Some(ext) = file_path.extension() {
-                    let ext_lower = ext.to_string_lossy().to_lowercase();
-                    if matches!(ext_lower.as_str(), "jpg" | "jpeg" | "png" | "mp4" | "mov") {
-                        let dest =
-                            project_source_dir.join(file_path.file_name().unwrap_or_default());
-                        let _ = std::fs::copy(&file_path, &dest);
+        if source.is_file() {
+            let filename = source
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| "所选视频文件名无效，请重新选择。".to_string())?
+                .to_string();
+            let dest = project_source_dir.join(&filename);
+            std::fs::copy(&source, &dest)
+                .map_err(|_| "复制视频失败，请检查源文件和项目目录的访问权限。".to_string())?;
+            Ok(ProjectSource::Video(VideoSource {
+                filename,
+                copied_to_project: true,
+            }))
+        } else if source.is_dir() {
+            let mut image_count = 0usize;
+            for entry in std::fs::read_dir(&source)
+                .map_err(|_| "读取源媒体目录失败，请检查路径和访问权限。".to_string())?
+                .flatten()
+            {
+                let file_path = entry.path();
+                if file_path.is_file() {
+                    if let Some(ext) = file_path.extension() {
+                        let ext_lower = ext.to_string_lossy().to_lowercase();
+                        if matches!(ext_lower.as_str(), "jpg" | "jpeg" | "png") {
+                            let dest =
+                                project_source_dir.join(file_path.file_name().unwrap_or_default());
+                            std::fs::copy(&file_path, &dest).map_err(|_| {
+                                "复制图片失败，请检查源文件和项目目录的访问权限。".to_string()
+                            })?;
+                            image_count += 1;
+                        }
                     }
                 }
             }
+            if image_count == 0 {
+                return Err("所选文件夹中没有可用的 JPG、JPEG 或 PNG 图片。".to_string());
+            }
+            Ok(ProjectSource::ImageFolder(ImageFolderSource {
+                folder_name: source
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("图片素材")
+                    .to_string(),
+                image_count,
+                copied_to_project: true,
+            }))
+        } else {
+            Err("所选素材不存在，请重新选择。".to_string())
         }
-    }
+    })();
+
+    let imported_source = match imported_source {
+        Ok(imported_source) => imported_source,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&project_dir);
+            return Err(error);
+        }
+    };
 
     // Save preset
     let mut project = project;
+    project.source = Some(imported_source);
     project.settings.preset = preset;
+    project.touch();
     manager
         .save_project(&project, &project_dir)
         .map_err(|e| e.user_message_zh())?;
@@ -184,9 +225,19 @@ pub fn open_project(
         .unwrap_or_else(|| PathBuf::from("."))
         .join("MetaOrigin Projects");
     let manager = ProjectManager::new(default_dir);
-    let project = manager
+    let mut project = manager
         .open_project(&project_dir)
         .map_err(|e| e.user_message_zh())?;
+
+    if project.source.is_none() {
+        if let Some(recovered_source) = detect_copied_source(&project_dir.join("source")) {
+            project.source = Some(recovered_source);
+            project.touch();
+            manager
+                .save_project(&project, &project_dir)
+                .map_err(|e| e.user_message_zh())?;
+        }
+    }
 
     let json = serde_json::to_value(&project)
         .map_err(|_| "读取项目数据失败，请重试并查看日志。".to_string())?;
@@ -233,6 +284,49 @@ fn count_images_in_dir(dir: &std::path::Path) -> usize {
                 .count()
         })
         .unwrap_or(0)
+}
+
+fn detect_copied_source(source_dir: &std::path::Path) -> Option<ProjectSource> {
+    let entries = std::fs::read_dir(source_dir).ok()?;
+    let mut image_count = 0usize;
+    let mut video_filename = None;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let extension = path
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_lowercase();
+        if matches!(extension.as_str(), "mp4" | "mov" | "avi" | "mkv") {
+            video_filename = path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(str::to_string);
+        } else if matches!(extension.as_str(), "jpg" | "jpeg" | "png") {
+            image_count += 1;
+        }
+    }
+
+    if let Some(filename) = video_filename {
+        return Some(ProjectSource::Video(VideoSource {
+            filename,
+            copied_to_project: true,
+        }));
+    }
+    (image_count > 0).then(|| {
+        ProjectSource::ImageFolder(ImageFolderSource {
+            folder_name: source_dir
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("图片素材")
+                .to_string(),
+            image_count,
+            copied_to_project: true,
+        })
+    })
 }
 
 fn project_info(
@@ -325,5 +419,30 @@ fn refresh_recent_projects(projects: &mut [ProjectInfo]) {
         if let Ok(project) = manager.open_project(&project_dir) {
             *info = project_info(&project, &project_dir);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recovers_video_source_from_copied_media() {
+        let project_dir =
+            std::env::temp_dir().join(format!("metorigin-source-recovery-{}", std::process::id()));
+        let source_dir = project_dir.join("source");
+        std::fs::create_dir_all(&source_dir).unwrap();
+        std::fs::write(source_dir.join("bike.MP4"), b"test").unwrap();
+
+        let recovered = detect_copied_source(&source_dir).unwrap();
+        match recovered {
+            ProjectSource::Video(video) => {
+                assert_eq!(video.filename, "bike.MP4");
+                assert!(video.copied_to_project);
+            }
+            ProjectSource::ImageFolder(_) => panic!("expected video source"),
+        }
+
+        let _ = std::fs::remove_dir_all(project_dir);
     }
 }

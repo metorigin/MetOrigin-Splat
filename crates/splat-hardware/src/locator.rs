@@ -48,6 +48,26 @@ impl EngineLocator {
             candidates.push(root.join("brush_app.exe"));
             candidates.push(root.join("bin").join("brush_app.exe"));
         }
+        for parent in [root.to_path_buf(), root.join(name)] {
+            let Ok(entries) = std::fs::read_dir(parent) else {
+                continue;
+            };
+            let mut versioned_roots = entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| path.is_dir())
+                .collect::<Vec<_>>();
+            versioned_roots.sort();
+            versioned_roots.reverse();
+            for versioned_root in versioned_roots {
+                candidates.push(versioned_root.join(&executable));
+                candidates.push(versioned_root.join("bin").join(&executable));
+                if cfg!(windows) && name == "brush" {
+                    candidates.push(versioned_root.join("brush_app.exe"));
+                    candidates.push(versioned_root.join("bin").join("brush_app.exe"));
+                }
+            }
+        }
         candidates
     }
 
@@ -72,7 +92,7 @@ mod tests {
     #[test]
     fn candidates_cover_supported_layouts() {
         let candidates = EngineLocator::candidates(Path::new("engines"), "ffmpeg");
-        assert_eq!(candidates.len(), 4);
+        assert!(candidates.len() >= 4);
         let suffix = if cfg!(windows) {
             Path::new("ffmpeg/bin/ffmpeg.exe")
         } else {
@@ -93,5 +113,28 @@ mod tests {
             paths.ffmpeg.is_some(),
             EngineLocator::find_on_path("ffmpeg").is_some()
         );
+    }
+
+    #[test]
+    fn candidates_include_versioned_engine_pack_layouts() {
+        let root =
+            std::env::temp_dir().join(format!("metorigin-engine-locator-{}", std::process::id()));
+        let executable = if cfg!(windows) {
+            "ffmpeg.exe"
+        } else {
+            "ffmpeg"
+        };
+        let expected = root
+            .join("ffmpeg")
+            .join("ffmpeg-8.1.2")
+            .join("bin")
+            .join(executable);
+        std::fs::create_dir_all(expected.parent().unwrap()).unwrap();
+        std::fs::write(&expected, b"test").unwrap();
+
+        let candidates = EngineLocator::candidates(&root, "ffmpeg");
+        assert!(candidates.contains(&expected));
+
+        let _ = std::fs::remove_dir_all(root);
     }
 }
