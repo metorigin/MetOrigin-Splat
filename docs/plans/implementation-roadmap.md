@@ -222,19 +222,21 @@ Project lock mechanism
 - [x] Recent projects
 - [x] Media analysis page
 - [x] Preset selection
-- [x] Training page
-- [x] Log page
-- [ ] Results page
-- [ ] Settings page
+- [x] Unified timeline training controls
+- [x] Structured log and error workspace
+- [x] Results and real PLY preview
+- [x] Settings and diagnostics drawer
 - [x] User-facing error prompts
 - [x] Loading / Empty / Error states
-- [ ] Keyboard and window adaptations
+- [x] Keyboard shortcuts and 1024 responsive drawers
 
 **Deliverables**:
 ```
 Complete MVP UI
 English and Chinese basic copy
 ```
+
+Evidence: Phase 2–6 frontend tests cover the analyzed-video wizard and run-control matrix; Rust tests cover artifact parsing, lifecycle, settings, and redaction. Edge/Playwright captures at 1440×1024 and 1024×768 are recorded in the ignored `.artifacts/ui-redesign/screenshots/` directory, with the final comparison documented in `design-qa.md`.
 
 ### Week 10 — Packaging, Updates & Licensing
 

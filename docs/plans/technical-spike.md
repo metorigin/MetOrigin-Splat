@@ -170,3 +170,16 @@ The real FFmpeg, COLMAP, and Brush tests are ignored by default because they req
 - Only one complete video dataset has been verified; the roadmap target of three datasets is not complete.
 - Independent photo input, exhaustive matching, portrait/rotation footage, mixed image formats, long paths, constrained disk/VRAM, a second GPU class, and full application-close recovery still require evidence.
 - Engine redistribution notices and installer packaging remain release work even though local resolution and checksums are verified.
+
+## UI Phase 2–6 evidence
+
+On 2026-07-14 the measured pipeline outputs above were connected to the unified timeline workspace:
+
+- The new-project wizard displays the FFprobe values `3840 × 2160`, `29.97 fps`, `133.1 s`, H.264, 3,990 source frames, and Fast's 266-frame estimate from typed backend DTOs.
+- The active workspace consumes project-scoped, sequenced pipeline snapshots rather than a frontend `running` flag.
+- The artifact preview parser loaded the complete 70,035-vertex Brush PLY and the selected COLMAP model's 28,365 points; the browser capture uses the same DTO shapes, while Rust tests retain the real-file evidence.
+- COLMAP camera centers plus forward/up pose vectors are derived from `images.bin` quaternion rotation and rendered as camera frusta.
+- The 1024×768 layout exposes preview/quality and Checkpoint controls through a right drawer; it does not discard those functions at the breakpoint.
+- The settings drawer reports the locally detected engines, CPU, memory, project-disk space, NVIDIA GPU/VRAM/utilization/temperature, and exports a redacted diagnostic archive.
+
+Visual evidence remains local and ignored: `.artifacts/ui-redesign/screenshots/`. The source/implementation comparison and resolved findings are recorded in the repository-root `design-qa.md`.
