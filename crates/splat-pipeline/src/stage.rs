@@ -15,6 +15,7 @@ pub const DIR_COLMAP: &str = "colmap";
 pub const DIR_TRAINING: &str = "training";
 pub const DIR_TRAINING_CHECKPOINTS: &str = "training/checkpoints";
 pub const DIR_TRAINING_CONFIG: &str = "training/config";
+pub const DIR_TRAINING_DATASET: &str = "training/dataset";
 pub const DIR_OUTPUT: &str = "output";
 pub const DIR_CACHE: &str = "cache";
 pub const DIR_LOGS: &str = "logs";
@@ -54,6 +55,8 @@ pub struct StagePaths {
     pub training_dir: PathBuf,
     pub training_checkpoints: PathBuf,
     pub training_config: PathBuf,
+    pub training_dataset: PathBuf,
+    pub training_result: PathBuf,
     pub training_logs: PathBuf,
 
     // Output
@@ -86,6 +89,8 @@ impl StagePaths {
             training_dir: project_dir.join(DIR_TRAINING),
             training_checkpoints: project_dir.join(DIR_TRAINING_CHECKPOINTS),
             training_config: project_dir.join(DIR_TRAINING_CONFIG),
+            training_dataset: project_dir.join(DIR_TRAINING_DATASET),
+            training_result: project_dir.join(DIR_TRAINING).join("result.json"),
             training_logs: project_dir.join(DIR_TRAINING).join("logs"),
             output_dir: project_dir.join(DIR_OUTPUT),
             output_ply: project_dir.join(DIR_OUTPUT).join(FILE_PLY),

@@ -98,47 +98,72 @@ impl TrainingConfig {
         Ok(preset)
     }
 
-    /// Build CLI argument vector for Brush.
-    ///
-    /// ⚠️ CLI flags must be verified with `brush train --help` for the
-    /// pinned Brush version before production use.
+    /// Load the training section from one of the versioned built-in presets.
+    pub fn from_builtin(name: &str) -> AppResult<Self> {
+        #[derive(serde::Deserialize)]
+        struct PresetFile {
+            training: TrainingPreset,
+        }
+
+        let json = match name {
+            "fast" => include_str!("../../../presets/fast.json"),
+            "balanced" => include_str!("../../../presets/balanced.json"),
+            "quality" => include_str!("../../../presets/quality.json"),
+            _ => {
+                return Err(AppError::new(
+                    "E-1002",
+                    ErrorCategory::User,
+                    "Unknown Training Preset",
+                    format!("The training preset '{name}' is not supported."),
+                ));
+            }
+        };
+        let preset: PresetFile = serde_json::from_str(json).map_err(|error| {
+            AppError::new(
+                "E-9001",
+                ErrorCategory::Internal,
+                "Invalid Built-in Training Preset",
+                "A built-in training preset could not be loaded.",
+            )
+            .with_technical(error.to_string())
+        })?;
+        Ok(Self::from_preset(&preset.training))
+    }
+
+    /// Build arguments verified against Brush v0.3.0 (`brush_app --help`).
     pub fn to_cli_args(
         &self,
-        colmap_path: &Path,
-        image_path: &Path,
-        output_path: &Path,
+        dataset_path: &Path,
+        checkpoint_path: &Path,
+        start_iteration: u32,
     ) -> Vec<std::ffi::OsString> {
         let mut args: Vec<std::ffi::OsString> = vec![
-            // ⚠️ Verify these arguments against the pinned Brush CLI before M1.
-            "train".into(),
-            "--colmap".into(),
-            colmap_path.as_os_str().to_owned(),
-            "--images".into(),
-            image_path.as_os_str().to_owned(),
-            "--output".into(),
-            output_path.as_os_str().to_owned(),
-            "--iterations".into(),
+            dataset_path.as_os_str().to_owned(),
+            "--total-steps".into(),
             self.iterations.to_string().into(),
-            "--sh_degree".into(),
+            "--sh-degree".into(),
             self.sh_degree.to_string().into(),
+            "--export-every".into(),
+            self.checkpoint_interval.to_string().into(),
+            "--export-path".into(),
+            checkpoint_path.as_os_str().to_owned(),
+            "--export-name".into(),
+            "checkpoint_{iter}.ply".into(),
+            "--eval-every".into(),
+            self.render_interval.to_string().into(),
         ];
-
-        // Antialiasing: ⚠️ --antialiasing (flag, no value)
-        if self.antialiasing {
-            args.push("--antialiasing".into());
+        if start_iteration > 0 {
+            args.push("--start-iter".into());
+            args.push(start_iteration.to_string().into());
         }
-
-        // Densification: ⚠️ --densification / --densify / --no-densify
-        if self.densify {
-            args.push("--densification".into());
-        }
-
         args
     }
 
     fn calc_checkpoint_interval(iterations: u32) -> u32 {
         if iterations <= 1000 {
             100
+        } else if iterations <= 3000 {
+            500
         } else if iterations <= 7000 {
             1000
         } else {
@@ -213,11 +238,7 @@ mod tests {
     #[test]
     fn test_to_cli_args() {
         let config = TrainingConfig::from_preset(&balanced_preset());
-        let args = config.to_cli_args(
-            Path::new("colmap/sparse/0"),
-            Path::new("frames"),
-            Path::new("training/output"),
-        );
+        let args = config.to_cli_args(Path::new("project"), Path::new("checkpoints"), 1000);
 
         let args_str: Vec<String> = args
             .iter()
@@ -225,37 +246,33 @@ mod tests {
             .collect();
         let joined = args_str.join(" ");
 
-        assert!(joined.contains("--colmap"));
-        assert!(joined.contains("colmap/sparse/0"));
-        assert!(joined.contains("--images"));
-        assert!(joined.contains("frames"));
-        assert!(joined.contains("--output"));
-        assert!(joined.contains("training/output"));
-        assert!(joined.contains("--iterations"));
+        assert!(joined.contains("project"));
+        assert!(joined.contains("--total-steps"));
         assert!(joined.contains("7000"));
-        assert!(joined.contains("--sh_degree"));
+        assert!(joined.contains("--sh-degree"));
         assert!(joined.contains("1"));
-        assert!(joined.contains("--antialiasing"));
-        assert!(joined.contains("--densification"));
+        assert!(joined.contains("--export-every"));
+        assert!(joined.contains("checkpoint_{iter}.ply"));
+        assert!(joined.contains("--start-iter"));
     }
 
     #[test]
     fn test_to_cli_args_without_densify() {
         let mut config = TrainingConfig::from_preset(&balanced_preset());
         config.densify = false;
-        let args = config.to_cli_args(Path::new("colmap"), Path::new("frames"), Path::new("out"));
+        let args = config.to_cli_args(Path::new("project"), Path::new("out"), 0);
         let joined: String = args
             .iter()
             .map(|a| a.to_string_lossy().to_string())
             .collect::<Vec<_>>()
             .join(" ");
-        assert!(!joined.contains("--densification"));
+        assert!(!joined.contains("--start-iter"));
     }
 
     #[test]
     fn test_checkpoint_interval() {
         assert_eq!(TrainingConfig::calc_checkpoint_interval(500), 100);
-        assert_eq!(TrainingConfig::calc_checkpoint_interval(3000), 1000);
+        assert_eq!(TrainingConfig::calc_checkpoint_interval(3000), 500);
         assert_eq!(TrainingConfig::calc_checkpoint_interval(30000), 5000);
     }
 
@@ -270,6 +287,14 @@ mod tests {
     fn test_load_preset_file_nonexistent() {
         let result = TrainingConfig::load_preset(Path::new("/nonexistent/preset.json"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_builtin_fast() {
+        let config = TrainingConfig::from_builtin("fast").unwrap();
+        assert_eq!(config.iterations, 3000);
+        assert_eq!(config.sh_degree, 0);
+        assert_eq!(config.checkpoint_interval, 500);
     }
 
     #[test]

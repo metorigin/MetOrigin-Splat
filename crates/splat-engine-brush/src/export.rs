@@ -226,7 +226,60 @@ impl ExportManager {
             }
         }
 
+        if Self::vertex_count(path)? == 0 {
+            return Err(AppError::new(
+                "E-4006",
+                ErrorCategory::Engine,
+                "PLY Contains No Splats",
+                "The PLY header reports zero vertices.",
+            ));
+        }
+
         Ok(())
+    }
+
+    /// Read the `element vertex` count from an ASCII or binary PLY header.
+    pub fn vertex_count(path: &Path) -> AppResult<u64> {
+        use std::io::BufRead;
+
+        let file = std::fs::File::open(path).map_err(|error| {
+            AppError::new(
+                "E-1201",
+                ErrorCategory::Filesystem,
+                "Failed to Read PLY Header",
+                "The PLY file could not be opened for validation.",
+            )
+            .with_technical(error.to_string())
+        })?;
+        let mut reader = std::io::BufReader::new(file);
+        let mut line = String::new();
+        let mut vertices = None;
+        loop {
+            line.clear();
+            let bytes = reader.read_line(&mut line).map_err(|error| {
+                AppError::new(
+                    "E-4006",
+                    ErrorCategory::Engine,
+                    "Invalid PLY Header",
+                    "The PLY header could not be parsed.",
+                )
+                .with_technical(error.to_string())
+            })?;
+            if bytes == 0 || line.trim() == "end_header" {
+                break;
+            }
+            if let Some(value) = line.trim().strip_prefix("element vertex ") {
+                vertices = value.parse::<u64>().ok();
+            }
+        }
+        vertices.ok_or_else(|| {
+            AppError::new(
+                "E-4006",
+                ErrorCategory::Engine,
+                "PLY Vertex Count Missing",
+                "The PLY header does not declare an element vertex count.",
+            )
+        })
     }
 }
 
@@ -236,7 +289,7 @@ mod tests {
 
     fn create_fake_ply(dir: &Path, name: &str) -> PathBuf {
         let path = dir.join(name);
-        let header = b"ply\nformat ascii 1.0\ncomment test\nend_header\n";
+        let header = b"ply\nformat ascii 1.0\ncomment test\nelement vertex 1\nend_header\n0\n";
         std::fs::write(&path, header).unwrap();
         path
     }

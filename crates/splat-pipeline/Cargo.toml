@@ -10,6 +10,7 @@ splat-project = { path = "../splat-project" }
 splat-process = { path = "../splat-process" }
 splat-engine-ffmpeg = { path = "../splat-engine-ffmpeg" }
 splat-engine-colmap = { path = "../splat-engine-colmap" }
+splat-engine-brush = { path = "../splat-engine-brush" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

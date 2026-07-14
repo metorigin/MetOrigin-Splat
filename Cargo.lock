@@ -3091,6 +3091,7 @@ dependencies = [
  "serde",
  "serde_json",
  "splat-domain",
+ "splat-engine-brush",
  "splat-engine-colmap",
  "splat-engine-ffmpeg",
  "splat-process",

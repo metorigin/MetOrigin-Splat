@@ -3,21 +3,12 @@ use splat_process::ProgressParser;
 
 /// Parses Brush training iteration progress from stdout/stderr.
 ///
-/// # Output Format (⚠️ Verify with actual Brush)
-///
-/// Typical 3DGS training progress lines look like:
+/// Brush v0.3.0 uses an indicatif progress bar such as:
 /// ```text
-/// Iteration: 1000 Loss: 0.0523 (t=0.123s)
-/// Iteration: 2000 Loss: 0.0417 (t=0.118s)
-/// Iteration: 7000 Loss: 0.0289 (t=0.125s)
-/// Saving checkpoint at iteration 7000
+/// [00:12] ███████ 500/3000 Steps (40.2/s, 1m remaining)
 /// ```
-///
-/// This parser:
-/// 1. Matches lines containing "Iteration:" (case-insensitive)
-/// 2. Extracts the iteration number
-/// 3. Optionally extracts the loss value
-/// 4. Computes progress as current_iteration / total_iterations
+/// It is hidden when stdout/stderr are pipes, so the pipeline also monitors
+/// exported PLY checkpoint names. Loss is not printed by this Brush release.
 pub struct BrushProgressParser {
     stage_id: String,
     total_iterations: u64,
@@ -39,15 +30,21 @@ impl BrushProgressParser {
     fn extract_iteration(line: &str) -> Option<u64> {
         let lower = line.to_lowercase();
         let marker = "iteration:";
-        let pos = lower.find(marker)?;
-        let rest = lower[pos + marker.len()..].trim_start();
-        let num_str = rest.split_whitespace().next()?;
-        // Remove trailing punctuation like ":"
-        let num_str = num_str.trim_end_matches(|c: char| !c.is_ascii_digit());
-        if num_str.is_empty() {
-            return None;
+        if let Some(pos) = lower.find(marker) {
+            let rest = lower[pos + marker.len()..].trim_start();
+            let num_str = rest.split_whitespace().next()?;
+            let num_str = num_str.trim_end_matches(|c: char| !c.is_ascii_digit());
+            return num_str.parse::<u64>().ok();
         }
-        num_str.parse::<u64>().ok()
+        lower.split_whitespace().find_map(|token| {
+            let (current, total) = token.split_once('/')?;
+            let current = current.trim_matches(|character: char| !character.is_ascii_digit());
+            let total = total.trim_matches(|character: char| !character.is_ascii_digit());
+            if current.is_empty() || total.is_empty() {
+                return None;
+            }
+            current.parse::<u64>().ok()
+        })
     }
 
     /// Extract the loss value from a line containing "Loss: <N>" or "loss <N>".
@@ -149,6 +146,16 @@ mod tests {
         assert_eq!(
             BrushProgressParser::extract_iteration("Iteration: 7000 Loss: 0.0289 (t=0.125s)"),
             Some(7000)
+        );
+    }
+
+    #[test]
+    fn test_extract_iteration_from_brush_progress_bar() {
+        assert_eq!(
+            BrushProgressParser::extract_iteration(
+                "[00:12] ######## 500/3000 Steps (40.2/s, 1m remaining)"
+            ),
+            Some(500)
         );
     }
 

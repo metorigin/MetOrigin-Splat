@@ -100,8 +100,8 @@ impl PipelineOrchestrator {
     /// 2. FrameExtraction      8. TrainingPreparation (TODO)
     /// 3. ImagePreprocessing (TODO)  9. BrushTraining
     /// 4. ColmapFeatureExtraction   10. ModelValidation (TODO)
-    /// 5. ColmapMatching       11. PreviewGeneration (TODO)
-    /// 6. ColmapMapping        12. Export (TODO)
+    /// 5. ColmapMatching       11. Export
+    /// 6. ColmapMapping        12. PreviewGeneration
     pub fn new_default(project_dir: std::path::PathBuf) -> Self {
         Self::new_default_with_config(project_dir, PipelineConfig::default())
     }
@@ -143,11 +143,11 @@ impl PipelineOrchestrator {
         // Stage 10: Model validation
         orch.register_stage(Box::new(ModelValidationStage::new()));
 
-        // Stage 11: Preview generation
-        orch.register_stage(Box::new(PreviewGenerationStage::new()));
-
-        // Stage 12: Export — pipeline loop closure!
+        // Stage 11: Publish the final PLY.
         orch.register_stage(Box::new(ExportStage::new()));
+
+        // Stage 12: Write the manifest after scene.ply exists.
+        orch.register_stage(Box::new(PreviewGenerationStage::new()));
 
         orch
     }

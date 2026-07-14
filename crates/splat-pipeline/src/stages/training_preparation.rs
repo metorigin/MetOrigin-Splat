@@ -60,7 +60,13 @@ impl PipelineStage for TrainingPreparationStage {
     fn check_cached(&self, ctx: &StageContext) -> AppResult<bool> {
         let has_config = ctx.paths.training_config.join("config.json").exists();
         let has_checkpoints_dir = ctx.paths.training_checkpoints.exists();
-        Ok(has_config && has_checkpoints_dir)
+        let model = ctx.paths.training_dataset.join("sparse/0");
+        let images = ctx.paths.training_dataset.join("images");
+        let source_images = preferred_image_dir(ctx);
+        Ok(has_config
+            && has_checkpoints_dir
+            && colmap_support::has_complete_model(&model)
+            && count_images(&images) == count_images(source_images))
     }
 
     async fn execute(
@@ -69,11 +75,7 @@ impl PipelineStage for TrainingPreparationStage {
         progress_tx: broadcast::Sender<TaskProgress>,
     ) -> AppResult<StageState> {
         // 1. Validate dataset (quick check)
-        let image_dir = if ctx.paths.processed_dir.exists() {
-            &ctx.paths.processed_dir
-        } else {
-            &ctx.paths.frames_dir
-        };
+        let image_dir = preferred_image_dir(ctx);
 
         let image_count = count_images(image_dir);
         if image_count == 0 {
@@ -122,16 +124,23 @@ impl PipelineStage for TrainingPreparationStage {
             )
         })?;
 
+        // Brush scans one dataset root recursively. Build an isolated COLMAP
+        // layout so duplicate frame directories and old PLY files cannot be
+        // selected accidentally. Hard links avoid duplicating image data when
+        // the filesystem supports them; copy is the portable fallback.
+        prepare_brush_dataset(ctx, &model_dir, image_dir)?;
+
         // 3. Write config summary
         let config = serde_json::json!({
             "preset": self.preset_name,
             "prepared_at": Utc::now().to_rfc3339(),
             "dataset": {
-                "model_path": model_dir.to_string_lossy(),
-                "image_path": image_dir.to_string_lossy(),
+                "root": "training/dataset",
+                "model_path": "training/dataset/sparse/0",
+                "image_path": "training/dataset/images",
                 "image_count": image_count,
             },
-            "checkpoints": ctx.paths.training_checkpoints.to_string_lossy(),
+            "checkpoints": "training/checkpoints",
         });
 
         std::fs::write(
@@ -177,8 +186,97 @@ impl PipelineStage for TrainingPreparationStage {
                 "The training configuration file was not created.",
             ));
         }
+        if !colmap_support::has_complete_model(&ctx.paths.training_dataset.join("sparse/0"))
+            || count_images(&ctx.paths.training_dataset.join("images")) == 0
+        {
+            return Err(AppError::new(
+                "E-4001",
+                ErrorCategory::Engine,
+                "Brush Dataset Missing",
+                "The prepared Brush dataset is incomplete.",
+            ));
+        }
         Ok(())
     }
+}
+
+fn preferred_image_dir(ctx: &StageContext) -> &std::path::Path {
+    if count_images(&ctx.paths.processed_dir) > 0 {
+        &ctx.paths.processed_dir
+    } else {
+        &ctx.paths.frames_dir
+    }
+}
+
+fn prepare_brush_dataset(
+    ctx: &StageContext,
+    model_dir: &std::path::Path,
+    image_dir: &std::path::Path,
+) -> AppResult<()> {
+    let temporary = ctx.paths.training_dir.join("dataset.tmp");
+    if temporary.exists() {
+        std::fs::remove_dir_all(&temporary).map_err(dataset_error)?;
+    }
+    let target_model = temporary.join("sparse/0");
+    let target_images = temporary.join("images");
+    std::fs::create_dir_all(&target_model).map_err(dataset_error)?;
+    std::fs::create_dir_all(&target_images).map_err(dataset_error)?;
+
+    link_directory_files(ctx, model_dir, &target_model, |_| true)?;
+    link_directory_files(ctx, image_dir, &target_images, |path| {
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| {
+                matches!(
+                    extension.to_ascii_lowercase().as_str(),
+                    "jpg" | "jpeg" | "png"
+                )
+            })
+            .unwrap_or(false)
+    })?;
+
+    if ctx.paths.training_dataset.exists() {
+        std::fs::remove_dir_all(&ctx.paths.training_dataset).map_err(dataset_error)?;
+    }
+    std::fs::rename(&temporary, &ctx.paths.training_dataset).map_err(dataset_error)
+}
+
+fn link_directory_files(
+    ctx: &StageContext,
+    source: &std::path::Path,
+    target: &std::path::Path,
+    include: impl Fn(&std::path::Path) -> bool,
+) -> AppResult<()> {
+    let entries = std::fs::read_dir(source).map_err(dataset_error)?;
+    for entry in entries.filter_map(Result::ok) {
+        if ctx.cancellation.is_cancelled() {
+            return Err(AppError::new(
+                "E-4004",
+                ErrorCategory::Engine,
+                "Brush Dataset Preparation Cancelled",
+                "Preparing the Brush dataset was cancelled.",
+            ));
+        }
+        let source_path = entry.path();
+        if !source_path.is_file() || !include(&source_path) {
+            continue;
+        }
+        let target_path = target.join(entry.file_name());
+        if std::fs::hard_link(&source_path, &target_path).is_err() {
+            std::fs::copy(&source_path, &target_path).map_err(dataset_error)?;
+        }
+    }
+    Ok(())
+}
+
+fn dataset_error(error: std::io::Error) -> AppError {
+    AppError::new(
+        "E-1201",
+        ErrorCategory::Filesystem,
+        "Failed to Prepare Brush Dataset",
+        "The isolated Brush dataset could not be created.",
+    )
+    .with_technical(error.to_string())
 }
 
 fn count_images(dir: &std::path::Path) -> usize {

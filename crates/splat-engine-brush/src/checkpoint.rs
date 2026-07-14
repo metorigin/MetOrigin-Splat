@@ -21,15 +21,8 @@ pub struct Checkpoint {
 
 /// Scans training output directories for checkpoint files.
 ///
-/// # Checkpoint File Naming (⚠️ Verify with actual Brush)
-///
-/// Brush checkpoints may follow these naming patterns:
-/// - `ckpt_{iteration}.pth`  (e.g. ckpt_7000.pth)
-/// - `checkpoint_{iteration}.pt` (e.g. checkpoint_7000.pt)
-/// - `{iteration}.pt` (e.g. 7000.pt)
-///
-/// These patterns are configurable and should be verified against the
-/// pinned Brush version's actual output format.
+/// Brush v0.3.0 checkpoints are exported PLY snapshots named
+/// `checkpoint_{iter}.ply`. They contain geometry but not optimizer state.
 pub struct CheckpointScanner;
 
 impl CheckpointScanner {
@@ -115,45 +108,14 @@ impl CheckpointScanner {
 
 /// Parse the iteration number from a checkpoint file name.
 ///
-/// ⚠️ Naming patterns must be verified against the actual Brush version.
-///
-/// Supports these patterns:
-/// - `ckpt_7000.pth` → 7000
-/// - `ckpt_7000.pt` → 7000
-/// - `checkpoint_7000.pth` → 7000
-/// - `checkpoint_7000.pt` → 7000
-/// - `7000.pth` → 7000
-/// - `7000.pt` → 7000
-/// - `point_cloud.ply` → skipped (not a checkpoint)
+/// Supports the verified Brush v0.3.0 `checkpoint_000500.ply` pattern.
 fn parse_checkpoint_filename(path: &Path) -> Option<u32> {
     let stem = path.file_stem()?.to_str()?;
-
-    // Check recognized extensions
     let ext = path.extension()?.to_str()?;
-    if ext != "pth" && ext != "pt" && ext != "ckpt" {
+    if !ext.eq_ignore_ascii_case("ply") {
         return None;
     }
-
-    // Try "ckpt_{N}" pattern
-    if let Some(num_str) = stem.strip_prefix("ckpt_") {
-        if let Ok(n) = num_str.parse::<u32>() {
-            return Some(n);
-        }
-    }
-
-    // Try "checkpoint_{N}" pattern
-    if let Some(num_str) = stem.strip_prefix("checkpoint_") {
-        if let Ok(n) = num_str.parse::<u32>() {
-            return Some(n);
-        }
-    }
-
-    // Try plain number pattern
-    if let Ok(n) = stem.parse::<u32>() {
-        return Some(n);
-    }
-
-    None
+    stem.strip_prefix("checkpoint_")?.parse::<u32>().ok()
 }
 
 #[cfg(test)]
@@ -167,31 +129,13 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_ckpt_pth() {
-        let path = Path::new("ckpt_7000.pth");
+    fn test_parse_checkpoint_ply() {
+        let path = Path::new("checkpoint_007000.ply");
         assert_eq!(parse_checkpoint_filename(path), Some(7000));
     }
 
     #[test]
-    fn test_parse_ckpt_pt() {
-        let path = Path::new("ckpt_3000.pt");
-        assert_eq!(parse_checkpoint_filename(path), Some(3000));
-    }
-
-    #[test]
-    fn test_parse_checkpoint_pth() {
-        let path = Path::new("checkpoint_1000.pth");
-        assert_eq!(parse_checkpoint_filename(path), Some(1000));
-    }
-
-    #[test]
-    fn test_parse_plain_number() {
-        let path = Path::new("5000.pth");
-        assert_eq!(parse_checkpoint_filename(path), Some(5000));
-    }
-
-    #[test]
-    fn test_parse_skips_ply() {
+    fn test_parse_skips_unverified_ply() {
         let path = Path::new("point_cloud.ply");
         assert!(parse_checkpoint_filename(path).is_none());
     }
@@ -222,9 +166,9 @@ mod tests {
         let dir = std::env::temp_dir().join("splat-brush-cp-find");
         let _ = std::fs::create_dir_all(&dir);
 
-        create_checkpoint(&dir, "ckpt_1000.pth");
-        create_checkpoint(&dir, "ckpt_3000.pth");
-        create_checkpoint(&dir, "ckpt_7000.pth");
+        create_checkpoint(&dir, "checkpoint_001000.ply");
+        create_checkpoint(&dir, "checkpoint_003000.ply");
+        create_checkpoint(&dir, "checkpoint_007000.ply");
         create_checkpoint(&dir, "readme.txt"); // should be ignored
 
         let cps = CheckpointScanner::scan(&dir).unwrap();
@@ -241,9 +185,9 @@ mod tests {
         let dir = std::env::temp_dir().join("splat-brush-cp-latest");
         let _ = std::fs::create_dir_all(&dir);
 
-        create_checkpoint(&dir, "ckpt_1000.pth");
-        create_checkpoint(&dir, "ckpt_7000.pth");
-        create_checkpoint(&dir, "ckpt_3000.pth");
+        create_checkpoint(&dir, "checkpoint_001000.ply");
+        create_checkpoint(&dir, "checkpoint_007000.ply");
+        create_checkpoint(&dir, "checkpoint_003000.ply");
 
         let latest = CheckpointScanner::find_latest(&dir).unwrap().unwrap();
         assert_eq!(latest.iteration, 7000);
@@ -258,7 +202,7 @@ mod tests {
 
         assert!(!CheckpointScanner::has_resumable(&dir));
 
-        create_checkpoint(&dir, "ckpt_1000.pth");
+        create_checkpoint(&dir, "checkpoint_001000.ply");
         assert!(CheckpointScanner::has_resumable(&dir));
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -272,7 +216,7 @@ mod tests {
         // No checkpoints → resume from 0
         assert_eq!(CheckpointScanner::resume_iteration(&dir).unwrap(), 0);
 
-        create_checkpoint(&dir, "ckpt_5000.pth");
+        create_checkpoint(&dir, "checkpoint_005000.ply");
         // Has checkpoint 5000 → resume from 5000 (not 5001, since Brush handles it)
         assert_eq!(CheckpointScanner::resume_iteration(&dir).unwrap(), 5000);
 

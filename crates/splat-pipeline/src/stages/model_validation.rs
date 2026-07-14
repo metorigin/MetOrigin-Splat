@@ -1,18 +1,23 @@
+use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::pipeline::{PipelineStageId, StageState, StageStatus};
 use splat_domain::progress::TaskProgress;
+use splat_engine_brush::{CheckpointScanner, ExportManager};
 use tokio::sync::broadcast;
 
 use crate::stage::{PipelineStage, StageContext};
 
-/// Model validation stage.
-///
-/// Validates the trained model (PLY) produced by Brush:
-/// 1. PLY file exists and is non-empty
-/// 2. PLY header starts with "ply"
-/// 3. File size is reasonable (> 1 KB)
-///
-/// This stage catches training failures early before export.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModelValidationReport {
+    passed: bool,
+    checkpoint_path: PathBuf,
+    size_bytes: u64,
+    vertex_count: u64,
+}
+
+/// Validates the newest verified Brush PLY checkpoint before export.
 pub struct ModelValidationStage;
 
 impl Default for ModelValidationStage {
@@ -34,30 +39,32 @@ impl PipelineStage for ModelValidationStage {
     }
 
     fn validate_inputs(&self, ctx: &StageContext) -> AppResult<()> {
-        if !ctx.paths.training_dir.exists() {
+        if CheckpointScanner::find_latest(&ctx.paths.training_checkpoints)?.is_none() {
             return Err(AppError::new(
-                "E-4001",
+                "E-4005",
                 ErrorCategory::Engine,
-                "Training Directory Not Found",
-                "The training output directory does not exist. Run Brush training first.",
+                "No Brush Checkpoint Found",
+                "Brush training did not produce a PLY checkpoint.",
             ));
         }
         Ok(())
     }
 
     fn check_cached(&self, ctx: &StageContext) -> AppResult<bool> {
-        if !ctx.paths.output_ply.exists() {
-            return Ok(false);
-        }
-        let meta = std::fs::metadata(&ctx.paths.output_ply).map_err(|e| {
-            AppError::new(
-                "E-1201",
-                ErrorCategory::Filesystem,
-                "PLY Check Failed",
-                e.to_string(),
-            )
-        })?;
-        Ok(meta.len() > 0)
+        let path = validation_path(ctx);
+        let report: ModelValidationReport = match std::fs::read_to_string(path)
+            .ok()
+            .and_then(|json| serde_json::from_str(&json).ok())
+        {
+            Some(report) => report,
+            None => return Ok(false),
+        };
+        let checkpoint = ctx.project_dir.join(&report.checkpoint_path);
+        Ok(report.passed
+            && std::fs::metadata(&checkpoint)
+                .map(|metadata| metadata.len() == report.size_bytes)
+                .unwrap_or(false)
+            && ExportManager::validate_ply(&checkpoint).is_ok())
     }
 
     async fn execute(
@@ -65,56 +72,33 @@ impl PipelineStage for ModelValidationStage {
         ctx: &StageContext,
         progress_tx: broadcast::Sender<TaskProgress>,
     ) -> AppResult<StageState> {
-        // Find the PLY file in training output
-        let ply_path = find_training_ply(&ctx.paths.training_dir).ok_or_else(|| {
-            AppError::new(
-                "E-4005",
-                ErrorCategory::Engine,
-                "No Trained PLY Found",
-                format!(
-                    "No valid PLY file found in '{}'. Training may have failed.",
-                    ctx.paths.training_dir.display()
-                ),
-            )
-            .with_suggestions(vec![
-                "Check the Brush log for training errors",
-                "Ensure training completed enough iterations",
-                "Try with a different preset or dataset",
-            ])
-        })?;
-
+        let checkpoint = CheckpointScanner::find_latest(&ctx.paths.training_checkpoints)?
+            .ok_or_else(|| {
+                AppError::new(
+                    "E-4005",
+                    ErrorCategory::Engine,
+                    "No Brush Checkpoint Found",
+                    "Brush training did not produce a PLY checkpoint.",
+                )
+            })?;
+        ExportManager::validate_ply(&checkpoint.path)?;
+        let vertex_count = ExportManager::vertex_count(&checkpoint.path)?;
+        let report = ModelValidationReport {
+            passed: true,
+            checkpoint_path: checkpoint
+                .path
+                .strip_prefix(&ctx.project_dir)
+                .unwrap_or(&checkpoint.path)
+                .to_path_buf(),
+            size_bytes: checkpoint.size_bytes,
+            vertex_count,
+        };
+        std::fs::write(validation_path(ctx), serde_json::to_vec_pretty(&report)?)
+            .map_err(io_error)?;
         let _ = progress_tx.send(
             TaskProgress::new(
-                "model_validation",
-                format!("Checking PLY: {}", ply_path.display()),
-            )
-            .with_percent(0.3),
-        );
-
-        // Validate the PLY
-        validate_ply(&ply_path)?;
-
-        let meta = std::fs::metadata(&ply_path).map_err(|e| {
-            AppError::new(
-                "E-1201",
-                ErrorCategory::Filesystem,
-                "PLY Metadata Error",
-                e.to_string(),
-            )
-        })?;
-
-        let size_kb = meta.len() as f64 / 1024.0;
-
-        tracing::info!(
-            "Model validation passed: {} ({:.1} KB)",
-            ply_path.display(),
-            size_kb
-        );
-
-        let _ = progress_tx.send(
-            TaskProgress::new(
-                "model_validation",
-                format!("Model valid: {:.1} KB PLY", size_kb),
+                "ModelValidation",
+                format!("Validated {vertex_count} Gaussian splats"),
             )
             .with_percent(1.0),
         );
@@ -125,79 +109,32 @@ impl PipelineStage for ModelValidationStage {
         Ok(state)
     }
 
-    fn validate_outputs(&self, _ctx: &StageContext) -> AppResult<()> {
-        // Outputs are validated during execute — the PLY exists and is valid
-        Ok(())
+    fn validate_outputs(&self, ctx: &StageContext) -> AppResult<()> {
+        if self.check_cached(ctx)? {
+            Ok(())
+        } else {
+            Err(AppError::new(
+                "E-4006",
+                ErrorCategory::Engine,
+                "Brush Model Validation Failed",
+                "The Brush PLY validation report is missing or stale.",
+            ))
+        }
     }
 }
 
-/// Find a PLY file in the training output directory.
-fn find_training_ply(training_dir: &std::path::Path) -> Option<std::path::PathBuf> {
-    for name in &["point_cloud.ply", "scene.ply", "output.ply"] {
-        let path = training_dir.join(name);
-        if path.exists() && path.is_file() {
-            return Some(path);
-        }
-    }
-    // Check output subdirectory
-    let output_dir = training_dir.join("output");
-    if output_dir.exists() {
-        for name in &["point_cloud.ply", "scene.ply"] {
-            let path = output_dir.join(name);
-            if path.exists() && path.is_file() {
-                return Some(path);
-            }
-        }
-    }
-    None
+fn validation_path(ctx: &StageContext) -> PathBuf {
+    ctx.paths.training_dir.join("validation.json")
 }
 
-/// Validate a PLY file's existence, size, and header.
-fn validate_ply(path: &std::path::Path) -> AppResult<()> {
-    if !path.exists() {
-        return Err(AppError::new(
-            "E-1201",
-            ErrorCategory::Filesystem,
-            "PLY Not Found",
-            format!("'{}' not found", path.display()),
-        ));
-    }
-    let meta = std::fs::metadata(path).map_err(|e| {
-        AppError::new(
-            "E-1201",
-            ErrorCategory::Filesystem,
-            "PLY Read Error",
-            e.to_string(),
-        )
-    })?;
-    if meta.len() == 0 {
-        return Err(AppError::new(
-            "E-4006",
-            ErrorCategory::Engine,
-            "Empty PLY",
-            "The PLY file is empty (0 bytes).",
-        ));
-    }
-    if meta.len() < 1024 {
-        tracing::warn!("PLY file is very small: {} bytes", meta.len());
-    }
-    // Check PLY header
-    let mut header = [0u8; 15];
-    if let Ok(mut f) = std::fs::File::open(path) {
-        use std::io::Read;
-        if f.read_exact(&mut header).is_ok() {
-            let magic = String::from_utf8_lossy(&header);
-            if !magic.starts_with("ply") {
-                return Err(AppError::new(
-                    "E-4006",
-                    ErrorCategory::Engine,
-                    "Invalid PLY Header",
-                    "File does not start with 'ply' header.",
-                ));
-            }
-        }
-    }
-    Ok(())
+fn io_error(error: std::io::Error) -> AppError {
+    AppError::new(
+        "E-1201",
+        ErrorCategory::Filesystem,
+        "Failed to Write Model Validation",
+        "The model validation report could not be written.",
+    )
+    .with_technical(error.to_string())
 }
 
 #[cfg(test)]
@@ -205,8 +142,8 @@ mod tests {
     use super::*;
     use std::path::Path;
 
-    #[tokio::test]
-    async fn test_validate_no_training_dir() {
+    #[test]
+    fn test_validate_no_training_dir() {
         let stage = ModelValidationStage::new();
         let ctx = StageContext::new(
             PipelineStageId::ModelValidation,
@@ -217,37 +154,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_validate_with_ply() {
-        let dir = std::env::temp_dir().join("splat-stage-model-val");
-        let _ = std::fs::create_dir_all(dir.join("training"));
+    async fn test_validate_with_brush_checkpoint() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoints = dir.path().join("training/checkpoints");
+        std::fs::create_dir_all(&checkpoints).unwrap();
         std::fs::write(
-            dir.join("training").join("point_cloud.ply"),
-            b"ply\nformat ascii 1.0\nend_header\n",
+            checkpoints.join("checkpoint_003000.ply"),
+            b"ply\nformat ascii 1.0\nelement vertex 1\nend_header\n0\n",
         )
         .unwrap();
-
-        let ctx = StageContext::new(PipelineStageId::ModelValidation, &dir, None);
+        let ctx = StageContext::new(PipelineStageId::ModelValidation, dir.path(), None);
         let stage = ModelValidationStage::new();
-        let result = stage
+        stage
             .execute(&ctx, tokio::sync::broadcast::channel(8).0)
-            .await;
-        assert!(result.is_ok());
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[tokio::test]
-    async fn test_validate_no_ply() {
-        let dir = std::env::temp_dir().join("splat-stage-model-no-ply");
-        let _ = std::fs::create_dir_all(dir.join("training")); // empty
-
-        let ctx = StageContext::new(PipelineStageId::ModelValidation, &dir, None);
-        let stage = ModelValidationStage::new();
-        let result = stage
-            .execute(&ctx, tokio::sync::broadcast::channel(8).0)
-            .await;
-        assert!(result.is_err());
-
-        let _ = std::fs::remove_dir_all(&dir);
+            .await
+            .unwrap();
+        assert!(stage.validate_outputs(&ctx).is_ok());
     }
 }

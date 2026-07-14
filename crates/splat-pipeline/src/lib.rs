@@ -16,7 +16,8 @@ pub use orchestrator::{OrchestratorEvent, PipelineConfig, PipelineOrchestrator, 
 pub use recovery::{CrashRecovery, RecoveryAction, RecoveryActionType};
 pub use stage::{PipelineStage, StageContext, StagePaths};
 pub use stages::{
-    BrushTrainingStage, ColmapFeatureStage, ColmapMappingStage, ColmapMatchingStage,
-    ColmapValidationStage, ExportStage, FrameExtractionStage, ImagePreprocessingStage,
-    MediaValidationStage, ModelValidationStage, PreviewGenerationStage, TrainingPreparationStage,
+    BrushTrainingResult, BrushTrainingStage, ColmapFeatureStage, ColmapMappingStage,
+    ColmapMatchingStage, ColmapValidationStage, ExportStage, FrameExtractionStage,
+    ImagePreprocessingStage, MediaValidationStage, ModelValidationStage, PreviewGenerationStage,
+    TrainingPreparationStage,
 };

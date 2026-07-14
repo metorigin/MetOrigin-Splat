@@ -38,12 +38,17 @@ impl EngineLocator {
         } else {
             name.to_string()
         };
-        vec![
+        let mut candidates = vec![
             root.join(&executable),
             root.join("bin").join(&executable),
             root.join(name).join(&executable),
             root.join(name).join("bin").join(&executable),
-        ]
+        ];
+        if cfg!(windows) && name == "brush" {
+            candidates.push(root.join("brush_app.exe"));
+            candidates.push(root.join("bin").join("brush_app.exe"));
+        }
+        candidates
     }
 
     fn find_on_path(name: &str) -> Option<PathBuf> {
@@ -74,6 +79,11 @@ mod tests {
             Path::new("ffmpeg/bin/ffmpeg")
         };
         assert!(candidates.iter().any(|path| path.ends_with(suffix)));
+
+        let brush = EngineLocator::candidates(Path::new("engines"), "brush");
+        if cfg!(windows) {
+            assert!(brush.iter().any(|path| path.ends_with("brush_app.exe")));
+        }
     }
 
     #[test]

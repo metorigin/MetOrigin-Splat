@@ -61,7 +61,7 @@ impl CrashRecovery {
 
             match stage_state.status {
                 // Stage was running when the crash happened
-                StageStatus::Running | StageStatus::Preparing => {
+                StageStatus::Running | StageStatus::Preparing | StageStatus::Cancelling => {
                     found_running = true;
 
                     // Verify this stage's outputs
@@ -110,6 +110,10 @@ impl CrashRecovery {
                 // Other states: keep as-is
                 _ => {}
             }
+        }
+
+        if found_running {
+            recovered_state.current_stage = None;
         }
 
         // Build the recovery action
@@ -190,28 +194,31 @@ impl CrashRecovery {
                 sparse0.join("cameras.bin").exists() || sparse0.join("cameras.txt").exists()
             }
             PipelineStageId::TrainingPreparation => {
-                // training/config/ has config files
-                let config_dir = project_dir.join("training").join("config");
-                config_dir.exists()
+                let training = project_dir.join("training");
+                training.join("config/config.json").is_file()
+                    && training.join("dataset/sparse/0/cameras.bin").is_file()
+                    && has_image_files(&training.join("dataset/images"))
             }
             PipelineStageId::BrushTraining => {
-                // training/ has checkpoints or PLY output
-                let checkpoints = project_dir.join("training").join("checkpoints");
-                let has_ckpt = checkpoints.exists() && has_checkpoint_files(&checkpoints);
-                let has_ply = project_dir.join("output").join("scene.ply").exists()
-                    || project_dir
-                        .join("training")
-                        .join("point_cloud.ply")
-                        .exists();
-                has_ckpt || has_ply
+                let result_path = project_dir.join("training/result.json");
+                std::fs::read_to_string(result_path)
+                    .ok()
+                    .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+                    .and_then(|result| {
+                        result["checkpoint_path"]
+                            .as_str()
+                            .map(|path| project_dir.join(path))
+                    })
+                    .map(|path| valid_ply(&path))
+                    .unwrap_or(false)
             }
             PipelineStageId::ModelValidation => {
-                // output/scene.ply exists and is non-empty
-                let ply = project_dir.join("output").join("scene.ply");
-                ply.exists()
-                    && std::fs::metadata(&ply)
-                        .map(|m| m.len() > 0)
-                        .unwrap_or(false)
+                let validation = project_dir.join("training/validation.json");
+                std::fs::read_to_string(validation)
+                    .ok()
+                    .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+                    .and_then(|report| report["passed"].as_bool())
+                    .unwrap_or(false)
             }
             PipelineStageId::PreviewGeneration => {
                 // output/manifest.json exists
@@ -219,9 +226,8 @@ impl CrashRecovery {
                 manifest.exists()
             }
             PipelineStageId::Export => {
-                // output/scene.ply exists
                 let ply = project_dir.join("output").join("scene.ply");
-                ply.exists()
+                valid_ply(&ply)
             }
         }
     }
@@ -262,8 +268,22 @@ fn has_image_files(dir: &Path) -> bool {
     count_files_with_extensions(dir, &["jpg", "jpeg", "png"]) > 0
 }
 
-fn has_checkpoint_files(dir: &Path) -> bool {
-    count_files_with_extensions(dir, &["pth", "pt", "ckpt"]) > 0
+fn valid_ply(path: &Path) -> bool {
+    if !path.is_file()
+        || std::fs::metadata(path)
+            .map(|m| m.len() == 0)
+            .unwrap_or(true)
+    {
+        return false;
+    }
+    let mut magic = [0u8; 3];
+    std::fs::File::open(path)
+        .and_then(|mut file| {
+            use std::io::Read;
+            file.read_exact(&mut magic)
+        })
+        .is_ok()
+        && &magic == b"ply"
 }
 
 fn count_files_with_extensions(dir: &Path, exts: &[&str]) -> usize {
@@ -300,6 +320,9 @@ mod tests {
             "processed",
             "colmap/sparse/0",
             "training/config",
+            "training/dataset/sparse/0",
+            "training/dataset/images",
+            "training/checkpoints",
             "output",
         ];
         for path in paths {
@@ -311,7 +334,34 @@ mod tests {
         std::fs::write(project_dir.join("processed/frame.jpg"), b"image").unwrap();
         std::fs::write(project_dir.join("colmap/database.db"), vec![0; 1025]).unwrap();
         std::fs::write(project_dir.join("colmap/sparse/0/cameras.bin"), b"camera").unwrap();
-        std::fs::write(project_dir.join("output/scene.ply"), b"ply").unwrap();
+        std::fs::write(project_dir.join("training/config/config.json"), b"{}").unwrap();
+        std::fs::write(
+            project_dir.join("training/dataset/sparse/0/cameras.bin"),
+            b"camera",
+        )
+        .unwrap();
+        std::fs::write(
+            project_dir.join("training/dataset/images/frame.jpg"),
+            b"image",
+        )
+        .unwrap();
+        let ply = b"ply\nformat ascii 1.0\nelement vertex 1\nend_header\n0\n";
+        std::fs::write(
+            project_dir.join("training/checkpoints/checkpoint_3000.ply"),
+            ply,
+        )
+        .unwrap();
+        std::fs::write(
+            project_dir.join("training/result.json"),
+            br#"{"checkpoint_path":"training/checkpoints/checkpoint_3000.ply"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            project_dir.join("training/validation.json"),
+            br#"{"passed":true}"#,
+        )
+        .unwrap();
+        std::fs::write(project_dir.join("output/scene.ply"), ply).unwrap();
         std::fs::write(project_dir.join("output/manifest.json"), b"{}").unwrap();
     }
 
@@ -457,6 +507,28 @@ mod tests {
                 .status,
             StageStatus::Completed
         );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_partial_brush_checkpoint_requires_resume() {
+        let state = make_partial_state(PipelineStageId::BrushTraining);
+        let dir = std::env::temp_dir().join("splat-recovery-brush-partial");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("training/checkpoints")).unwrap();
+        std::fs::write(
+            dir.join("training/checkpoints/checkpoint_0500.ply"),
+            b"ply\nformat ascii 1.0\nelement vertex 1\nend_header\n0\n",
+        )
+        .unwrap();
+
+        let action = CrashRecovery::detect(&state, &dir);
+        assert_eq!(
+            action.state.stages[&PipelineStageId::BrushTraining].status,
+            StageStatus::Failed
+        );
+        assert!(action.state.current_stage.is_none());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

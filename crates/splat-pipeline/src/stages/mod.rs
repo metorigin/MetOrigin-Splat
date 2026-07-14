@@ -23,7 +23,7 @@ pub mod model_validation;
 pub mod preview_generation;
 pub mod training_preparation;
 
-pub use brush_training::BrushTrainingStage;
+pub use brush_training::{BrushTrainingResult, BrushTrainingStage};
 pub use colmap_feature::ColmapFeatureStage;
 pub use colmap_mapping::ColmapMappingStage;
 pub use colmap_matching::ColmapMatchingStage;

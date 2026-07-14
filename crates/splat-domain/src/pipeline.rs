@@ -63,8 +63,8 @@ impl PipelineStageId {
             TrainingPreparation,
             BrushTraining,
             ModelValidation,
-            PreviewGeneration,
             Export,
+            PreviewGeneration,
         ]
     }
 }
@@ -213,7 +213,8 @@ mod tests {
         let all = PipelineStageId::all();
         assert_eq!(all.len(), 12);
         assert_eq!(all[0], PipelineStageId::MediaValidation);
-        assert_eq!(all[11], PipelineStageId::Export);
+        assert_eq!(all[10], PipelineStageId::Export);
+        assert_eq!(all[11], PipelineStageId::PreviewGeneration);
     }
 
     #[test]

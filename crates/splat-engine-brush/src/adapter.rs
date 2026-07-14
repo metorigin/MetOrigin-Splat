@@ -159,12 +159,12 @@ impl BrushAdapter {
     pub fn build_train_command(
         &self,
         config: &TrainingConfig,
-        colmap_path: &Path,
-        image_path: &Path,
-        output_path: &Path,
+        dataset_path: &Path,
+        checkpoint_path: &Path,
+        start_iteration: u32,
         log_path: &Path,
     ) -> CommandSpec {
-        let args = config.to_cli_args(colmap_path, image_path, output_path);
+        let args = config.to_cli_args(dataset_path, checkpoint_path, start_iteration);
 
         CommandSpec::new(&self.brush_path, args, log_path)
     }
@@ -256,12 +256,20 @@ impl BrushAdapter {
                 )
             })?;
 
-        let version = String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .next()
-            .unwrap_or("")
-            .trim()
-            .to_string();
+        if !output.status.success() {
+            return Err(AppError::new(
+                "E-4002",
+                ErrorCategory::Engine,
+                "Brush Version Check Failed",
+                "Brush returned an error while reporting its version.",
+            ));
+        }
+        let combined = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let version = combined.lines().next().unwrap_or("").trim().to_string();
 
         Ok(version)
     }
@@ -306,9 +314,9 @@ mod tests {
 
         let spec = adapter.build_train_command(
             &config,
-            Path::new("colmap/sparse/0"),
-            Path::new("frames"),
-            Path::new("training/output"),
+            Path::new("project.splat-project"),
+            Path::new("training/checkpoints"),
+            1000,
             Path::new("training/logs/brush.log"),
         );
 
@@ -319,10 +327,11 @@ mod tests {
             .map(|a| a.to_string_lossy().to_string())
             .collect();
         let args_str = args.join(" ");
-        assert!(args_str.contains("--iterations"));
+        assert!(args_str.contains("--total-steps"));
         assert!(args_str.contains("7000"));
-        assert!(args_str.contains("--colmap"));
-        assert!(args_str.contains("--output"));
+        assert!(args_str.contains("project.splat-project"));
+        assert!(args_str.contains("--export-path"));
+        assert!(args_str.contains("--start-iter"));
     }
 
     #[test]
