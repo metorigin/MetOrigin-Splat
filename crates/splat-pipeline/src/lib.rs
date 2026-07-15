@@ -1,10 +1,12 @@
-//! Pipeline orchestration for MetaOrigin Splat.
+//! Pipeline orchestration for MetOrigin Splat.
 //!
 //! Defines the pipeline state machine and stage execution framework.
 //! Each stage is independently executable, resumable, and cacheable.
 //! The orchestrator manages dependencies, retries, crash recovery,
 //! and project locking.
 
+pub mod colmap_quality;
+pub mod image_input;
 pub mod lock;
 pub mod orchestrator;
 pub mod recovery;

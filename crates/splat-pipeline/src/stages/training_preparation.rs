@@ -1,8 +1,12 @@
 use chrono::Utc;
+use image::codecs::jpeg::JpegEncoder;
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::pipeline::{PipelineStageId, StageState, StageStatus};
 use splat_domain::progress::TaskProgress;
-use splat_engine_colmap::read_colmap_result;
+use splat_domain::project::Project;
+use splat_engine_colmap::{read_colmap_result, validate_model_image_dimensions, ColmapAdapter};
+use splat_process::ProcessRunner;
+use std::time::Duration;
 use tokio::sync::broadcast;
 
 use crate::stage::{PipelineStage, StageContext};
@@ -62,11 +66,19 @@ impl PipelineStage for TrainingPreparationStage {
         let has_checkpoints_dir = ctx.paths.training_checkpoints.exists();
         let model = ctx.paths.training_dataset.join("sparse/0");
         let images = ctx.paths.training_dataset.join("images");
-        let source_images = preferred_image_dir(ctx);
-        Ok(has_config
-            && has_checkpoints_dir
-            && colmap_support::has_complete_model(&model)
-            && count_images(&images) == count_images(source_images))
+        let registered_images = read_colmap_result(&ctx.paths.colmap_result)
+            .map(|result| result.registered_images)
+            .unwrap_or(0);
+        if !has_config
+            || !has_checkpoints_dir
+            || !colmap_support::has_complete_model(&model)
+            || count_images(&images) != registered_images
+        {
+            return Ok(false);
+        }
+        Ok(validate_model_image_dimensions(&model, &images)
+            .map(|validated| validated == registered_images)
+            .unwrap_or(false))
     }
 
     async fn execute(
@@ -124,11 +136,20 @@ impl PipelineStage for TrainingPreparationStage {
             )
         })?;
 
-        // Brush scans one dataset root recursively. Build an isolated COLMAP
-        // layout so duplicate frame directories and old PLY files cannot be
-        // selected accidentally. Hard links avoid duplicating image data when
-        // the filesystem supports them; copy is the portable fallback.
-        prepare_brush_dataset(ctx, &model_dir, image_dir)?;
+        // image_undistorter scales the images and camera intrinsics together,
+        // removes lens distortion and emits only images registered in the
+        // selected sparse model.
+        let adapter = colmap_support::adapter(ctx)?;
+        let training_long_edge = load_project(ctx)?.settings.max_long_edge.max(1);
+        let prepared_image_count = prepare_brush_dataset(
+            ctx,
+            &adapter,
+            &model_dir,
+            image_dir,
+            training_long_edge,
+            colmap_result.registered_images,
+        )
+        .await?;
 
         // 3. Write config summary
         let config = serde_json::json!({
@@ -138,7 +159,9 @@ impl PipelineStage for TrainingPreparationStage {
                 "root": "training/dataset",
                 "model_path": "training/dataset/sparse/0",
                 "image_path": "training/dataset/images",
-                "image_count": image_count,
+                "image_count": prepared_image_count,
+                "max_long_edge": training_long_edge,
+                "source_registered_images": colmap_result.registered_images,
             },
             "checkpoints": "training/checkpoints",
         });
@@ -186,14 +209,26 @@ impl PipelineStage for TrainingPreparationStage {
                 "The training configuration file was not created.",
             ));
         }
-        if !colmap_support::has_complete_model(&ctx.paths.training_dataset.join("sparse/0"))
-            || count_images(&ctx.paths.training_dataset.join("images")) == 0
-        {
+        let model = ctx.paths.training_dataset.join("sparse/0");
+        let images = ctx.paths.training_dataset.join("images");
+        if !colmap_support::has_complete_model(&model) || count_images(&images) == 0 {
             return Err(AppError::new(
                 "E-4001",
                 ErrorCategory::Engine,
                 "Brush Dataset Missing",
                 "The prepared Brush dataset is incomplete.",
+            ));
+        }
+        let expected = read_colmap_result(&ctx.paths.colmap_result)?.registered_images;
+        let validated = validate_model_image_dimensions(&model, &images)?;
+        if validated != expected || count_images(&images) != expected {
+            return Err(AppError::new(
+                "E-4001",
+                ErrorCategory::Engine,
+                "Brush Dataset Incomplete",
+                format!(
+                    "The prepared Brush dataset contains {validated} registered images; expected {expected}."
+                ),
             ));
         }
         Ok(())
@@ -208,46 +243,85 @@ fn preferred_image_dir(ctx: &StageContext) -> &std::path::Path {
     }
 }
 
-fn prepare_brush_dataset(
+async fn prepare_brush_dataset(
     ctx: &StageContext,
+    adapter: &ColmapAdapter,
     model_dir: &std::path::Path,
     image_dir: &std::path::Path,
-) -> AppResult<()> {
+    max_image_size: u32,
+    expected_registered_images: usize,
+) -> AppResult<usize> {
     let temporary = ctx.paths.training_dir.join("dataset.tmp");
     if temporary.exists() {
         std::fs::remove_dir_all(&temporary).map_err(dataset_error)?;
     }
-    let target_model = temporary.join("sparse/0");
-    let target_images = temporary.join("images");
-    std::fs::create_dir_all(&target_model).map_err(dataset_error)?;
-    std::fs::create_dir_all(&target_images).map_err(dataset_error)?;
-
-    link_directory_files(ctx, model_dir, &target_model, |_| true)?;
-    link_directory_files(ctx, image_dir, &target_images, |path| {
-        path.extension()
-            .and_then(|extension| extension.to_str())
-            .map(|extension| {
-                matches!(
-                    extension.to_ascii_lowercase().as_str(),
-                    "jpg" | "jpeg" | "png"
-                )
-            })
-            .unwrap_or(false)
-    })?;
-
-    if ctx.paths.training_dataset.exists() {
-        std::fs::remove_dir_all(&ctx.paths.training_dataset).map_err(dataset_error)?;
+    std::fs::create_dir_all(&temporary).map_err(dataset_error)?;
+    let command = adapter
+        .build_image_undistorter_command(
+            image_dir,
+            model_dir,
+            &temporary,
+            max_image_size,
+            &ctx.paths.training_logs.join("image-undistorter.log"),
+        )
+        .with_cwd(&ctx.paths.training_dir)
+        .with_timeout(Duration::from_secs(2 * 60 * 60));
+    let result = ProcessRunner::new()
+        .run_to_completion(command, ctx.cancellation.clone(), None)
+        .await?;
+    colmap_support::ensure_success(&result, "image undistortion")?;
+    normalize_undistorter_layout(&temporary)?;
+    let images = temporary.join("images");
+    reencode_training_jpegs(ctx, &images, 92)?;
+    let model = temporary.join("sparse/0");
+    let prepared = validate_model_image_dimensions(&model, &images)?;
+    if prepared != expected_registered_images || count_images(&images) != prepared {
+        return Err(AppError::new(
+            "E-4001",
+            ErrorCategory::Engine,
+            "Undistorted Training Dataset Incomplete",
+            format!(
+                "image_undistorter produced {prepared} registered images; expected {expected_registered_images}."
+            ),
+        ));
     }
-    std::fs::rename(&temporary, &ctx.paths.training_dataset).map_err(dataset_error)
+    publish_training_dataset(ctx, &temporary)?;
+    Ok(prepared)
 }
 
-fn link_directory_files(
+fn normalize_undistorter_layout(temporary: &std::path::Path) -> AppResult<()> {
+    let sparse = temporary.join("sparse");
+    if colmap_support::has_complete_model(&sparse.join("0")) {
+        return Ok(());
+    }
+    if !colmap_support::has_complete_model(&sparse) {
+        return Err(AppError::new(
+            "E-4001",
+            ErrorCategory::Engine,
+            "Undistorted Camera Model Missing",
+            "image_undistorter did not produce a complete COLMAP model.",
+        ));
+    }
+    let staging = temporary.join("sparse-model.tmp");
+    std::fs::create_dir_all(&staging).map_err(dataset_error)?;
+    for entry in std::fs::read_dir(&sparse).map_err(dataset_error)? {
+        let entry = entry.map_err(dataset_error)?;
+        if entry.file_type().map_err(dataset_error)?.is_file() {
+            std::fs::rename(entry.path(), staging.join(entry.file_name()))
+                .map_err(dataset_error)?;
+        }
+    }
+    std::fs::remove_dir_all(&sparse).map_err(dataset_error)?;
+    std::fs::create_dir_all(&sparse).map_err(dataset_error)?;
+    std::fs::rename(staging, sparse.join("0")).map_err(dataset_error)
+}
+
+fn reencode_training_jpegs(
     ctx: &StageContext,
-    source: &std::path::Path,
-    target: &std::path::Path,
-    include: impl Fn(&std::path::Path) -> bool,
+    images: &std::path::Path,
+    quality: u8,
 ) -> AppResult<()> {
-    let entries = std::fs::read_dir(source).map_err(dataset_error)?;
+    let entries = std::fs::read_dir(images).map_err(dataset_error)?;
     for entry in entries.filter_map(Result::ok) {
         if ctx.cancellation.is_cancelled() {
             return Err(AppError::new(
@@ -257,16 +331,76 @@ fn link_directory_files(
                 "Preparing the Brush dataset was cancelled.",
             ));
         }
-        let source_path = entry.path();
-        if !source_path.is_file() || !include(&source_path) {
+        let path = entry.path();
+        if !path.is_file()
+            || !path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| {
+                    extension.eq_ignore_ascii_case("jpg") || extension.eq_ignore_ascii_case("jpeg")
+                })
+        {
             continue;
         }
-        let target_path = target.join(entry.file_name());
-        if std::fs::hard_link(&source_path, &target_path).is_err() {
-            std::fs::copy(&source_path, &target_path).map_err(dataset_error)?;
-        }
+        let decoded = image::open(&path).map_err(|error| {
+            AppError::new(
+                "E-1103",
+                ErrorCategory::Media,
+                "Invalid Undistorted Training Image",
+                format!("Could not decode '{}': {error}", path.display()),
+            )
+        })?;
+        let temporary = path.with_extension("jpg.reencoding");
+        let mut file = std::fs::File::create(&temporary).map_err(dataset_error)?;
+        JpegEncoder::new_with_quality(&mut file, quality)
+            .encode_image(&decoded)
+            .map_err(|error| {
+                AppError::new(
+                    "E-1103",
+                    ErrorCategory::Media,
+                    "Failed to Encode Training JPEG",
+                    error.to_string(),
+                )
+            })?;
+        drop(file);
+        std::fs::remove_file(&path).map_err(dataset_error)?;
+        std::fs::rename(temporary, path).map_err(dataset_error)?;
     }
     Ok(())
+}
+
+fn publish_training_dataset(ctx: &StageContext, temporary: &std::path::Path) -> AppResult<()> {
+    let previous = ctx.paths.training_dir.join("dataset.previous");
+    if previous.exists() {
+        std::fs::remove_dir_all(&previous).map_err(dataset_error)?;
+    }
+    let had_dataset = ctx.paths.training_dataset.exists();
+    if had_dataset {
+        std::fs::rename(&ctx.paths.training_dataset, &previous).map_err(dataset_error)?;
+    }
+    if let Err(error) = std::fs::rename(temporary, &ctx.paths.training_dataset) {
+        if had_dataset {
+            let _ = std::fs::rename(&previous, &ctx.paths.training_dataset);
+        }
+        return Err(dataset_error(error));
+    }
+    if previous.exists() {
+        let _ = std::fs::remove_dir_all(previous);
+    }
+    Ok(())
+}
+
+fn load_project(ctx: &StageContext) -> AppResult<Project> {
+    let bytes = std::fs::read(ctx.project_dir.join("project.json")).map_err(dataset_error)?;
+    serde_json::from_slice(&bytes).map_err(|error| {
+        AppError::new(
+            "E-1103",
+            ErrorCategory::Media,
+            "Invalid Project Metadata",
+            "Could not read the Brush training resolution from project.json.",
+        )
+        .with_technical(error.to_string())
+    })
 }
 
 fn dataset_error(error: std::io::Error) -> AppError {
@@ -309,6 +443,26 @@ mod tests {
     use splat_engine_colmap::{write_colmap_result_atomic, ColmapResult};
     use std::path::Path;
 
+    fn write_text_training_model(model_dir: &Path) {
+        std::fs::create_dir_all(model_dir).unwrap();
+        std::fs::write(
+            model_dir.join("cameras.txt"),
+            "1 SIMPLE_RADIAL 8 6 8 4 3 0\n",
+        )
+        .unwrap();
+        std::fs::write(
+            model_dir.join("images.txt"),
+            concat!(
+                "1 1 0 0 0 0 0 0 1 000001.jpg\n",
+                "0 0 -1\n",
+                "2 1 0 0 0 0 0 0 1 000002.jpg\n",
+                "0 0 -1\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(model_dir.join("points3D.txt"), "# empty test model\n").unwrap();
+    }
+
     #[tokio::test]
     async fn test_prep_no_colmap() {
         let stage = TrainingPreparationStage::new("balanced");
@@ -320,45 +474,44 @@ mod tests {
         assert!(stage.validate_inputs(&ctx).is_err());
     }
 
-    #[tokio::test]
-    async fn test_prep_complete() {
-        let dir = std::env::temp_dir().join("splat-stage-prep");
-        let _ = std::fs::create_dir_all(&dir);
+    #[test]
+    fn test_prep_complete_cache_and_validation() {
+        let temporary = tempfile::tempdir().unwrap();
+        let dir = temporary.path();
 
-        // Create a fake COLMAP model
-        let model_dir = dir.join("colmap").join("sparse").join("0");
-        std::fs::create_dir_all(&model_dir).unwrap();
-        std::fs::write(model_dir.join("cameras.bin"), b"data").unwrap();
-        std::fs::write(model_dir.join("images.bin"), b"data").unwrap();
-        std::fs::write(model_dir.join("points3D.bin"), b"data").unwrap();
+        let model_dir = dir.join("colmap/sparse/0");
+        write_text_training_model(&model_dir);
         let result = ColmapResult::new(2, 2, 10, std::path::PathBuf::from("colmap/sparse/0"));
         write_colmap_result_atomic(&result, &dir.join("colmap/result.json")).unwrap();
 
-        // Create frames
-        std::fs::create_dir_all(dir.join("frames")).unwrap();
-        std::fs::write(dir.join("frames").join("000001.jpg"), b"data").unwrap();
-        std::fs::write(dir.join("frames").join("000002.jpg"), b"data").unwrap();
+        let training_model = dir.join("training/dataset/sparse/0");
+        write_text_training_model(&training_model);
+        let training_images = dir.join("training/dataset/images");
+        std::fs::create_dir_all(&training_images).unwrap();
+        image::RgbImage::new(8, 6)
+            .save(training_images.join("000001.jpg"))
+            .unwrap();
+        image::RgbImage::new(8, 6)
+            .save(training_images.join("000002.jpg"))
+            .unwrap();
+        std::fs::create_dir_all(dir.join("training/config")).unwrap();
+        std::fs::write(dir.join("training/config/config.json"), "{}").unwrap();
+        std::fs::create_dir_all(dir.join("training/checkpoints")).unwrap();
 
         let ctx = StageContext::new(
             PipelineStageId::TrainingPreparation,
-            &dir,
+            dir,
             Some("quality".into()),
         );
         let stage = TrainingPreparationStage::new("quality");
-        let result = stage
-            .execute(&ctx, tokio::sync::broadcast::channel(8).0)
-            .await;
-        assert!(result.is_ok());
+        assert!(stage.check_cached(&ctx).unwrap());
+        stage.validate_outputs(&ctx).unwrap();
 
-        // Check config was created
-        assert!(dir
-            .join("training")
-            .join("config")
-            .join("config.json")
-            .exists());
-        assert!(dir.join("training").join("checkpoints").exists());
-
-        let _ = std::fs::remove_dir_all(&dir);
+        image::RgbImage::new(7, 6)
+            .save(training_images.join("000002.jpg"))
+            .unwrap();
+        assert!(!stage.check_cached(&ctx).unwrap());
+        assert!(stage.validate_outputs(&ctx).is_err());
     }
 
     #[test]

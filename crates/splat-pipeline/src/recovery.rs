@@ -250,7 +250,7 @@ fn has_media_files(dir: &Path) -> bool {
 fn stage_label_zh(stage_id: &PipelineStageId) -> &'static str {
     match stage_id {
         PipelineStageId::MediaValidation => "媒体校验",
-        PipelineStageId::FrameExtraction => "帧提取",
+        PipelineStageId::FrameExtraction => "帧准备",
         PipelineStageId::ImagePreprocessing => "图像预处理",
         PipelineStageId::ColmapFeatureExtraction => "COLMAP 特征提取",
         PipelineStageId::ColmapMatching => "COLMAP 特征匹配",

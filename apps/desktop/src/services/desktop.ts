@@ -1,12 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
-import { openPath } from "@tauri-apps/plugin-opener";
 
 import type {
   CreateProjectRequest,
   CreateProjectResult,
+  DeleteProjectRequest,
+  DeleteProjectResult,
   EngineInfo,
   MediaAnalysis,
+  ImagePreview,
   PipelineControlResult,
   PipelineSnapshot,
   Project,
@@ -21,11 +23,18 @@ import type {
   AppSettings,
   DiagnosticExport,
   ResourceMetrics,
+  OpenProjectLocationRequest,
+  OpenProjectLocationResult,
+  OpenEngineLocationResult,
 } from "../types";
 
+export function isDesktopRuntime(): boolean {
+  return "__TAURI_INTERNALS__" in window;
+}
+
 function ensureDesktopRuntime(): void {
-  if (!("__TAURI_INTERNALS__" in window)) {
-    throw new Error("此操作需要在 MetaOrigin Splat 桌面应用中使用。");
+  if (!isDesktopRuntime()) {
+    throw new Error("此操作需要在 MetOrigin Splat 桌面应用中使用。");
   }
 }
 
@@ -57,7 +66,7 @@ export async function selectImageDirectory(): Promise<string | null> {
 export async function selectProjectDirectory(): Promise<string | null> {
   ensureDesktopRuntime();
   return open({
-    title: "打开 MetaOrigin Splat 项目",
+    title: "打开 MetOrigin Splat 项目",
     multiple: false,
     directory: true,
   });
@@ -88,11 +97,6 @@ export async function selectEngineExecutable(name: string): Promise<string | nul
   });
 }
 
-export async function openDirectory(path: string): Promise<void> {
-  ensureDesktopRuntime();
-  await openPath(path);
-}
-
 export async function confirmSafeCancel(stageLabel: string): Promise<boolean> {
   ensureDesktopRuntime();
   return confirm(
@@ -106,13 +110,46 @@ export async function confirmSafeCancel(stageLabel: string): Promise<boolean> {
   );
 }
 
+export async function confirmRerunStage(stageLabel: string): Promise<boolean> {
+  ensureDesktopRuntime();
+  return confirm(
+    `将从“${stageLabel}”重新运行，并重置该阶段及后续阶段的状态。已验证的更早阶段会保留。`,
+    {
+      title: "从指定阶段重新运行",
+      kind: "warning",
+      okLabel: "重置并开始",
+      cancelLabel: "取消",
+    },
+  );
+}
+
+export async function confirmRemoveRecentProject(projectName: string): Promise<boolean> {
+  ensureDesktopRuntime();
+  return confirm(`仅从最近项目列表移除“${projectName}”，磁盘中的项目文件会保留。`, {
+    title: "从最近项目移除",
+    kind: "warning",
+    okLabel: "移除记录",
+    cancelLabel: "取消",
+  });
+}
+
 export const desktopApi = {
   appVersion: () => invoke<string>("app_version"),
   checkEngines: () => invoke<EngineInfo[]>("check_engines"),
   listRecentProjects: () =>
     invoke<ProjectInfo[]>("list_recent_projects"),
+  removeRecentProject: (projectId: string, projectPath: string) =>
+    invoke<void>("remove_recent_project", { projectId, projectPath }),
+  deleteProject: (request: DeleteProjectRequest) =>
+    invoke<DeleteProjectResult>("delete_project", { request }),
+  openProjectLocation: (request: OpenProjectLocationRequest) =>
+    invoke<OpenProjectLocationResult>("open_project_location", { request }),
+  openEngineLocation: (engineName: string) =>
+    invoke<OpenEngineLocationResult>("open_engine_location", { engineName }),
   analyzeMedia: (path: string) =>
     invoke<MediaAnalysis>("analyze_media", { path }),
+  getImagePreviews: (path: string) =>
+    invoke<ImagePreview[]>("get_image_previews", { path }),
   preflightProject: (request: {
     sourcePath: string;
     projectRoot: string | null;
@@ -134,6 +171,8 @@ export const desktopApi = {
     invoke<PipelineSnapshot>("retry_stage", { projectPath, stageId }),
   rerunFromStage: (projectPath: string, stageId: string) =>
     invoke<PipelineSnapshot>("rerun_from_stage", { projectPath, stageId }),
+  acceptColmapQualityRisk: (projectPath: string) =>
+    invoke<PipelineSnapshot>("accept_colmap_quality_risk", { projectPath }),
   getPipelineEvents: (projectPath: string, filters?: { stageId?: string; severity?: string; search?: string; cursor?: number }) =>
     invoke<EventPage>("get_pipeline_events", {
       projectPath,
@@ -151,6 +190,8 @@ export const desktopApi = {
     invoke<void>("delete_checkpoint", { projectPath, iteration }),
   getProjectArtifacts: (projectPath: string) =>
     invoke<ArtifactSummary>("get_project_artifacts", { projectPath }),
+  ensureOutputDirectory: (projectPath: string) =>
+    invoke<string>("ensure_output_directory", { projectPath }),
   getFramePreview: (projectPath: string) =>
     invoke<FramePreview>("get_frame_preview", { projectPath }),
   getSparsePreviewPack: (projectPath: string) =>

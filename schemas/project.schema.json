@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://metorigin.dev/schemas/project.json",
-  "title": "MetaOrigin Splat Project",
-  "description": "Schema for MetaOrigin Splat project.json files",
+  "title": "MetOrigin Splat Project",
+  "description": "Schema for MetOrigin Splat project.json files",
   "type": "object",
   "required": [
     "schema_version",

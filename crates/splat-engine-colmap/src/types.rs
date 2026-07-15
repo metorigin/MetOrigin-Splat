@@ -54,6 +54,30 @@ impl Default for MatchingStrategy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MatchingOptions {
+    pub guided_matching: bool,
+    pub exhaustive_block_size: u32,
+    pub quadratic_overlap: bool,
+}
+
+impl Default for MatchingOptions {
+    fn default() -> Self {
+        Self {
+            guided_matching: false,
+            exhaustive_block_size: 50,
+            quadratic_overlap: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MapperKind {
+    Global,
+    Incremental,
+}
+
 /// Result of the feature extraction step.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FeatureExtractionResult {

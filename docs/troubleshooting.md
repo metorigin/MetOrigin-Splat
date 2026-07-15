@@ -2,7 +2,7 @@
 
 ## Error Architecture
 
-All errors in MetaOrigin Splat are converted to a unified `AppError` type before reaching the user. Raw exceptions, stack traces, panics, or segmentation faults are never displayed as default user-facing error messages.
+All errors in MetOrigin Splat are converted to a unified `AppError` type before reaching the user. Raw exceptions, stack traces, panics, or segmentation faults are never displayed as default user-facing error messages.
 
 ## Error Hierarchy
 

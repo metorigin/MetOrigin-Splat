@@ -1,6 +1,9 @@
 use std::path::Path;
+use std::time::Duration;
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
+use splat_process::{CommandSpec, ProcessRunner};
+use tokio_util::sync::CancellationToken;
 
 /// Metadata extracted from a video file via FFprobe.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -123,7 +126,77 @@ pub fn probe_video_with(ffprobe_path: &Path, path: &Path) -> AppResult<VideoMeta
         .retryable(false));
     }
 
-    let parsed: FfprobeOutput = serde_json::from_slice(&output.stdout).map_err(|e| {
+    parse_probe_output(&output.stdout, path)
+}
+
+/// Probe through the cancellable process runner with a 30-second timeout and
+/// an 8 MiB output ceiling.
+pub async fn probe_video_with_async(
+    ffprobe_path: &Path,
+    path: &Path,
+    cancellation: CancellationToken,
+) -> AppResult<VideoMetadata> {
+    if !path.exists() {
+        return Err(AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "File Not Found",
+            format!("The video file '{}' does not exist.", path.display()),
+        ));
+    }
+    let log_path = std::env::temp_dir().join(format!(
+        "metorigin-ffprobe-{}-{}.log",
+        std::process::id(),
+        chrono::Utc::now().timestamp_millis()
+    ));
+    let command = CommandSpec::new(
+        ffprobe_path,
+        vec![
+            "-v".into(),
+            "error".into(),
+            "-print_format".into(),
+            "json".into(),
+            "-show_format".into(),
+            "-show_streams".into(),
+            path.as_os_str().to_owned(),
+        ],
+        log_path,
+    )
+    .with_timeout(Duration::from_secs(30));
+    let captured = ProcessRunner::new()
+        .run_to_completion_capture(command, cancellation, 8 * 1024 * 1024)
+        .await?;
+    if captured.process.cancelled {
+        return Err(AppError::new(
+            "E-2104",
+            ErrorCategory::Engine,
+            "FFprobe Cancelled",
+            "Video metadata detection was cancelled.",
+        ));
+    }
+    if captured.process.timed_out {
+        return Err(AppError::new(
+            "E-2105",
+            ErrorCategory::Engine,
+            "FFprobe Timed Out",
+            "FFprobe did not finish within 30 seconds.",
+        )
+        .retryable(true));
+    }
+    if !captured.process.is_success() {
+        return Err(AppError::new(
+            "E-2102",
+            ErrorCategory::Engine,
+            "FFprobe Failed",
+            "FFprobe was unable to read the video file.",
+        )
+        .with_technical(String::from_utf8_lossy(&captured.stderr).to_string()));
+    }
+    parse_probe_output(&captured.stdout, path)
+}
+
+fn parse_probe_output(stdout: &[u8], path: &Path) -> AppResult<VideoMetadata> {
+    let parsed: FfprobeOutput = serde_json::from_slice(stdout).map_err(|e| {
         AppError::new(
             "E-2103",
             ErrorCategory::Engine,
@@ -153,14 +226,12 @@ pub fn probe_video_with(ffprobe_path: &Path, path: &Path) -> AppResult<VideoMeta
         ));
     }
 
-    // Parse frame rate: prefer r_frame_rate, fall back to avg_frame_rate
-    let fps = video_stream
-        .r_frame_rate
-        .as_deref()
-        .or(video_stream.avg_frame_rate.as_deref())
-        .map(parse_fraction)
-        .transpose()?
-        .unwrap_or(0.0);
+    // VFR-aware: use a valid average rate first. The nominal stream rate is
+    // only a fallback when the average is absent, zero or malformed.
+    let fps = select_frame_rate(
+        video_stream.avg_frame_rate.as_deref(),
+        video_stream.r_frame_rate.as_deref(),
+    )?;
 
     // Parse frame count (ffprobe uses string type here!)
     let frame_count: u64 = video_stream
@@ -211,6 +282,22 @@ pub fn probe_video_with(ffprobe_path: &Path, path: &Path) -> AppResult<VideoMeta
         codec,
         rotation,
     })
+}
+
+fn select_frame_rate(average: Option<&str>, nominal: Option<&str>) -> AppResult<f64> {
+    for value in [average, nominal].into_iter().flatten() {
+        if let Ok(parsed) = parse_fraction(value) {
+            if parsed.is_finite() && parsed > 0.0 {
+                return Ok(parsed);
+            }
+        }
+    }
+    if average.is_some() || nominal.is_some() {
+        return Err(invalid_fraction_error(
+            average.or(nominal).unwrap_or_default(),
+        ));
+    }
+    Ok(0.0)
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -307,6 +394,15 @@ mod tests {
     fn test_parse_fraction_with_whitespace() {
         let result = parse_fraction("  30000/1001  ").unwrap();
         assert!((result - 29.97).abs() < 0.01);
+    }
+
+    #[test]
+    fn average_frame_rate_is_preferred_and_invalid_average_falls_back() {
+        assert!(
+            (select_frame_rate(Some("24000/1001"), Some("30/1")).unwrap() - 23.976).abs() < 0.01
+        );
+        assert!((select_frame_rate(Some("0/0"), Some("30000/1001")).unwrap() - 29.97).abs() < 0.01);
+        assert!((select_frame_rate(Some("malformed"), Some("25/1")).unwrap() - 25.0).abs() < 0.01);
     }
 
     #[test]

@@ -1,8 +1,10 @@
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::pipeline::{PipelineStageId, StageState, StageStatus};
 use splat_domain::progress::TaskProgress;
+use splat_domain::project::{Project, ProjectSource};
 use tokio::sync::broadcast;
 
+use crate::image_input::scan_image_directory;
 use crate::stage::{PipelineStage, StageContext};
 
 /// Validates input media files before processing begins.
@@ -61,7 +63,33 @@ impl PipelineStage for MediaValidationStage {
         tracing::info!("Validating media in '{}'", ctx.paths.source_dir.display());
 
         let source_dir = &ctx.paths.source_dir;
-        let count = count_media_files(source_dir);
+        let project = read_project(ctx)?;
+        let count = if project
+            .as_ref()
+            .is_some_and(|project| matches!(project.source, Some(ProjectSource::ImageFolder(_))))
+        {
+            let scan = scan_image_directory(source_dir)?;
+            if scan.images.len() < 3 {
+                return Err(AppError::new(
+                    "E-1102",
+                    ErrorCategory::Media,
+                    "Not Enough Valid Images",
+                    format!(
+                        "递归扫描 source/ 后只有 {} 张有效图片；重建至少需要 3 张。",
+                        scan.images.len()
+                    ),
+                ));
+            }
+            tracing::info!(
+                valid_images = scan.images.len(),
+                invalid_images = scan.invalid_items.len(),
+                ignored_files = scan.ignored_count,
+                "validated recursive image source"
+            );
+            scan.images.len()
+        } else {
+            count_media_files(source_dir)
+        };
 
         if count == 0 {
             return Err(AppError::new(
@@ -86,6 +114,31 @@ impl PipelineStage for MediaValidationStage {
     fn validate_outputs(&self, _ctx: &StageContext) -> AppResult<()> {
         Ok(())
     }
+}
+
+fn read_project(ctx: &StageContext) -> AppResult<Option<Project>> {
+    let path = ctx.project_dir.join("project.json");
+    if !path.exists() {
+        return Ok(None);
+    }
+    let json = std::fs::read_to_string(path).map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Read Project",
+            "无法读取 project.json 以校验素材类型。",
+        )
+        .with_technical(error.to_string())
+    })?;
+    serde_json::from_str(&json).map(Some).map_err(|error| {
+        AppError::new(
+            "E-1103",
+            ErrorCategory::Media,
+            "Invalid Project Metadata",
+            "project.json 无法解析。",
+        )
+        .with_technical(error.to_string())
+    })
 }
 
 fn count_media_files(dir: &std::path::Path) -> usize {
@@ -117,6 +170,7 @@ fn count_media_files(dir: &std::path::Path) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use splat_domain::project::ImageFolderSource;
     use std::path::Path;
 
     #[tokio::test]
@@ -159,5 +213,36 @@ mod tests {
         std::fs::write(dir.join("readme.txt"), b"test").unwrap();
         assert_eq!(count_media_files(&dir), 2);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn validates_nested_image_project_with_shared_scanner() {
+        let root = tempfile::tempdir().unwrap();
+        let nested = root.path().join("source/中文");
+        std::fs::create_dir_all(&nested).unwrap();
+        for index in 0..3 {
+            image::RgbImage::from_pixel(8, 6, image::Rgb([index, 2, 3]))
+                .save_with_format(
+                    nested.join(format!("PHOTO_{index}.JPG")),
+                    image::ImageFormat::Jpeg,
+                )
+                .unwrap();
+        }
+        let mut project = Project::new("nested-images");
+        project.source = Some(ProjectSource::ImageFolder(ImageFolderSource {
+            folder_name: "photos".into(),
+            image_count: 3,
+            copied_to_project: true,
+        }));
+        std::fs::write(
+            root.path().join("project.json"),
+            serde_json::to_vec_pretty(&project).unwrap(),
+        )
+        .unwrap();
+        let ctx = StageContext::new(PipelineStageId::MediaValidation, root.path(), None);
+        MediaValidationStage::new()
+            .execute(&ctx, broadcast::channel(8).0)
+            .await
+            .unwrap();
     }
 }

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://metorigin.dev/schemas/event.json",
   "title": "Pipeline Event",
-  "description": "Schema for MetaOrigin Splat pipeline and process events",
+  "description": "Schema for MetOrigin Splat pipeline and process events",
   "type": "object",
   "required": ["type", "timestamp"],
   "properties": {

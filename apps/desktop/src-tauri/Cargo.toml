@@ -25,7 +25,9 @@ splat-hardware = { path = "../../../crates/splat-hardware" }
 splat-engine-ffmpeg = { path = "../../../crates/splat-engine-ffmpeg" }
 splat-engine-colmap = { path = "../../../crates/splat-engine-colmap" }
 splat-engine-brush = { path = "../../../crates/splat-engine-brush" }
+base64 = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
+tokio-util = { workspace = true }
 tracing.workspace = true
 chrono.workspace = true
 dirs-next = "2"

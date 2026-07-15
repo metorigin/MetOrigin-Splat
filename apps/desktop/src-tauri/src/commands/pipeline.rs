@@ -265,34 +265,27 @@ pub async fn get_pipeline_state(
     project_path: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<PipelineSnapshot, String> {
+    let requested_dir = project_path.map(PathBuf::from);
     let (active, project_dir) = {
         let inner = state
             .0
             .lock()
             .map_err(|_| "处理流程状态不可用，请重启应用后重试。".to_string())?;
-        (
-            inner
-                .active_pipeline
-                .as_ref()
-                .map(|active| active.orchestrator.clone()),
-            inner.project_dir.clone(),
-        )
+        (inner.active_pipeline.clone(), inner.project_dir.clone())
     };
 
-    if let Some(orchestrator) = active {
-        let state_snapshot = orchestrator.get_state().await;
-        let inner = state
-            .0
-            .lock()
-            .map_err(|_| "处理流程状态不可用，请重启应用后重试。".to_string())?;
-        let active = inner
-            .active_pipeline
+    if let Some(active) = active {
+        let targets_active = requested_dir
             .as_ref()
-            .ok_or_else(|| "活动流程状态已变化，请重试。".to_string())?;
-        return Ok(snapshot_from_active(active, state_snapshot));
+            .map(|requested| same_project_path(requested, &active.project_dir))
+            .unwrap_or(true);
+        if targets_active {
+            let state_snapshot = active.orchestrator.get_state().await;
+            return Ok(snapshot_from_active(&active, state_snapshot));
+        }
     }
 
-    let requested_dir = project_path.map(PathBuf::from).or(project_dir);
+    let requested_dir = requested_dir.or(project_dir);
     if let Some(project_dir) = requested_dir {
         return project_manager_for(&project_dir)
             .open_project(&project_dir)
@@ -361,7 +354,7 @@ pub fn rerun_from_stage(
         }
     }
     project.pipeline_state.current_stage = None;
-    project.pipeline_state.overall_progress = weighted_progress(&project.pipeline_state);
+    project.pipeline_state.refresh_overall_progress();
     project.current_stage = None;
     project.status = ProjectStatus::Ready;
     project.touch();
@@ -380,6 +373,30 @@ pub fn rerun_from_stage(
     })
 }
 
+#[tauri::command]
+pub fn accept_colmap_quality_risk(
+    project_path: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<PipelineSnapshot, String> {
+    {
+        let inner = state
+            .0
+            .lock()
+            .map_err(|_| "无法读取 Pipeline 状态，请重启应用后重试。".to_string())?;
+        if inner.active_pipeline.is_some() {
+            return Err("Pipeline 运行期间不能确认质量风险，请等待当前操作结束。".into());
+        }
+    }
+    let project_dir = PathBuf::from(&project_path);
+    splat_pipeline::colmap_quality::accept_colmap_quality_risk(&project_dir)
+        .map_err(|error| error.user_message_zh())?;
+    rerun_from_stage(
+        project_path,
+        format!("{:?}", PipelineStageId::ColmapValidation),
+        state,
+    )
+}
+
 fn parse_stage_id(value: &str) -> Option<PipelineStageId> {
     PipelineStageId::all()
         .iter()
@@ -387,59 +404,11 @@ fn parse_stage_id(value: &str) -> Option<PipelineStageId> {
         .find(|stage| format!("{stage:?}").eq_ignore_ascii_case(value))
 }
 
-fn weighted_progress(state: &PipelineState) -> f64 {
-    const PHASES: [(&[PipelineStageId], f64); 4] = [
-        (
-            &[
-                PipelineStageId::MediaValidation,
-                PipelineStageId::FrameExtraction,
-                PipelineStageId::ImagePreprocessing,
-            ],
-            0.08,
-        ),
-        (
-            &[
-                PipelineStageId::ColmapFeatureExtraction,
-                PipelineStageId::ColmapMatching,
-                PipelineStageId::ColmapMapping,
-                PipelineStageId::ColmapValidation,
-            ],
-            0.35,
-        ),
-        (
-            &[
-                PipelineStageId::TrainingPreparation,
-                PipelineStageId::BrushTraining,
-                PipelineStageId::ModelValidation,
-            ],
-            0.52,
-        ),
-        (
-            &[PipelineStageId::Export, PipelineStageId::PreviewGeneration],
-            0.05,
-        ),
-    ];
-    PHASES
-        .iter()
-        .map(|(stages, weight)| {
-            let progress = stages
-                .iter()
-                .map(|stage| {
-                    state
-                        .stages
-                        .get(stage)
-                        .map_or(0.0, |stage_state| match stage_state.status {
-                            StageStatus::Completed | StageStatus::Skipped => 1.0,
-                            StageStatus::Running => stage_state.progress.clamp(0.0, 1.0),
-                            _ => 0.0,
-                        })
-                })
-                .sum::<f64>()
-                / stages.len() as f64;
-            progress * weight
-        })
-        .sum::<f64>()
-        .clamp(0.0, 1.0)
+fn same_project_path(left: &Path, right: &Path) -> bool {
+    match (left.canonicalize(), right.canonicalize()) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => left == right,
+    }
 }
 
 fn persist_transient_status(project_dir: &Path, status: ProjectStatus) -> Result<(), String> {
@@ -482,7 +451,7 @@ async fn apply_control_completion(
         project.status = ProjectStatus::Cancelled;
     }
     state.current_stage = None;
-    state.overall_progress = weighted_progress(&state);
+    state.refresh_overall_progress();
     project.pipeline_state = state;
     project.current_stage = None;
     project.touch();
@@ -540,6 +509,7 @@ fn spawn_event_forwarder(
     sequence: Arc<AtomicU64>,
     project_dir: PathBuf,
 ) {
+    let log_retention_bytes = crate::commands::system::log_retention_bytes(&app_handle);
     tokio::spawn(async move {
         loop {
             let event = match events.recv().await {
@@ -643,6 +613,7 @@ fn spawn_event_forwarder(
                     metrics: envelope.clone(),
                     source_log: None,
                 },
+                log_retention_bytes,
             );
             let _ = app_handle.emit(
                 "pipeline://event",

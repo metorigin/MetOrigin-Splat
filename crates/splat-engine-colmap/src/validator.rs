@@ -2,6 +2,7 @@ use std::path::Path;
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 
+use crate::database::MatchGraphStats;
 use crate::types::{CameraInfo, DiagnosticLevel, ModelInfo};
 
 /// Options controlling model validation thresholds.
@@ -13,6 +14,13 @@ pub struct ValidationOptions {
     pub max_reprojection_error: f64,
     /// Minimum number of 3D points required. Default: 1000
     pub min_points: usize,
+    pub min_registered_images: usize,
+    pub min_track_length: f64,
+    pub min_component_coverage: f64,
+    pub max_video_missing_segment_rate: f64,
+    pub hard_min_registered_images: usize,
+    pub hard_min_points: usize,
+    pub hard_max_reprojection_error: f64,
 }
 
 impl Default for ValidationOptions {
@@ -21,8 +29,53 @@ impl Default for ValidationOptions {
             min_registration_rate: 0.5,
             max_reprojection_error: 3.0,
             min_points: 1000,
+            min_registered_images: 20,
+            min_track_length: 2.5,
+            min_component_coverage: 0.8,
+            max_video_missing_segment_rate: 0.2,
+            hard_min_registered_images: 3,
+            hard_min_points: 100,
+            hard_max_reprojection_error: 8.0,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QualityDecision {
+    Pass,
+    RequiresConfirmation,
+    Blocked,
+    AcceptedWithWarning,
+}
+
+impl Default for QualityDecision {
+    fn default() -> Self {
+        Self::Blocked
+    }
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct RegistrationSegment {
+    pub registered: bool,
+    pub start_index: usize,
+    pub end_index: usize,
+    pub start_name: String,
+    pub end_name: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct ValidationContext {
+    pub model_complete: bool,
+    pub missing_model_images: Vec<String>,
+    pub graph: MatchGraphStats,
+    pub ordered_input_names: Vec<String>,
+    pub registered_names: Vec<String>,
+    pub is_video: bool,
+    pub automatic_fallbacks_exhausted: bool,
+    pub accepted_for_current_model: bool,
+    pub model_hash: Option<String>,
 }
 
 /// Result of a single validation check.
@@ -43,10 +96,26 @@ pub struct ValidationCheck {
 pub struct ValidationReport {
     /// Whether all critical checks passed
     pub passed: bool,
+    #[serde(default)]
+    pub decision: QualityDecision,
     /// The model info that was validated
     pub model_info: ModelInfo,
     /// Individual check results
     pub checks: Vec<ValidationCheck>,
+    #[serde(default)]
+    pub largest_component_images: usize,
+    #[serde(default)]
+    pub largest_component_coverage: f64,
+    #[serde(default)]
+    pub registration_segments: Vec<RegistrationSegment>,
+    #[serde(default)]
+    pub largest_missing_segment: usize,
+    #[serde(default)]
+    pub automatic_fallbacks_exhausted: bool,
+    #[serde(default)]
+    pub missing_model_images: Vec<String>,
+    #[serde(default)]
+    pub model_hash: Option<String>,
 }
 
 impl ValidationReport {
@@ -88,94 +157,320 @@ impl ColmapValidator {
         total_input_images: usize,
         options: &ValidationOptions,
     ) -> ValidationReport {
-        let mut checks = Vec::new();
-        let mut all_passed = true;
-
-        // Check 1: Registered images count > 0
-        let has_images = model_info.registered_images > 0;
-        all_passed &= has_images;
-        checks.push(ValidationCheck {
-            name: "registered_images".into(),
-            passed: has_images,
-            detail: format!(
-                "{} / {} images registered",
-                model_info.registered_images, total_input_images
-            ),
-            severity: if has_images {
-                DiagnosticLevel::Info
-            } else {
-                DiagnosticLevel::Critical
+        Self::validate_detailed(
+            model_info,
+            total_input_images,
+            options,
+            &ValidationContext {
+                model_complete: true,
+                missing_model_images: Vec::new(),
+                graph: MatchGraphStats {
+                    total_images: total_input_images,
+                    verified_edges: total_input_images.saturating_sub(1),
+                    largest_component_images: total_input_images,
+                    largest_component_coverage: if total_input_images > 0 { 1.0 } else { 0.0 },
+                },
+                ordered_input_names: Vec::new(),
+                registered_names: Vec::new(),
+                is_video: false,
+                automatic_fallbacks_exhausted: true,
+                accepted_for_current_model: false,
+                model_hash: None,
             },
-        });
+        )
+    }
 
-        // Check 2: Registration rate
+    pub fn validate_detailed(
+        model_info: &ModelInfo,
+        total_input_images: usize,
+        options: &ValidationOptions,
+        context: &ValidationContext,
+    ) -> ValidationReport {
         let rate = if total_input_images > 0 {
             model_info.registered_images as f64 / total_input_images as f64
         } else {
             0.0
         };
+        let segments =
+            registration_segments(&context.ordered_input_names, &context.registered_names);
+        let largest_missing_segment = segments
+            .iter()
+            .filter(|segment| !segment.registered)
+            .map(|segment| segment.count)
+            .max()
+            .unwrap_or(0);
+        let missing_rate = if total_input_images > 0 {
+            largest_missing_segment as f64 / total_input_images as f64
+        } else {
+            1.0
+        };
+        let mut checks = Vec::new();
+        let mut hard_passed = true;
+        let mut recommended_passed = true;
+
+        push_check(
+            &mut checks,
+            "model_complete",
+            context.model_complete,
+            "Sparse model contains cameras, images, and points3D".into(),
+            true,
+        );
+        hard_passed &= context.model_complete;
+        let references_ok = context.missing_model_images.is_empty();
+        push_check(
+            &mut checks,
+            "model_image_references",
+            references_ok,
+            if references_ok {
+                "Every registered model image exists in the reconstruction image set".into()
+            } else {
+                format!(
+                    "{} registered model images are missing: {}",
+                    context.missing_model_images.len(),
+                    context
+                        .missing_model_images
+                        .iter()
+                        .take(5)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            },
+            true,
+        );
+        hard_passed &= references_ok;
+
+        let hard_images = model_info.registered_images >= options.hard_min_registered_images;
+        push_check(
+            &mut checks,
+            "hard_registered_images",
+            hard_images,
+            format!(
+                "{} / {} images registered (hard minimum: {})",
+                model_info.registered_images,
+                total_input_images,
+                options.hard_min_registered_images
+            ),
+            true,
+        );
+        hard_passed &= hard_images;
+        let hard_points = model_info.point_count >= options.hard_min_points;
+        push_check(
+            &mut checks,
+            "hard_point_count",
+            hard_points,
+            format!(
+                "{} 3D points (hard minimum: {})",
+                model_info.point_count, options.hard_min_points
+            ),
+            true,
+        );
+        hard_passed &= hard_points;
+        let hard_reprojection = model_info.mean_reprojection_error == 0.0
+            || model_info.mean_reprojection_error <= options.hard_max_reprojection_error;
+        push_check(
+            &mut checks,
+            "hard_reprojection_error",
+            hard_reprojection,
+            format!(
+                "{:.3}px mean reprojection error (hard maximum: {:.1}px)",
+                model_info.mean_reprojection_error, options.hard_max_reprojection_error
+            ),
+            true,
+        );
+        hard_passed &= hard_reprojection;
+
+        let recommended_images =
+            model_info.registered_images >= total_input_images.min(options.min_registered_images);
+        push_check(
+            &mut checks,
+            "registered_images",
+            recommended_images,
+            format!(
+                "{} / {} images registered (recommended minimum: {})",
+                model_info.registered_images,
+                total_input_images,
+                total_input_images.min(options.min_registered_images)
+            ),
+            false,
+        );
+        recommended_passed &= recommended_images;
         let rate_ok = rate >= options.min_registration_rate;
-        all_passed &= rate_ok;
-        checks.push(ValidationCheck {
-            name: "registration_rate".into(),
-            passed: rate_ok,
-            detail: format!(
-                "{:.1}% registration (threshold: {:.0}%)",
+        push_check(
+            &mut checks,
+            "registration_rate",
+            rate_ok,
+            format!(
+                "{:.1}% registration (recommended: {:.0}%)",
                 rate * 100.0,
                 options.min_registration_rate * 100.0
             ),
-            severity: if rate_ok {
-                DiagnosticLevel::Info
-            } else {
-                DiagnosticLevel::Warning
-            },
-        });
-
-        // Check 3: 3D point count
-        let has_enough_points = model_info.point_count >= options.min_points;
-        all_passed &= has_enough_points;
-        checks.push(ValidationCheck {
-            name: "point_count".into(),
-            passed: has_enough_points,
-            detail: format!(
-                "{} 3D points (minimum: {})",
+            false,
+        );
+        recommended_passed &= rate_ok;
+        let points_ok = model_info.point_count >= options.min_points;
+        push_check(
+            &mut checks,
+            "point_count",
+            points_ok,
+            format!(
+                "{} 3D points (recommended: {})",
                 model_info.point_count, options.min_points
             ),
-            severity: if has_enough_points {
-                DiagnosticLevel::Info
-            } else {
-                DiagnosticLevel::Warning
-            },
-        });
-
-        // Check 4: Reprojection error
-        let reproj_ok = if model_info.mean_reprojection_error > 0.0 {
-            model_info.mean_reprojection_error < options.max_reprojection_error
-        } else {
-            true // 0.0 means unknown, skip check
-        };
-        all_passed &= reproj_ok;
-        if model_info.mean_reprojection_error > 0.0 {
-            checks.push(ValidationCheck {
-                name: "reprojection_error".into(),
-                passed: reproj_ok,
-                detail: format!(
-                    "{:.3}px mean reprojection error (max: {:.1}px)",
-                    model_info.mean_reprojection_error, options.max_reprojection_error
+            false,
+        );
+        recommended_passed &= points_ok;
+        let track_ok = model_info.mean_track_length >= options.min_track_length;
+        push_check(
+            &mut checks,
+            "mean_track_length",
+            track_ok,
+            format!(
+                "{:.3} mean track length (recommended: {:.1})",
+                model_info.mean_track_length, options.min_track_length
+            ),
+            false,
+        );
+        recommended_passed &= track_ok;
+        let reprojection_ok = model_info.mean_reprojection_error > 0.0
+            && model_info.mean_reprojection_error <= options.max_reprojection_error;
+        push_check(
+            &mut checks,
+            "reprojection_error",
+            reprojection_ok,
+            format!(
+                "{:.3}px mean reprojection error (recommended maximum: {:.1}px)",
+                model_info.mean_reprojection_error, options.max_reprojection_error
+            ),
+            false,
+        );
+        recommended_passed &= reprojection_ok;
+        let component_ok =
+            context.graph.largest_component_coverage >= options.min_component_coverage;
+        push_check(
+            &mut checks,
+            "largest_match_component",
+            component_ok,
+            format!(
+                "{} / {} images in the largest verified match component ({:.1}%, recommended: {:.0}%)",
+                context.graph.largest_component_images,
+                context.graph.total_images,
+                context.graph.largest_component_coverage * 100.0,
+                options.min_component_coverage * 100.0
+            ),
+            false,
+        );
+        recommended_passed &= component_ok;
+        if context.is_video {
+            let continuity_ok = missing_rate <= options.max_video_missing_segment_rate;
+            push_check(
+                &mut checks,
+                "video_missing_segment",
+                continuity_ok,
+                format!(
+                    "Largest unregistered run: {} images ({:.1}%, recommended maximum: {:.0}%)",
+                    largest_missing_segment,
+                    missing_rate * 100.0,
+                    options.max_video_missing_segment_rate * 100.0
                 ),
-                severity: if reproj_ok {
-                    DiagnosticLevel::Info
-                } else {
-                    DiagnosticLevel::Warning
-                },
-            });
+                false,
+            );
+            recommended_passed &= continuity_ok;
         }
 
+        let decision = if !hard_passed {
+            QualityDecision::Blocked
+        } else if recommended_passed {
+            QualityDecision::Pass
+        } else if context.accepted_for_current_model {
+            QualityDecision::AcceptedWithWarning
+        } else {
+            QualityDecision::RequiresConfirmation
+        };
         ValidationReport {
-            passed: all_passed,
+            passed: matches!(
+                decision,
+                QualityDecision::Pass | QualityDecision::AcceptedWithWarning
+            ),
+            decision,
             model_info: model_info.clone(),
             checks,
+            largest_component_images: context.graph.largest_component_images,
+            largest_component_coverage: context.graph.largest_component_coverage,
+            registration_segments: segments,
+            largest_missing_segment,
+            automatic_fallbacks_exhausted: context.automatic_fallbacks_exhausted,
+            missing_model_images: context.missing_model_images.clone(),
+            model_hash: context.model_hash.clone(),
         }
+    }
+}
+
+fn push_check(
+    checks: &mut Vec<ValidationCheck>,
+    name: &str,
+    passed: bool,
+    detail: String,
+    blocking: bool,
+) {
+    checks.push(ValidationCheck {
+        name: name.into(),
+        passed,
+        detail,
+        severity: if passed {
+            DiagnosticLevel::Info
+        } else if blocking {
+            DiagnosticLevel::Critical
+        } else {
+            DiagnosticLevel::Warning
+        },
+    });
+}
+
+fn registration_segments(
+    ordered_input_names: &[String],
+    registered_names: &[String],
+) -> Vec<RegistrationSegment> {
+    if ordered_input_names.is_empty() {
+        return Vec::new();
+    }
+    let registered = registered_names
+        .iter()
+        .map(String::as_str)
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut segments = Vec::new();
+    let mut start = 0;
+    let mut current = registered.contains(ordered_input_names[0].as_str());
+    for index in 1..ordered_input_names.len() {
+        let value = registered.contains(ordered_input_names[index].as_str());
+        if value != current {
+            segments.push(make_segment(ordered_input_names, start, index - 1, current));
+            start = index;
+            current = value;
+        }
+    }
+    segments.push(make_segment(
+        ordered_input_names,
+        start,
+        ordered_input_names.len() - 1,
+        current,
+    ));
+    segments
+}
+
+fn make_segment(
+    names: &[String],
+    start: usize,
+    end: usize,
+    registered: bool,
+) -> RegistrationSegment {
+    RegistrationSegment {
+        registered,
+        start_index: start,
+        end_index: end,
+        start_name: names[start].clone(),
+        end_name: names[end].clone(),
+        count: end - start + 1,
     }
 }
 
@@ -264,7 +559,8 @@ mod tests {
         let info = sample_model_info(80, 100, 50000, 0.85);
         let report = ColmapValidator::validate(&info, 100, &ValidationOptions::default());
         assert!(report.passed);
-        assert_eq!(report.checks.len(), 4);
+        assert!(report.checks.len() >= 10);
+        assert_eq!(report.decision, QualityDecision::Pass);
     }
 
     #[test]
@@ -288,7 +584,7 @@ mod tests {
         let img_check = report
             .checks
             .iter()
-            .find(|c| c.name == "registered_images")
+            .find(|c| c.name == "hard_registered_images")
             .unwrap();
         assert!(!img_check.passed);
         assert_eq!(img_check.severity, DiagnosticLevel::Critical);
@@ -338,8 +634,41 @@ mod tests {
     fn test_validate_unknown_reprojection_error_skips() {
         let info = sample_model_info(80, 100, 50000, 0.0);
         let report = ColmapValidator::validate(&info, 100, &ValidationOptions::default());
-        // When error is 0.0 (unknown), reprojection check should be skipped
-        assert!(!report.checks.iter().any(|c| c.name == "reprojection_error"));
+        // Unknown error is not a hard failure, but it cannot satisfy the
+        // recommended quality threshold without explicit confirmation.
+        assert!(report
+            .checks
+            .iter()
+            .any(|c| c.name == "reprojection_error" && !c.passed));
+        assert_eq!(report.decision, QualityDecision::RequiresConfirmation);
+        assert!(!report.passed);
+    }
+
+    #[test]
+    fn accepted_warning_is_distinct_from_a_normal_pass() {
+        let info = sample_model_info(40, 100, 5000, 1.0);
+        let report = ColmapValidator::validate_detailed(
+            &info,
+            100,
+            &ValidationOptions::default(),
+            &ValidationContext {
+                model_complete: true,
+                missing_model_images: Vec::new(),
+                graph: MatchGraphStats {
+                    total_images: 100,
+                    verified_edges: 90,
+                    largest_component_images: 90,
+                    largest_component_coverage: 0.9,
+                },
+                ordered_input_names: Vec::new(),
+                registered_names: Vec::new(),
+                is_video: false,
+                automatic_fallbacks_exhausted: true,
+                accepted_for_current_model: true,
+                model_hash: Some("hash".into()),
+            },
+        );
+        assert_eq!(report.decision, QualityDecision::AcceptedWithWarning);
         assert!(report.passed);
     }
 

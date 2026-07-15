@@ -38,28 +38,40 @@ impl std::fmt::Display for ProjectId {
 
 /// Lifecycle status of a project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ProjectStatus {
     /// Project is being created (directory setup in progress)
+    #[serde(alias = "Creating")]
     Creating,
     /// Pipeline start has been accepted but execution has not begun yet
+    #[serde(alias = "Starting")]
     Starting,
     /// Project is ready and no pipeline is running
+    #[serde(alias = "Ready")]
     Ready,
     /// Pipeline is currently executing
+    #[serde(alias = "Running")]
     Running,
     /// A pause request is being applied to the active process
+    #[serde(alias = "Pausing")]
     Pausing,
     /// Pipeline has been paused by the user
+    #[serde(alias = "Paused")]
     Paused,
     /// A cancellation request is being applied to the active process
+    #[serde(alias = "Cancelling")]
     Cancelling,
     /// Pipeline execution was cancelled by the user
+    #[serde(alias = "Cancelled")]
     Cancelled,
     /// Persisted state is being validated after an interrupted run
+    #[serde(alias = "Recovering")]
     Recovering,
     /// All pipeline stages completed successfully
+    #[serde(alias = "Completed")]
     Completed,
     /// Pipeline finished with one or more failures
+    #[serde(alias = "Failed")]
     Failed,
 }
 
@@ -131,6 +143,12 @@ pub struct ProjectSettings {
     pub max_frames: u32,
     /// Maximum dimension of the long edge of extracted images
     pub max_long_edge: u32,
+    /// Maximum long edge used for COLMAP reconstruction input.
+    ///
+    /// A value of `0` is the legacy-compatible sentinel and resolves to
+    /// `max_long_edge`. Newly created projects persist the preset-specific
+    /// reconstruction resolution explicitly.
+    pub colmap_max_long_edge: u32,
     /// Optional custom frame extraction rate. `None` uses the selected preset.
     pub frame_fps: Option<f64>,
     /// Optional custom Brush iteration count. `None` uses the selected preset.
@@ -147,10 +165,23 @@ impl Default for ProjectSettings {
             preset: "balanced".to_string(),
             max_frames: 800,
             max_long_edge: 1920,
+            colmap_max_long_edge: 0,
             frame_fps: None,
             iterations: None,
             sh_degree: None,
             checkpoint_interval: None,
+        }
+    }
+}
+
+impl ProjectSettings {
+    /// Resolve the reconstruction resolution while keeping pre-field projects
+    /// on their original image size.
+    pub fn resolved_colmap_max_long_edge(&self) -> u32 {
+        if self.colmap_max_long_edge > 0 {
+            self.colmap_max_long_edge
+        } else {
+            self.max_long_edge
         }
     }
 }
@@ -290,5 +321,17 @@ mod tests {
         assert_eq!(format!("{}", ProjectStatus::Creating), "creating");
         assert_eq!(format!("{}", ProjectStatus::Completed), "completed");
         assert_eq!(format!("{}", ProjectStatus::Failed), "failed");
+    }
+
+    #[test]
+    fn project_status_serializes_lowercase_and_accepts_legacy_pascal_case() {
+        assert_eq!(
+            serde_json::to_string(&ProjectStatus::Running).unwrap(),
+            "\"running\""
+        );
+        assert_eq!(
+            serde_json::from_str::<ProjectStatus>("\"Running\"").unwrap(),
+            ProjectStatus::Running
+        );
     }
 }

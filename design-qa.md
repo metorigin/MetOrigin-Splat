@@ -1,65 +1,62 @@
-# MetaOrigin Splat UI Phase 2–6 Design QA
+# MetOrigin Splat 项目管理与状态联动 Design QA
 
-## Comparison target
+## 对照目标
 
-- Source visual truth: `.artifacts/ui-redesign/selected-option-3.png`
-- Implementation screenshot: `.artifacts/ui-redesign/screenshots/phase2-6-workspace-1440x1024.png`
-- Combined comparison: `.artifacts/ui-redesign/screenshots/comparison-reference-vs-phase2-6-1440x1024.png`
-- Responsive evidence: `.artifacts/ui-redesign/screenshots/phase2-6-workspace-1024x768.png`
-- Responsive drawer evidence: `.artifacts/ui-redesign/screenshots/phase2-6-preview-drawer-1024x768.png`
-- Wizard evidence: `.artifacts/ui-redesign/screenshots/phase2-wizard-1440x1024.png` and `.artifacts/ui-redesign/screenshots/phase2-wizard-1024x768.png`
-- State: dark desktop workspace, Fast project running COLMAP sparse mapping at 58%, real-artifact DTO values matching the technical spike.
-- Capture: Microsoft Edge through Playwright Core, device scale factor 1, browser console and page errors checked.
+- 视觉真值（新建向导）：`C:\Users\15582\AppData\Local\Temp\codex-clipboard-7d5b9412-8fd7-422c-9c1d-c39efc064578.png`
+- 视觉真值（时间线与质量区）：`C:\Users\15582\AppData\Local\Temp\codex-clipboard-d10c11b5-e12c-4d36-bfe5-f493ef7632ee.png`
+- 最终实现截图（1440×1024）：`.artifacts/design-qa/wizard-implementation-1440x1024-final.png`
+- 响应式实现截图（1024×768）：`.artifacts/design-qa/wizard-implementation-1024x768-current.png`
+- 状态：深色桌面工作区，新建项目向导第一步；时间线、质量操作和删除操作由自动化测试覆盖。
+- 浏览器：Codex 应用内浏览器，设备缩放 1，显式检查 1440×1024 与 1024×768。
 
-## Full-view comparison evidence
+## 全视图对照证据
 
-The source and implementation were normalized to 1440×1024 and placed in one comparison image. Both use the same major composition: fixed project rail, compact run header, central expandable timeline, right preview/quality column, bottom activity workbench, and fixed engine/resource status bar. Region proportions, dark palette, high-density controls, accent states, and primary action placement are materially aligned.
+参考图与最终 1440×1024 截图已在同一次视觉输入中对照。两者保持一致的固定项目栏、紧凑运行栏、居中的覆盖式向导、深色面板、粉红主操作和低饱和蓝灰辅助文字。向导宽度、顶栏高度、素材卡片并列结构、底部固定操作区和整体信息密度一致。
 
-Intentional product differences are accepted:
+参考图包含机器上的真实最近项目，最终浏览器截图使用空最近项目状态；这是数据差异，不是结构或视觉偏差。实现未复制参考图中的红色标注框，因为它属于问题标注而非产品界面。
 
-- Elapsed time and ETA remain “尚未测量” unless a reliable runtime value exists; the source mock's synthetic estimates were not copied.
-- The implementation groups all 12 technical stages under four user phases and only expands the selected phase, so its visible row count depends on real state.
-- The implementation exposes Checkpoint management and final Splat count in the quality region instead of the mock's speculative cache-comparison table.
+## 局部对照证据
 
-## Focused region evidence
+- 步骤条：已改为“步骤—连接线—步骤—连接线—步骤”五列。连接线只占独立网格列，不会穿过标签；当前步骤有蓝色实心圆点和 `aria-current="step"`，完成步骤使用 Phosphor `Check` 与绿色连接线。
+- 1024×768：页面 `scrollWidth` 与视口宽度均为 1024；三个步骤的边界均位于视口内，素材入口保持并列，底部操作区可见，没有横向溢出。
+- 字体与排版：沿用项目系统字体栈、紧凑字号、半粗标题和现有行高；没有主标签裁切或异常换行。
+- 间距与布局：沿用现有侧栏、运行栏、面板边框、圆角和紧凑间距 Token；向导圆点、标签与连接线对齐。
+- 颜色与 Token：深色背景、蓝色当前态、绿色完成态、粉红主操作、红色危险操作均复用现有语义色。
+- 图像与图标：界面不存在占位位图、emoji、手写 SVG 或 CSS 图标；所有界面图标均来自 Phosphor。
+- 文案：步骤、质量操作、删除确认、空 Checkpoint 和错误反馈均使用明确的中文产品文案；未知数据继续显示“尚未测量”。
 
-- Preview: the implementation renders a Three.js point cloud from preview DTO coordinates and colors, plus camera frusta derived from COLMAP quaternion poses. Grid and camera distribution are visually comparable to the source.
-- Quality: `196 / 266`, `73.7%`, `28,365`, `0.715 px`, `500 step`, and `70,035` are aligned in a compact two-column metric grid.
-- Activity: the event table, severity marks, filters, search, and detail pane preserve the source's dense bottom-workbench hierarchy.
-- Responsive: at 1024×768 the project rail collapses to icons, timeline and activity remain visible, and preview/quality moves into a keyboard-accessible right drawer instead of becoming unreachable.
-- Wizard: the three-step progress header, two source choices, persistent footer actions, and 1024 layout remain within the viewport without horizontal overflow.
+## 交互与状态验证
 
-## Required fidelity surfaces
+- 浏览器中打开三步新建向导，检查两个素材入口、禁用的“下一步”、当前步骤语义和 1440/1024 响应式布局。
+- Pipeline Snapshot 按项目保存；旧的运行中 sequence 和项目打开产生的 sequence 0 已有回归测试。
+- 当前 Stage 改变时会自动选中并展开所属 Phase；完成、跳过、准备、运行、暂停、取消和失败状态均有确定的阶段聚合与文案。
+- “打开输出目录”始终可点击；“打开 PLY”在缺失或校验失败时给出原因，成功时加载应用内预览；Checkpoint 空状态和数量始终可进入。
+- 左侧项目菜单和顶部“操作”菜单均提供定位、移除最近记录和永久删除；永久删除使用普通二次确认，不再要求输入项目名称，后端继续验证路径、项目 ID、活动任务和保护目录。
+- 项目、输出、Checkpoint、诊断包和引擎位置全部通过 Rust 后端的语义白名单打开，不再授予 WebView 任意本地路径 Scope；失效项目会提示“项目目录已移动或删除”，由用户确认后再移除最近记录。
+- 侧栏项目行采用“图标 + 名称/紧凑状态/时间 + 菜单”结构，长名称单行省略但保持最高宽度优先级，完整技术 Stage 仅通过 Tooltip 展示。
+- 自动化覆盖删除确认、按钮状态、Phase 聚合、PLY 状态、真实媒体元数据显示和旧快照拒绝。
 
-- Fonts and typography: system UI font stack, compact 10–14 px working text, semibold headings, line-height, truncation, and hierarchy match the desktop-tool target. No clipped primary labels were observed.
-- Spacing and layout rhythm: sidebar width, top/status bar heights, panel gutters, one-pixel borders, compact radii, and dense table rows are consistent with the source. The 1024 drawer preserves access without shrinking the preview below a useful size.
-- Colors and tokens: near-black surfaces, blue active selection, pink/red primary/destructive actions, green success, muted blue-gray copy, and border contrast map consistently to semantic CSS tokens.
-- Image and asset fidelity: there are no placeholder raster assets, emoji, custom SVG, or CSS-drawn icons. UI icons use Phosphor; preview imagery is WebGL-rendered from pipeline artifact data.
-- Copy and content: labels use product-specific Chinese terminology and unknown runtime values say “尚未测量”; no speculative metrics are shown as facts.
+## 控制台检查
 
-## Comparison history
+最终刷新后没有产生新的浏览器控制台错误。浏览器会话中保留了修复前的历史 Tauri 事件监听错误；增加桌面运行时检测后，普通 Vite 预览不再尝试注册 Tauri 事件。原生 Tauri debug 构建通过。
 
-1. Initial 1024×768 capture exposed a P1: the preview and quality inspector was hidden by the responsive breakpoint with no alternate access.
-2. Fixed by adding “预览与质量” and “Checkpoint” responsive actions, a modal right drawer, backdrop, close control, and responsive grid rows.
-3. Post-fix evidence: `phase2-6-workspace-1024x768.png` and `phase2-6-preview-drawer-1024x768.png` show the controls and complete inspector content.
-4. Initial preview used camera-position ticks only (P2 versus the source's camera frusta). The backend now returns forward/up pose vectors derived from COLMAP quaternion rotation, and the viewer renders wire frusta. Post-fix evidence is the latest 1440×1024 workspace screenshot.
+## 对照迭代历史
+
+1. P1：原步骤条使用每个步骤内部的伪元素画线，连接线会穿过文字且窄宽度难以对齐。已替换为显式五列布局；最终 1440×1024 与 1024×768 截图显示连接线只位于步骤之间。
+2. P1：时间线最初只根据首次打开项目时的 `current_stage` 展开，实时 Snapshot 切换 Stage 时不会联动。已改为监听实时 `currentStage`；阶段选择与 Phase 展开现在使用同一快照源。
+3. P2：项目详情加载生成的 sequence 0 `ready` 快照存在覆盖较新运行快照的风险。Reducer 现在拒绝该旧快照，同时允许活动任务退出后的合法终态快照落地，并增加回归测试。
+4. P2：普通 Vite 预览会尝试监听 Tauri 事件并产生控制台错误。已增加桌面桥接检测；最终刷新未产生新错误。
+5. P2：永久删除保护仅依赖进程当前目录，无法稳定覆盖开发仓库。已增加编译期仓库根目录保护及单元测试。
+6. P1：前端直接调用 Tauri `openPath` 会被静态 Scope 拒绝，所有 `D:\...` 本地项目均无法打开。已改为后端校验项目身份、Canonical 路径及项目内边界后调用原生 opener，并移除 WebView 的本地路径 opener 权限。
+7. P1：侧栏把完整技术 Stage 放在独立自动宽度列，状态与相对时间会挤掉项目名称。已改为紧凑生命周期状态，名称使用 `minmax(0, 1fr)` 获得剩余宽度并单行省略。
 
 ## Findings
 
-No actionable P0, P1, or P2 findings remain in the compared states.
-
-## Primary interactions tested
-
-- Select a recent project and load the unified workspace.
-- Expand/select the active phase and render artifact-driven stage state.
-- Open the three-step new-project wizard.
-- Open and close the 1024 preview/quality drawer.
-- Render real-preview DTO data in Three.js without console or page errors.
-- Unit tests cover video-analysis display and run/pause/resume/cancellation button state routing.
+没有剩余可执行的 P0、P1 或 P2 视觉与核心交互问题。
 
 ## Follow-up polish
 
-- P3: lazy-load Three.js to reduce the current production chunk warning.
-- P3: add more screenshot states for warning/error tabs and settings sub-tabs as the visual regression suite grows.
+- P3：按路由懒加载 Three.js，消除当前生产构建的 chunk-size 警告。
+- P3：后续真实 Pipeline 运行时补充菜单打开、删除确认、完成时间线和质量区的原生截图回归。
 
 final result: passed

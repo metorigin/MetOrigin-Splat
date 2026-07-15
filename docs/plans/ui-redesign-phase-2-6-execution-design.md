@@ -1,4 +1,4 @@
-# MetaOrigin Splat UI Phase 2–6 详细执行设计
+# MetOrigin Splat UI Phase 2–6 详细执行设计
 
 ## 1. 目标与边界
 

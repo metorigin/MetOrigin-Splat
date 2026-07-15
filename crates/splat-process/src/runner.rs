@@ -15,6 +15,13 @@ use crate::handle::ProcessHandle;
 use crate::log_writer::LogWriter;
 use crate::parser::CompositeParser;
 
+#[derive(Debug, Clone)]
+pub struct CapturedProcessResult {
+    pub process: ProcessResult,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
+
 /// Unified process runner for all external engines.
 ///
 /// Launches external processes (FFmpeg, COLMAP, Brush) and provides:
@@ -209,6 +216,121 @@ impl ProcessRunner {
         }
     }
 
+    /// Execute a command while capturing bounded stdout/stderr. Cancellation,
+    /// timeout handling and process-tree termination are identical to the
+    /// streaming runner.
+    pub async fn run_to_completion_capture(
+        &self,
+        spec: CommandSpec,
+        cancellation: CancellationToken,
+        max_output_bytes: usize,
+    ) -> AppResult<CapturedProcessResult> {
+        let started = std::time::Instant::now();
+        let log_path = spec.log_file.to_string_lossy().to_string();
+        let mut handle = self.execute(spec).await?;
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        loop {
+            tokio::select! {
+                _ = cancellation.cancelled() => {
+                    self.cancel(&mut handle).await?;
+                    return Ok(CapturedProcessResult {
+                        process: ProcessResult {
+                            exit_code: None,
+                            cancelled: true,
+                            timed_out: false,
+                            duration_ms: started.elapsed().as_millis() as u64,
+                            log_path: Some(log_path),
+                        },
+                        stdout,
+                        stderr,
+                    });
+                }
+                event = handle.events.recv() => {
+                    match event {
+                        Ok(ProcessEvent::StdoutLine { line, .. }) => {
+                            if let Err(error) = append_captured_line(
+                                &mut stdout,
+                                &line,
+                                max_output_bytes.saturating_sub(stderr.len()),
+                            ) {
+                                self.cancel(&mut handle).await?;
+                                return Err(error);
+                            }
+                        }
+                        Ok(ProcessEvent::StderrLine { line, .. }) => {
+                            if let Err(error) = append_captured_line(
+                                &mut stderr,
+                                &line,
+                                max_output_bytes.saturating_sub(stdout.len()),
+                            ) {
+                                self.cancel(&mut handle).await?;
+                                return Err(error);
+                            }
+                        }
+                        Ok(ProcessEvent::Exited { code, .. }) => {
+                            return Ok(CapturedProcessResult {
+                                process: ProcessResult {
+                                    exit_code: Some(code),
+                                    cancelled: false,
+                                    timed_out: false,
+                                    duration_ms: started.elapsed().as_millis() as u64,
+                                    log_path: Some(log_path),
+                                },
+                                stdout,
+                                stderr,
+                            });
+                        }
+                        Ok(ProcessEvent::Cancelled { .. }) => {
+                            return Ok(CapturedProcessResult {
+                                process: ProcessResult {
+                                    exit_code: None,
+                                    cancelled: true,
+                                    timed_out: false,
+                                    duration_ms: started.elapsed().as_millis() as u64,
+                                    log_path: Some(log_path),
+                                },
+                                stdout,
+                                stderr,
+                            });
+                        }
+                        Ok(ProcessEvent::TimedOut { .. }) => {
+                            return Ok(CapturedProcessResult {
+                                process: ProcessResult {
+                                    exit_code: None,
+                                    cancelled: false,
+                                    timed_out: true,
+                                    duration_ms: started.elapsed().as_millis() as u64,
+                                    log_path: Some(log_path),
+                                },
+                                stdout,
+                                stderr,
+                            });
+                        }
+                        Ok(ProcessEvent::Started { .. } | ProcessEvent::Progress(_)) => {}
+                        Err(broadcast::error::RecvError::Lagged(_)) => {
+                            self.cancel(&mut handle).await?;
+                            return Err(AppError::new(
+                                "E-2103",
+                                ErrorCategory::Engine,
+                                "Captured Process Output Lagged",
+                                "The process produced output faster than it could be captured safely.",
+                            ));
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            return Err(AppError::new(
+                                "E-2103",
+                                ErrorCategory::Engine,
+                                "Process Monitoring Failed",
+                                "The external process event stream closed before a result was reported.",
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Cancel a running process.
     ///
     /// On Windows, uses `taskkill /T /F` to terminate the entire process tree.
@@ -247,6 +369,21 @@ impl ProcessRunner {
     pub fn subscribe(&self) -> broadcast::Receiver<ProcessEvent> {
         self.event_sender.subscribe()
     }
+}
+
+fn append_captured_line(buffer: &mut Vec<u8>, line: &str, limit: usize) -> AppResult<()> {
+    let required = line.len().saturating_add(1);
+    if buffer.len().saturating_add(required) > limit {
+        return Err(AppError::new(
+            "E-2106",
+            ErrorCategory::Engine,
+            "Process Output Limit Exceeded",
+            format!("The process produced more than {limit} bytes of captured output."),
+        ));
+    }
+    buffer.extend_from_slice(line.as_bytes());
+    buffer.push(b'\n');
+    Ok(())
 }
 
 impl Default for ProcessRunner {
@@ -724,5 +861,82 @@ mod tests {
 
         assert!(result.cancelled);
         assert_eq!(result.exit_code, None);
+    }
+
+    #[tokio::test]
+    async fn test_capture_enforces_combined_output_limit() {
+        let runner = ProcessRunner::new();
+        let (cmd, args) = if cfg!(target_os = "windows") {
+            (
+                "cmd.exe",
+                vec!["/C", "for /L %i in (1,1,20) do @echo 1234567890"],
+            )
+        } else {
+            ("sh", vec!["-c", "yes 1234567890 | head -n 20"])
+        };
+        let spec = CommandSpec::new(cmd, args, test_log_path("capture-limit"));
+
+        let error = runner
+            .run_to_completion_capture(spec, CancellationToken::new(), 32)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.code, "E-2106");
+    }
+
+    #[tokio::test]
+    async fn test_capture_reports_timeout_and_terminates_process() {
+        let runner = ProcessRunner::new();
+        let (cmd, args) = if cfg!(target_os = "windows") {
+            ("ping.exe", vec!["-n", "10", "127.0.0.1"])
+        } else {
+            ("sleep", vec!["10"])
+        };
+        let spec = CommandSpec::new(cmd, args, test_log_path("capture-timeout"))
+            .with_timeout(std::time::Duration::from_millis(100));
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            runner.run_to_completion_capture(spec, CancellationToken::new(), 1024),
+        )
+        .await
+        .expect("capture should observe the process timeout")
+        .unwrap();
+
+        assert!(result.process.timed_out);
+        assert!(!result.process.cancelled);
+        assert_eq!(result.process.exit_code, None);
+    }
+
+    #[tokio::test]
+    async fn test_capture_honors_cancellation_token() {
+        let runner = ProcessRunner::new();
+        let (cmd, args) = if cfg!(target_os = "windows") {
+            (
+                "powershell.exe",
+                vec!["-NoProfile", "-Command", "Start-Sleep -Seconds 60"],
+            )
+        } else {
+            ("sleep", vec!["60"])
+        };
+        let spec = CommandSpec::new(cmd, args, test_log_path("capture-cancel"));
+        let cancellation = CancellationToken::new();
+        let trigger = cancellation.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            trigger.cancel();
+        });
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            runner.run_to_completion_capture(spec, cancellation, 1024),
+        )
+        .await
+        .expect("capture cancellation should terminate the process")
+        .unwrap();
+
+        assert!(result.process.cancelled);
+        assert!(!result.process.timed_out);
+        assert_eq!(result.process.exit_code, None);
     }
 }

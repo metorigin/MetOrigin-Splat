@@ -1,4 +1,4 @@
-//! Project management for MetaOrigin Splat.
+//! Project management for MetOrigin Splat.
 //!
 //! Handles creation, opening, saving, validation, and migration of
 //! `.splat-project` directories.

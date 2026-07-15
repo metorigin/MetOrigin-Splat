@@ -1,8 +1,8 @@
-# MetaOrigin Splat
+# MetOrigin Splat
 
 > An open-source desktop application for turning photos and videos into Gaussian Splats using local compute.
 
-MetaOrigin Splat is a Windows-first desktop application that automatically converts videos or photos into viewable and exportable 3D Gaussian Splatting scenes — all running locally, no Python environment required, no data uploaded to the cloud.
+MetOrigin Splat is a Windows-first desktop application that automatically converts videos or photos into viewable and exportable 3D Gaussian Splatting scenes — all running locally, no Python environment required, no data uploaded to the cloud.
 
 ## Tech Pipeline
 

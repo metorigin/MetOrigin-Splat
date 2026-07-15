@@ -27,3 +27,9 @@ uuid = { version = "1", features = ["v7", "serde"] }
 tracing = "0.1"
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+kamadak-exif = "0.6"
+walkdir = "2"
+base64 = "0.22"
+jpeg-decoder = "0.3"
+sha2 = "0.10"

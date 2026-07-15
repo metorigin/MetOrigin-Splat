@@ -1,4 +1,4 @@
-# MetaOrigin Splat UI 重设计实施计划
+# MetOrigin Splat UI 重设计实施计划
 
 ## 1. 设计基线
 
@@ -79,7 +79,7 @@
 
 #### A1. 品牌与折叠按钮
 
-- Logo 和“MetaOrigin Splat”点击后返回项目库默认视图。
+- Logo 和“MetOrigin Splat”点击后返回项目库默认视图。
 - 汉堡按钮在 1440 视口切换 232/64 px，在 1024 视口打开或关闭覆盖式项目栏。
 - 折叠状态保存在本机 UI 设置中，不写入项目文件。
 - 图标按钮必须提供中文 Tooltip 和可见焦点样式。

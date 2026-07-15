@@ -1,4 +1,4 @@
-//! FFmpeg engine adapter for MetaOrigin Splat.
+//! FFmpeg engine adapter for MetOrigin Splat.
 //!
 //! Detects FFmpeg availability, reads video metadata via FFprobe,
 //! calculates frame extraction parameters, executes extraction,
@@ -16,5 +16,5 @@ pub use manifest::{validate_frames, write_manifest_atomic, FrameEntry, FrameMani
 pub use plan::{
     load_builtin_preset, plan_extraction, ExtractionPlan, FrameExtractionPreset, Preset,
 };
-pub use probe::{probe_video, probe_video_with, VideoMetadata};
+pub use probe::{probe_video, probe_video_with, probe_video_with_async, VideoMetadata};
 pub use progress::FfmpegFrameParser;

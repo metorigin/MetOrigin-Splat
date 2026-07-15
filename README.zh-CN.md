@@ -1,8 +1,8 @@
-# MetaOrigin Splat
+# MetOrigin Splat
 
 > 一款开源、本地运行、无需配置 Python 环境的 Gaussian Splatting 桌面应用，将视频或照片自动转换为可查看和导出的三维场景。
 
-MetaOrigin Splat 是一款 Windows 优先的开源桌面应用。它使用本地计算资源，将视频或照片自动转换为 Gaussian Splatting 三维场景。全流程本地运行，不上传任何用户素材，无需配置 Python 或 Conda 环境。
+MetOrigin Splat 是一款 Windows 优先的开源桌面应用。它使用本地计算资源，将视频或照片自动转换为 Gaussian Splatting 三维场景。全流程本地运行，不上传任何用户素材，无需配置 Python 或 Conda 环境。
 
 ## 技术链路
 

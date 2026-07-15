@@ -1,4 +1,4 @@
-//! External process runner for MetaOrigin Splat.
+//! External process runner for MetOrigin Splat.
 //!
 //! Provides a unified interface for launching, monitoring, and cancelling
 //! external processes (FFmpeg, COLMAP, Brush) with:
@@ -27,4 +27,4 @@ pub use fake::FakeProcessRunner;
 pub use handle::ProcessHandle;
 pub use log_writer::LogWriter;
 pub use parser::{CompositeParser, PercentageParser, ProgressParser};
-pub use runner::ProcessRunner;
+pub use runner::{CapturedProcessResult, ProcessRunner};

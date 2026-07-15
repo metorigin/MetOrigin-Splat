@@ -27,7 +27,7 @@ export const PRESET_LABELS: Record<string, string> = {
 
 export const STAGE_LABELS: Record<PipelineStageId, string> = {
   MediaValidation: "媒体校验",
-  FrameExtraction: "帧提取",
+  FrameExtraction: "帧准备",
   ImagePreprocessing: "图像预处理",
   ColmapFeatureExtraction: "COLMAP 特征提取",
   ColmapMatching: "COLMAP 特征匹配",

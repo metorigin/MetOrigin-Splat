@@ -22,7 +22,7 @@ jobs:
       - id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          name: MetaOrigin Splat ${{ github.ref_name }}
+          name: MetOrigin Splat ${{ github.ref_name }}
           body_path: CHANGELOG.md
           draft: true
           prerelease: true

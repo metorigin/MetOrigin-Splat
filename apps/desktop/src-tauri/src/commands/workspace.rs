@@ -7,6 +7,49 @@ use splat_domain::project::ProjectStatus;
 use splat_domain::{PipelineStageId, StageStatus};
 use splat_engine_brush::{CheckpointScanner, ExportManager};
 use splat_project::ProjectManager;
+use tauri_plugin_opener::OpenerExt;
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenProjectLocationRequest {
+    project_id: String,
+    project_path: String,
+    target_type: String,
+    relative_path: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct OpenProjectLocationResult {
+    opened: bool,
+    missing: bool,
+    target_type: String,
+    message: Option<String>,
+}
+
+trait LocationOpener {
+    fn open_directory(&self, path: &Path) -> Result<(), String>;
+    fn reveal_file(&self, path: &Path) -> Result<(), String>;
+}
+
+struct TauriLocationOpener<'a> {
+    app_handle: &'a tauri::AppHandle,
+}
+
+impl LocationOpener for TauriLocationOpener<'_> {
+    fn open_directory(&self, path: &Path) -> Result<(), String> {
+        self.app_handle
+            .opener()
+            .open_path(path.to_string_lossy(), None::<String>)
+            .map_err(|error| format!("无法打开目录：{error}"))
+    }
+
+    fn reveal_file(&self, path: &Path) -> Result<(), String> {
+        self.app_handle
+            .opener()
+            .reveal_item_in_dir(path)
+            .map_err(|error| format!("无法在资源管理器中定位文件：{error}"))
+    }
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PipelineEventRecord {
@@ -72,6 +115,8 @@ pub struct ArtifactSummary {
     total_images: Option<u64>,
     sparse_points: Option<u64>,
     mean_reprojection_error: Option<f64>,
+    colmap_validation: Option<serde_json::Value>,
+    colmap_attempts: Vec<serde_json::Value>,
     splat_count: Option<u64>,
 }
 
@@ -126,12 +171,17 @@ pub struct PlyPreview {
     points: Vec<PreviewPoint>,
 }
 
-pub fn append_pipeline_event(project_dir: &Path, record: &PipelineEventRecord) {
+pub fn append_pipeline_event(
+    project_dir: &Path,
+    record: &PipelineEventRecord,
+    retention_bytes: u64,
+) {
     let logs = project_dir.join("logs");
     if std::fs::create_dir_all(&logs).is_err() {
         return;
     }
     let path = logs.join("events.jsonl");
+    let _ = trim_jsonl_log(&path, retention_bytes);
     let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -142,6 +192,29 @@ pub fn append_pipeline_event(project_dir: &Path, record: &PipelineEventRecord) {
     if let Ok(json) = serde_json::to_string(record) {
         let _ = writeln!(file, "{json}");
     }
+}
+
+fn trim_jsonl_log(path: &Path, retention_bytes: u64) -> std::io::Result<()> {
+    let metadata = match std::fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    if retention_bytes == 0 || metadata.len() <= retention_bytes {
+        return Ok(());
+    }
+    let keep_bytes = (retention_bytes / 2).max(1);
+    let start = metadata.len().saturating_sub(keep_bytes);
+    let mut file = File::open(path)?;
+    file.seek(SeekFrom::Start(start))?;
+    let mut tail = Vec::new();
+    file.read_to_end(&mut tail)?;
+    if start > 0 {
+        if let Some(newline) = tail.iter().position(|byte| *byte == b'\n') {
+            tail.drain(..=newline);
+        }
+    }
+    std::fs::write(path, tail)
 }
 
 #[tauri::command]
@@ -328,6 +401,7 @@ pub fn restore_checkpoint(
 pub fn get_project_artifacts(project_path: String) -> Result<ArtifactSummary, String> {
     let project_dir = valid_project_dir(&project_path)?;
     let colmap_json = read_json(&project_dir.join("colmap/result.json"));
+    let colmap_validation = read_json(&project_dir.join("colmap/validation.json"));
     let output_json = read_json(&project_dir.join("output/manifest.json"));
     let checkpoints = checkpoint_summaries(&project_dir)?;
     Ok(ArtifactSummary {
@@ -348,9 +422,97 @@ pub fn get_project_artifacts(project_path: String) -> Result<ArtifactSummary, St
         mean_reprojection_error: colmap_json
             .as_ref()
             .and_then(|value| value["mean_reprojection_error"].as_f64()),
+        colmap_attempts: colmap_json
+            .as_ref()
+            .and_then(|value| value["attempts"].as_array())
+            .cloned()
+            .unwrap_or_default(),
+        colmap_validation,
         splat_count: output_json
             .as_ref()
             .and_then(|value| value["ply"]["vertex_count"].as_u64()),
+    })
+}
+
+#[tauri::command]
+pub fn ensure_output_directory(project_path: String) -> Result<String, String> {
+    let project_dir = valid_project_dir(&project_path)?;
+    let output_dir = project_dir.join("output");
+    std::fs::create_dir_all(&output_dir)
+        .map_err(|_| "创建输出目录失败，请检查项目目录权限。".to_string())?;
+    Ok(output_dir.to_string_lossy().to_string())
+}
+
+/// Opens a validated project directory or reveals an artifact in Explorer.
+/// This command deliberately performs the path authorization in Rust instead
+/// of granting the WebView a broad filesystem opener scope.
+#[tauri::command]
+pub fn open_project_location(
+    request: OpenProjectLocationRequest,
+    app_handle: tauri::AppHandle,
+) -> Result<OpenProjectLocationResult, String> {
+    let opener = TauriLocationOpener {
+        app_handle: &app_handle,
+    };
+    open_project_location_with(&request, &opener)
+}
+
+fn open_project_location_with(
+    request: &OpenProjectLocationRequest,
+    opener: &dyn LocationOpener,
+) -> Result<OpenProjectLocationResult, String> {
+    let requested_root = PathBuf::from(&request.project_path);
+    if !requested_root.exists() {
+        return Ok(OpenProjectLocationResult {
+            opened: false,
+            missing: true,
+            target_type: request.target_type.clone(),
+            message: Some("项目目录已移动或删除。".into()),
+        });
+    }
+
+    let project_dir = validated_project_identity(&requested_root, &request.project_id)?;
+    let (target, reveal) = match request.target_type.as_str() {
+        "project_root" => (project_dir.clone(), false),
+        "output_directory" => {
+            let output = project_dir.join("output");
+            std::fs::create_dir_all(&output)
+                .map_err(|_| "无法创建输出目录，请检查项目目录权限。".to_string())?;
+            let canonical = output
+                .canonicalize()
+                .map_err(|_| "无法解析输出目录。".to_string())?;
+            ensure_inside_project(&project_dir, &canonical)?;
+            (canonical, false)
+        }
+        "artifact" => {
+            let relative = request
+                .relative_path
+                .as_deref()
+                .ok_or_else(|| "打开产物时必须提供相对路径。".to_string())?;
+            let candidate = checked_relative_path(&project_dir, relative)?;
+            if !candidate.exists() {
+                return Err("要定位的项目文件不存在。".into());
+            }
+            let canonical = candidate
+                .canonicalize()
+                .map_err(|_| "无法解析项目文件位置。".to_string())?;
+            ensure_inside_project(&project_dir, &canonical)?;
+            let reveal = canonical.is_file();
+            (canonical, reveal)
+        }
+        _ => return Err("未知的项目位置目标。".into()),
+    };
+
+    if reveal {
+        opener.reveal_file(&target)?;
+    } else {
+        opener.open_directory(&target)?;
+    }
+    Ok(OpenProjectLocationResult {
+        opened: true,
+        missing: false,
+        target_type: request.target_type.clone(),
+        message: None,
     })
 }
 
@@ -463,6 +625,58 @@ fn valid_project_dir(project_path: &str) -> Result<PathBuf, String> {
         return Err("项目路径无效。".into());
     }
     Ok(path)
+}
+
+fn validated_project_identity(project_path: &Path, project_id: &str) -> Result<PathBuf, String> {
+    let metadata = std::fs::symlink_metadata(project_path)
+        .map_err(|_| "项目目录已移动或删除。".to_string())?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err("项目路径不是有效的项目目录。".into());
+    }
+    let canonical = project_path
+        .canonicalize()
+        .map_err(|_| "无法解析项目目录。".to_string())?;
+    if !canonical.join("project.json").is_file() {
+        return Err("目标目录不是有效的 MetOrigin 项目。".into());
+    }
+    let manager = ProjectManager::new(
+        canonical
+            .parent()
+            .ok_or_else(|| "项目目录无效。".to_string())?
+            .to_path_buf(),
+    );
+    let project = manager
+        .open_project(&canonical)
+        .map_err(|error| error.user_message_zh())?;
+    if project.id.to_string() != project_id {
+        return Err("项目身份校验失败，已拒绝打开位置。".into());
+    }
+    Ok(canonical)
+}
+
+fn checked_relative_path(project_dir: &Path, relative: &str) -> Result<PathBuf, String> {
+    use std::path::Component;
+
+    let relative_path = Path::new(relative);
+    if relative_path.as_os_str().is_empty()
+        || relative_path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err("项目文件路径超出项目目录。".into());
+    }
+    Ok(project_dir.join(relative_path))
+}
+
+fn ensure_inside_project(project_dir: &Path, target: &Path) -> Result<(), String> {
+    if target == project_dir || target.starts_with(project_dir) {
+        Ok(())
+    } else {
+        Err("项目文件路径超出项目目录。".into())
+    }
 }
 
 fn secure_relative(project_dir: &Path, relative: &str) -> Result<PathBuf, String> {
@@ -737,6 +951,169 @@ fn parse_ply_preview(path: &Path, relative: &str, limit: usize) -> Result<PlyPre
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn jsonl_retention_keeps_only_complete_tail_records() {
+        let root =
+            std::env::temp_dir().join(format!("metorigin-jsonl-retention-{}", std::process::id()));
+        let path = root.join("events.jsonl");
+        std::fs::create_dir_all(&root).unwrap();
+        let records = (0..20)
+            .map(|index| format!(r#"{{"index":{index},"message":"event-{index}"}}"#))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        std::fs::write(&path, records).unwrap();
+
+        trim_jsonl_log(&path, 160).unwrap();
+
+        let trimmed = std::fs::read_to_string(&path).unwrap();
+        assert!(trimmed.len() <= 160);
+        assert!(!trimmed.is_empty());
+        assert!(trimmed
+            .lines()
+            .all(|line| serde_json::from_str::<serde_json::Value>(line).is_ok()));
+        let _ = std::fs::remove_dir_all(root);
+    }
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct FakeLocationOpener {
+        opened: Mutex<Vec<PathBuf>>,
+        revealed: Mutex<Vec<PathBuf>>,
+    }
+
+    impl LocationOpener for FakeLocationOpener {
+        fn open_directory(&self, path: &Path) -> Result<(), String> {
+            self.opened.lock().unwrap().push(path.to_path_buf());
+            Ok(())
+        }
+
+        fn reveal_file(&self, path: &Path) -> Result<(), String> {
+            self.revealed.lock().unwrap().push(path.to_path_buf());
+            Ok(())
+        }
+    }
+
+    fn location_test_project(label: &str) -> (PathBuf, splat_domain::project::Project) {
+        let root = std::env::temp_dir().join(format!(
+            "metorigin-location-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let project_dir = root.join("project.splat-project");
+        std::fs::create_dir_all(&project_dir).unwrap();
+        let project = splat_domain::project::Project::new("位置测试");
+        ProjectManager::new(root)
+            .save_project(&project, &project_dir)
+            .unwrap();
+        (project_dir, project)
+    }
+
+    #[test]
+    fn project_location_opens_root_creates_output_and_reveals_artifact() {
+        let (project_dir, project) = location_test_project("valid");
+        let opener = FakeLocationOpener::default();
+        let mut request = OpenProjectLocationRequest {
+            project_id: project.id.to_string(),
+            project_path: project_dir.to_string_lossy().to_string(),
+            target_type: "project_root".into(),
+            relative_path: None,
+        };
+        assert!(
+            open_project_location_with(&request, &opener)
+                .unwrap()
+                .opened
+        );
+
+        request.target_type = "output_directory".into();
+        assert!(
+            open_project_location_with(&request, &opener)
+                .unwrap()
+                .opened
+        );
+        assert!(project_dir.join("output").is_dir());
+
+        let artifact = project_dir.join("output/scene.ply");
+        std::fs::write(&artifact, b"ply").unwrap();
+        request.target_type = "artifact".into();
+        request.relative_path = Some("output/scene.ply".into());
+        assert!(
+            open_project_location_with(&request, &opener)
+                .unwrap()
+                .opened
+        );
+        assert_eq!(opener.opened.lock().unwrap().len(), 2);
+        assert_eq!(
+            opener.revealed.lock().unwrap().as_slice(),
+            &[artifact.canonicalize().unwrap()]
+        );
+        let _ = std::fs::remove_dir_all(project_dir.parent().unwrap());
+    }
+
+    #[test]
+    fn project_location_rejects_wrong_identity_and_parent_traversal() {
+        let (project_dir, project) = location_test_project("invalid");
+        let opener = FakeLocationOpener::default();
+        let mut request = OpenProjectLocationRequest {
+            project_id: "wrong-id".into(),
+            project_path: project_dir.to_string_lossy().to_string(),
+            target_type: "project_root".into(),
+            relative_path: None,
+        };
+        assert!(open_project_location_with(&request, &opener).is_err());
+
+        request.project_id = project.id.to_string();
+        request.target_type = "artifact".into();
+        request.relative_path = Some("../outside.txt".into());
+        assert!(open_project_location_with(&request, &opener).is_err());
+        assert!(opener.opened.lock().unwrap().is_empty());
+        assert!(opener.revealed.lock().unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(project_dir.parent().unwrap());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn project_location_rejects_symlink_escape_when_supported() {
+        use std::os::windows::fs::symlink_file;
+
+        let (project_dir, project) = location_test_project("symlink");
+        let outside = project_dir.parent().unwrap().join("outside.ply");
+        std::fs::write(&outside, b"ply").unwrap();
+        let link = project_dir.join("escaped.ply");
+        if symlink_file(&outside, &link).is_err() {
+            let _ = std::fs::remove_dir_all(project_dir.parent().unwrap());
+            return;
+        }
+        let request = OpenProjectLocationRequest {
+            project_id: project.id.to_string(),
+            project_path: project_dir.to_string_lossy().to_string(),
+            target_type: "artifact".into(),
+            relative_path: Some("escaped.ply".into()),
+        };
+        assert!(open_project_location_with(&request, &FakeLocationOpener::default()).is_err());
+        let _ = std::fs::remove_dir_all(project_dir.parent().unwrap());
+    }
+
+    #[test]
+    fn missing_project_location_returns_actionable_result() {
+        let opener = FakeLocationOpener::default();
+        let request = OpenProjectLocationRequest {
+            project_id: "missing".into(),
+            project_path: std::env::temp_dir()
+                .join("metorigin-project-does-not-exist")
+                .to_string_lossy()
+                .to_string(),
+            target_type: "project_root".into(),
+            relative_path: None,
+        };
+        let result = open_project_location_with(&request, &opener).unwrap();
+        assert!(result.missing);
+        assert!(!result.opened);
+    }
 
     #[test]
     fn parses_binary_brush_ply_positions_and_colors() {

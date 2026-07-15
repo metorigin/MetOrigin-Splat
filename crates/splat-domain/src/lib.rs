@@ -1,4 +1,4 @@
-//! Core domain types for MetaOrigin Splat.
+//! Core domain types for MetOrigin Splat.
 //!
 //! This crate defines the fundamental data structures used throughout the
 //! application: projects, pipelines, stages, errors, hardware profiles,

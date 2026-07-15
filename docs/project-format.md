@@ -2,7 +2,7 @@
 
 ## Overview
 
-The project is the single source of truth in MetaOrigin Splat. All business state is stored in a project directory on disk. The UI reads from and writes to the project through the core layer; it never maintains independent business state.
+The project is the single source of truth in MetOrigin Splat. All business state is stored in a project directory on disk. The UI reads from and writes to the project through the core layer; it never maintains independent business state.
 
 ## Project Directory Structure
 

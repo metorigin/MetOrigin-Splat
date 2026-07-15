@@ -49,7 +49,51 @@ export interface ArtifactSummary {
   total_images: number | null;
   sparse_points: number | null;
   mean_reprojection_error: number | null;
+  colmap_validation: ColmapValidationReport | null;
+  colmap_attempts: ColmapAttemptResult[];
   splat_count: number | null;
+}
+
+export type ColmapQualityDecision =
+  | "pass"
+  | "requires_confirmation"
+  | "blocked"
+  | "accepted_with_warning";
+
+export interface ColmapValidationCheck {
+  name: string;
+  passed: boolean;
+  detail: string;
+  severity: "Info" | "Warning" | "Critical" | string;
+}
+
+export interface ColmapValidationReport {
+  passed: boolean;
+  decision: ColmapQualityDecision;
+  checks: ColmapValidationCheck[];
+  largest_component_images: number;
+  largest_component_coverage: number;
+  largest_missing_segment: number;
+  automatic_fallbacks_exhausted: boolean;
+  model_hash: string | null;
+}
+
+export interface ColmapAttemptResult {
+  id: string;
+  matching_strategy: string;
+  mapper: string;
+  status: "completed" | "failed";
+  model_path: string | null;
+  model_info: {
+    cameras: number;
+    images: number;
+    registered_images: number;
+    point_count: number;
+    observations: number;
+    mean_track_length: number;
+    mean_reprojection_error: number;
+  } | null;
+  error: string | null;
 }
 
 export interface FramePreview {
@@ -96,4 +140,25 @@ export interface PlyPreview {
   size_bytes: number;
   gaussian_compatible: boolean;
   points: PreviewPoint[];
+}
+
+export type ProjectLocationTarget = "project_root" | "output_directory" | "artifact";
+
+export interface OpenProjectLocationRequest {
+  projectId: string;
+  projectPath: string;
+  targetType: ProjectLocationTarget;
+  relativePath?: string;
+}
+
+export interface OpenProjectLocationResult {
+  opened: boolean;
+  missing: boolean;
+  target_type: ProjectLocationTarget;
+  message: string | null;
+}
+
+export interface OpenEngineLocationResult {
+  opened: boolean;
+  engine_name: string;
 }

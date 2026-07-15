@@ -1,10 +1,12 @@
+use std::collections::BTreeMap;
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_process::CommandSpec;
 
 use crate::result::ColmapResult;
-use crate::types::ModelInfo;
+use crate::types::{MapperKind, ModelInfo};
 
 /// Executes and analyzes COLMAP sparse reconstruction (mapper).
 ///
@@ -39,10 +41,33 @@ impl ColmapMapper {
         output_path: &Path,
         log_path: &Path,
     ) -> CommandSpec {
+        self.build_command_with_kind(
+            MapperKind::Incremental,
+            database_path,
+            image_path,
+            output_path,
+            log_path,
+        )
+    }
+
+    pub fn build_command_with_kind(
+        &self,
+        kind: MapperKind,
+        database_path: &Path,
+        image_path: &Path,
+        output_path: &Path,
+        log_path: &Path,
+    ) -> CommandSpec {
         CommandSpec::new(
             &self.colmap_path,
             vec![
-                "mapper".into(),
+                match kind {
+                    MapperKind::Global => "global_mapper",
+                    MapperKind::Incremental => "mapper",
+                }
+                .into(),
+                "--log_target".into(),
+                "stderr".into(),
                 "--database_path".into(),
                 database_path.as_os_str().to_owned(),
                 "--image_path".into(),
@@ -150,6 +175,13 @@ impl ColmapMapper {
             model_path: best_dir.clone(),
             observations: Some(best_info.observations),
             mean_reprojection_error: Some(best_info.mean_reprojection_error),
+            mean_track_length: Some(best_info.mean_track_length),
+            strategy_version: 0,
+            source_kind: None,
+            selected_attempt_id: None,
+            selection_reason: None,
+            attempts: Vec::new(),
+            automatic_fallbacks_exhausted: false,
         })
     }
 
@@ -241,6 +273,276 @@ fn find_model_directories(sparse_dir: &Path) -> AppResult<Vec<PathBuf>> {
     Ok(dirs)
 }
 
+/// Read the registered image names from a binary or text COLMAP model without
+/// requiring a second model conversion process.
+pub fn read_registered_image_names(model_dir: &Path) -> AppResult<Vec<String>> {
+    let binary = model_dir.join("images.bin");
+    let text = model_dir.join("images.txt");
+    let mut names = if binary.is_file() {
+        read_binary_image_names(&binary)?
+    } else if text.is_file() {
+        read_text_image_names(&text)?
+    } else {
+        return Err(AppError::new(
+            "E-3031",
+            ErrorCategory::Filesystem,
+            "COLMAP Image Model Missing",
+            "The selected sparse model has neither images.bin nor images.txt.",
+        ));
+    };
+    names.sort();
+    names.dedup();
+    Ok(names)
+}
+
+fn read_binary_image_names(path: &Path) -> AppResult<Vec<String>> {
+    Ok(read_binary_image_camera_pairs(path)?
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect())
+}
+
+fn read_binary_image_camera_pairs(path: &Path) -> AppResult<Vec<(String, u32)>> {
+    let mut reader = BufReader::new(std::fs::File::open(path).map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Read COLMAP Images",
+            "Could not open images.bin.",
+        )
+        .with_technical(error.to_string())
+    })?);
+    let count = read_u64(&mut reader)? as usize;
+    let mut names = Vec::with_capacity(count);
+    for _ in 0..count {
+        let mut fixed = [0_u8; 64];
+        reader.read_exact(&mut fixed).map_err(binary_model_error)?;
+        let camera_id = u32::from_le_bytes(fixed[60..64].try_into().expect("fixed slice"));
+        let mut name = Vec::new();
+        loop {
+            let mut byte = [0_u8; 1];
+            reader.read_exact(&mut byte).map_err(binary_model_error)?;
+            if byte[0] == 0 {
+                break;
+            }
+            name.push(byte[0]);
+        }
+        let points = read_u64(&mut reader)?;
+        let offset = points.checked_mul(24).ok_or_else(|| {
+            AppError::new(
+                "E-3032",
+                ErrorCategory::Engine,
+                "Invalid COLMAP Image Observations",
+                "An images.bin observation count exceeds the supported size.",
+            )
+        })?;
+        reader
+            .seek(SeekFrom::Current(offset as i64))
+            .map_err(binary_model_error)?;
+        names.push((String::from_utf8_lossy(&name).to_string(), camera_id));
+    }
+    Ok(names)
+}
+
+fn read_text_image_names(path: &Path) -> AppResult<Vec<String>> {
+    Ok(read_text_image_camera_pairs(path)?
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect())
+}
+
+fn read_text_image_camera_pairs(path: &Path) -> AppResult<Vec<(String, u32)>> {
+    let reader = BufReader::new(std::fs::File::open(path).map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Read COLMAP Images",
+            "Could not open images.txt.",
+        )
+        .with_technical(error.to_string())
+    })?);
+    let mut names = Vec::new();
+    let mut expect_image = true;
+    for line in reader.lines() {
+        let line = line.map_err(binary_model_error)?;
+        let trimmed = line.trim();
+        if trimmed.starts_with('#') {
+            continue;
+        }
+        if expect_image {
+            if trimmed.is_empty() {
+                continue;
+            }
+            let fields = trimmed.split_whitespace().collect::<Vec<_>>();
+            if fields.len() >= 10 {
+                let camera_id = fields[8].parse::<u32>().map_err(|error| {
+                    AppError::new(
+                        "E-3032",
+                        ErrorCategory::Engine,
+                        "Invalid COLMAP Text Model",
+                        "An images.txt camera ID is invalid.",
+                    )
+                    .with_technical(error.to_string())
+                })?;
+                names.push((fields[9..].join(" "), camera_id));
+            }
+            expect_image = false;
+        } else {
+            // The POINTS2D line is allowed to be empty when an image has no
+            // observations. It still terminates the preceding image record.
+            expect_image = true;
+        }
+    }
+    Ok(names)
+}
+
+/// Validate that every registered model image exists and that its decoded
+/// dimensions exactly match the camera produced by image_undistorter.
+pub fn validate_model_image_dimensions(model_dir: &Path, image_dir: &Path) -> AppResult<usize> {
+    let cameras = read_camera_dimensions(model_dir)?;
+    let binary = model_dir.join("images.bin");
+    let text = model_dir.join("images.txt");
+    let images = if binary.is_file() {
+        read_binary_image_camera_pairs(&binary)?
+    } else if text.is_file() {
+        read_text_image_camera_pairs(&text)?
+    } else {
+        return Err(AppError::new(
+            "E-3031",
+            ErrorCategory::Filesystem,
+            "COLMAP Image Model Missing",
+            "The training model has neither images.bin nor images.txt.",
+        ));
+    };
+    for (name, camera_id) in &images {
+        let expected = cameras.get(camera_id).ok_or_else(|| {
+            AppError::new(
+                "E-3032",
+                ErrorCategory::Engine,
+                "COLMAP Camera Reference Missing",
+                format!("Image '{name}' references missing camera {camera_id}."),
+            )
+        })?;
+        let path = image_dir.join(name);
+        let actual = image::image_dimensions(&path).map_err(|error| {
+            AppError::new(
+                "E-1103",
+                ErrorCategory::Media,
+                "Training Image Missing or Invalid",
+                format!("Could not decode '{}': {error}", path.display()),
+            )
+        })?;
+        if actual != *expected {
+            return Err(AppError::new(
+                "E-4001",
+                ErrorCategory::Engine,
+                "Training Camera Dimension Mismatch",
+                format!(
+                    "Image '{name}' is {}x{} but camera {camera_id} is {}x{}.",
+                    actual.0, actual.1, expected.0, expected.1
+                ),
+            ));
+        }
+    }
+    Ok(images.len())
+}
+
+fn read_camera_dimensions(model_dir: &Path) -> AppResult<BTreeMap<u32, (u32, u32)>> {
+    let binary = model_dir.join("cameras.bin");
+    if binary.is_file() {
+        let mut reader = BufReader::new(std::fs::File::open(binary).map_err(binary_model_error)?);
+        let count = read_u64(&mut reader)? as usize;
+        let mut cameras = BTreeMap::new();
+        for _ in 0..count {
+            let camera_id = read_u32(&mut reader)?;
+            let model_id = read_i32(&mut reader)?;
+            let width = read_u64(&mut reader)?;
+            let height = read_u64(&mut reader)?;
+            let parameter_count = camera_parameter_count(model_id).ok_or_else(|| {
+                AppError::new(
+                    "E-3032",
+                    ErrorCategory::Engine,
+                    "Unsupported COLMAP Camera Model",
+                    format!("Camera model ID {model_id} is not recognized."),
+                )
+            })?;
+            reader
+                .seek(SeekFrom::Current((parameter_count * 8) as i64))
+                .map_err(binary_model_error)?;
+            let width = u32::try_from(width).map_err(|_| binary_dimension_error(width))?;
+            let height = u32::try_from(height).map_err(|_| binary_dimension_error(height))?;
+            cameras.insert(camera_id, (width, height));
+        }
+        return Ok(cameras);
+    }
+    let text = model_dir.join("cameras.txt");
+    let reader = BufReader::new(std::fs::File::open(text).map_err(binary_model_error)?);
+    let mut cameras = BTreeMap::new();
+    for line in reader.lines() {
+        let line = line.map_err(binary_model_error)?;
+        let fields = line.split_whitespace().collect::<Vec<_>>();
+        if fields.is_empty() || fields[0].starts_with('#') || fields.len() < 4 {
+            continue;
+        }
+        if let (Ok(id), Ok(width), Ok(height)) = (
+            fields[0].parse::<u32>(),
+            fields[2].parse::<u32>(),
+            fields[3].parse::<u32>(),
+        ) {
+            cameras.insert(id, (width, height));
+        }
+    }
+    Ok(cameras)
+}
+
+fn camera_parameter_count(model_id: i32) -> Option<usize> {
+    match model_id {
+        0 => Some(3),
+        1 | 2 | 8 => Some(4),
+        3 | 7 | 9 => Some(5),
+        4 | 5 => Some(8),
+        6 | 10 => Some(12),
+        _ => None,
+    }
+}
+
+fn read_u32(reader: &mut impl Read) -> AppResult<u32> {
+    let mut bytes = [0_u8; 4];
+    reader.read_exact(&mut bytes).map_err(binary_model_error)?;
+    Ok(u32::from_le_bytes(bytes))
+}
+
+fn read_i32(reader: &mut impl Read) -> AppResult<i32> {
+    let mut bytes = [0_u8; 4];
+    reader.read_exact(&mut bytes).map_err(binary_model_error)?;
+    Ok(i32::from_le_bytes(bytes))
+}
+
+fn binary_dimension_error(value: u64) -> AppError {
+    AppError::new(
+        "E-3032",
+        ErrorCategory::Engine,
+        "Invalid COLMAP Camera Dimension",
+        format!("Camera dimension {value} exceeds the supported range."),
+    )
+}
+
+fn read_u64(reader: &mut impl Read) -> AppResult<u64> {
+    let mut bytes = [0_u8; 8];
+    reader.read_exact(&mut bytes).map_err(binary_model_error)?;
+    Ok(u64::from_le_bytes(bytes))
+}
+
+fn binary_model_error(error: std::io::Error) -> AppError {
+    AppError::new(
+        "E-3032",
+        ErrorCategory::Engine,
+        "Invalid COLMAP Binary Model",
+        "The selected COLMAP model is truncated or malformed.",
+    )
+    .with_technical(error.to_string())
+}
+
 // ─── Parsing helpers ──────────────────────────────────────────────────────
 
 /// Parse an integer field from model_analyzer output.
@@ -294,6 +596,42 @@ fn parse_float_field(output: &str, field: &str) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
+    fn write_binary_camera(file: &mut std::fs::File, camera_id: u32, width: u64, height: u64) {
+        file.write_all(&camera_id.to_le_bytes()).unwrap();
+        file.write_all(&2_i32.to_le_bytes()).unwrap(); // SIMPLE_RADIAL
+        file.write_all(&width.to_le_bytes()).unwrap();
+        file.write_all(&height.to_le_bytes()).unwrap();
+        for parameter in [8.0_f64, width as f64 / 2.0, height as f64 / 2.0, 0.0] {
+            file.write_all(&parameter.to_le_bytes()).unwrap();
+        }
+    }
+
+    fn write_binary_image(file: &mut std::fs::File, image_id: u32, camera_id: u32, name: &str) {
+        file.write_all(&image_id.to_le_bytes()).unwrap();
+        for value in [1.0_f64, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] {
+            file.write_all(&value.to_le_bytes()).unwrap();
+        }
+        file.write_all(&camera_id.to_le_bytes()).unwrap();
+        file.write_all(name.as_bytes()).unwrap();
+        file.write_all(&[0]).unwrap();
+        file.write_all(&0_u64.to_le_bytes()).unwrap();
+    }
+
+    fn write_binary_dimension_model(model_dir: &Path, images: &[(&str, u32)]) {
+        std::fs::create_dir_all(model_dir).unwrap();
+        let mut cameras = std::fs::File::create(model_dir.join("cameras.bin")).unwrap();
+        cameras.write_all(&1_u64.to_le_bytes()).unwrap();
+        write_binary_camera(&mut cameras, 7, 8, 6);
+        let mut model_images = std::fs::File::create(model_dir.join("images.bin")).unwrap();
+        model_images
+            .write_all(&(images.len() as u64).to_le_bytes())
+            .unwrap();
+        for (index, (name, camera_id)) in images.iter().enumerate() {
+            write_binary_image(&mut model_images, index as u32 + 1, *camera_id, name);
+        }
+    }
 
     fn sample_output() -> &'static str {
         "Cameras: 703\nImages: 703\nRegistered images: 703\nPoints: 226238\nObservations: 3563506\nMean track length: 15.751138\nMean observations per image: 5068.998578\nMean reprojection error: 0.854211px\n"
@@ -436,5 +774,59 @@ I20260713 22:51:29.237327 93340 model.cc:456] Mean reprojection error: 0.717093p
         assert_eq!(result[0].file_name().unwrap(), "0");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validates_binary_training_model_dimensions_and_registered_subset() {
+        let temporary = tempfile::tempdir().unwrap();
+        let model = temporary.path().join("model");
+        let images = temporary.path().join("images");
+        write_binary_dimension_model(&model, &[("registered.jpg", 7)]);
+        std::fs::create_dir_all(&images).unwrap();
+        image::RgbImage::new(8, 6)
+            .save(images.join("registered.jpg"))
+            .unwrap();
+        image::RgbImage::new(8, 6)
+            .save(images.join("not-registered.jpg"))
+            .unwrap();
+
+        assert_eq!(validate_model_image_dimensions(&model, &images).unwrap(), 1);
+    }
+
+    #[test]
+    fn rejects_binary_training_image_dimension_mismatch() {
+        let temporary = tempfile::tempdir().unwrap();
+        let model = temporary.path().join("model");
+        let images = temporary.path().join("images");
+        write_binary_dimension_model(&model, &[("registered.jpg", 7)]);
+        std::fs::create_dir_all(&images).unwrap();
+        image::RgbImage::new(7, 6)
+            .save(images.join("registered.jpg"))
+            .unwrap();
+
+        let error = validate_model_image_dimensions(&model, &images).unwrap_err();
+        assert_eq!(error.code, "E-4001");
+        assert!(error.user_message.contains("8x6"));
+    }
+
+    #[test]
+    fn reads_text_model_with_empty_points2d_lines() {
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join("images.txt");
+        std::fs::write(
+            &path,
+            concat!(
+                "1 1 0 0 0 0 0 0 1 first.jpg\n",
+                "\n",
+                "2 1 0 0 0 0 0 0 1 second.jpg\n",
+                "\n"
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_text_image_camera_pairs(&path).unwrap(),
+            vec![("first.jpg".into(), 1), ("second.jpg".into(), 1)]
+        );
     }
 }

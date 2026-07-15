@@ -29,6 +29,7 @@ export interface ProjectSettings {
   preset: string;
   max_frames: number;
   max_long_edge: number;
+  colmap_max_long_edge: number;
   frame_fps: number | null;
   iterations: number | null;
   sh_degree: number | null;
@@ -68,6 +69,17 @@ export interface CreateProjectResult {
   start_after_create: boolean;
 }
 
+export interface DeleteProjectRequest {
+  projectId: string;
+  projectPath: string;
+}
+
+export interface DeleteProjectResult {
+  project_id: string;
+  deleted_path: string;
+  removed_from_recent: boolean;
+}
+
 /** Preset option presented in the UI. */
 export interface PresetEstimate {
   id: string;
@@ -76,6 +88,7 @@ export interface PresetEstimate {
   fps: number;
   max_frames: number;
   target_long_edge: number;
+  colmap_long_edge: number;
   iterations: number;
   sh_degree: number;
   checkpoint_interval: number;
@@ -112,8 +125,17 @@ export interface MediaAnalysis {
 export interface ImageSetMetadata {
   image_count: number;
   ignored_count: number;
+  invalid_count: number;
   total_size_bytes: number;
   formats: Record<string, number>;
+}
+
+export interface ImagePreview {
+  relative_path: string;
+  display_name: string;
+  width: number;
+  height: number;
+  data_url: string;
 }
 
 export interface EngineCheck {

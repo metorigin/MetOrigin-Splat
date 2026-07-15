@@ -77,26 +77,37 @@ impl std::fmt::Display for PipelineStageId {
 
 /// Status of an individual pipeline stage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum StageStatus {
     /// Not yet started
+    #[serde(alias = "Pending")]
     Pending,
     /// Preparing inputs before execution
+    #[serde(alias = "Preparing")]
     Preparing,
     /// Currently executing
+    #[serde(alias = "Running")]
     Running,
     /// In the process of pausing
+    #[serde(alias = "Pausing")]
     Pausing,
     /// Paused (results preserved)
+    #[serde(alias = "Paused")]
     Paused,
     /// In the process of cancelling
+    #[serde(alias = "Cancelling")]
     Cancelling,
     /// Cancelled by the user
+    #[serde(alias = "Cancelled")]
     Cancelled,
     /// Completed successfully
+    #[serde(alias = "Completed")]
     Completed,
     /// Failed with an error
+    #[serde(alias = "Failed")]
     Failed,
     /// Skipped (e.g. input already present)
+    #[serde(alias = "Skipped")]
     Skipped,
 }
 
@@ -196,6 +207,70 @@ impl PipelineState {
             overall_progress: 0.0,
         }
     }
+
+    /// Compute the product-level weighted progress used by every snapshot.
+    pub fn weighted_progress(&self) -> f64 {
+        const PHASES: [(&[PipelineStageId], f64); 4] = [
+            (
+                &[
+                    PipelineStageId::MediaValidation,
+                    PipelineStageId::FrameExtraction,
+                    PipelineStageId::ImagePreprocessing,
+                ],
+                0.08,
+            ),
+            (
+                &[
+                    PipelineStageId::ColmapFeatureExtraction,
+                    PipelineStageId::ColmapMatching,
+                    PipelineStageId::ColmapMapping,
+                    PipelineStageId::ColmapValidation,
+                ],
+                0.35,
+            ),
+            (
+                &[
+                    PipelineStageId::TrainingPreparation,
+                    PipelineStageId::BrushTraining,
+                    PipelineStageId::ModelValidation,
+                ],
+                0.52,
+            ),
+            (
+                &[PipelineStageId::Export, PipelineStageId::PreviewGeneration],
+                0.05,
+            ),
+        ];
+
+        PHASES
+            .iter()
+            .map(|(stages, weight)| {
+                let phase_progress = stages
+                    .iter()
+                    .map(|stage| {
+                        self.stages
+                            .get(stage)
+                            .map_or(0.0, |stage_state| match stage_state.status {
+                                StageStatus::Completed | StageStatus::Skipped => 1.0,
+                                StageStatus::Preparing
+                                | StageStatus::Running
+                                | StageStatus::Pausing
+                                | StageStatus::Cancelling => stage_state.progress.clamp(0.0, 1.0),
+                                _ => 0.0,
+                            })
+                    })
+                    .sum::<f64>()
+                    / stages.len() as f64;
+                phase_progress * weight
+            })
+            .sum::<f64>()
+            .clamp(0.0, 1.0)
+    }
+
+    /// Refresh `overall_progress` from the current stage states.
+    pub fn refresh_overall_progress(&mut self) {
+        self.overall_progress = self.weighted_progress();
+    }
 }
 
 impl Default for PipelineState {
@@ -270,5 +345,40 @@ mod tests {
         assert_eq!(format!("{}", StageStatus::Pending), "pending");
         assert_eq!(format!("{}", StageStatus::Running), "running");
         assert_eq!(format!("{}", StageStatus::Failed), "failed");
+    }
+
+    #[test]
+    fn stage_status_serializes_lowercase_and_accepts_legacy_pascal_case() {
+        assert_eq!(
+            serde_json::to_string(&StageStatus::Running).unwrap(),
+            "\"running\""
+        );
+        assert_eq!(
+            serde_json::from_str::<StageStatus>("\"Running\"").unwrap(),
+            StageStatus::Running
+        );
+        assert_eq!(
+            serde_json::from_str::<StageStatus>("\"completed\"").unwrap(),
+            StageStatus::Completed
+        );
+    }
+
+    #[test]
+    fn weighted_progress_uses_phase_weights() {
+        let mut state = PipelineState::new();
+        let media = state
+            .stages
+            .get_mut(&PipelineStageId::MediaValidation)
+            .unwrap();
+        media.status = StageStatus::Completed;
+        media.progress = 1.0;
+        let extraction = state
+            .stages
+            .get_mut(&PipelineStageId::FrameExtraction)
+            .unwrap();
+        extraction.status = StageStatus::Running;
+        extraction.progress = 0.5;
+        state.refresh_overall_progress();
+        assert!((state.overall_progress - 0.04).abs() < 1e-9);
     }
 }

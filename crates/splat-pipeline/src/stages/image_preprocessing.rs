@@ -65,8 +65,18 @@ impl PipelineStage for ImagePreprocessingStage {
         ctx: &StageContext,
         progress_tx: broadcast::Sender<TaskProgress>,
     ) -> AppResult<StageState> {
-        // Create processed directory
-        std::fs::create_dir_all(&ctx.paths.processed_dir).map_err(|e| {
+        let preparing = ctx.project_dir.join("processed.preparing");
+        if preparing.exists() {
+            std::fs::remove_dir_all(&preparing).map_err(|e| {
+                AppError::new(
+                    "E-1201",
+                    ErrorCategory::Filesystem,
+                    "Failed to Reset Processed Staging Dir",
+                    e.to_string(),
+                )
+            })?;
+        }
+        std::fs::create_dir_all(&preparing).map_err(|e| {
             AppError::new(
                 "E-1201",
                 ErrorCategory::Filesystem,
@@ -75,8 +85,9 @@ impl PipelineStage for ImagePreprocessingStage {
             )
         })?;
 
-        // Collect frames
-        let frame_paths = collect_jpg_files(&ctx.paths.frames_dir);
+        // Prefer the frame manifest so preprocessing consumes exactly the
+        // deterministic set published by video extraction or image preparation.
+        let frame_paths = collect_manifest_frames(ctx)?;
         if frame_paths.is_empty() {
             return Err(AppError::new(
                 "E-1103",
@@ -92,22 +103,16 @@ impl PipelineStage for ImagePreprocessingStage {
         let total = frame_paths.len();
 
         for (i, frame_path) in frame_paths.iter().enumerate() {
-            let dest = ctx
-                .paths
-                .processed_dir
-                .join(frame_path.file_name().ok_or_else(|| {
-                    AppError::new(
-                        "E-1103",
-                        ErrorCategory::Media,
-                        "Invalid Filename",
-                        "Frame file has no valid filename.",
-                    )
-                })?);
+            let dest = preparing.join(frame_path.file_name().ok_or_else(|| {
+                AppError::new(
+                    "E-1103",
+                    ErrorCategory::Media,
+                    "Invalid Filename",
+                    "Frame file has no valid filename.",
+                )
+            })?);
 
-            // Skip if already copied
-            if dest.exists() && std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0) > 0 {
-                // Already exists, skip
-            } else {
+            if std::fs::hard_link(frame_path, &dest).is_err() {
                 std::fs::copy(frame_path, &dest).map_err(|e| {
                     AppError::new(
                         "E-1201",
@@ -130,6 +135,25 @@ impl PipelineStage for ImagePreprocessingStage {
                     .with_items((i + 1) as u64, total as u64),
                 );
             }
+        }
+
+        let previous = ctx.project_dir.join("processed.previous");
+        if previous.exists() {
+            std::fs::remove_dir_all(&previous).map_err(processed_publish_error)?;
+        }
+        let had_previous = ctx.paths.processed_dir.exists();
+        if had_previous {
+            std::fs::rename(&ctx.paths.processed_dir, &previous)
+                .map_err(processed_publish_error)?;
+        }
+        if let Err(error) = std::fs::rename(&preparing, &ctx.paths.processed_dir) {
+            if had_previous {
+                let _ = std::fs::rename(&previous, &ctx.paths.processed_dir);
+            }
+            return Err(processed_publish_error(error));
+        }
+        if previous.exists() {
+            let _ = std::fs::remove_dir_all(previous);
         }
 
         tracing::info!(
@@ -155,6 +179,94 @@ impl PipelineStage for ImagePreprocessingStage {
         }
         Ok(())
     }
+}
+
+fn processed_publish_error(error: std::io::Error) -> AppError {
+    AppError::new(
+        "E-1201",
+        ErrorCategory::Filesystem,
+        "Failed to Publish Processed Images",
+        "The processed image set could not be replaced atomically.",
+    )
+    .with_technical(error.to_string())
+}
+
+fn collect_manifest_frames(ctx: &StageContext) -> AppResult<Vec<std::path::PathBuf>> {
+    if !ctx.paths.frames_manifest.exists() {
+        // Legacy/unit-test compatibility: projects created before manifests were
+        // mandatory can still be recovered from their flat JPEG directory.
+        return Ok(collect_jpg_files(&ctx.paths.frames_dir));
+    }
+    let json = std::fs::read_to_string(&ctx.paths.frames_manifest).map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Read Frame Manifest",
+            "无法读取 frames/frames.json。",
+        )
+        .with_technical(error.to_string())
+    })?;
+    let value: serde_json::Value = serde_json::from_str(&json).map_err(|error| {
+        AppError::new(
+            "E-1103",
+            ErrorCategory::Media,
+            "Invalid Frame Manifest",
+            "frames/frames.json 无法解析。",
+        )
+        .with_technical(error.to_string())
+    })?;
+    let frames = value
+        .get("frames")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            AppError::new(
+                "E-1103",
+                ErrorCategory::Media,
+                "Frame Manifest Has No Frames",
+                "帧清单中没有 frames 数组。",
+            )
+        })?;
+    let mut paths = Vec::with_capacity(frames.len());
+    for frame in frames {
+        let filename = frame
+            .get("filename")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                AppError::new(
+                    "E-1103",
+                    ErrorCategory::Media,
+                    "Invalid Frame Manifest Entry",
+                    "帧清单包含无效文件名。",
+                )
+            })?;
+        let relative = std::path::Path::new(filename);
+        if relative.components().count() != 1
+            || !relative
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| {
+                    extension.eq_ignore_ascii_case("jpg") || extension.eq_ignore_ascii_case("jpeg")
+                })
+        {
+            return Err(AppError::new(
+                "E-1103",
+                ErrorCategory::Media,
+                "Unsafe Frame Manifest Entry",
+                format!("帧清单中的路径 '{filename}' 无效。"),
+            ));
+        }
+        let path = ctx.paths.frames_dir.join(relative);
+        if !path.is_file() {
+            return Err(AppError::new(
+                "E-1103",
+                ErrorCategory::Media,
+                "Manifest Frame Missing",
+                format!("帧清单引用的文件 '{filename}' 不存在。"),
+            ));
+        }
+        paths.push(path);
+    }
+    Ok(paths)
 }
 
 /// Count JPG/JPEG files in a directory.

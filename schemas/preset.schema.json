@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://metorigin.dev/schemas/preset.json",
   "title": "Training Preset",
-  "description": "Schema for MetaOrigin Splat training presets",
+  "description": "Schema for MetOrigin Splat training presets",
   "type": "object",
   "required": ["id", "name", "frameExtraction", "training"],
   "properties": {

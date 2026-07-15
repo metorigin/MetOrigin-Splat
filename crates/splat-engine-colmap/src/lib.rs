@@ -1,4 +1,4 @@
-//! COLMAP engine adapter for MetaOrigin Splat.
+//! COLMAP engine adapter for MetOrigin Splat.
 //!
 //! Handles COLMAP pipeline stages: database initialization,
 //! feature extraction, feature matching, sparse mapping,
@@ -17,15 +17,24 @@ pub mod types;
 pub mod validator;
 
 pub use adapter::ColmapAdapter;
-pub use database::{inspect_database, DatabaseCreator, DatabaseStats};
+pub use database::{
+    consolidate_camera_groups, inspect_database, inspect_database_image_names, inspect_match_graph,
+    CameraConsolidationResult, DatabaseCreator, DatabaseStats, MatchGraphStats,
+};
 pub use diagnostics::{ColmapDiagnosticReport, DiagnosticItem};
 pub use feature::{FeatureExtractionOptions, FeatureExtractor};
-pub use mapper::ColmapMapper;
+pub use mapper::{read_registered_image_names, validate_model_image_dimensions, ColmapMapper};
 pub use matching::MatchingValidator;
 pub use progress::{ColmapFeatureParser, ColmapMapperParser};
-pub use result::{read_colmap_result, write_colmap_result_atomic, ColmapResult};
+pub use result::{
+    read_colmap_result, write_colmap_result_atomic, ColmapAttemptResult, ColmapAttemptStatus,
+    ColmapResult,
+};
 pub use types::{
     CameraInfo, CameraModel, DiagnosticLevel, DiagnosticMessage, FeatureExtractionResult,
-    MatchingResult, MatchingStrategy, ModelInfo,
+    MapperKind, MatchingOptions, MatchingResult, MatchingStrategy, ModelInfo,
 };
-pub use validator::{ColmapValidator, ValidationCheck, ValidationOptions, ValidationReport};
+pub use validator::{
+    ColmapValidator, QualityDecision, RegistrationSegment, ValidationCheck, ValidationContext,
+    ValidationOptions, ValidationReport,
+};

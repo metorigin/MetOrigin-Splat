@@ -5,7 +5,8 @@
   "frameExtraction": {
     "fps": 4,
     "maxFrames": 1200,
-    "targetLongEdge": 2560
+    "targetLongEdge": 2560,
+    "colmapLongEdge": 4096
   },
   "training": {
     "iterations": 30000,

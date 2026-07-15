@@ -14,6 +14,20 @@ pub struct FrameExtractionPreset {
     /// Target long edge dimension in pixels
     #[serde(rename = "targetLongEdge")]
     pub target_long_edge: u32,
+    /// Maximum long edge used for COLMAP reconstruction inputs. Older
+    /// presets omit this field and therefore reuse `target_long_edge`.
+    #[serde(rename = "colmapLongEdge", default)]
+    pub colmap_long_edge: u32,
+}
+
+impl FrameExtractionPreset {
+    pub fn resolved_colmap_long_edge(&self) -> u32 {
+        if self.colmap_long_edge > 0 {
+            self.colmap_long_edge
+        } else {
+            self.target_long_edge
+        }
+    }
 }
 
 /// A training preset loaded from a JSON file.
@@ -77,16 +91,18 @@ pub fn plan_extraction(metadata: &VideoMetadata, preset: &FrameExtractionPreset)
     let target = estimated.min(preset.max_frames);
 
     // 3. Determine output dimensions (scale down but never scale up)
-    let (out_w, out_h, will_scale) =
-        compute_output_dimensions(metadata.width, metadata.height, preset.target_long_edge);
-
-    // 4. Handle rotation
     let transpose_filter = match metadata.rotation {
         Some(90) => Some("transpose=1"),              // 90° clockwise
         Some(270) => Some("transpose=2"),             // 90° counter-clockwise
         Some(180) => Some("transpose=2,transpose=2"), // 180°
         _ => None,
     };
+    let (logical_width, logical_height) = match metadata.rotation {
+        Some(90) | Some(270) => (metadata.height, metadata.width),
+        _ => (metadata.width, metadata.height),
+    };
+    let (out_w, out_h, will_scale) =
+        compute_output_dimensions(logical_width, logical_height, preset.target_long_edge);
 
     // 5. Build filter graph
     let mut filter_parts: Vec<String> = Vec::new();
@@ -116,13 +132,8 @@ pub fn plan_extraction(metadata: &VideoMetadata, preset: &FrameExtractionPreset)
     };
 
     // 6. Swap width/height if rotated 90° or 270° for display purposes
-    let (display_w, display_h) = match metadata.rotation {
-        Some(90) | Some(270) => (out_h, out_w),
-        _ => (out_w, out_h),
-    };
-
-    // 7. Estimate disk space (rough: ~300KB per frame for 1920, scales with resolution)
-    let pixel_ratio = (display_w * display_h) as f64 / (1920.0 * 1080.0);
+    // Scaling is calculated in the post-rotation logical orientation.
+    let pixel_ratio = (out_w * out_h) as f64 / (1920.0 * 1080.0);
     let avg_bytes_per_frame = (300.0 * 1024.0 * pixel_ratio.max(0.5)) as u64;
     let estimated_bytes = target as u64 * avg_bytes_per_frame;
 
@@ -132,8 +143,8 @@ pub fn plan_extraction(metadata: &VideoMetadata, preset: &FrameExtractionPreset)
         estimated_frame_count: estimated,
         will_scale,
         rotation_correction: transpose_filter.map(String::from),
-        output_width: display_w,
-        output_height: display_h,
+        output_width: out_w,
+        output_height: out_h,
         filter_graph,
         estimated_bytes,
         output_pattern: "%06d.jpg".into(),
@@ -226,6 +237,7 @@ mod tests {
             fps: 3.0,
             max_frames: 800,
             target_long_edge: 1920,
+            colmap_long_edge: 4096,
         }
     }
 
@@ -234,6 +246,7 @@ mod tests {
             fps: 2.0,
             max_frames: 300,
             target_long_edge: 1280,
+            colmap_long_edge: 2560,
         }
     }
 
@@ -384,6 +397,10 @@ mod tests {
         let plan = plan_extraction(&meta, &balanced_preset());
         assert!(plan.filter_graph.contains("transpose=1"));
         assert!(plan.filter_graph.contains("scale"));
+        assert_eq!((plan.output_width, plan.output_height), (1080, 1920));
+        assert!(plan
+            .filter_graph
+            .contains("scale='min(1080,iw)':'min(1920,ih)'"));
     }
 
     // ─── Disk estimate ────────────────────────────────────────────────

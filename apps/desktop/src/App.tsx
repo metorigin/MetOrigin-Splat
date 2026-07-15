@@ -1,6 +1,8 @@
 import { WarningCircle, X } from "@phosphor-icons/react";
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { DeleteProjectDialog } from "./components/shell/DeleteProjectDialog";
 import { ProjectSidebar } from "./components/shell/ProjectSidebar";
 import { SystemStatusBar } from "./components/shell/SystemStatusBar";
 import { TitleRunBar } from "./components/shell/TitleRunBar";
@@ -9,10 +11,12 @@ import { AppProvider, useAppContext } from "./context";
 import { HomePage, NewProjectPage, ProjectDetailPage } from "./pages";
 import {
   confirmSafeCancel,
+  confirmRemoveRecentProject,
   desktopApi,
+  isDesktopRuntime,
   selectProjectDirectory,
 } from "./services/desktop";
-import type { AppSettings, Project, ProjectInfo, ProjectStatus, ResourceMetrics } from "./types";
+import type { AppSettings, PipelineEventEnvelope, Project, ProjectInfo, ProjectStatus, ResourceMetrics } from "./types";
 import "./App.css";
 
 function normalizeProjectStatus(status: string): ProjectStatus {
@@ -53,6 +57,8 @@ function AppWorkspace() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [metrics, setMetrics] = useState<ResourceMetrics | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [deleteCandidate, setDeleteCandidate] = useState<ProjectInfo | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const activeProjectPath =
     state.page.type === "project-detail" ? state.page.projectPath : null;
@@ -66,6 +72,8 @@ function AppWorkspace() {
   const pipelineStatus = state.pipelineSnapshot?.status ?? null;
 
   const loadApplicationData = useCallback(async () => {
+    dispatch({ type: "SET_ENGINES_LOADING" });
+    dispatch({ type: "SET_RECENT_PROJECTS_LOADING" });
     const [versionResult, enginesResult, projectsResult, settingsResult] =
       await Promise.allSettled([
         desktopApi.appVersion(),
@@ -79,9 +87,13 @@ function AppWorkspace() {
     }
     if (enginesResult.status === "fulfilled") {
       dispatch({ type: "SET_ENGINES", engines: enginesResult.value });
+    } else {
+      dispatch({ type: "SET_ENGINES_ERROR", error: String(enginesResult.reason) });
     }
     if (projectsResult.status === "fulfilled") {
       dispatch({ type: "SET_RECENT_PROJECTS", projects: projectsResult.value });
+    } else {
+      dispatch({ type: "SET_RECENT_PROJECTS_ERROR", error: String(projectsResult.reason) });
     }
     if (settingsResult.status === "fulfilled") setSettings(settingsResult.value);
   }, [dispatch]);
@@ -98,7 +110,7 @@ function AppWorkspace() {
       }
       if (disposed) return;
       const active = pipelineStatus && ["starting", "running", "pausing", "cancelling", "recovering"].includes(pipelineStatus);
-      timer = window.setTimeout(sample, document.hidden ? 15_000 : active ? 2_000 : 5_000);
+      timer = window.setTimeout(sample, document.hidden ? 30_000 : active ? 5_000 : 15_000);
     };
     void sample();
     return () => { disposed = true; window.clearTimeout(timer); };
@@ -109,31 +121,69 @@ function AppWorkspace() {
   }, [loadApplicationData]);
 
   useEffect(() => {
+    dispatch({ type: "SET_PIPELINE_ERROR", error: null });
     if (!activeProjectPath) {
       dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot: null });
       return;
     }
     let disposed = false;
-    const refresh = async () => {
+    let unlistenPipeline: (() => void) | null = null;
+    let refreshInFlight = false;
+    let refreshQueued = false;
+    const refresh = async (): Promise<void> => {
+      if (refreshInFlight) {
+        refreshQueued = true;
+        return;
+      }
+      refreshInFlight = true;
       try {
         const snapshot = await desktopApi.getPipelineState(activeProjectPath);
         if (disposed) return;
+        if (activeProject && snapshot.project_id !== activeProject.id) return;
         dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot });
-        const current = state.recentProjects.find((project) => project.id === snapshot.project_id);
-        if (current && current.status !== snapshot.status) {
-          dispatch({ type: "ADD_RECENT_PROJECT", project: { ...current, status: snapshot.status } });
+        const snapshotStage = snapshot.state.current_stage ?? undefined;
+        if (
+          activeProject &&
+          (activeProject.status !== snapshot.status ||
+            activeProject.stage_label !== snapshotStage)
+        ) {
+          dispatch({
+            type: "ADD_RECENT_PROJECT",
+            project: {
+              ...activeProject,
+              status: snapshot.status,
+              stage_label: snapshotStage,
+            },
+          });
         }
-      } catch {
-        // The project page will surface persistent load failures.
+      } catch (error) {
+        if (!disposed) dispatch({ type: "SET_PIPELINE_ERROR", error: String(error) });
+      } finally {
+        refreshInFlight = false;
+        if (refreshQueued && !disposed) {
+          refreshQueued = false;
+          void refresh();
+        }
       }
     };
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 1200);
+    if (isDesktopRuntime()) {
+      void listen<PipelineEventEnvelope>("pipeline://event", (event) => {
+        if (!activeProject || event.payload.project_id !== activeProject.id) return;
+        void refresh();
+      }).then((unlisten) => {
+        if (disposed) unlisten();
+        else unlistenPipeline = unlisten;
+      });
+    }
+    const activelyRunning = activeProject && ["starting", "running", "pausing", "cancelling", "recovering"].includes(activeProject.status);
+    const timer = window.setInterval(() => void refresh(), activelyRunning ? 3_000 : 10_000);
     return () => {
       disposed = true;
+      unlistenPipeline?.();
       window.clearInterval(timer);
     };
-  }, [activeProjectPath, dispatch, state.recentProjects]);
+  }, [activeProject, activeProjectPath, dispatch]);
 
   const openSelectedProject = useCallback(
     async (project: ProjectInfo) => {
@@ -161,6 +211,63 @@ function AppWorkspace() {
       dispatch({ type: "SET_ERROR", error: String(error) });
     }
   }, [dispatch, openSelectedProject]);
+
+  const handleRevealProject = useCallback(async (project: ProjectInfo) => {
+    try {
+      const result = await desktopApi.openProjectLocation({
+        projectId: project.id,
+        projectPath: project.path,
+        targetType: "project_root",
+      });
+      if (result.missing) {
+        dispatch({ type: "SET_ERROR", error: result.message ?? "项目目录已移动或删除。" });
+        const remove = await confirmRemoveRecentProject(project.name);
+        if (remove) {
+          await desktopApi.removeRecentProject(project.id, project.path);
+          dispatch({ type: "REMOVE_RECENT_PROJECT", projectId: project.id });
+          if (activeProjectPath === project.path) {
+            dispatch({ type: "NAVIGATE", page: { type: "home" } });
+          }
+        }
+      }
+    } catch (error) {
+      dispatch({ type: "SET_ERROR", error: String(error) });
+    }
+  }, [activeProjectPath, dispatch]);
+
+  const handleRemoveProject = useCallback(async (project: ProjectInfo) => {
+    try {
+      const confirmed = await confirmRemoveRecentProject(project.name);
+      if (!confirmed) return;
+      await desktopApi.removeRecentProject(project.id, project.path);
+      dispatch({ type: "REMOVE_RECENT_PROJECT", projectId: project.id });
+      if (activeProjectPath === project.path) {
+        dispatch({ type: "NAVIGATE", page: { type: "home" } });
+      }
+    } catch (error) {
+      dispatch({ type: "SET_ERROR", error: String(error) });
+    }
+  }, [activeProjectPath, dispatch]);
+
+  const handleDeleteProject = useCallback(async () => {
+    if (!deleteCandidate) return;
+    setDeleteBusy(true);
+    try {
+      await desktopApi.deleteProject({
+        projectId: deleteCandidate.id,
+        projectPath: deleteCandidate.path,
+      });
+      dispatch({ type: "REMOVE_RECENT_PROJECT", projectId: deleteCandidate.id });
+      if (activeProjectPath === deleteCandidate.path) {
+        dispatch({ type: "NAVIGATE", page: { type: "home" } });
+      }
+      setDeleteCandidate(null);
+    } catch (error) {
+      dispatch({ type: "SET_ERROR", error: String(error) });
+    } finally {
+      setDeleteBusy(false);
+    }
+  }, [activeProjectPath, deleteCandidate, dispatch]);
 
   const handleStart = useCallback(async () => {
     if (!activeProject) return;
@@ -232,7 +339,7 @@ function AppWorkspace() {
   const page = (() => {
     switch (state.page.type) {
       case "home":
-        return <HomePage />;
+        return <HomePage onRetry={() => void loadApplicationData()} />;
       case "new-project":
         return <NewProjectPage settings={settings} />;
       case "project-detail":
@@ -249,6 +356,8 @@ function AppWorkspace() {
     <div className="workspace-shell">
       <ProjectSidebar
         projects={state.recentProjects}
+        loading={state.recentProjectsLoading}
+        loadError={state.recentProjectsError}
         activeProjectPath={activeProjectPath}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((value) => !value)}
@@ -258,6 +367,10 @@ function AppWorkspace() {
         }
         onOpenProject={() => void handleOpenProject()}
         onSelectProject={(project) => void openSelectedProject(project)}
+        onRevealProject={(project) => void handleRevealProject(project)}
+        onRemoveProject={(project) => void handleRemoveProject(project)}
+        onDeleteProject={setDeleteCandidate}
+        onRetry={() => void loadApplicationData()}
       />
 
       <section className="workspace-surface">
@@ -269,22 +382,43 @@ function AppWorkspace() {
           onResume={() => void handleResume()}
           onCancel={() => void handleCancel()}
           onOpenSettings={() => setSettingsOpen(true)}
+          onRevealProject={() => activeProject && void handleRevealProject(activeProject)}
+          onRemoveProject={() => activeProject && void handleRemoveProject(activeProject)}
+          onDeleteProject={() => activeProject && setDeleteCandidate(activeProject)}
         />
         <main className="workspace-content">{page}</main>
       </section>
 
-      <SystemStatusBar engines={state.engines} version={version} metrics={metrics} onOpenSettings={() => setSettingsOpen(true)} />
+      <SystemStatusBar
+        engines={state.engines}
+        enginesLoading={state.enginesLoading}
+        enginesError={state.enginesError}
+        version={version}
+        metrics={metrics}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onRetryEngines={() => void loadApplicationData()}
+      />
 
       {settingsOpen && settings && (
         <SettingsDrawer
           engines={state.engines}
           settings={settings}
           metrics={metrics}
+          projectId={activeProject?.id ?? null}
           projectPath={activeProjectPath}
           onClose={() => setSettingsOpen(false)}
           onSettings={setSettings}
           onEngines={(engines) => dispatch({ type: "SET_ENGINES", engines })}
           onError={(error) => dispatch({ type: "SET_ERROR", error })}
+        />
+      )}
+
+      {deleteCandidate && (
+        <DeleteProjectDialog
+          project={deleteCandidate}
+          busy={deleteBusy}
+          onCancel={() => setDeleteCandidate(null)}
+          onConfirm={() => void handleDeleteProject()}
         />
       )}
 

@@ -283,14 +283,9 @@ mod tests {
     use crate::validator::{ColmapValidator, ValidationOptions};
 
     fn sample_result(registered: usize, total: usize, points: usize) -> ColmapResult {
-        ColmapResult {
-            registered_images: registered,
-            total_images: total,
-            point_count: points,
-            model_path: "colmap/sparse/0".into(),
-            observations: Some(points * 10),
-            mean_reprojection_error: Some(0.85),
-        }
+        ColmapResult::new(registered, total, points, "colmap/sparse/0".into())
+            .with_observations(points * 10)
+            .with_error(0.85)
     }
 
     fn sample_model_info(

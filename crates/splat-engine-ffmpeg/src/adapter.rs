@@ -6,7 +6,9 @@ use splat_process::CommandSpec;
 
 use crate::plan::{plan_extraction, ExtractionPlan, FrameExtractionPreset};
 use crate::probe::probe_video_with;
+use crate::probe::probe_video_with_async;
 use crate::probe::VideoMetadata;
+use tokio_util::sync::CancellationToken;
 
 /// FFmpeg engine adapter.
 ///
@@ -150,6 +152,14 @@ impl FfmpegAdapter {
         probe_video_with(&self.ffprobe_path, video_path)
     }
 
+    pub async fn probe_metadata_async(
+        &self,
+        video_path: &Path,
+        cancellation: CancellationToken,
+    ) -> AppResult<VideoMetadata> {
+        probe_video_with_async(&self.ffprobe_path, video_path, cancellation).await
+    }
+
     // ─── Planning ───────────────────────────────────────────────────────
 
     /// Compute the optimal frame extraction plan.
@@ -186,6 +196,9 @@ impl FfmpegAdapter {
             "-progress".into(),
             "pipe:2".into(),
             "-nostats".into(),
+            // Disable FFmpeg's implicit display-matrix rotation. The filter
+            // plan below is the single source of truth for orientation.
+            "-noautorotate".into(),
             // Input file
             "-i".into(),
             video_path.as_os_str().to_owned(),

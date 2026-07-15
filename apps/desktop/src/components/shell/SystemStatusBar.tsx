@@ -10,24 +10,32 @@ import type { EngineInfo, ResourceMetrics } from "../../types";
 
 interface SystemStatusBarProps {
   engines: EngineInfo[];
+  enginesLoading: boolean;
+  enginesError: string | null;
   version: string | null;
   metrics: ResourceMetrics | null;
   onOpenSettings: () => void;
+  onRetryEngines: () => void;
 }
 
 function gib(bytes: number) {
   return (bytes / 1024 / 1024 / 1024).toFixed(1);
 }
 
-export function SystemStatusBar({ engines, version, metrics, onOpenSettings }: SystemStatusBarProps) {
+export function SystemStatusBar({ engines, enginesLoading, enginesError, version, metrics, onOpenSettings, onRetryEngines }: SystemStatusBarProps) {
   return (
     <footer className="system-status-bar">
       <div className="status-bar-group engine-status-group">
         <span className="status-bar-label">引擎版本</span>
-        {engines.length === 0 && (
+        {enginesLoading && engines.length === 0 && (
           <span className="status-item is-warning">
             <WarningCircle size={14} weight="fill" /> 正在检测
           </span>
+        )}
+        {enginesError && (
+          <button type="button" className="status-item is-warning" title={`引擎检测失败：${enginesError}`} onClick={onRetryEngines}>
+            <WarningCircle size={14} weight="fill" /> 检测失败，重试
+          </button>
         )}
         {engines.map((engine) => (
           <button

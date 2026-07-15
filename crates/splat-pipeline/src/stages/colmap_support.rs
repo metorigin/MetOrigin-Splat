@@ -2,11 +2,147 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
+use splat_domain::project::{Project, ProjectSource};
 use splat_engine_colmap::ColmapAdapter;
 use splat_process::ProcessResult;
 
 use crate::stage::StageContext;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ColmapSourceKind {
+    Images,
+    Video,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct ColmapCacheFingerprint {
+    pub strategy_version: u32,
+    pub source_kind: String,
+    pub frame_manifest_sha256: String,
+    pub colmap_binary_sha256: String,
+    pub reconstruction_long_edge: u32,
+}
+
+pub(crate) fn cache_fingerprint(ctx: &StageContext) -> AppResult<ColmapCacheFingerprint> {
+    let source_kind = source_kind(ctx)?;
+    let project_bytes = std::fs::read(ctx.project_dir.join("project.json")).map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Read Project",
+            "Could not compute the COLMAP cache fingerprint.",
+        )
+        .with_technical(error.to_string())
+    })?;
+    let project: Project = serde_json::from_slice(&project_bytes).map_err(|error| {
+        AppError::new(
+            "E-1103",
+            ErrorCategory::Media,
+            "Invalid Project Metadata",
+            "project.json is invalid while computing the COLMAP cache fingerprint.",
+        )
+        .with_technical(error.to_string())
+    })?;
+    let colmap = ctx.engine_paths.colmap.as_ref().ok_or_else(|| {
+        AppError::new(
+            "E-3001",
+            ErrorCategory::Engine,
+            "COLMAP Not Found",
+            "The COLMAP binary is required for cache fingerprinting.",
+        )
+    })?;
+    Ok(ColmapCacheFingerprint {
+        strategy_version: 3,
+        source_kind: match source_kind {
+            ColmapSourceKind::Images => "images",
+            ColmapSourceKind::Video => "video",
+        }
+        .into(),
+        frame_manifest_sha256: sha256_file(&ctx.paths.frames_manifest)?,
+        colmap_binary_sha256: sha256_file(colmap)?,
+        reconstruction_long_edge: project.settings.resolved_colmap_max_long_edge(),
+    })
+}
+
+pub(crate) fn fingerprint_path(ctx: &StageContext) -> PathBuf {
+    ctx.paths.colmap_dir.join("fingerprint.json")
+}
+
+pub(crate) fn fingerprint_matches(ctx: &StageContext) -> bool {
+    let expected = match cache_fingerprint(ctx) {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    std::fs::read(fingerprint_path(ctx))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<ColmapCacheFingerprint>(&bytes).ok())
+        .map(|actual| actual == expected)
+        .unwrap_or(false)
+}
+
+fn sha256_file(path: &Path) -> AppResult<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Read Cache Input",
+            format!("Could not hash '{}'.", path.display()),
+        )
+        .with_technical(error.to_string())
+    })?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 1024 * 1024];
+    loop {
+        let read = file.read(&mut buffer).map_err(|error| {
+            AppError::new(
+                "E-1201",
+                ErrorCategory::Filesystem,
+                "Failed to Hash Cache Input",
+                error.to_string(),
+            )
+        })?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+pub(crate) fn source_kind(ctx: &StageContext) -> AppResult<ColmapSourceKind> {
+    let path = ctx.project_dir.join("project.json");
+    let json = std::fs::read_to_string(&path).map_err(|error| {
+        AppError::new(
+            "E-1201",
+            ErrorCategory::Filesystem,
+            "Failed to Read Project",
+            "Could not determine the COLMAP strategy from project.json.",
+        )
+        .with_technical(error.to_string())
+    })?;
+    let project: Project = serde_json::from_str(&json).map_err(|error| {
+        AppError::new(
+            "E-1103",
+            ErrorCategory::Media,
+            "Invalid Project Metadata",
+            "project.json could not be parsed for COLMAP strategy selection.",
+        )
+        .with_technical(error.to_string())
+    })?;
+    match project.source {
+        Some(ProjectSource::ImageFolder(_)) => Ok(ColmapSourceKind::Images),
+        Some(ProjectSource::Video(_)) => Ok(ColmapSourceKind::Video),
+        None => Err(AppError::new(
+            "E-1101",
+            ErrorCategory::Media,
+            "Project Source Missing",
+            "The project has no source type for COLMAP strategy selection.",
+        )),
+    }
+}
 
 pub(crate) fn adapter(ctx: &StageContext) -> AppResult<ColmapAdapter> {
     let path = ctx.engine_paths.colmap.clone().ok_or_else(|| {

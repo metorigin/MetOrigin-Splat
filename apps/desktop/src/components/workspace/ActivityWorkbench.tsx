@@ -9,6 +9,8 @@ type ActivityTab = "log" | "event" | "warning" | "error";
 export function ActivityWorkbench({ projectPath }: { projectPath: string }) {
   const [tab, setTab] = useState<ActivityTab>("log");
   const [events, setEvents] = useState<PipelineEventRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<PipelineEventRecord | null>(null);
   const [autoFollow, setAutoFollow] = useState(true);
@@ -19,13 +21,20 @@ export function ActivityWorkbench({ projectPath }: { projectPath: string }) {
     const refresh = async () => {
       try {
         const page = await desktopApi.getPipelineEvents(projectPath, { search: search || undefined });
-        if (!disposed) setEvents(page.items);
-      } catch {
-        if (!disposed) setEvents([]);
+        if (!disposed) {
+          setEvents(page.items);
+          setLoadError(null);
+        }
+      } catch (error) {
+        if (!disposed) setLoadError(String(error));
+      } finally {
+        if (!disposed) setLoading(false);
       }
     };
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 1500);
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void refresh();
+    }, 3_000);
     return () => { disposed = true; window.clearInterval(timer); };
   }, [projectPath, search]);
 
@@ -43,21 +52,22 @@ export function ActivityWorkbench({ projectPath }: { projectPath: string }) {
 
   return (
     <section className="activity-panel panel">
-      <div className="activity-tabs">
+      <div className="activity-tabs" role="tablist" aria-label="Pipeline 活动筛选">
         {(["log", "event", "warning", "error"] as ActivityTab[]).map((value) => (
-          <button key={value} type="button" className={tab === value ? "is-active" : ""} onClick={() => setTab(value)}>
+          <button key={value} type="button" role="tab" aria-selected={tab === value} className={tab === value ? "is-active" : ""} onClick={() => setTab(value)}>
             {value === "log" ? "活动日志" : value === "event" ? "事件" : value === "warning" ? `警告 (${warningCount})` : `错误 (${errorCount})`}
           </button>
         ))}
         <label className="activity-search"><MagnifyingGlass size={14} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索日志" /></label>
       </div>
-      <div className="activity-workbench-body">
+      {loadError && <div className="activity-load-warning" role="status"><Warning size={15} weight="fill" />日志更新失败，正在显示最后一次成功获取的数据。<span title={loadError}>{loadError}</span></div>}
+      <div className="activity-workbench-body" role="tabpanel">
         <div className="activity-content" ref={listRef} onScroll={(event) => {
           const target = event.currentTarget;
           setAutoFollow(target.scrollHeight - target.scrollTop - target.clientHeight < 32);
         }}>
           <div className="activity-table-header"><span>时间</span><span>级别</span><span>阶段</span><span>消息</span></div>
-          {filtered.length === 0 ? <div className="activity-empty-row"><CheckCircle size={17} weight="fill" /><span>暂无符合条件的真实事件</span><span>Pipeline 运行后将在此持续记录</span></div> : filtered.map((event) => (
+          {filtered.length === 0 ? <div className="activity-empty-row"><CheckCircle size={17} weight="fill" /><span>{loading ? "正在加载活动日志…" : "暂无符合条件的真实事件"}</span><span>{loading ? "请稍候" : "Pipeline 运行后将在此持续记录"}</span></div> : filtered.map((event) => (
             <button type="button" className={`activity-event-row severity-${event.severity} ${selected?.event_id === event.event_id ? "is-selected" : ""}`} key={event.event_id} onClick={() => setSelected(event)}>
               <span>{new Date(event.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}</span>
               <span>{event.severity === "error" ? <XCircle size={14} weight="fill" /> : event.severity === "warning" ? <Warning size={14} weight="fill" /> : <CheckCircle size={14} weight="fill" />}{event.severity.toUpperCase()}</span>

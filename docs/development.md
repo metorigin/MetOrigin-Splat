@@ -1,4 +1,4 @@
-# MetaOrigin Splat — Development Guide
+# MetOrigin Splat — Development Guide
 
 ## Prerequisites
 

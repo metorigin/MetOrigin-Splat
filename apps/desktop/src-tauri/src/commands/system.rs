@@ -9,6 +9,7 @@ use splat_domain::hardware::{EngineInfo, EnginePaths};
 use splat_hardware::EngineLocator;
 use sysinfo::System;
 use tauri::Manager;
+use tauri_plugin_opener::OpenerExt;
 
 use crate::state::AppState;
 
@@ -65,6 +66,12 @@ pub struct ResourceMetrics {
 pub struct DiagnosticExport {
     path: String,
     size_bytes: u64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct OpenEngineLocationResult {
+    opened: bool,
+    engine_name: String,
 }
 
 /// Returns the application version from Cargo.toml.
@@ -162,6 +169,36 @@ pub fn check_engines(app_handle: tauri::AppHandle) -> Vec<serde_json::Value> {
 }
 
 #[tauri::command]
+pub fn open_engine_location(
+    app_handle: tauri::AppHandle,
+    engine_name: String,
+) -> Result<OpenEngineLocationResult, String> {
+    let paths = resolve_engine_paths(&app_handle);
+    let path = match engine_name.as_str() {
+        "ffmpeg" => paths.ffmpeg,
+        "ffprobe" => paths.ffprobe,
+        "colmap" => paths.colmap,
+        "brush" => paths.brush,
+        _ => return Err("未知的引擎名称。".into()),
+    }
+    .ok_or_else(|| "该引擎尚未定位。".to_string())?;
+    let canonical = path
+        .canonicalize()
+        .map_err(|_| "引擎文件已移动或删除，请重新检测。".to_string())?;
+    if !canonical.is_file() {
+        return Err("定位结果不是有效的引擎可执行文件。".into());
+    }
+    app_handle
+        .opener()
+        .reveal_item_in_dir(&canonical)
+        .map_err(|error| format!("无法在资源管理器中定位引擎：{error}"))?;
+    Ok(OpenEngineLocationResult {
+        opened: true,
+        engine_name,
+    })
+}
+
+#[tauri::command]
 pub fn get_app_settings(app_handle: tauri::AppHandle) -> Result<AppSettings, String> {
     read_settings(&app_handle)
 }
@@ -169,10 +206,20 @@ pub fn get_app_settings(app_handle: tauri::AppHandle) -> Result<AppSettings, Str
 #[tauri::command]
 pub fn save_app_settings(
     app_handle: tauri::AppHandle,
-    settings: AppSettings,
+    mut settings: AppSettings,
 ) -> Result<AppSettings, String> {
+    settings.log_retention_mb = settings.log_retention_mb.clamp(64, 4096);
+    settings.thumbnail_cache_mb = settings.thumbnail_cache_mb.clamp(64, 4096);
     write_settings(&app_handle, &settings)?;
     Ok(settings)
+}
+
+pub fn log_retention_bytes(app_handle: &tauri::AppHandle) -> u64 {
+    read_settings(app_handle)
+        .unwrap_or_default()
+        .log_retention_mb
+        .clamp(64, 4096)
+        .saturating_mul(1024 * 1024)
 }
 
 #[tauri::command]

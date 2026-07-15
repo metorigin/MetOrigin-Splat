@@ -1,8 +1,8 @@
-# MetaOrigin Splat — Architecture
+# MetOrigin Splat — Architecture
 
 ## Overview
 
-MetaOrigin Splat is structured as a layered architecture with clean separation between the desktop UI, the Rust application core, and the external engines.
+MetOrigin Splat is structured as a layered architecture with clean separation between the desktop UI, the Rust application core, and the external engines.
 
 ```
 ┌───────────────────────────────────────────┐

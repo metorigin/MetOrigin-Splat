@@ -98,6 +98,27 @@ export function PointCloudPreview({ points, cameras = [], label }: {
     resetRef.current = reset;
     reset();
 
+    const onKeyDown = (event: KeyboardEvent) => {
+      const offset = camera.position.clone().sub(controls.target);
+      const verticalAxis = new THREE.Vector3(0, 1, 0);
+      const rightAxis = new THREE.Vector3().crossVectors(verticalAxis, offset).normalize();
+      if (event.key === "ArrowLeft") offset.applyAxisAngle(verticalAxis, 0.1);
+      else if (event.key === "ArrowRight") offset.applyAxisAngle(verticalAxis, -0.1);
+      else if (event.key === "ArrowUp") offset.applyAxisAngle(rightAxis, -0.1);
+      else if (event.key === "ArrowDown") offset.applyAxisAngle(rightAxis, 0.1);
+      else if (event.key === "+" || event.key === "=") offset.multiplyScalar(0.88);
+      else if (event.key === "-" || event.key === "_") offset.multiplyScalar(1.12);
+      else if (event.key.toLowerCase() === "r") {
+        reset();
+        event.preventDefault();
+        return;
+      } else return;
+      camera.position.copy(controls.target).add(offset);
+      controls.update();
+      event.preventDefault();
+    };
+    host.addEventListener("keydown", onKeyDown);
+
     const resize = () => {
       const width = Math.max(host.clientWidth, 1);
       const height = Math.max(host.clientHeight, 1);
@@ -118,6 +139,7 @@ export function PointCloudPreview({ points, cameras = [], label }: {
     return () => {
       cancelAnimationFrame(frame);
       resizeObserver.disconnect();
+      host.removeEventListener("keydown", onKeyDown);
       controls.dispose();
       geometry.dispose();
       material.dispose();
@@ -141,7 +163,8 @@ export function PointCloudPreview({ points, cameras = [], label }: {
         <button className="icon-button" type="button" onClick={() => resetRef.current?.()} aria-label="重置视角" title="重置视角"><ArrowsOut size={16} /></button>
         <button className={`icon-button ${gridVisible ? "is-active" : ""}`} type="button" onClick={() => setGridVisible((value) => !value)} aria-label="切换地面网格" title="切换地面网格"><GridFour size={16} /></button>
       </div>
-      <div className="point-cloud-canvas" ref={hostRef} aria-label={`真实三维预览，共 ${points.length} 个显示点`} />
+      <div className="point-cloud-canvas" ref={hostRef} tabIndex={0} role="application" aria-describedby="point-cloud-keyboard-help" aria-label={`真实三维预览，共 ${points.length} 个显示点`} />
+      <span id="point-cloud-keyboard-help" className="visually-hidden">方向键旋转视角，加号和减号缩放，R 重置视角。</span>
     </div>
   );
 }

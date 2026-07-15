@@ -7,7 +7,7 @@ use splat_process::CommandSpec;
 use crate::database::DatabaseCreator;
 use crate::feature::{FeatureExtractionOptions, FeatureExtractor};
 use crate::mapper::ColmapMapper;
-use crate::types::MatchingStrategy;
+use crate::types::{MapperKind, MatchingOptions, MatchingStrategy};
 
 /// COLMAP engine adapter.
 ///
@@ -170,8 +170,25 @@ impl ColmapAdapter {
         strategy: &MatchingStrategy,
         log_path: &Path,
     ) -> CommandSpec {
+        self.build_matching_command_with_options(
+            database_path,
+            strategy,
+            &MatchingOptions::default(),
+            log_path,
+        )
+    }
+
+    pub fn build_matching_command_with_options(
+        &self,
+        database_path: &Path,
+        strategy: &MatchingStrategy,
+        options: &MatchingOptions,
+        log_path: &Path,
+    ) -> CommandSpec {
         let mut args: Vec<std::ffi::OsString> = vec![
             strategy.subcommand().into(),
+            "--log_target".into(),
+            "stderr".into(),
             "--database_path".into(),
             database_path.as_os_str().to_owned(),
         ];
@@ -180,7 +197,14 @@ impl ColmapAdapter {
         if let MatchingStrategy::Sequential { overlap } = strategy {
             args.push("--SequentialMatching.overlap".into());
             args.push(overlap.to_string().into());
+            args.push("--SequentialMatching.quadratic_overlap".into());
+            args.push(if options.quadratic_overlap { "1" } else { "0" }.into());
+        } else {
+            args.push("--ExhaustiveMatching.block_size".into());
+            args.push(options.exhaustive_block_size.max(1).to_string().into());
         }
+        args.push("--FeatureMatching.guided_matching".into());
+        args.push(if options.guided_matching { "1" } else { "0" }.into());
 
         CommandSpec::new(&self.colmap_path, args, log_path)
     }
@@ -199,9 +223,57 @@ impl ColmapAdapter {
             .build_command(database_path, image_path, output_path, log_path)
     }
 
+    pub fn build_mapping_command_with_kind(
+        &self,
+        kind: MapperKind,
+        database_path: &Path,
+        image_path: &Path,
+        output_path: &Path,
+        log_path: &Path,
+    ) -> CommandSpec {
+        self.mapper().build_command_with_kind(
+            kind,
+            database_path,
+            image_path,
+            output_path,
+            log_path,
+        )
+    }
+
     /// Create a sparse mapper using the resolved COLMAP executable.
     pub fn mapper(&self) -> ColmapMapper {
         ColmapMapper::new(self.colmap_path.clone())
+    }
+
+    /// Build an image_undistorter command that produces a training-specific
+    /// COLMAP dataset with camera intrinsics scaled together with images.
+    pub fn build_image_undistorter_command(
+        &self,
+        image_path: &Path,
+        input_model_path: &Path,
+        output_path: &Path,
+        max_image_size: u32,
+        log_path: &Path,
+    ) -> CommandSpec {
+        CommandSpec::new(
+            &self.colmap_path,
+            vec![
+                "image_undistorter".into(),
+                "--log_target".into(),
+                "stderr".into(),
+                "--image_path".into(),
+                image_path.as_os_str().to_owned(),
+                "--input_path".into(),
+                input_model_path.as_os_str().to_owned(),
+                "--output_path".into(),
+                output_path.as_os_str().to_owned(),
+                "--output_type".into(),
+                "COLMAP".into(),
+                "--max_image_size".into(),
+                max_image_size.max(1).to_string().into(),
+            ],
+            log_path,
+        )
     }
 
     // ─── Internal helpers ───────────────────────────────────────────────

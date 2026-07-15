@@ -1,4 +1,5 @@
 import { ArrowCounterClockwise, Eye, FolderOpen, Trash, X } from "@phosphor-icons/react";
+import { useEffect, useRef } from "react";
 
 import type { CheckpointSummary } from "../../types";
 
@@ -14,9 +15,22 @@ export function CheckpointDrawer({ checkpoints, onClose, onPreview, onRestore, o
   onDelete: (checkpoint: CheckpointSummary) => void;
   onOpen: (checkpoint: CheckpointSummary) => void;
 }) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      previousFocus?.focus();
+    };
+  }, [onClose]);
   return (
-    <aside className="checkpoint-drawer" aria-label="Checkpoint 管理器">
-      <header><div><strong>Checkpoint 管理器</strong><span>Brush PLY 几何恢复点，不包含优化器状态</span></div><button className="icon-button" type="button" onClick={onClose} aria-label="关闭 Checkpoint 管理器"><X size={17} /></button></header>
+    <aside className="checkpoint-drawer" role="dialog" aria-modal="true" aria-label="Checkpoint 管理器">
+      <header><div><strong>Checkpoint 管理器</strong><span>Brush PLY 几何恢复点，不包含优化器状态</span></div><button ref={closeRef} className="icon-button" type="button" onClick={onClose} aria-label="关闭 Checkpoint 管理器"><X size={17} /></button></header>
       <div className="checkpoint-list">
         {checkpoints.length === 0 ? <div className="checkpoint-empty">尚未生成合法 Checkpoint</div> : checkpoints.map((checkpoint) => (
           <article key={checkpoint.iteration} className={checkpoint.current ? "is-current" : ""}>

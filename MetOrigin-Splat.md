@@ -1,5 +1,5 @@
 
-下面以暂定产品名 **MetaOrigin Splat**、GitHub 仓库 `metorigin/splat` 为基础，制定一份可直接执行的开发计划，并附上一套可以粘贴给 Claude Code 的主提示词。
+下面以暂定产品名 **MetOrigin Splat**、GitHub 仓库 `metorigin/splat` 为基础，制定一份可直接执行的开发计划，并附上一套可以粘贴给 Claude Code 的主提示词。
 
 产品名称后续可以修改，不影响架构设计。
 
@@ -10,7 +10,7 @@
 ## 1.1 项目名称
 
 ```text
-MetaOrigin Splat
+MetOrigin Splat
 ```
 
 仓库地址规划：
@@ -2168,11 +2168,11 @@ docs/plans/claude-code-master-prompt.md
 也可以在首次运行 Claude Code 时直接粘贴。
 
 ```markdown
-你现在是 MetaOrigin Splat 项目的首席软件架构师和高级全栈工程师。
+你现在是 MetOrigin Splat 项目的首席软件架构师和高级全栈工程师。
 
 你将在当前 Git 仓库中协助开发一个 Windows 优先的开源桌面应用。该应用用于将本地视频或照片自动转换为 Gaussian Splatting 三维场景。
 
-项目暂定名称为 MetaOrigin Splat。
+项目暂定名称为 MetOrigin Splat。
 
 GitHub 组织：
 metorigin
@@ -2901,7 +2901,7 @@ ADR 格式：
 主提示词设置后，每一轮再发送一个较小的任务提示词。
 
 ```markdown
-请执行 MetaOrigin Splat 的下一项开发任务。
+请执行 MetOrigin Splat 的下一项开发任务。
 
 当前任务：
 
@@ -2949,7 +2949,7 @@ ADR 格式：
 建立仓库后，可以直接用下面这段开始第一次执行：
 
 ```markdown
-请开始 MetaOrigin Splat 项目的 Phase 0 和 Phase 1。
+请开始 MetOrigin Splat 项目的 Phase 0 和 Phase 1。
 
 项目目标是开发一个 Windows 优先的开源桌面应用，通过本地 FFmpeg、COLMAP 和 Brush，将视频或图片转换为 Gaussian Splatting 场景。
 

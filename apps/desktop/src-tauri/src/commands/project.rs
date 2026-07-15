@@ -4,9 +4,11 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use base64::Engine;
 use splat_domain::project::{
     ImageFolderSource, Project, ProjectSource, ProjectStatus, VideoSource,
 };
+use splat_pipeline::image_input::{encode_preview, scan_image_directory, uniform_sample_indices};
 use splat_project::{paths, ProjectManager};
 use tauri::{Emitter, Manager};
 
@@ -21,6 +23,7 @@ struct PresetEstimate {
     fps: f64,
     max_frames: u32,
     target_long_edge: u32,
+    colmap_long_edge: u32,
     iterations: u32,
     sh_degree: u32,
     checkpoint_interval: u32,
@@ -32,8 +35,18 @@ struct PresetEstimate {
 struct ImageSetMetadata {
     image_count: usize,
     ignored_count: usize,
+    invalid_count: usize,
     total_size_bytes: u64,
     formats: std::collections::BTreeMap<String, usize>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ImagePreview {
+    relative_path: String,
+    display_name: String,
+    width: u32,
+    height: u32,
+    data_url: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -80,6 +93,20 @@ pub struct ProjectPreflight {
 
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DeleteProjectRequest {
+    project_id: String,
+    project_path: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DeleteProjectResult {
+    project_id: String,
+    deleted_path: String,
+    removed_from_recent: bool,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateProjectRequest {
     name: String,
     source_path: String,
@@ -114,6 +141,8 @@ struct FrameExtractionPreset {
     max_frames: u32,
     #[serde(rename = "targetLongEdge")]
     target_long_edge: u32,
+    #[serde(rename = "colmapLongEdge", default)]
+    colmap_long_edge: u32,
 }
 
 #[derive(serde::Deserialize)]
@@ -125,7 +154,10 @@ struct TrainingPreset {
 
 /// Analyze a media file and return its metadata (for the new-project wizard).
 #[tauri::command]
-pub fn analyze_media(path: String, app_handle: tauri::AppHandle) -> Result<MediaAnalysis, String> {
+pub async fn analyze_media(
+    path: String,
+    app_handle: tauri::AppHandle,
+) -> Result<MediaAnalysis, String> {
     let path = PathBuf::from(&path);
 
     if !path.exists() {
@@ -161,7 +193,13 @@ pub fn analyze_media(path: String, app_handle: tauri::AppHandle) -> Result<Media
             });
         };
 
-        match splat_engine_ffmpeg::probe::probe_video_with(&ffprobe, &path) {
+        match splat_engine_ffmpeg::probe::probe_video_with_async(
+            &ffprobe,
+            &path,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        {
             Ok(meta) => Ok(MediaAnalysis {
                 source_kind: "video".into(),
                 source_path: path.to_string_lossy().to_string(),
@@ -190,10 +228,38 @@ pub fn analyze_media(path: String, app_handle: tauri::AppHandle) -> Result<Media
             }),
         }
     } else if path.is_dir() {
-        let metadata = analyze_image_directory(&path)?;
-        let valid = metadata.image_count > 0;
+        let scan = scan_image_directory(&path).map_err(|error| error.user_message_zh())?;
+        let metadata = image_set_metadata(&scan);
+        let valid = metadata.image_count >= 3;
         let total_size = metadata.total_size_bytes;
         let image_count = metadata.image_count;
+        let mut warnings = Vec::new();
+        if scan
+            .images
+            .iter()
+            .any(|image| image.relative_path.contains('/'))
+        {
+            warnings.push("已递归扫描子目录；导入时会保留原始相对目录结构。".into());
+        }
+        if !scan.invalid_items.is_empty() {
+            let examples = scan
+                .invalid_items
+                .iter()
+                .take(5)
+                .map(|item| item.relative_path.as_str())
+                .collect::<Vec<_>>()
+                .join("、");
+            warnings.push(format!(
+                "发现 {} 张损坏或无法读取的图片，将跳过：{}{}",
+                scan.invalid_items.len(),
+                examples,
+                if scan.invalid_items.len() > 5 {
+                    " 等"
+                } else {
+                    ""
+                }
+            ));
+        }
         Ok(MediaAnalysis {
             source_kind: "images".into(),
             source_path: path.to_string_lossy().to_string(),
@@ -203,10 +269,14 @@ pub fn analyze_media(path: String, app_handle: tauri::AppHandle) -> Result<Media
             video_metadata: None,
             image_set_metadata: Some(metadata),
             preset_estimates: preset_estimates(None, Some(image_count))?,
-            preview_items: preview_image_paths(&path, 6),
-            warnings: Vec::new(),
+            preview_items: Vec::new(),
+            warnings,
             blockers: if valid {
                 Vec::new()
+            } else if image_count > 0 {
+                vec![format!(
+                    "有效图片只有 {image_count} 张；重建至少需要 3 张可读取图片。"
+                )]
             } else {
                 vec!["所选文件夹中没有可用图片。".into()]
             },
@@ -216,13 +286,61 @@ pub fn analyze_media(path: String, app_handle: tauri::AppHandle) -> Result<Media
     }
 }
 
+/// Return controlled, downscaled previews for a previously selected image directory.
+/// The source is rescanned and validated; callers never receive arbitrary local file contents.
 #[tauri::command]
-pub fn preflight_project(
+pub fn get_image_previews(path: String) -> Result<Vec<ImagePreview>, String> {
+    let root = PathBuf::from(path);
+    let scan = scan_image_directory(&root).map_err(|error| error.user_message_zh())?;
+    let indices = uniform_sample_indices(scan.images.len(), 6);
+    indices
+        .into_iter()
+        .filter_map(|index| scan.images.get(index))
+        .map(|candidate| {
+            let data_url = match encode_preview(&candidate.path, 360, 82) {
+                Ok(encoded) => format!(
+                    "data:image/jpeg;base64,{}",
+                    base64::engine::general_purpose::STANDARD.encode(encoded.bytes)
+                ),
+                Err(error) => {
+                    tracing::warn!(
+                        source = %candidate.relative_path,
+                        error = %error,
+                        "image preview encoding failed"
+                    );
+                    String::new()
+                }
+            };
+            Ok::<_, String>(ImagePreview {
+                relative_path: candidate.relative_path.clone(),
+                display_name: candidate
+                    .path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_else(|| candidate.relative_path.clone()),
+                width: candidate.width,
+                height: candidate.height,
+                data_url,
+            })
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub async fn preflight_project(
     request: PreflightProjectRequest,
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<ProjectPreflight, String> {
-    let analysis = analyze_media(request.source_path, app_handle.clone())?;
+    build_project_preflight(request, &app_handle, state.inner()).await
+}
+
+async fn build_project_preflight(
+    request: PreflightProjectRequest,
+    app_handle: &tauri::AppHandle,
+    state: &AppState,
+) -> Result<ProjectPreflight, String> {
+    let analysis = analyze_media(request.source_path, app_handle.clone()).await?;
     let root = request
         .project_root
         .filter(|value| !value.trim().is_empty())
@@ -233,20 +351,20 @@ pub fn preflight_project(
         .as_deref()
         .and_then(|path| fs2::available_space(path).ok())
         .unwrap_or(0);
-    let engines = crate::commands::system::resolve_engine_paths(&app_handle);
-    let engine_checks = vec![
-        engine_check(
+    let engines = crate::commands::system::resolve_engine_paths(app_handle);
+    let mut engine_checks = Vec::new();
+    if analysis.source_kind == "video" {
+        engine_checks.push(engine_check(
             "FFmpeg / FFprobe",
             engines.ffmpeg.zip(engines.ffprobe).map(|pair| pair.0),
-        ),
-        engine_check("COLMAP", engines.colmap),
-        engine_check("Brush", engines.brush),
-    ];
+        ));
+    }
+    engine_checks.push(engine_check("COLMAP", engines.colmap));
+    engine_checks.push(engine_check("Brush", engines.brush));
     let selected = analysis
         .preset_estimates
         .iter()
-        .find(|preset| preset.id == request.preset)
-        .or_else(|| analysis.preset_estimates.first());
+        .find(|preset| preset.id == request.preset);
     let estimated_frames = selected.map(|preset| preset.estimated_frames).unwrap_or(0);
     let estimated_disk_bytes = selected
         .map(|preset| preset.estimated_disk_bytes)
@@ -254,6 +372,20 @@ pub fn preflight_project(
         .saturating_add(analysis.size_bytes)
         .saturating_add(5 * 1024 * 1024 * 1024);
     let mut blockers = analysis.blockers;
+    let mut warnings = analysis.warnings;
+    if analysis.source_kind == "images" {
+        if let (Some(metadata), Some(preset)) = (&analysis.image_set_metadata, selected) {
+            if metadata.image_count > preset.max_frames as usize {
+                warnings.push(format!(
+                    "发现 {} 张有效图片，{}预设将均匀选取其中 {} 张（包含首尾）。",
+                    metadata.image_count, preset.name, preset.estimated_frames
+                ));
+            }
+        }
+    }
+    if selected.is_none() {
+        blockers.push("所选质量预设无效，请重新选择后再试。".into());
+    }
     if !root.exists() && existing_root.is_none() {
         blockers.push("无法定位项目目标目录所在磁盘。".into());
     }
@@ -262,11 +394,8 @@ pub fn preflight_project(
             blockers.push(format!("未找到 {} 引擎。", engine.name));
         }
     }
-    if available_disk_bytes > 0 && available_disk_bytes < estimated_disk_bytes {
-        blockers.push(format!(
-            "项目磁盘空间不足，还需要约 {:.1} GiB。",
-            (estimated_disk_bytes - available_disk_bytes) as f64 / 1024_f64.powi(3)
-        ));
+    if let Some(blocker) = disk_space_blocker(available_disk_bytes, estimated_disk_bytes) {
+        blockers.push(blocker);
     }
     if state
         .0
@@ -284,9 +413,19 @@ pub fn preflight_project(
         estimated_disk_bytes,
         available_disk_bytes,
         recommended_preset: "fast".into(),
-        warnings: analysis.warnings,
+        warnings,
         blockers,
     })
+}
+
+fn disk_space_blocker(available_disk_bytes: u64, estimated_disk_bytes: u64) -> Option<String> {
+    if available_disk_bytes == 0 || available_disk_bytes >= estimated_disk_bytes {
+        return None;
+    }
+    Some(format!(
+        "项目磁盘空间不足，还需要约 {:.1} GiB。",
+        (estimated_disk_bytes - available_disk_bytes) as f64 / 1024_f64.powi(3)
+    ))
 }
 
 /// Create a new project.
@@ -298,6 +437,22 @@ pub async fn create_project(
 ) -> Result<CreateProjectResult, String> {
     validate_project_name(&request.name)?;
     let app_state = state.inner().clone();
+    let preflight = build_project_preflight(
+        PreflightProjectRequest {
+            source_path: request.source_path.clone(),
+            project_root: request.project_root.clone(),
+            preset: request.preset.clone(),
+        },
+        &app_handle,
+        &app_state,
+    )
+    .await?;
+    if !preflight.can_continue {
+        return Err(format!(
+            "创建前检查未通过：{}",
+            preflight.blockers.join("；")
+        ));
+    }
     let project = Project::new(request.name.trim());
     let creation_id = project.id.to_string();
     let cancel = Arc::new(AtomicBool::new(false));
@@ -369,7 +524,7 @@ pub fn open_project(
     let project_dir = PathBuf::from(&path);
     let default_dir = dirs_next::document_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("MetaOrigin Projects");
+        .join("MetOrigin Projects");
     let manager = ProjectManager::new(default_dir);
     let mut project = manager
         .open_project(&project_dir)
@@ -409,12 +564,244 @@ pub fn list_recent_projects(
     Ok(projects)
 }
 
+/// Remove a project from the recent-project index without touching project files.
+#[tauri::command]
+pub fn remove_recent_project(
+    project_id: String,
+    project_path: String,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let requested = PathBuf::from(&project_path);
+    {
+        let inner = state
+            .0
+            .lock()
+            .map_err(|_| "最近项目状态不可用，请重启应用后重试。".to_string())?;
+        if inner.active_pipeline.as_ref().is_some_and(|active| {
+            active.project_id == project_id
+                || paths_refer_to_same_project(&requested, &active.project_dir)
+        }) {
+            return Err("运行中的项目不能从列表移除，请先安全取消重建。".into());
+        }
+    }
+
+    let mut projects = read_recent_project_index(&app_handle)?;
+    projects.retain(|project| project.id != project_id && project.path != project_path);
+    write_recent_project_index(&app_handle, &projects)?;
+    let mut inner = state
+        .0
+        .lock()
+        .map_err(|_| "最近项目状态不可用，请重启应用后重试。".to_string())?;
+    inner.recent_projects = projects;
+    if inner
+        .project_dir
+        .as_ref()
+        .is_some_and(|current| paths_refer_to_same_project(current, &requested))
+    {
+        inner.project_dir = None;
+    }
+    Ok(())
+}
+
+/// Permanently delete a validated MetOrigin project directory.
+#[tauri::command]
+pub fn delete_project(
+    request: DeleteProjectRequest,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<DeleteProjectResult, String> {
+    let requested = PathBuf::from(&request.project_path);
+    {
+        let inner = state
+            .0
+            .lock()
+            .map_err(|_| "项目删除状态不可用，请重启应用后重试。".to_string())?;
+        if inner.active_pipeline.as_ref().is_some_and(|active| {
+            active.project_id == request.project_id
+                || paths_refer_to_same_project(&requested, &active.project_dir)
+        }) {
+            return Err("运行中的项目不能永久删除，请先安全取消重建。".into());
+        }
+        if inner
+            .active_creation
+            .as_ref()
+            .is_some_and(|creation| creation.id == request.project_id)
+        {
+            return Err("项目仍在创建中，请先取消创建后再删除。".into());
+        }
+    }
+
+    match std::fs::symlink_metadata(&requested) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return remove_missing_project_record(&request, &app_handle, state.inner());
+        }
+        Err(_) => return Err("项目目录无法访问，请检查磁盘或目录权限。".into()),
+        Ok(_) => {}
+    }
+
+    let (project_dir, project) = validate_delete_request(&request)?;
+
+    let parent = project_dir
+        .parent()
+        .ok_or_else(|| "项目目录没有有效的父目录，已拒绝删除。".to_string())?;
+    let file_name = project_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "项目目录名称无效，已拒绝删除。".to_string())?;
+    let tombstone = parent.join(format!(".{file_name}.deleting-{}", project.id));
+    if tombstone.exists() {
+        return Err("项目删除临时目录已存在，请先检查磁盘状态。".into());
+    }
+    let original_projects = read_recent_project_index(&app_handle)?;
+    let mut projects = original_projects.clone();
+    projects.retain(|item| item.id != request.project_id && item.path != request.project_path);
+    let removed_from_recent = projects.len() != original_projects.len();
+
+    std::fs::rename(&project_dir, &tombstone)
+        .map_err(|_| "无法锁定项目目录进行删除，请关闭占用该目录的程序后重试。".to_string())?;
+    if let Err(error) = write_recent_project_index(&app_handle, &projects) {
+        let _ = std::fs::rename(&tombstone, &project_dir);
+        return Err(error);
+    }
+    if let Err(error) = std::fs::remove_dir_all(&tombstone) {
+        let _ = write_recent_project_index(&app_handle, &original_projects);
+        let _ = std::fs::rename(&tombstone, &project_dir);
+        return Err(format!("删除项目文件失败，已尝试恢复原目录：{error}"));
+    }
+
+    let mut inner = state
+        .0
+        .lock()
+        .map_err(|_| "项目已删除，但应用状态刷新失败，请重启应用。".to_string())?;
+    inner.recent_projects = projects;
+    if inner
+        .project_dir
+        .as_ref()
+        .is_some_and(|current| paths_refer_to_same_project(current, &project_dir))
+    {
+        inner.project_dir = None;
+    }
+
+    Ok(DeleteProjectResult {
+        project_id: request.project_id,
+        deleted_path: project_dir.to_string_lossy().to_string(),
+        removed_from_recent,
+    })
+}
+
+/// A missing directory has no files left to delete. Only remove the stale
+/// recent-project entry when both its persisted ID and path still match the
+/// request, so a forged request cannot clean unrelated history.
+fn remove_missing_project_record(
+    request: &DeleteProjectRequest,
+    app_handle: &tauri::AppHandle,
+    state: &AppState,
+) -> Result<DeleteProjectResult, String> {
+    let original_projects = read_recent_project_index(app_handle)?;
+    if !original_projects
+        .iter()
+        .any(|project| project.id == request.project_id && project.path == request.project_path)
+    {
+        return Err("项目目录已不存在，且最近项目记录已发生变化，请刷新后重试。".into());
+    }
+    let mut projects = original_projects;
+    remove_recent_entries(&mut projects, &request.project_id, &request.project_path);
+    write_recent_project_index(app_handle, &projects)?;
+
+    let requested = PathBuf::from(&request.project_path);
+    let mut inner = state
+        .0
+        .lock()
+        .map_err(|_| "最近项目已清理，但应用状态刷新失败，请重启应用。".to_string())?;
+    inner.recent_projects = projects;
+    if inner
+        .project_dir
+        .as_ref()
+        .is_some_and(|current| paths_refer_to_same_project(current, &requested))
+    {
+        inner.project_dir = None;
+    }
+
+    Ok(DeleteProjectResult {
+        project_id: request.project_id.clone(),
+        deleted_path: request.project_path.clone(),
+        removed_from_recent: true,
+    })
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────
+
+fn validate_delete_request(request: &DeleteProjectRequest) -> Result<(PathBuf, Project), String> {
+    let requested = PathBuf::from(&request.project_path);
+    let metadata = std::fs::symlink_metadata(&requested)
+        .map_err(|_| "项目目录不存在或无法访问。".to_string())?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err("只允许删除真实的 MetOrigin 项目目录。".into());
+    }
+    let canonical = requested
+        .canonicalize()
+        .map_err(|_| "无法解析项目目录，已拒绝删除。".to_string())?;
+    validate_safe_delete_root(&canonical)?;
+    if !canonical.join("project.json").is_file() {
+        return Err("目标目录不是有效的 MetOrigin 项目。".into());
+    }
+    let manager = ProjectManager::new(
+        canonical
+            .parent()
+            .ok_or_else(|| "项目目录无效。".to_string())?
+            .to_path_buf(),
+    );
+    let project = manager
+        .open_project(&canonical)
+        .map_err(|error| error.user_message_zh())?;
+    if project.id.to_string() != request.project_id {
+        return Err("项目身份校验失败，已拒绝删除。".into());
+    }
+    Ok((canonical, project))
+}
+
+fn validate_safe_delete_root(path: &Path) -> Result<(), String> {
+    if path.parent().is_none() {
+        return Err("禁止删除磁盘根目录。".into());
+    }
+    for protected in [dirs_next::home_dir(), dirs_next::document_dir()]
+        .into_iter()
+        .flatten()
+    {
+        if protected.canonicalize().ok().as_deref() == Some(path) {
+            return Err("禁止删除系统用户目录。".into());
+        }
+    }
+    if let Ok(workspace) = std::env::current_dir().and_then(|path| path.canonicalize()) {
+        if workspace == path || workspace.starts_with(path) {
+            return Err("禁止删除应用工作区或其上级目录。".into());
+        }
+    }
+    let repository_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    if let Ok(repository_root) = repository_root.canonicalize() {
+        if repository_root == path || repository_root.starts_with(path) {
+            return Err("禁止删除应用仓库或其上级目录。".into());
+        }
+    }
+    Ok(())
+}
+
+fn paths_refer_to_same_project(left: &Path, right: &Path) -> bool {
+    match (left.canonicalize(), right.canonicalize()) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => left == right,
+    }
+}
+
+fn remove_recent_entries(projects: &mut Vec<ProjectInfo>, project_id: &str, project_path: &str) {
+    projects.retain(|project| project.id != project_id && project.path != project_path);
+}
 
 fn default_projects_dir() -> PathBuf {
     dirs_next::document_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("MetaOrigin Projects")
+        .join("MetOrigin Projects")
 }
 
 fn display_name(path: &Path) -> String {
@@ -457,6 +844,17 @@ fn preset_estimates(
                 1281..=1920 => 700_000,
                 _ => 1_200_000,
             };
+            let colmap_long_edge = if preset.frame_extraction.colmap_long_edge > 0 {
+                preset.frame_extraction.colmap_long_edge
+            } else {
+                preset.frame_extraction.target_long_edge
+            };
+            let colmap_bytes_per_frame = match colmap_long_edge {
+                0..=1280 => 320_000,
+                1281..=1920 => 700_000,
+                1921..=2560 => 1_200_000,
+                _ => 2_400_000,
+            };
             let checkpoint_interval = splat_engine_brush::TrainingConfig::from_builtin(&preset.id)
                 .map(|config| config.checkpoint_interval)
                 .map_err(|error| error.user_message_zh())?;
@@ -467,72 +865,34 @@ fn preset_estimates(
                 fps: preset.frame_extraction.fps,
                 max_frames: preset.frame_extraction.max_frames,
                 target_long_edge: preset.frame_extraction.target_long_edge,
+                colmap_long_edge,
                 iterations: preset.training.iterations,
                 sh_degree: preset.training.sh_degree,
                 checkpoint_interval,
                 estimated_frames,
-                estimated_disk_bytes: estimated_frames.saturating_mul(bytes_per_frame),
+                // Reconstruction frames, undistorted Brush images and one
+                // additional temporary candidate model are budgeted here.
+                estimated_disk_bytes: estimated_frames
+                    .saturating_mul(colmap_bytes_per_frame)
+                    .saturating_add(estimated_frames.saturating_mul(bytes_per_frame))
+                    .saturating_mul(2),
             })
         })
         .collect()
 }
 
-fn analyze_image_directory(path: &Path) -> Result<ImageSetMetadata, String> {
-    let mut image_count = 0;
-    let mut ignored_count = 0;
-    let mut total_size_bytes = 0_u64;
+fn image_set_metadata(scan: &splat_pipeline::image_input::ImageScan) -> ImageSetMetadata {
     let mut formats = std::collections::BTreeMap::new();
-    for entry in std::fs::read_dir(path)
-        .map_err(|_| "读取图片目录失败，请检查访问权限。".to_string())?
-        .flatten()
-    {
-        let entry_path = entry.path();
-        if !entry_path.is_file() {
-            continue;
-        }
-        let extension = entry_path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .unwrap_or_default()
-            .to_lowercase();
-        if matches!(extension.as_str(), "jpg" | "jpeg" | "png") {
-            image_count += 1;
-            total_size_bytes = total_size_bytes
-                .saturating_add(entry.metadata().map(|metadata| metadata.len()).unwrap_or(0));
-            *formats.entry(extension).or_insert(0) += 1;
-        } else {
-            ignored_count += 1;
-        }
+    for image in &scan.images {
+        *formats.entry(image.format.clone()).or_insert(0) += 1;
     }
-    Ok(ImageSetMetadata {
-        image_count,
-        ignored_count,
-        total_size_bytes,
+    ImageSetMetadata {
+        image_count: scan.images.len(),
+        ignored_count: scan.ignored_count,
+        invalid_count: scan.invalid_items.len(),
+        total_size_bytes: scan.images.iter().map(|image| image.size_bytes).sum(),
         formats,
-    })
-}
-
-fn preview_image_paths(path: &Path, limit: usize) -> Vec<String> {
-    let mut paths = std::fs::read_dir(path)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension()
-                .and_then(|extension| extension.to_str())
-                .map(|extension| {
-                    matches!(extension.to_lowercase().as_str(), "jpg" | "jpeg" | "png")
-                })
-                .unwrap_or(false)
-        })
-        .collect::<Vec<_>>();
-    paths.sort();
-    paths
-        .into_iter()
-        .take(limit)
-        .map(|path| path.to_string_lossy().to_string())
-        .collect()
+    }
 }
 
 fn existing_ancestor(path: &Path) -> Option<PathBuf> {
@@ -622,6 +982,11 @@ fn create_project_transaction(
         project.settings.preset = preset.id;
         project.settings.max_frames = preset.frame_extraction.max_frames;
         project.settings.max_long_edge = preset.frame_extraction.target_long_edge;
+        project.settings.colmap_max_long_edge = if preset.frame_extraction.colmap_long_edge > 0 {
+            preset.frame_extraction.colmap_long_edge
+        } else {
+            preset.frame_extraction.target_long_edge
+        };
         project.status = ProjectStatus::Ready;
         project.touch();
         manager
@@ -680,38 +1045,17 @@ fn copy_source_media(
     if !source.is_dir() {
         return Err("所选素材不存在，请重新选择。".into());
     }
-    let mut images = std::fs::read_dir(source)
-        .map_err(|_| "读取源媒体目录失败，请检查路径和访问权限。".to_string())?
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.is_file()
-                && path
-                    .extension()
-                    .and_then(|extension| extension.to_str())
-                    .map(|extension| {
-                        matches!(extension.to_lowercase().as_str(), "jpg" | "jpeg" | "png")
-                    })
-                    .unwrap_or(false)
-        })
-        .collect::<Vec<_>>();
-    images.sort();
-    if images.is_empty() {
-        return Err("所选文件夹中没有可用的 JPG、JPEG 或 PNG 图片。".into());
+    let scan = scan_image_directory(source).map_err(|error| error.user_message_zh())?;
+    if scan.images.len() < 3 {
+        return Err("所选文件夹中不足 3 张可读取的 JPG、JPEG 或 PNG 图片。".into());
     }
-    let total = images
-        .iter()
-        .filter_map(|path| std::fs::metadata(path).ok())
-        .map(|metadata| metadata.len())
-        .sum();
+    let total = scan.images.iter().map(|image| image.size_bytes).sum();
     let mut copied = 0;
-    for image in &images {
-        let length = std::fs::metadata(image)
-            .map(|metadata| metadata.len())
-            .unwrap_or(0);
+    for image in &scan.images {
+        let length = image.size_bytes;
         copy_file_with_progress(
-            image,
-            &destination.join(image.file_name().unwrap_or_default()),
+            &image.path,
+            &destination.join(Path::new(&image.relative_path)),
             app_handle,
             project_id,
             copied,
@@ -722,7 +1066,7 @@ fn copy_source_media(
     }
     Ok(ProjectSource::ImageFolder(ImageFolderSource {
         folder_name: display_name(source),
-        image_count: images.len(),
+        image_count: scan.images.len(),
         copied_to_project: true,
     }))
 }
@@ -737,6 +1081,10 @@ fn copy_file_with_progress(
     total_bytes: u64,
     cancel: &AtomicBool,
 ) -> Result<(), String> {
+    if let Some(parent) = destination.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|_| "创建项目素材子目录失败，请检查目标目录权限。".to_string())?;
+    }
     let mut input =
         File::open(source).map_err(|_| "读取源媒体失败，请检查文件访问权限。".to_string())?;
     let mut output = File::create(destination)
@@ -790,6 +1138,11 @@ fn copy_file_with_progress(
 }
 
 fn project_source_size(path: &Path) -> u64 {
+    if let Ok(scan) = scan_image_directory(path) {
+        if !scan.images.is_empty() {
+            return scan.images.iter().map(|image| image.size_bytes).sum();
+        }
+    }
     std::fs::read_dir(path)
         .into_iter()
         .flatten()
@@ -801,7 +1154,6 @@ fn project_source_size(path: &Path) -> u64 {
 
 fn detect_copied_source(source_dir: &std::path::Path) -> Option<ProjectSource> {
     let entries = std::fs::read_dir(source_dir).ok()?;
-    let mut image_count = 0usize;
     let mut video_filename = None;
     for entry in entries.flatten() {
         let path = entry.path();
@@ -818,8 +1170,6 @@ fn detect_copied_source(source_dir: &std::path::Path) -> Option<ProjectSource> {
                 .file_name()
                 .and_then(|value| value.to_str())
                 .map(str::to_string);
-        } else if matches!(extension.as_str(), "jpg" | "jpeg" | "png") {
-            image_count += 1;
         }
     }
 
@@ -829,6 +1179,7 @@ fn detect_copied_source(source_dir: &std::path::Path) -> Option<ProjectSource> {
             copied_to_project: true,
         }));
     }
+    let image_count = scan_image_directory(source_dir).ok()?.images.len();
     (image_count > 0).then(|| {
         ProjectSource::ImageFolder(ImageFolderSource {
             folder_name: source_dir
@@ -939,6 +1290,85 @@ fn refresh_recent_projects(projects: &mut [ProjectInfo]) {
 mod tests {
     use super::*;
 
+    fn temporary_test_root(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "metorigin-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn delete_validation_requires_matching_project_identity() {
+        let root = temporary_test_root("delete-validation");
+        let project_dir = root.join("bike.splat-project");
+        paths::create_project_directories(&project_dir).unwrap();
+        let project = Project::new("自行车");
+        ProjectManager::new(root.clone())
+            .save_project(&project, &project_dir)
+            .unwrap();
+
+        let request = DeleteProjectRequest {
+            project_id: project.id.to_string(),
+            project_path: project_dir.to_string_lossy().to_string(),
+        };
+        assert!(validate_delete_request(&request).is_ok());
+
+        let mut wrong_id = request;
+        wrong_id.project_id = splat_domain::project::ProjectId::new().to_string();
+        assert!(validate_delete_request(&wrong_id).is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delete_validation_rejects_non_project_directory() {
+        let root = temporary_test_root("delete-non-project");
+        std::fs::create_dir_all(&root).unwrap();
+        let request = DeleteProjectRequest {
+            project_id: "not-a-project".into(),
+            project_path: root.to_string_lossy().to_string(),
+        };
+        assert!(validate_delete_request(&request).is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delete_validation_rejects_repository_root() {
+        let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .unwrap();
+        assert!(validate_safe_delete_root(&repository_root).is_err());
+    }
+
+    #[test]
+    fn stale_recent_project_cleanup_removes_matching_identity_or_path() {
+        let mut projects = vec![
+            ProjectInfo {
+                id: "stale-id".into(),
+                name: "失效项目".into(),
+                path: r"D:\missing\stale.splat-project".into(),
+                status: "ready".into(),
+                updated_at: "2026-07-14T00:00:00Z".into(),
+                stage_label: None,
+            },
+            ProjectInfo {
+                id: "valid-id".into(),
+                name: "保留项目".into(),
+                path: r"D:\projects\valid.splat-project".into(),
+                status: "completed".into(),
+                updated_at: "2026-07-14T00:00:00Z".into(),
+                stage_label: None,
+            },
+        ];
+        remove_recent_entries(&mut projects, "stale-id", r"D:\missing\stale.splat-project");
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].id, "valid-id");
+    }
+
     #[test]
     fn recovers_video_source_from_copied_media() {
         let project_dir =
@@ -957,6 +1387,44 @@ mod tests {
         }
 
         let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn controlled_previews_support_nested_images_and_return_data_urls() {
+        let root = temporary_test_root("image-previews");
+        let nested = root.join("中文").join("same-name");
+        std::fs::create_dir_all(&nested).unwrap();
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("icons/32x32.png");
+        std::fs::copy(&fixture, root.join("FIRST.PNG")).unwrap();
+        std::fs::copy(&fixture, nested.join("FIRST.PNG")).unwrap();
+        std::fs::copy(&fixture, nested.join("third.png")).unwrap();
+
+        let previews = get_image_previews(root.to_string_lossy().to_string()).unwrap();
+        assert_eq!(previews.len(), 3);
+        assert!(previews
+            .iter()
+            .all(|preview| preview.data_url.starts_with("data:image/jpeg;base64,")));
+        assert!(previews
+            .iter()
+            .any(|preview| preview.relative_path == "中文/same-name/FIRST.PNG"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn recovers_nested_image_source_from_copied_media() {
+        let root = temporary_test_root("nested-source-recovery");
+        let nested = root.join("source/子目录");
+        std::fs::create_dir_all(&nested).unwrap();
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("icons/32x32.png");
+        for index in 0..3 {
+            std::fs::copy(&fixture, nested.join(format!("IMAGE_{index}.PNG"))).unwrap();
+        }
+        let recovered = detect_copied_source(&root.join("source")).unwrap();
+        assert!(matches!(
+            recovered,
+            ProjectSource::ImageFolder(ImageFolderSource { image_count: 3, .. })
+        ));
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -982,5 +1450,14 @@ mod tests {
         assert!(validate_project_name("自行车街景测试").is_ok());
         assert!(validate_project_name("bad:name").is_err());
         assert!(validate_project_name("").is_err());
+    }
+
+    #[test]
+    fn disk_space_preflight_reports_only_real_shortfalls() {
+        assert!(disk_space_blocker(20, 10).is_none());
+        assert!(disk_space_blocker(10, 10).is_none());
+        assert!(disk_space_blocker(0, 10).is_none());
+        let blocker = disk_space_blocker(5, 10).unwrap();
+        assert!(blocker.contains("磁盘空间不足"));
     }
 }

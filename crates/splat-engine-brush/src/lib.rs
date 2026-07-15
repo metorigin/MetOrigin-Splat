@@ -1,4 +1,4 @@
-//! Brush training engine adapter for MetaOrigin Splat.
+//! Brush training engine adapter for MetOrigin Splat.
 //!
 //! Detects Brush availability, validates dataset compatibility,
 //! generates training configurations, launches training,

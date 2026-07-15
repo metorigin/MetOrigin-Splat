@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::hardware::EnginePaths;
@@ -288,15 +289,33 @@ impl PipelineOrchestrator {
             }
 
             // Execute the stage
-            let (progress_tx, mut progress_rx) = broadcast::channel(64);
+            let (progress_tx, mut progress_rx) = broadcast::channel::<TaskProgress>(64);
             let event_tx = self.event_tx.clone();
-            let progress_forwarder = tokio::spawn(async move {
+            let progress_state = self.state.clone();
+            let progress_project_dir = self.project_dir.clone();
+            let mut progress_forwarder = tokio::spawn(async move {
+                let mut last_persisted = Instant::now();
                 while let Ok(progress) = progress_rx.recv().await {
+                    let snapshot =
+                        apply_stage_progress(&progress_state, sid, progress.percent).await;
+
+                    if last_persisted.elapsed() >= Duration::from_secs(1) {
+                        if let Err(error) = persist_state_snapshot(&progress_project_dir, &snapshot)
+                        {
+                            tracing::warn!(error = %error, "failed to persist throttled pipeline progress");
+                        }
+                        last_persisted = Instant::now();
+                    }
                     let _ = event_tx.send(OrchestratorEvent::StageProgress(progress));
                 }
             });
             let result = stage_reg.execute(&ctx, progress_tx).await;
-            progress_forwarder.abort();
+            if tokio::time::timeout(Duration::from_millis(100), &mut progress_forwarder)
+                .await
+                .is_err()
+            {
+                progress_forwarder.abort();
+            }
 
             if self.cancellation.is_cancelled() {
                 self.finish_cancelled().await?;
@@ -374,14 +393,10 @@ impl PipelineOrchestrator {
 
     /// Recompute overall pipeline progress.
     ///
-    /// Progress is the average of all individual stage progress values.
+    /// Progress uses the product-level phase weights defined by `PipelineState`.
     async fn update_overall_progress(&self) {
         let mut state = self.state.write().await;
-        let total = state.stages.len() as f64;
-        if total > 0.0 {
-            let sum: f64 = state.stages.values().map(|s| s.progress).sum();
-            state.overall_progress = (sum / total).clamp(0.0, 1.0);
-        }
+        state.refresh_overall_progress();
     }
 
     async fn finish_cancelled(&self) -> AppResult<()> {
@@ -427,14 +442,31 @@ impl PipelineOrchestrator {
             return Ok(());
         }
         let state = self.state.read().await.clone();
-        let projects_dir = self
-            .project_dir
-            .parent()
-            .unwrap_or(&self.project_dir)
-            .to_path_buf();
-        splat_project::ProjectManager::new(projects_dir)
-            .save_pipeline_state(&self.project_dir, &state)
+        persist_state_snapshot(&self.project_dir, &state)
     }
+}
+
+fn persist_state_snapshot(project_dir: &std::path::Path, state: &PipelineState) -> AppResult<()> {
+    if !project_dir.join("project.json").exists() {
+        return Ok(());
+    }
+    let projects_dir = project_dir.parent().unwrap_or(project_dir).to_path_buf();
+    splat_project::ProjectManager::new(projects_dir).save_pipeline_state(project_dir, state)
+}
+
+async fn apply_stage_progress(
+    state: &Arc<RwLock<PipelineState>>,
+    stage_id: PipelineStageId,
+    progress: f64,
+) -> PipelineState {
+    let mut state = state.write().await;
+    if let Some(stage) = state.stages.get_mut(&stage_id) {
+        stage.status = StageStatus::Running;
+        stage.progress = progress.clamp(0.0, 1.0);
+    }
+    state.current_stage = Some(stage_id);
+    state.refresh_overall_progress();
+    state.clone()
 }
 
 // ─── Skeleton stage for unimplemented pipeline stages ─────────────────────
@@ -676,6 +708,18 @@ mod tests {
         let _ = orch.start().await;
         let state = orch.get_state().await;
         assert!(state.overall_progress > 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_live_stage_progress_updates_weighted_snapshot() {
+        let state = Arc::new(RwLock::new(PipelineState::new()));
+        let state = apply_stage_progress(&state, PipelineStageId::FrameExtraction, 0.5).await;
+        assert_eq!(
+            state.stages[&PipelineStageId::FrameExtraction].status,
+            StageStatus::Running
+        );
+        assert_eq!(state.current_stage, Some(PipelineStageId::FrameExtraction));
+        assert!((state.overall_progress - (0.08 * 0.5 / 3.0)).abs() < 1e-9);
     }
 
     #[tokio::test]

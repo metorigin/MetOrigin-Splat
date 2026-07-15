@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_process::CommandSpec;
 
-use crate::database::inspect_database;
+use crate::database::{inspect_database, inspect_database_image_names};
 use crate::types::{CameraModel, FeatureExtractionResult};
 
 /// Configuration options for COLMAP feature extraction.
@@ -72,6 +72,8 @@ impl FeatureExtractor {
 
         // Command name
         args.push("feature_extractor".into());
+        args.push("--log_target".into());
+        args.push("stderr".into());
 
         // Database path
         args.push("--database_path".into());
@@ -110,7 +112,8 @@ impl FeatureExtractor {
         gpu_used: bool,
     ) -> AppResult<FeatureExtractionResult> {
         // Count the number of images in the image directory
-        let total_images = count_images(image_path)?;
+        let input_images = image_names(image_path)?;
+        let total_images = input_images.len();
 
         if total_images == 0 {
             return Err(AppError::new(
@@ -143,15 +146,33 @@ impl FeatureExtractor {
         }
 
         if stats.images != total_images {
+            let registered = inspect_database_image_names(database_path)?
+                .into_iter()
+                .collect::<std::collections::BTreeSet<_>>();
+            let missing = input_images
+                .iter()
+                .filter(|name| !registered.contains(*name))
+                .take(8)
+                .cloned()
+                .collect::<Vec<_>>();
+            let missing_text = if missing.is_empty() {
+                "无法确定具体文件".to_string()
+            } else {
+                missing.join("、")
+            };
             return Err(AppError::new(
                 "E-3010",
                 ErrorCategory::Engine,
                 "Incomplete Feature Extraction",
                 format!(
-                    "COLMAP stored features for {} of {} input images.",
-                    stats.images, total_images
+                    "COLMAP stored features for {} of {} input images. Skipped: {}.",
+                    stats.images, total_images, missing_text
                 ),
             )
+            .with_suggestions(vec![
+                "图片文件夹项目应关闭 single-camera 模式，以支持横竖构图或不同尺寸",
+                "检查被跳过图片在 COLMAP 日志中的 CAMERA_SINGLE_DIM_ERROR 或解码错误",
+            ])
             .retryable(true));
         }
 
@@ -164,7 +185,7 @@ impl FeatureExtractor {
 }
 
 /// Count image files (JPG/PNG) in a directory.
-fn count_images(dir_path: &Path) -> AppResult<usize> {
+fn image_names(dir_path: &Path) -> AppResult<Vec<String>> {
     if !dir_path.exists() {
         return Err(AppError::new(
             "E-1201",
@@ -186,7 +207,7 @@ fn count_images(dir_path: &Path) -> AppResult<usize> {
         )
     })?;
 
-    let count = reader
+    let mut names = reader
         .filter_map(|e| e.ok())
         .filter(|e| {
             if let Some(ext) = e.path().extension() {
@@ -197,9 +218,11 @@ fn count_images(dir_path: &Path) -> AppResult<usize> {
                 false
             }
         })
-        .count();
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect::<Vec<_>>();
+    names.sort();
 
-    Ok(count)
+    Ok(names)
 }
 
 #[cfg(test)]
@@ -372,7 +395,7 @@ mod tests {
         let dir = std::env::temp_dir().join("splat-colmap-empty-imgs");
         let _ = std::fs::create_dir_all(&dir);
 
-        let count = count_images(&dir).unwrap();
+        let count = image_names(&dir).unwrap().len();
         assert_eq!(count, 0);
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -389,7 +412,7 @@ mod tests {
         std::fs::write(dir.join("readme.txt"), "fake").unwrap();
         std::fs::write(dir.join("data.bin"), "fake").unwrap();
 
-        let count = count_images(&dir).unwrap();
+        let count = image_names(&dir).unwrap().len();
         assert_eq!(count, 2); // jpg + png
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -397,7 +420,7 @@ mod tests {
 
     #[test]
     fn test_count_images_nonexistent_dir() {
-        let result = count_images(Path::new("/nonexistent/colmap-test"));
+        let result = image_names(Path::new("/nonexistent/colmap-test"));
         assert!(result.is_err());
     }
 }

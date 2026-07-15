@@ -1,7 +1,26 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use crate::types::ModelInfo;
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ColmapAttemptStatus {
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ColmapAttemptResult {
+    pub id: String,
+    pub matching_strategy: String,
+    pub mapper: String,
+    pub status: ColmapAttemptStatus,
+    pub model_path: Option<PathBuf>,
+    pub model_info: Option<ModelInfo>,
+    pub error: Option<String>,
+}
 
 /// Result of a COLMAP sparse reconstruction.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -18,6 +37,20 @@ pub struct ColmapResult {
     pub observations: Option<usize>,
     /// Mean reprojection error in pixels (from model_analyzer)
     pub mean_reprojection_error: Option<f64>,
+    #[serde(default)]
+    pub mean_track_length: Option<f64>,
+    #[serde(default)]
+    pub strategy_version: u32,
+    #[serde(default)]
+    pub source_kind: Option<String>,
+    #[serde(default)]
+    pub selected_attempt_id: Option<String>,
+    #[serde(default)]
+    pub selection_reason: Option<String>,
+    #[serde(default)]
+    pub attempts: Vec<ColmapAttemptResult>,
+    #[serde(default)]
+    pub automatic_fallbacks_exhausted: bool,
 }
 
 impl ColmapResult {
@@ -60,6 +93,13 @@ impl ColmapResult {
             model_path,
             observations: None,
             mean_reprojection_error: None,
+            mean_track_length: None,
+            strategy_version: 0,
+            source_kind: None,
+            selected_attempt_id: None,
+            selection_reason: None,
+            attempts: Vec::new(),
+            automatic_fallbacks_exhausted: false,
         }
     }
 
@@ -72,6 +112,11 @@ impl ColmapResult {
     /// Attach mean reprojection error.
     pub fn with_error(mut self, error: f64) -> Self {
         self.mean_reprojection_error = Some(error);
+        self
+    }
+
+    pub fn with_track_length(mut self, track_length: f64) -> Self {
+        self.mean_track_length = Some(track_length);
         self
     }
 }

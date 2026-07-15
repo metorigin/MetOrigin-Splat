@@ -16,6 +16,7 @@ pub fn run() {
             // System
             commands::system::app_version,
             commands::system::check_engines,
+            commands::system::open_engine_location,
             commands::system::get_app_state,
             commands::system::get_app_settings,
             commands::system::save_app_settings,
@@ -26,11 +27,14 @@ pub fn run() {
             commands::system::export_diagnostics,
             // Project
             commands::project::analyze_media,
+            commands::project::get_image_previews,
             commands::project::preflight_project,
             commands::project::create_project,
             commands::project::cancel_project_creation,
             commands::project::open_project,
             commands::project::list_recent_projects,
+            commands::project::remove_recent_project,
+            commands::project::delete_project,
             // Pipeline
             commands::pipeline::start_pipeline,
             commands::pipeline::cancel_pipeline,
@@ -39,6 +43,7 @@ pub fn run() {
             commands::pipeline::get_pipeline_state,
             commands::pipeline::retry_stage,
             commands::pipeline::rerun_from_stage,
+            commands::pipeline::accept_colmap_quality_risk,
             // Workspace data
             commands::workspace::get_pipeline_events,
             commands::workspace::read_stage_log,
@@ -46,6 +51,8 @@ pub fn run() {
             commands::workspace::delete_checkpoint,
             commands::workspace::restore_checkpoint,
             commands::workspace::get_project_artifacts,
+            commands::workspace::ensure_output_directory,
+            commands::workspace::open_project_location,
             commands::workspace::get_frame_preview,
             commands::workspace::get_sparse_preview_pack,
             commands::workspace::inspect_ply,
