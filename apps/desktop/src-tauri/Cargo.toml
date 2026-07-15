@@ -33,7 +33,7 @@ chrono.workspace = true
 dirs-next = "2"
 fs2 = "0.4"
 sysinfo = "0.33"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
 
 [features]
 default = ["custom-protocol"]
