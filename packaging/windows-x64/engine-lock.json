@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "pack_version": "0.1.0-internal.1",
+  "platform": "windows-x64",
+  "components": {
+    "ffmpeg": {
+      "kind": "engine",
+      "version": "8.1.2",
+      "archive_filename": "ffmpeg-release-essentials.zip",
+      "source_url": "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.2-essentials_build.zip",
+      "sha256": "DB580001CAA24AC104C8CB856CD113A87B0A443F7BDF47D8C12B1D740584A2EC",
+      "size_bytes": 109728040
+    },
+    "colmap": {
+      "kind": "engine",
+      "version": "4.1.0",
+      "archive_filename": "colmap-4.1.0-x64-windows-cuda.zip",
+      "source_url": "https://github.com/colmap/colmap/releases/download/4.1.0/colmap-x64-windows-cuda.zip",
+      "sha256": "CCD2F8C5B44F3E0CE645170D6ABAD30FF763EDE97EEB0E6E23AF1993E624E64B",
+      "size_bytes": 321463068
+    },
+    "brush": {
+      "kind": "engine",
+      "version": "0.3.0",
+      "archive_filename": "brush-app-v0.3.0-x86_64-pc-windows-msvc.zip",
+      "source_url": "https://github.com/ArthurBrussee/brush/releases/download/v0.3.0/brush-app-x86_64-pc-windows-msvc.zip",
+      "sha256": "B68E3E9CF052D51BF3EE30776FA5A364DE7F2BA13B58443128FF797BB7BCFCD6",
+      "size_bytes": 158791348
+    },
+    "vcredist": {
+      "kind": "installer_prerequisite",
+      "version": "14.44.35211",
+      "archive_filename": "vc_redist.x64.exe",
+      "source_url": "https://download.visualstudio.microsoft.com/download/pr/65f6a2c9-1b34-43ef-8a5d-4bbdd407197a/CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B/VC_redist.x64.exe",
+      "sha256": "CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B",
+      "size_bytes": 25635768
+    }
+  }
+}

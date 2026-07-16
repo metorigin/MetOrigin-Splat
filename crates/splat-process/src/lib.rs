@@ -18,6 +18,7 @@ pub mod fake;
 pub mod handle;
 pub mod log_writer;
 pub mod parser;
+pub mod platform;
 pub mod runner;
 
 pub use command::CommandSpec;
@@ -27,4 +28,5 @@ pub use fake::FakeProcessRunner;
 pub use handle::ProcessHandle;
 pub use log_writer::LogWriter;
 pub use parser::{CompositeParser, PercentageParser, ProgressParser};
+pub use platform::{background_command, configure_background_command};
 pub use runner::{CapturedProcessResult, ProcessRunner};

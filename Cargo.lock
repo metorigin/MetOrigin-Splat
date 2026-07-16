@@ -3471,6 +3471,7 @@ dependencies = [
  "serde_json",
  "splat-domain",
  "splat-process",
+ "tempfile",
  "thiserror 2.0.18",
  "tracing",
 ]
@@ -3509,6 +3510,8 @@ name = "splat-hardware"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
+ "sha2",
  "splat-domain",
  "thiserror 2.0.18",
  "tracing",

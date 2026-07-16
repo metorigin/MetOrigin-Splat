@@ -220,7 +220,7 @@ fn is_process_alive(pid: u32) -> bool {
     #[cfg(target_os = "windows")]
     {
         // Windows: use tasklist to check process existence
-        let output = std::process::Command::new("tasklist")
+        let output = splat_process::background_command("tasklist")
             .args(["/FI", &format!("PID eq {}", pid), "/NH"])
             .output();
         match output {

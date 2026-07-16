@@ -1675,8 +1675,10 @@ button:disabled {
 .preflight-columns { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; }
 .preflight-panel { padding: 14px; }
 .preflight-panel h3, .preset-heading { margin: 0 0 12px; font-size: 12px; color: var(--text-secondary); }
-.check-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 8px; padding: 9px 0; border-top: 1px solid var(--border-subtle); font-size: 12px; }
+.check-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: start; gap: 8px; padding: 9px 0; border-top: 1px solid var(--border-subtle); font-size: 12px; }
 .check-row > span:last-child { color: var(--text-muted); }
+.engine-check-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.engine-check-copy small { color: var(--text-muted); font-size: 10px; line-height: 1.4; }
 .preset-heading { margin-bottom: -7px; }
 .preset-table { display: grid; border: 1px solid var(--border-subtle); }
 .preset-table > button { min-height: 52px; display: grid; grid-template-columns: 22px 1.1fr 1.35fr 1fr 1fr auto; align-items: center; gap: 9px; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); text-align: left; background: #14191f; font-size: 11px; cursor: pointer; }

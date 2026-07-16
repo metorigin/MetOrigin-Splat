@@ -5,6 +5,14 @@
 
 pub mod detector;
 pub mod locator;
+pub mod manifest;
 
 pub use detector::HardwareDetector;
-pub use locator::EngineLocator;
+pub use locator::{
+    EngineIntegrityCacheOptions, EngineLocator, EngineLocatorOptions, EngineResolution,
+    EngineResolutionMode,
+};
+pub use manifest::{
+    version_matches, EnginePackEngine, EnginePackError, EnginePackFile, EnginePackManifest,
+    EnginePackSource, EnginePackStatus, IntegrityStatus,
+};

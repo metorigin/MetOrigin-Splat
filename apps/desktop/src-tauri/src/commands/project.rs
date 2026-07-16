@@ -72,11 +72,16 @@ pub struct PreflightProjectRequest {
     preset: String,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct EngineCheck {
     name: String,
     available: bool,
     path: Option<String>,
+    expected_version: Option<String>,
+    actual_version: Option<String>,
+    diagnostic: Option<String>,
+    source: Option<String>,
+    integrity_status: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -351,16 +356,31 @@ async fn build_project_preflight(
         .as_deref()
         .and_then(|path| fs2::available_space(path).ok())
         .unwrap_or(0);
-    let engines = crate::commands::system::resolve_engine_paths(app_handle);
-    let mut engine_checks = Vec::new();
-    if analysis.source_kind == "video" {
-        engine_checks.push(engine_check(
-            "FFmpeg / FFprobe",
-            engines.ffmpeg.zip(engines.ffprobe).map(|pair| pair.0),
-        ));
-    }
-    engine_checks.push(engine_check("COLMAP", engines.colmap));
-    engine_checks.push(engine_check("Brush", engines.brush));
+    let include_ffmpeg = analysis.source_kind == "video";
+    let check_handle = app_handle.clone();
+    let engine_checks = tokio::task::spawn_blocking(move || {
+        let mut checks = crate::commands::system::check_engines_blocking(check_handle)
+            .into_iter()
+            .map(|value| {
+                serde_json::from_value::<EngineCheck>(value)
+                    .map_err(|error| format!("引擎检查结果格式无效：{error}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        checks.retain(|check| include_ffmpeg || check.name != "ffmpeg");
+        for check in &mut checks {
+            check.name = match check.name.as_str() {
+                "ffmpeg" => "FFmpeg / FFprobe",
+                "colmap" => "COLMAP",
+                "brush" => "Brush",
+                _ => check.name.as_str(),
+            }
+            .into();
+        }
+        checks.push(check_nvidia_runtime());
+        Ok::<_, String>(checks)
+    })
+    .await
+    .map_err(|error| format!("引擎检查任务异常结束，请重试：{error}"))??;
     let selected = analysis
         .preset_estimates
         .iter()
@@ -391,7 +411,11 @@ async fn build_project_preflight(
     }
     for engine in &engine_checks {
         if !engine.available {
-            blockers.push(format!("未找到 {} 引擎。", engine.name));
+            blockers.push(format!(
+                "{} 不可用：{}",
+                engine.name,
+                engine.diagnostic.as_deref().unwrap_or("启动检查未通过。")
+            ));
         }
     }
     if let Some(blocker) = disk_space_blocker(available_disk_bytes, estimated_disk_bytes) {
@@ -907,11 +931,28 @@ fn existing_ancestor(path: &Path) -> Option<PathBuf> {
     }
 }
 
-fn engine_check(name: &str, path: Option<PathBuf>) -> EngineCheck {
-    EngineCheck {
-        name: name.into(),
-        available: path.is_some(),
-        path: path.map(|path| path.to_string_lossy().to_string()),
+fn check_nvidia_runtime() -> EngineCheck {
+    match splat_engine_brush::require_nvidia_smi() {
+        Ok(info) => EngineCheck {
+            name: "NVIDIA GPU / 驱动".into(),
+            available: true,
+            path: Some("nvidia-smi".into()),
+            expected_version: None,
+            actual_version: Some(info.driver_version.clone()),
+            diagnostic: Some(info.summary()),
+            source: Some("system".into()),
+            integrity_status: None,
+        },
+        Err(error) => EngineCheck {
+            name: "NVIDIA GPU / 驱动".into(),
+            available: false,
+            path: Some("nvidia-smi".into()),
+            expected_version: None,
+            actual_version: None,
+            diagnostic: Some(error.user_message_zh()),
+            source: Some("system".into()),
+            integrity_status: None,
+        },
     }
 }
 

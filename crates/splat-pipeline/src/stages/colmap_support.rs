@@ -94,7 +94,7 @@ fn sha256_file(path: &Path) -> AppResult<String> {
         .with_technical(error.to_string())
     })?;
     let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 1024 * 1024];
+    let mut buffer = vec![0_u8; 1024 * 1024];
     loop {
         let read = file.read(&mut buffer).map_err(|error| {
             AppError::new(

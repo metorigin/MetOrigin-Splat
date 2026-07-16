@@ -142,6 +142,11 @@ export interface EngineCheck {
   name: string;
   available: boolean;
   path: string | null;
+  expected_version: string | null;
+  actual_version: string | null;
+  diagnostic: string | null;
+  source: string | null;
+  integrity_status: string | null;
 }
 
 export interface ProjectPreflight {

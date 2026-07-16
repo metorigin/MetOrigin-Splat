@@ -39,7 +39,7 @@ pub fn model_sha256(model_dir: &Path) -> AppResult<String> {
             .unwrap_or_default();
         hasher.update(name.as_bytes());
         let mut file = std::fs::File::open(&path).map_err(quality_filesystem_error)?;
-        let mut buffer = [0_u8; 1024 * 1024];
+        let mut buffer = vec![0_u8; 1024 * 1024];
         loop {
             let read = file.read(&mut buffer).map_err(quality_filesystem_error)?;
             if read == 0 {

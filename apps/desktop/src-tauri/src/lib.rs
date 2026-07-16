@@ -2,6 +2,7 @@ mod commands;
 mod state;
 
 use state::AppState;
+#[cfg(debug_assertions)]
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
