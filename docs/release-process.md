@@ -1,107 +1,91 @@
 # Release Process
 
-## Version Plan
+## Current release status
 
-### v0.1.0-alpha
+MetOrigin Splat is in Alpha and currently supports source publication only. There is no supported public binary release or public full offline installer.
 
-**Goal**: Internal and early testers can run the full pipeline.
+Two release boundaries must remain separate:
 
-**Includes**:
-- Video import
-- FFmpeg frame extraction
-- COLMAP SfM
-- Brush training
-- Basic training page
-- PLY output
+1. **Source release:** the MetOrigin Splat source code under `MIT OR Apache-2.0`.
+2. **Binary distribution:** the application plus any bundled FFmpeg, COLMAP, Brush, Microsoft runtime, WebView2, model weights, and transitive runtime dependencies under their respective terms.
 
-**Not promised**:
-- Broad GPU compatibility
-- Stable recovery
-- Auto-update
-- Full viewer
+Making the source repository public does not authorize distribution of the internal engine pack.
 
-### v0.2.0-beta
+## Source publication checklist
 
-- Project recovery
-- GPU detection
-- Error diagnostics
-- Full installer
-- Basic result preview
-- More tested GPU configurations
+Before changing the repository visibility or creating a source tag:
 
-### v0.3.0
+1. Select and review the exact public `main` commit.
+2. Review every retained branch, tag, Actions run, log, and artifact for private information.
+3. Run a secret scan across all Git history.
+4. Confirm CI is green on `main`.
+5. Confirm README, development, contribution, and security documentation is current.
+6. Confirm the release notes describe the project as Alpha and do not promise public binaries.
+7. Re-enable the required branch rules after a repository visibility change.
 
-- Embedded viewer
-- More export formats
-- Project disk management
-- Improved presets
-- Basic i18n support
-
-### v1.0.0
-
-**Conditions**:
-- Stable on mainstream Windows configurations
-- Core pipeline success rate meets target
-- Recovery is reliable
-- Documentation is complete
-- Install/uninstall is stable
-- Engine licenses and distribution terms are clear
-
-## Release Workflow
-
-Triggered by Git tag:
-
-```
-v0.1.0
-```
-
-### Steps
-
-1. **Version validation**: Confirm tag matches version in Cargo.toml and package.json
-2. **Changelog generation**: Collect changes since last release
-3. **Build installer**: `cargo tauri build` → `.exe`
-4. **Build portable**: Zip the release build directory
-5. **Checksums**: Generate SHA-256 for all distributable files
-6. **GitHub Release**: Upload artifacts, attach third-party license bundle
-7. **Mark version**: Pre-release for alpha/beta, full release for stable
-
-### Release Artifacts
+Source tags must use prerelease SemVer while the public API and project format remain unstable, for example:
 
 ```text
-Splat-Setup-x.y.z.exe    # Windows installer
-Splat-Portable-x.y.z.zip  # Windows portable build
-SHA256SUMS                # Checksum file
-THIRD_PARTY_NOTICES       # Third-party license texts
-Release Notes             # Changelog for this version
+v0.1.0-alpha.1
 ```
 
-## Branch Strategy
+## Internal Windows installer
+
+The manual Windows workflow builds an unsigned artifact for internal compatibility testing. It must not be attached to a public GitHub Release.
+
+The pinned engine inputs and current blockers are documented in:
+
+- `packaging/windows-x64/engine-lock.json`
+- `packaging/windows-x64/README.md`
+- `packaging/windows-x64/THIRD_PARTY_NOTICES.template.md`
+
+## Public binary release gates
+
+A public installer or portable archive remains blocked until all of the following are complete:
+
+- FFmpeg corresponding-source and GPL notice obligations
+- A complete COLMAP binary dependency inventory and required license texts
+- Verified provenance and redistribution terms for Brush model weights
+- Application dependency notices for shipped Rust and Node packages
+- A generated SBOM for each artifact
+- Authenticode signing and protected signing credentials
+- SHA-256 checksums and retained build metadata
+- Clean-machine installation, upgrade, uninstall, and runtime testing
+- A documented Windows/GPU/driver compatibility matrix
+- A security review of Tauri capabilities and content security policy
+
+This list is an engineering release gate, not legal advice. Obtain an appropriate license review before public binary distribution.
+
+## Future public artifact set
+
+When the binary gates are complete, a release may contain:
 
 ```text
-main         — Always buildable, release from here
-feature/*    — New features
-fix/*        — Bug fixes
-docs/*       — Documentation
-release/*    — Release preparation
+MetOrigin-Splat-Setup-x.y.z.exe
+MetOrigin-Splat-Portable-x.y.z.zip
+SHA256SUMS.txt
+THIRD_PARTY_NOTICES.md
+SBOM.spdx.json
+Release Notes
 ```
 
-Rules:
-- No long-lived `develop` branch initially (reduces process overhead)
-- Every change goes through a PR
-- Use squash merge
-- Commit messages follow Conventional Commits
+Do not publish placeholder installers or artifacts whose engine inventory differs from their notices.
 
-### Commit Examples
+## Branch and review policy
 
-```
-feat(pipeline): add resumable stage execution
-fix(colmap): handle paths containing non-ascii characters
-docs: add Windows development guide
-```
+- `main` is the only long-lived branch and must remain buildable.
+- Changes are proposed through short-lived branches and pull requests.
+- Squash merging and Conventional Commits are preferred.
+- Delete merged head branches.
+- Do not keep private material in a branch of a public repository; use a separate private repository when needed.
 
-## Engine Distribution
+## Version consistency
 
-- Application binary and engine packs are distributed separately
-- First run: download engines or use bundled full pack
-- Engine versions are pinned and checksum-verified
-- License texts included per engine
+Before a future binary release, ensure the version agrees across:
+
+- root `package.json`
+- `apps/desktop/package.json`
+- workspace and application `Cargo.toml`
+- Tauri configuration
+- engine-pack metadata, where applicable
+- the Git tag and release notes

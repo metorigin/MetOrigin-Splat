@@ -1,74 +1,57 @@
-# Repository Audit
+# Repository Public-Readiness Audit
 
-**Date**: 2026-07-12
-**Author**: Initial audit
+**Updated:** 2026-08-01
 
-## Current State
+This document replaces the initial bootstrap audit from 2026-07-12. The repository now contains a working Rust workspace, Tauri/React desktop application, automated tests, CI, schemas, presets, documentation, and dual MIT/Apache-2.0 source licenses.
 
-The repository `metorigin/splat` is at its initial state with a single commit.
+## Public source scope
 
-### Files Present
+The intended first public milestone is an Alpha source release. It does not include a supported public binary, a public offline engine pack, or a compatibility promise beyond the validated Windows development environment.
 
-```
-README.md                       # 1 line, placeholder only
-MetOrigin-Splat.md              # Master development plan (~3000 lines)
-```
+## Repository state
 
-### Git State
+- `main` is the intended long-lived and default branch.
+- Public preparation is performed on a short-lived pull-request branch.
+- Rust and Node lockfiles and the Rust toolchain are committed.
+- CI covers Rust formatting, Clippy, tests, schemas, frontend checks, and a Windows Tauri debug build.
+- Real-engine tests remain opt-in because they require local engines, licensed media, disk space, and compatible GPU hardware.
 
-- **Default branch**: `main`
-- **Commits**: 1 (`a3ad73e` — "first commit")
-- **Status**: No code, no configuration, no CI
+## Completed foundations
 
-### What's Missing vs. Plan
+- Dual `MIT OR Apache-2.0` source licensing
+- Rust workspace and Tauri desktop application
+- FFmpeg, COLMAP, and Brush adapter boundaries
+- Project persistence, pipeline recovery, checkpoint handling, preview, and export paths
+- Frontend and Rust automated tests
+- GitHub Actions CI and Dependabot configuration
+- English and Simplified Chinese README files
+- Architecture, development, engine, project-format, release, and troubleshooting documentation
+- Contribution, security, changelog, pull-request, and issue guidance
 
-The project plan (MetOrigin-Splat.md) defines a comprehensive structure. None of it has been implemented yet:
+## Known public-release boundaries
 
-| Category | Planned | Present |
-| -------- | ------- | ------- |
-| README   | Full project overview | Placeholder only |
-| README.zh-CN | Chinese version | Missing |
-| Rust workspace | Multi-crate workspace | Missing |
-| Tauri app | `apps/desktop/` | Missing |
-| Frontend | React + TypeScript + Vite | Missing |
-| Domain crate | `splat-domain` | Missing |
-| Project crate | `splat-project` | Missing |
-| Process crate | `splat-process` | Missing |
-| Pipeline crate | `splat-pipeline` | Missing |
-| Hardware crate | `splat-hardware` | Missing |
-| Engine adapters | FFmpeg / COLMAP / Brush | Missing |
-| JSON schemas | project / event / preset | Missing |
-| Presets | fast / balanced / quality | Missing |
-| CI | GitHub Actions | Missing |
-| Tests | unit / integration / e2e | Missing |
-| Documentation | architecture / dev / project-format / etc | Missing (being created) |
-| License | TBD | Missing |
-| Community files | CONTRIBUTING / CODE_OF_CONDUCT / SECURITY | Missing |
-| GitHub config | Issue/PR templates | Missing |
-| Scripts | build / packaging | Missing |
+### Source publication
 
-## Recommendations
+Before the repository becomes public:
 
-### Immediate (Phase 0-1)
+- Review retained branches, tags, workflow history, logs, and artifacts.
+- Run a dedicated secret scanner across all Git history.
+- Remove machine-specific paths and private test references from tracked documentation.
+- Confirm the selected `main` commit and required checks.
+- Reapply branch rules after changing repository visibility.
 
-1. Complete documentation split (in progress)
-2. Initialize Rust workspace with empty crates
-3. Initialize Tauri + React + TypeScript frontend
-4. Create `splat-domain` with core types
-5. Establish CI pipeline
-6. Choose and add license
-7. Add community health files (CONTRIBUTING, CODE_OF_CONDUCT, SECURITY)
-8. Create `.github` issue/PR templates
+### Binary distribution
 
-### Short-term (Phase 2-4)
+The internal Windows engine pack is not approved for public distribution. Outstanding gates include FFmpeg GPL materials, the COLMAP binary dependency inventory, Brush model-weight provenance, application dependency notices, an SBOM, code signing, and clean-machine compatibility testing.
 
-9. Implement `splat-project` — project CRUD, serialization, migration
-10. Implement `splat-process` — process runner with cancellation
-11. Implement `splat-engine-ffmpeg` — video metadata + frame extraction
-12. Begin COLMAP integration
+See `packaging/windows-x64/THIRD_PARTY_NOTICES.template.md` for the authoritative internal release gate.
 
-### Risks
+## Remaining engineering work outside this documentation change
 
-- All external engine licenses need verification before distribution
-- Rust + Tauri + Windows development environment needs validation
-- Brush CLI stability unknown — version must be pinned and documented early
+- Keep CI green on the public candidate commit.
+- Expand the public real-engine fixture and hardware compatibility matrix.
+- Automate dependency license policy and vulnerability checks.
+- Harden Tauri capabilities and content security policy before a public binary release.
+- Complete the third-party redistribution review before publishing an installer.
+
+These items do not prevent review of the source code, but they must be represented accurately in public project claims.
