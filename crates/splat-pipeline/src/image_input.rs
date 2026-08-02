@@ -418,19 +418,18 @@ pub fn validate_image_manifest(frames_dir: &Path, manifest: &ImageFrameManifest)
             "图片帧清单数量或版本无效。",
         ));
     }
-    if manifest.schema_version >= 3 {
-        if manifest.frame_sources.len() != manifest.frames.len()
+    if manifest.schema_version >= 3
+        && (manifest.frame_sources.len() != manifest.frames.len()
             || manifest.camera_groups.is_empty()
             || manifest
                 .frame_sources
                 .iter()
-                .any(|source| source.camera_group_id.is_empty())
-        {
-            return Err(media_error(
-                "Invalid Image Camera Manifest",
-                "图片帧清单缺少相机分组或原始路径映射。",
-            ));
-        }
+                .any(|source| source.camera_group_id.is_empty()))
+    {
+        return Err(media_error(
+            "Invalid Image Camera Manifest",
+            "图片帧清单缺少相机分组或原始路径映射。",
+        ));
     }
     for frame in &manifest.frames {
         if Path::new(&frame.filename).components().count() != 1 {

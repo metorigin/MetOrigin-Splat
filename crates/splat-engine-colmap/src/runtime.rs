@@ -81,7 +81,7 @@ fn deduplicate_paths(paths: &mut Vec<PathBuf>) {
 fn normalized_path_key(path: &Path) -> OsString {
     #[cfg(windows)]
     {
-        return OsString::from(path.as_os_str().to_string_lossy().to_ascii_lowercase());
+        OsString::from(path.as_os_str().to_string_lossy().to_ascii_lowercase())
     }
     #[cfg(not(windows))]
     {

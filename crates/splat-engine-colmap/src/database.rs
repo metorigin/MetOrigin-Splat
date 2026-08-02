@@ -733,10 +733,7 @@ mod tests {
             )
             .unwrap();
         connection
-            .execute(
-                "INSERT INTO two_view_geometries VALUES (?1, 20)",
-                [1 * MAX + 2],
-            )
+            .execute("INSERT INTO two_view_geometries VALUES (?1, 20)", [MAX + 2])
             .unwrap();
         connection
             .execute(
