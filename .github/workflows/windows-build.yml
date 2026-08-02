@@ -1,21 +1,24 @@
-name: Windows Build
+name: Windows Full Internal Installer
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-full-internal-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-windows:
-    name: Build Windows Installer
+  build-windows-full:
+    name: Build unsigned internal Windows installer
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: apps/desktop
+    timeout-minutes: 120
+
     steps:
       - uses: actions/checkout@v4
 
@@ -26,30 +29,57 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            apps/desktop/src-tauri -> target
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+            . -> target
 
       - uses: pnpm/action-setup@v4
         with:
           version: 11.12.0
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build Tauri app
-        run: pnpm tauri build
+      - name: Resolve Cargo target directory
+        id: cargo-metadata
+        shell: powershell
+        run: |
+          $metadata = cargo metadata --format-version 1 --no-deps | ConvertFrom-Json
+          "target_dir=$($metadata.target_directory)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-      - name: Upload installer
+      - name: Build full offline installer
+        run: pnpm package:windows:full
+
+      - name: Verify internal artifact set
+        shell: powershell
+        run: |
+          $bundle = Join-Path '${{ steps.cargo-metadata.outputs.target_dir }}' 'release/bundle/nsis'
+          $setup = Join-Path $bundle 'MetOrigin-Splat-Full-Setup-0.1.0-internal.exe'
+          $sums = Join-Path $bundle 'SHA256SUMS.txt'
+          $manifest = Join-Path $bundle 'metadata/engine-manifest.json'
+          $notices = Join-Path $bundle 'metadata/THIRD_PARTY_NOTICES.md'
+          foreach ($path in @($setup, $sums, $manifest, $notices)) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Expected internal artifact is missing: $path"
+            }
+          }
+          $expected = ((Get-Content -LiteralPath $sums -Raw) -split '\s+')[0]
+          $actual = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
+          if ($actual -ne $expected) {
+            throw "Installer SHA-256 does not match SHA256SUMS.txt"
+          }
+
+      - name: Upload unsigned internal installer
         uses: actions/upload-artifact@v4
         with:
-          name: splat-windows-installer
-          path: apps/desktop/src-tauri/target/release/bundle/
-
-      - name: Upload portable build
-        uses: actions/upload-artifact@v4
-        with:
-          name: splat-windows-portable
-          path: apps/desktop/src-tauri/target/release/*.exe
+          name: MetOrigin-Splat-Full-Setup-0.1.0-internal
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+          path: |
+            ${{ steps.cargo-metadata.outputs.target_dir }}/release/bundle/nsis/MetOrigin-Splat-Full-Setup-0.1.0-internal.exe
+            ${{ steps.cargo-metadata.outputs.target_dir }}/release/bundle/nsis/SHA256SUMS.txt
+            ${{ steps.cargo-metadata.outputs.target_dir }}/release/bundle/nsis/metadata/**

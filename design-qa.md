@@ -2,8 +2,7 @@
 
 ## 对照目标
 
-- 视觉真值（新建向导）：`C:\Users\15582\AppData\Local\Temp\codex-clipboard-7d5b9412-8fd7-422c-9c1d-c39efc064578.png`
-- 视觉真值（时间线与质量区）：`C:\Users\15582\AppData\Local\Temp\codex-clipboard-d10c11b5-e12c-4d36-bfe5-f493ef7632ee.png`
+- 视觉真值：参考图仅保存在本地审计素材中，不属于仓库或公开发布内容。
 - 最终实现截图（1440×1024）：`.artifacts/design-qa/wizard-implementation-1440x1024-final.png`
 - 响应式实现截图（1024×768）：`.artifacts/design-qa/wizard-implementation-1024x768-current.png`
 - 状态：深色桌面工作区，新建项目向导第一步；时间线、质量操作和删除操作由自动化测试覆盖。
@@ -47,7 +46,7 @@
 3. P2：项目详情加载生成的 sequence 0 `ready` 快照存在覆盖较新运行快照的风险。Reducer 现在拒绝该旧快照，同时允许活动任务退出后的合法终态快照落地，并增加回归测试。
 4. P2：普通 Vite 预览会尝试监听 Tauri 事件并产生控制台错误。已增加桌面桥接检测；最终刷新未产生新错误。
 5. P2：永久删除保护仅依赖进程当前目录，无法稳定覆盖开发仓库。已增加编译期仓库根目录保护及单元测试。
-6. P1：前端直接调用 Tauri `openPath` 会被静态 Scope 拒绝，所有 `D:\...` 本地项目均无法打开。已改为后端校验项目身份、Canonical 路径及项目内边界后调用原生 opener，并移除 WebView 的本地路径 opener 权限。
+6. P1：前端直接调用 Tauri `openPath` 会被静态 Scope 拒绝，本地项目路径无法打开。已改为后端校验项目身份、Canonical 路径及项目内边界后调用原生 opener，并移除 WebView 的本地路径 opener 权限。
 7. P1：侧栏把完整技术 Stage 放在独立自动宽度列，状态与相对时间会挤掉项目名称。已改为紧凑生命周期状态，名称使用 `minmax(0, 1fr)` 获得剩余宽度并单行省略。
 
 ## Findings

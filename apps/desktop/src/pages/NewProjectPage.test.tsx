@@ -82,6 +82,49 @@ describe("NewProjectPage", () => {
     expect(screen.getByText(/预计 266 帧/)).toBeInTheDocument();
   });
 
+  it("shows real engine versions and NVIDIA preflight diagnostics", async () => {
+    vi.mocked(desktopApi.preflightProject).mockResolvedValueOnce({
+      can_continue: false,
+      engine_checks: [
+        {
+          name: "COLMAP",
+          available: true,
+          path: "D:\\MetOrigin\\engines\\colmap\\bin\\colmap.exe",
+          expected_version: "4.1.0",
+          actual_version: "4.1.0",
+          diagnostic: "已通过启动和版本检查。",
+          source: "resource",
+          integrity_status: "valid",
+        },
+        {
+          name: "NVIDIA GPU / 驱动",
+          available: false,
+          path: "nvidia-smi",
+          expected_version: null,
+          actual_version: null,
+          diagnostic: "未能运行 nvidia-smi，请安装 NVIDIA 官方驱动。",
+          source: "system",
+          integrity_status: null,
+        },
+      ],
+      estimated_frames: 266,
+      estimated_disk_bytes: 7_000_000_000,
+      available_disk_bytes: 50_000_000_000,
+      recommended_preset: "fast",
+      warnings: [],
+      blockers: ["NVIDIA GPU / 驱动不可用"],
+    });
+
+    render(<AppProvider><NewProjectPage /></AppProvider>);
+    fireEvent.click(screen.getByRole("button", { name: /选择视频/ }));
+    await screen.findByText("3840 × 2160");
+    fireEvent.click(screen.getByRole("button", { name: /下一步/ }));
+
+    expect(await screen.findByText("4.1.0")).toBeInTheDocument();
+    expect(screen.getByText(/未能运行 nvidia-smi/)).toBeInTheDocument();
+    expect(screen.getByText("不可用")).toBeInTheDocument();
+  });
+
   it("stays on confirmation and reruns preflight after the save directory changes", async () => {
     vi.mocked(selectProjectRoot).mockResolvedValue("E:\\recon-projects");
     render(<AppProvider><NewProjectPage /></AppProvider>);

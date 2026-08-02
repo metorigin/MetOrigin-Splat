@@ -2,11 +2,14 @@ use std::path::{Path, PathBuf};
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::hardware::EngineInfo;
+#[cfg(target_os = "windows")]
+use splat_process::background_command;
 use splat_process::CommandSpec;
 
 use crate::database::DatabaseCreator;
 use crate::feature::{FeatureExtractionOptions, FeatureExtractor};
 use crate::mapper::ColmapMapper;
+use crate::runtime;
 use crate::types::{MapperKind, MatchingOptions, MatchingStrategy};
 
 /// COLMAP engine adapter.
@@ -86,7 +89,7 @@ impl ColmapAdapter {
 
     /// Validate that COLMAP is functional by running `colmap -h`.
     pub fn validate(&self) -> AppResult<()> {
-        let output = std::process::Command::new(&self.colmap_path)
+        let output = runtime::command(&self.colmap_path)
             .arg("-h")
             .output()
             .map_err(|e| {
@@ -206,7 +209,7 @@ impl ColmapAdapter {
         args.push("--FeatureMatching.guided_matching".into());
         args.push(if options.guided_matching { "1" } else { "0" }.into());
 
-        CommandSpec::new(&self.colmap_path, args, log_path)
+        runtime::command_spec(&self.colmap_path, args, log_path)
     }
 
     // ─── Mapping ────────────────────────────────────────────────────────
@@ -255,7 +258,7 @@ impl ColmapAdapter {
         max_image_size: u32,
         log_path: &Path,
     ) -> CommandSpec {
-        CommandSpec::new(
+        runtime::command_spec(
             &self.colmap_path,
             vec![
                 "image_undistorter".into(),
@@ -280,7 +283,7 @@ impl ColmapAdapter {
 
     /// Find the COLMAP executable in the system PATH.
     fn find_colmap() -> AppResult<PathBuf> {
-        let output = std::process::Command::new("colmap")
+        let output = runtime::command(Path::new("colmap"))
             .arg("-h")
             .output()
             .map_err(|_| {
@@ -309,7 +312,7 @@ impl ColmapAdapter {
         // Find the actual path
         #[cfg(target_os = "windows")]
         {
-            let where_output = std::process::Command::new("where")
+            let where_output = background_command("where")
                 .arg("colmap")
                 .output()
                 .ok()
@@ -335,17 +338,14 @@ impl ColmapAdapter {
     ///
     /// Expected first line: "COLMAP 3.9.1 -- Structure-from-Motion ..."
     fn get_colmap_version(path: &Path) -> AppResult<String> {
-        let output = std::process::Command::new(path)
-            .arg("-h")
-            .output()
-            .map_err(|e| {
-                AppError::new(
-                    "E-3001",
-                    ErrorCategory::Engine,
-                    "COLMAP Detection Failed",
-                    format!("Could not run colmap: {}", e),
-                )
-            })?;
+        let output = runtime::command(path).arg("-h").output().map_err(|e| {
+            AppError::new(
+                "E-3001",
+                ErrorCategory::Engine,
+                "COLMAP Detection Failed",
+                format!("Could not run colmap: {}", e),
+            )
+        })?;
 
         let version_output = format!(
             "{}\n{}",
@@ -499,5 +499,69 @@ mod tests {
         assert!(args_str.contains("feature_extractor"));
         assert!(args_str.contains("--image_path"));
         assert!(args_str.contains("frames"));
+    }
+
+    #[test]
+    fn every_pipeline_command_inherits_the_portable_runtime() {
+        let executable = PathBuf::from("engine-pack")
+            .join("colmap")
+            .join("COLMAP-4.1.0")
+            .join("bin")
+            .join(if cfg!(windows) {
+                "colmap.exe"
+            } else {
+                "colmap"
+            });
+        let adapter = ColmapAdapter {
+            colmap_path: executable.clone(),
+            colmap_version: "4.1.0".into(),
+        };
+        let specs = vec![
+            adapter
+                .database_creator()
+                .build_command(Path::new("database.db"), Path::new("database.log")),
+            adapter.build_feature_command(
+                Path::new("database.db"),
+                Path::new("images"),
+                &FeatureExtractionOptions::default(),
+                Path::new("feature.log"),
+            ),
+            adapter.build_matching_command(
+                Path::new("database.db"),
+                &MatchingStrategy::Exhaustive,
+                Path::new("matching.log"),
+            ),
+            adapter.build_mapping_command(
+                Path::new("database.db"),
+                Path::new("images"),
+                Path::new("sparse"),
+                Path::new("mapping.log"),
+            ),
+            adapter.build_image_undistorter_command(
+                Path::new("images"),
+                Path::new("sparse/0"),
+                Path::new("training"),
+                1600,
+                Path::new("undistorter.log"),
+            ),
+        ];
+
+        for spec in specs {
+            let path = spec.env.get(std::ffi::OsStr::new("PATH")).unwrap();
+            let entries = std::env::split_paths(path).collect::<Vec<_>>();
+            assert_eq!(entries[0], executable.parent().unwrap());
+            assert_eq!(
+                spec.env.get(std::ffi::OsStr::new("QT_PLUGIN_PATH")),
+                Some(
+                    &executable
+                        .parent()
+                        .unwrap()
+                        .parent()
+                        .unwrap()
+                        .join("plugins")
+                        .into_os_string()
+                )
+            );
+        }
     }
 }

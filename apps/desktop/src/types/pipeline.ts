@@ -105,6 +105,11 @@ export interface EngineInfo {
   version: string | null;
   path: string | null;
   available: boolean;
-  source?: "environment" | "resource" | "configured_or_path" | "missing";
-  checked_at?: string;
+  source: "environment" | "resource" | "configured_or_path" | "missing";
+  pack_version: string | null;
+  integrity_status: "valid" | "invalid" | "not_applicable";
+  expected_version: string | null;
+  actual_version: string | null;
+  diagnostic: string | null;
+  checked_at: string;
 }

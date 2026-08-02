@@ -6,6 +6,7 @@ use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_process::CommandSpec;
 
 use crate::result::ColmapResult;
+use crate::runtime;
 use crate::types::{MapperKind, ModelInfo};
 
 /// Executes and analyzes COLMAP sparse reconstruction (mapper).
@@ -58,7 +59,7 @@ impl ColmapMapper {
         output_path: &Path,
         log_path: &Path,
     ) -> CommandSpec {
-        CommandSpec::new(
+        runtime::command_spec(
             &self.colmap_path,
             vec![
                 match kind {
@@ -193,7 +194,7 @@ impl ColmapMapper {
 
 /// Run `colmap model_analyzer` on a model directory and parse the output.
 fn analyze_model(colmap_path: &Path, model_dir: &Path) -> AppResult<ModelInfo> {
-    let output = std::process::Command::new(colmap_path)
+    let output = runtime::command(colmap_path)
         .args(["model_analyzer", "--path"])
         .arg(model_dir.as_os_str())
         .output()

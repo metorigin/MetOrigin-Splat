@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::hardware::EngineInfo;
-use splat_process::CommandSpec;
+use splat_process::{background_command, CommandSpec};
 
 use crate::plan::{plan_extraction, ExtractionPlan, FrameExtractionPreset};
 use crate::probe::probe_video_with;
@@ -99,7 +99,7 @@ impl FfmpegAdapter {
 
     /// Validate that FFmpeg is functional by running a simple check.
     pub fn validate(&self) -> AppResult<()> {
-        let output = std::process::Command::new(&self.ffmpeg_path)
+        let output = background_command(&self.ffmpeg_path)
             .arg("-version")
             .output()
             .map_err(|e| {
@@ -122,6 +122,32 @@ impl FfmpegAdapter {
                 ErrorCategory::Engine,
                 "FFmpeg Not Responding",
                 "FFmpeg is installed but returned an error when running -version.",
+            ));
+        }
+
+        let probe_output = background_command(&self.ffprobe_path)
+            .arg("-version")
+            .output()
+            .map_err(|e| {
+                AppError::new(
+                    "E-2103",
+                    ErrorCategory::Engine,
+                    "FFprobe Validation Failed",
+                    format!(
+                        "Could not run FFprobe at '{}': {}",
+                        self.ffprobe_path.display(),
+                        e
+                    ),
+                )
+                .retryable(true)
+            })?;
+
+        if !probe_output.status.success() {
+            return Err(AppError::new(
+                "E-2104",
+                ErrorCategory::Engine,
+                "FFprobe Not Responding",
+                "FFprobe is installed but returned an error when running -version.",
             ));
         }
 
@@ -241,10 +267,12 @@ impl FfmpegAdapter {
 
     /// Find an executable in the system PATH.
     fn find_executable(name: &str) -> AppResult<PathBuf> {
-        // Use `std::process::Command` with the program name directly;
+        // Use the program name directly; the OS will search PATH. The
+        // background command wrapper prevents console windows in the desktop
+        // release while preserving normal command behavior on other systems.
         // the OS will search PATH. If it can't be found, we provide
         // a helpful error.
-        let output = std::process::Command::new(name)
+        let output = background_command(name)
             .arg("-version")
             .output()
             .map_err(|_| {
@@ -280,7 +308,7 @@ impl FfmpegAdapter {
         // (although finding via PATH is enough — we use the name below)
         #[cfg(target_os = "windows")]
         {
-            let where_output = std::process::Command::new("where")
+            let where_output = background_command("where")
                 .arg(name)
                 .output()
                 .ok()
@@ -305,7 +333,7 @@ impl FfmpegAdapter {
 
     /// Get the FFmpeg version string from `ffmpeg -version`.
     fn get_ffmpeg_version(path: &Path) -> AppResult<String> {
-        let output = std::process::Command::new(path)
+        let output = background_command(path)
             .arg("-version")
             .output()
             .map_err(|e| {

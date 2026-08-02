@@ -58,6 +58,27 @@ pub async fn start_pipeline(
     ) {
         return Err("该项目仍处于活动状态，请先刷新状态或等待当前控制操作完成。".into());
     }
+
+    let check_handle = app_handle.clone();
+    let engine_checks = tokio::task::spawn_blocking(move || {
+        crate::commands::system::check_engines_blocking(check_handle)
+    })
+    .await
+    .map_err(|error| format!("引擎启动检查异常结束，请重试：{error}"))?;
+    if let Some(blocker) = engine_check_blocker(&engine_checks) {
+        return Err(blocker);
+    }
+
+    let gpu = tokio::task::spawn_blocking(splat_engine_brush::require_nvidia_smi)
+        .await
+        .map_err(|error| format!("NVIDIA 训练环境检查异常结束，请重试：{error}"))?
+        .map_err(|error| format!("训练环境检查未通过：{}", error.user_message_zh()))?;
+    tracing::info!(
+        gpu = %gpu.gpu_name,
+        driver = %gpu.driver_version,
+        vram_bytes = gpu.memory_total_bytes,
+        "NVIDIA training runtime preflight passed"
+    );
     let config = PipelineConfig {
         preset: project.settings.preset.clone(),
         engine_paths: crate::commands::system::resolve_engine_paths(&app_handle),
@@ -667,6 +688,25 @@ fn spawn_event_forwarder(
     });
 }
 
+fn engine_check_blocker(checks: &[serde_json::Value]) -> Option<String> {
+    let failures = checks
+        .iter()
+        .filter(|check| check.get("available").and_then(serde_json::Value::as_bool) != Some(true))
+        .map(|check| {
+            let name = check
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("未知引擎");
+            let diagnostic = check
+                .get("diagnostic")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("启动、版本或完整性检查未通过。请重新安装或修复应用。");
+            format!("{name}：{diagnostic}")
+        })
+        .collect::<Vec<_>>();
+    (!failures.is_empty()).then(|| format!("引擎检查未通过：{}", failures.join("；")))
+}
+
 fn phase_for_stage(stage: &str) -> Option<&'static str> {
     match stage {
         "MediaValidation" | "FrameExtraction" | "ImagePreprocessing" => Some("media"),
@@ -676,5 +716,32 @@ fn phase_for_stage(stage: &str) -> Option<&'static str> {
         "TrainingPreparation" | "BrushTraining" | "ModelValidation" => Some("training"),
         "Export" | "PreviewGeneration" => Some("export"),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::engine_check_blocker;
+
+    #[test]
+    fn engine_gate_accepts_only_fully_available_checks() {
+        let checks = vec![
+            serde_json::json!({ "name": "ffmpeg", "available": true }),
+            serde_json::json!({ "name": "colmap", "available": true }),
+            serde_json::json!({ "name": "brush", "available": true }),
+        ];
+        assert!(engine_check_blocker(&checks).is_none());
+    }
+
+    #[test]
+    fn engine_gate_preserves_repair_diagnostics() {
+        let checks = vec![serde_json::json!({
+            "name": "brush",
+            "available": false,
+            "diagnostic": "内置引擎包校验失败，请重新安装或修复应用。"
+        })];
+        let blocker = engine_check_blocker(&checks).unwrap();
+        assert!(blocker.contains("brush"));
+        assert!(blocker.contains("重新安装或修复应用"));
     }
 }

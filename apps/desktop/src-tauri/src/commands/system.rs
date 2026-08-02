@@ -2,11 +2,14 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use chrono::Utc;
 use splat_domain::hardware::{EngineInfo, EnginePaths};
-use splat_hardware::EngineLocator;
+use splat_hardware::{
+    version_matches, EngineIntegrityCacheOptions, EngineLocator, EngineLocatorOptions,
+    EnginePackSource, EnginePackStatus, EngineResolution, IntegrityStatus,
+};
+use splat_process::background_command;
 use sysinfo::System;
 use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
@@ -81,39 +84,64 @@ pub fn app_version() -> String {
 }
 
 pub fn resolve_engine_paths(app_handle: &tauri::AppHandle) -> EnginePaths {
+    resolve_engine_resolution(app_handle).paths
+}
+
+/// Resolve engine paths together with manifest provenance and integrity
+/// diagnostics. Project preflight and startup checks share this exact result.
+pub fn resolve_engine_resolution(app_handle: &tauri::AppHandle) -> EngineResolution {
     let settings = read_settings(app_handle).unwrap_or_default();
-    let resource_engines = app_handle
-        .path()
-        .resource_dir()
-        .ok()
-        .map(|path| path.join("engines"))
-        .filter(|path| path.is_dir())
-        .or_else(local_engine_dir);
-    let mut paths = EngineLocator::resolve_with_configured(
-        settings.engine_directory.as_deref().map(Path::new),
-        resource_engines.as_deref(),
-    );
-    if std::env::var_os("METORIGIN_ENGINE_DIR").is_none() {
-        for (name, value) in settings.engine_executables {
-            let path = PathBuf::from(value);
-            if !path.is_file() {
-                continue;
-            }
-            match name.as_str() {
-                "ffmpeg" => paths.ffmpeg = Some(path),
-                "ffprobe" => paths.ffprobe = Some(path),
-                "colmap" => paths.colmap = Some(path),
-                "brush" => paths.brush = Some(path),
-                _ => {}
-            }
+    let resource_base = app_handle.path().resource_dir().ok().or_else(|| {
+        std::env::current_exe()
+            .ok()
+            .and_then(|executable| executable.parent().map(Path::to_path_buf))
+    });
+    #[cfg(not(debug_assertions))]
+    let resource_engines = resource_base.map(|path| {
+        let primary = path.join("resources").join("engines");
+        let legacy = path.join("engines");
+        if primary.is_dir() || !legacy.is_dir() {
+            primary
+        } else {
+            legacy
         }
-    }
-    paths
+    });
+    #[cfg(debug_assertions)]
+    let resource_engines = resource_base
+        .and_then(|path| {
+            [path.join("resources").join("engines"), path.join("engines")]
+                .into_iter()
+                .find(|candidate| candidate.is_dir())
+        })
+        .or_else(local_engine_dir);
+
+    let configured_executables = settings
+        .engine_executables
+        .into_iter()
+        .map(|(name, value)| (name, PathBuf::from(value)))
+        .collect();
+    let integrity_cache =
+        app_handle
+            .path()
+            .app_cache_dir()
+            .ok()
+            .map(|path| EngineIntegrityCacheOptions {
+                path: path.join("engine-pack-integrity.json"),
+                app_version: env!("CARGO_PKG_VERSION").into(),
+            });
+    EngineLocator::resolve_detailed(EngineLocatorOptions {
+        configured_dir: settings.engine_directory.map(PathBuf::from),
+        configured_executables,
+        resource_dir: resource_engines,
+        integrity_cache,
+        ..EngineLocatorOptions::default()
+    })
 }
 
 /// Finds a portable/developer `.engines` pack without embedding a machine
 /// path into the application. This covers launching from the repository root
 /// and launching `target/debug/splat-desktop.exe` directly.
+#[cfg(debug_assertions)]
 fn local_engine_dir() -> Option<PathBuf> {
     let current_directory = std::env::current_dir()
         .ok()
@@ -133,39 +161,97 @@ fn local_engine_dir() -> Option<PathBuf> {
 
 /// Detects all engines and returns their availability status.
 #[tauri::command]
-pub fn check_engines(app_handle: tauri::AppHandle) -> Vec<serde_json::Value> {
-    let paths = resolve_engine_paths(&app_handle);
-    let ffmpeg = match (paths.ffmpeg, paths.ffprobe) {
+pub async fn check_engines(app_handle: tauri::AppHandle) -> Result<Vec<serde_json::Value>, String> {
+    tauri::async_runtime::spawn_blocking(move || check_engines_blocking(app_handle))
+        .await
+        .map_err(|error| format!("Engine check worker terminated unexpectedly: {error}"))
+}
+
+/// Blocking implementation shared by startup, project preflight and pipeline
+/// guards. Keep it off Tauri's command dispatcher because first launch hashes
+/// the complete embedded engine pack.
+pub(crate) fn check_engines_blocking(app_handle: tauri::AppHandle) -> Vec<serde_json::Value> {
+    let resolution = resolve_engine_resolution(&app_handle);
+    let paths = &resolution.paths;
+
+    let (mut ffmpeg, mut ffmpeg_diagnostic) = match (&paths.ffmpeg, &paths.ffprobe) {
         (Some(ffmpeg), Some(ffprobe)) => {
-            splat_engine_ffmpeg::FfmpegAdapter::from_paths(ffmpeg, ffprobe)
-                .map(|adapter| adapter.engine_info())
-                .unwrap_or_else(|_| EngineInfo::new("ffmpeg"))
+            match splat_engine_ffmpeg::FfmpegAdapter::from_paths(ffmpeg.clone(), ffprobe.clone()) {
+                Ok(adapter) => (adapter.engine_info(), None),
+                Err(error) => (
+                    unavailable_engine("ffmpeg", Some(ffmpeg)),
+                    Some(format!("FFmpeg 启动检查失败：{error}")),
+                ),
+            }
         }
-        _ => EngineInfo::new("ffmpeg"),
+        _ => (
+            unavailable_engine("ffmpeg", paths.ffmpeg.as_ref()),
+            Some("FFmpeg 或 FFprobe 未定位。".into()),
+        ),
     };
-    let colmap = paths
-        .colmap
-        .and_then(|path| splat_engine_colmap::ColmapAdapter::from_path(path).ok())
-        .map(|adapter| adapter.engine_info())
-        .unwrap_or_else(|| EngineInfo::new("colmap"));
-    let brush = paths
-        .brush
-        .and_then(|path| splat_engine_brush::BrushAdapter::from_path(path).ok())
-        .map(|adapter| adapter.engine_info())
-        .unwrap_or_else(|| EngineInfo::new("brush"));
-    [ffmpeg, colmap, brush]
-        .iter()
-        .map(|info| {
-            serde_json::json!({
-                "name": info.name,
-                "version": info.version,
-                "path": info.path,
-                "available": info.available,
-                "source": engine_source(info.path.as_deref().map(Path::new), &app_handle),
-                "checked_at": Utc::now().to_rfc3339(),
-            })
-        })
-        .collect()
+    if let Some(ffprobe) = paths.ffprobe.as_deref() {
+        match probe_version(ffprobe, "-version") {
+            Ok(actual) => {
+                if let Some(expected) = resolution
+                    .status("ffprobe")
+                    .and_then(|status| status.expected_version.as_deref())
+                {
+                    if !version_matches(expected, &actual) {
+                        ffmpeg.available = false;
+                        append_diagnostic(
+                            &mut ffmpeg_diagnostic,
+                            format!(
+                                "FFprobe 版本不匹配：期望 {expected}，实际 {actual}。请重新安装或修复应用。"
+                            ),
+                        );
+                    }
+                }
+            }
+            Err(error) => {
+                ffmpeg.available = false;
+                append_diagnostic(
+                    &mut ffmpeg_diagnostic,
+                    format!("FFprobe 启动检查失败：{error}"),
+                );
+            }
+        }
+    }
+
+    let (colmap, colmap_diagnostic) = match paths.colmap.as_ref() {
+        Some(path) => match splat_engine_colmap::ColmapAdapter::from_path(path.clone()) {
+            Ok(adapter) => (adapter.engine_info(), None),
+            Err(error) => (
+                unavailable_engine("colmap", Some(path)),
+                Some(format!("COLMAP 启动检查失败：{error}")),
+            ),
+        },
+        None => (
+            unavailable_engine("colmap", None),
+            Some("COLMAP 未定位。".into()),
+        ),
+    };
+    let (brush, brush_diagnostic) = match paths.brush.as_ref() {
+        Some(path) => match splat_engine_brush::BrushAdapter::from_path(path.clone()) {
+            Ok(adapter) => (adapter.engine_info(), None),
+            Err(error) => (
+                unavailable_engine("brush", Some(path)),
+                Some(format!("Brush 启动检查失败：{error}")),
+            ),
+        },
+        None => (
+            unavailable_engine("brush", None),
+            Some("Brush 未定位。".into()),
+        ),
+    };
+
+    [
+        (ffmpeg, resolution.status("ffmpeg"), ffmpeg_diagnostic),
+        (colmap, resolution.status("colmap"), colmap_diagnostic),
+        (brush, resolution.status("brush"), brush_diagnostic),
+    ]
+    .into_iter()
+    .map(|(info, status, diagnostic)| engine_check_json(info, status, diagnostic))
+    .collect()
 }
 
 #[tauri::command]
@@ -335,7 +421,7 @@ pub fn export_diagnostics(
             .as_bytes(),
     )
     .map_err(|_| "写入诊断包失败。".to_string())?;
-    let engines = check_engines(app_handle);
+    let engines = check_engines_blocking(app_handle);
     zip.start_file("engines.json", options)
         .map_err(|_| "写入诊断包失败。".to_string())?;
     zip.write_all(redact(serde_json::to_string_pretty(&engines).unwrap_or_default()).as_bytes())
@@ -392,21 +478,107 @@ fn write_settings(app_handle: &tauri::AppHandle, settings: &AppSettings) -> Resu
     std::fs::rename(temporary, path).map_err(|_| "保存应用设置失败。".to_string())
 }
 
-fn engine_source(path: Option<&Path>, app_handle: &tauri::AppHandle) -> &'static str {
-    let Some(path) = path else {
-        return "missing";
-    };
-    if let Some(root) = std::env::var_os("METORIGIN_ENGINE_DIR").map(PathBuf::from) {
-        if path.starts_with(root) {
-            return "environment";
+fn unavailable_engine(name: &str, path: Option<&PathBuf>) -> EngineInfo {
+    let mut info = EngineInfo::new(name);
+    info.path = path.map(|path| path.to_string_lossy().to_string());
+    info
+}
+
+fn engine_check_json(
+    mut info: EngineInfo,
+    status: Option<&EnginePackStatus>,
+    runtime_diagnostic: Option<String>,
+) -> serde_json::Value {
+    let mut status = status.cloned().unwrap_or(EnginePackStatus {
+        source: EnginePackSource::Missing,
+        pack_version: None,
+        integrity_status: IntegrityStatus::NotApplicable,
+        expected_version: None,
+        actual_version: None,
+        diagnostic: Some("未找到引擎定位状态。".into()),
+    });
+    status.actual_version = info.version.clone();
+    if let Some(runtime_diagnostic) = runtime_diagnostic {
+        append_diagnostic(&mut status.diagnostic, runtime_diagnostic);
+    }
+    if status.integrity_status == IntegrityStatus::Invalid {
+        info.available = false;
+    }
+    if info.available {
+        if let (Some(expected), Some(actual)) = (
+            status.expected_version.as_deref(),
+            status.actual_version.as_deref(),
+        ) {
+            if !version_matches(expected, actual) {
+                info.available = false;
+                append_diagnostic(
+                    &mut status.diagnostic,
+                    format!(
+                        "引擎版本不匹配：期望 {expected}，实际 {actual}。请重新安装或修复应用。"
+                    ),
+                );
+            }
         }
     }
-    if let Ok(resource) = app_handle.path().resource_dir() {
-        if path.starts_with(resource) {
-            return "resource";
-        }
+
+    serde_json::json!({
+        "name": info.name,
+        "version": info.version,
+        "path": info.path,
+        "available": info.available,
+        "source": status.source,
+        "pack_version": status.pack_version,
+        "integrity_status": status.integrity_status,
+        "expected_version": status.expected_version,
+        "actual_version": status.actual_version,
+        "diagnostic": status.diagnostic,
+        "checked_at": Utc::now().to_rfc3339(),
+    })
+}
+
+fn probe_version(path: &Path, argument: &str) -> Result<String, String> {
+    let output = background_command(path)
+        .arg(argument)
+        .output()
+        .map_err(|error| format!("无法运行 '{}': {error}", path.display()))?;
+    if !output.status.success() {
+        return Err(format!(
+            "'{} {argument}' 退出码为 {}",
+            path.display(),
+            output
+                .status
+                .code()
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "terminated".into())
+        ));
     }
-    "configured_or_path"
+    let text = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    text.split(|character: char| !(character.is_ascii_alphanumeric() || character == '.'))
+        .map(|token| token.trim_start_matches(['v', 'V']))
+        .find(|token| {
+            token
+                .chars()
+                .next()
+                .is_some_and(|first| first.is_ascii_digit())
+                && token.contains('.')
+        })
+        .map(str::to_string)
+        .ok_or_else(|| format!("'{} {argument}' 未报告可识别的版本", path.display()))
+}
+
+fn append_diagnostic(target: &mut Option<String>, message: String) {
+    match target {
+        Some(existing) if !existing.contains(&message) => {
+            existing.push(' ');
+            existing.push_str(&message);
+        }
+        None => *target = Some(message),
+        _ => {}
+    }
 }
 
 fn collect_resource_metrics(project_path: Option<&Path>) -> ResourceMetrics {
@@ -447,7 +619,7 @@ fn collect_resource_metrics(project_path: Option<&Path>) -> ResourceMetrics {
 }
 
 fn query_nvidia_gpu() -> Option<GpuMetrics> {
-    let output = Command::new("nvidia-smi")
+    let output = background_command("nvidia-smi")
         .args(["--query-gpu=name,driver_version,memory.total,memory.used,utilization.gpu,temperature.gpu", "--format=csv,noheader,nounits"])
         .output().ok()?;
     if !output.status.success() {
@@ -504,4 +676,36 @@ fn redact_text(
         }
     }
     content
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pinned_version_mismatch_marks_engine_unavailable() {
+        let info = EngineInfo {
+            name: "ffmpeg".into(),
+            version: Some("8.1.1".into()),
+            path: Some("ffmpeg.exe".into()),
+            available: true,
+        };
+        let status = EnginePackStatus {
+            source: EnginePackSource::Resource,
+            pack_version: Some("0.1.0-internal.1".into()),
+            integrity_status: IntegrityStatus::Valid,
+            expected_version: Some("8.1.2".into()),
+            actual_version: None,
+            diagnostic: None,
+        };
+
+        let result = engine_check_json(info, Some(&status), None);
+
+        assert_eq!(result["available"], false);
+        assert_eq!(result["expected_version"], "8.1.2");
+        assert_eq!(result["actual_version"], "8.1.1");
+        assert!(result["diagnostic"]
+            .as_str()
+            .is_some_and(|diagnostic| diagnostic.contains("8.1.2")));
+    }
 }

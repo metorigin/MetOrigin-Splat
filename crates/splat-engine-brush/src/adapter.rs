@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::time::{Duration, Instant};
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::hardware::EngineInfo;
-use splat_process::CommandSpec;
+use splat_process::{background_command, CommandSpec};
 
 use crate::checkpoint::{Checkpoint, CheckpointScanner};
 use crate::config::TrainingConfig;
@@ -33,6 +35,21 @@ pub struct BrushAdapter {
     brush_version: String,
 }
 
+const BRUSH_PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+const DIAGNOSTIC_OUTPUT_LIMIT: usize = 2_048;
+
+struct BrushProbeOutput {
+    success: bool,
+    exit_code: Option<i32>,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+enum BrushProbeFailure {
+    Launch(std::io::Error),
+    TimedOut(BrushProbeOutput),
+}
+
 impl BrushAdapter {
     // ─── Detection ──────────────────────────────────────────────────────
 
@@ -40,16 +57,15 @@ impl BrushAdapter {
     ///
     /// Runs `brush --version` to check if Brush is accessible.
     pub fn detect() -> EngineInfo {
-        match Self::find_brush() {
-            Ok(path) => {
-                let version = Self::get_brush_version(&path).unwrap_or_default();
-                EngineInfo {
-                    name: "brush".into(),
-                    version: Some(version),
-                    path: Some(path.to_string_lossy().to_string()),
-                    available: true,
-                }
-            }
+        match Self::find_brush()
+            .and_then(|path| Self::get_brush_version(&path).map(|version| (path, version)))
+        {
+            Ok((path, version)) => EngineInfo {
+                name: "brush".into(),
+                version: Some(version),
+                path: Some(path.to_string_lossy().to_string()),
+                available: true,
+            },
             Err(_) => EngineInfo {
                 name: "brush".into(),
                 version: None,
@@ -74,12 +90,10 @@ impl BrushAdapter {
     /// Create an adapter from a path resolved by the application.
     pub fn from_path(brush_path: PathBuf) -> AppResult<Self> {
         let brush_version = Self::get_brush_version(&brush_path)?;
-        let adapter = Self {
+        Ok(Self {
             brush_path,
             brush_version,
-        };
-        adapter.validate()?;
-        Ok(adapter)
+        })
     }
 
     pub fn engine_info(&self) -> EngineInfo {
@@ -93,33 +107,7 @@ impl BrushAdapter {
 
     /// Validate that Brush is functional by running a basic check.
     pub fn validate(&self) -> AppResult<()> {
-        let output = std::process::Command::new(&self.brush_path)
-            .arg("--version")
-            .output()
-            .map_err(|e| {
-                AppError::new(
-                    "E-4001",
-                    ErrorCategory::Engine,
-                    "Brush Validation Failed",
-                    format!(
-                        "Could not run Brush at '{}': {}",
-                        self.brush_path.display(),
-                        e
-                    ),
-                )
-                .retryable(true)
-            })?;
-
-        if !output.status.success() {
-            return Err(AppError::new(
-                "E-4002",
-                ErrorCategory::Engine,
-                "Brush Not Responding",
-                "Brush is installed but returned an error when running a basic check.",
-            ));
-        }
-
-        Ok(())
+        Self::get_brush_version(&self.brush_path).map(|_| ())
     }
 
     /// Return the detected Brush version string.
@@ -207,33 +195,19 @@ impl BrushAdapter {
 
     /// Find the Brush executable in PATH.
     fn find_brush() -> AppResult<PathBuf> {
-        std::process::Command::new("brush")
-            .arg("--version")
-            .output()
-            .map_err(|_| {
-                AppError::new(
-                    "E-4001",
-                    ErrorCategory::Engine,
-                    "Brush Not Found",
-                    "Brush is not installed or not available in your system PATH.",
-                )
-                .with_suggestions(vec![
-                    "Install Brush from https://github.com/ArthurBrussee/brush",
-                    "Ensure Brush is in your system PATH",
-                    "You can also specify the Brush path in Settings",
-                ])
-            })?;
-
         // Try to locate the actual path
         #[cfg(target_os = "windows")]
         {
-            if let Ok(output) = std::process::Command::new("where").arg("brush").output() {
-                if output.status.success() {
-                    if let Some(path) = String::from_utf8(output.stdout)
-                        .ok()
-                        .and_then(|s| s.lines().next().map(|l| l.trim().to_string()))
-                    {
-                        return Ok(PathBuf::from(path));
+            for executable in ["brush", "brush_app"] {
+                if let Ok(output) = background_command("where").arg(executable).output() {
+                    if output.status.success() {
+                        if let Some(path) = String::from_utf8(output.stdout)
+                            .ok()
+                            .and_then(|s| s.lines().next().map(|l| l.trim().to_string()))
+                            .filter(|path| !path.is_empty())
+                        {
+                            return Ok(PathBuf::from(path));
+                        }
                     }
                 }
             }
@@ -244,40 +218,194 @@ impl BrushAdapter {
 
     /// Get Brush version string from `brush --version`.
     fn get_brush_version(path: &Path) -> AppResult<String> {
-        let output = std::process::Command::new(path)
-            .arg("--version")
-            .output()
-            .map_err(|e| {
-                AppError::new(
+        let output = match run_brush_probe(path) {
+            Ok(output) => output,
+            Err(BrushProbeFailure::Launch(error)) => {
+                return Err(AppError::new(
                     "E-4001",
                     ErrorCategory::Engine,
                     "Brush Detection Failed",
-                    format!("Could not run brush: {}", e),
+                    "Could not start the configured Brush executable.",
                 )
-            })?;
+                .with_technical(format!("brush --version launch error: {error}"))
+                .retryable(true));
+            }
+            Err(BrushProbeFailure::TimedOut(output)) => {
+                return Err(AppError::new(
+                    "E-4002",
+                    ErrorCategory::Engine,
+                    "Brush Version Check Timed Out",
+                    "Brush did not finish its version check within 10 seconds.",
+                )
+                .with_technical(probe_diagnostic("timed_out", &output))
+                .retryable(true));
+            }
+        };
 
-        if !output.status.success() {
-            return Err(AppError::new(
-                "E-4002",
-                ErrorCategory::Engine,
-                "Brush Version Check Failed",
-                "Brush returned an error while reporting its version.",
-            ));
-        }
-        let combined = format!(
-            "{}\n{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let version = combined.lines().next().unwrap_or("").trim().to_string();
-
-        Ok(version)
+        interpret_brush_probe(output)
     }
+}
+
+fn interpret_brush_probe(output: BrushProbeOutput) -> AppResult<String> {
+    if !output.success {
+        let exit_code = output
+            .exit_code
+            .map(|code| code.to_string())
+            .unwrap_or_else(|| "terminated".into());
+        return Err(AppError::new(
+            "E-4002",
+            ErrorCategory::Engine,
+            "Brush Version Check Failed",
+            format!("Brush --version exited unsuccessfully (exit code {exit_code})."),
+        )
+        .with_technical(probe_diagnostic("non_zero_exit", &output))
+        .retryable(true));
+    }
+    let combined = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let version = combined
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("")
+        .to_string();
+
+    if version.is_empty() {
+        return Err(AppError::new(
+            "E-4002",
+            ErrorCategory::Engine,
+            "Brush Version Check Failed",
+            "Brush exited successfully but did not report a version.",
+        )
+        .with_technical(probe_diagnostic("empty_version", &output)));
+    }
+
+    Ok(version)
+}
+
+fn run_brush_probe(path: &Path) -> Result<BrushProbeOutput, BrushProbeFailure> {
+    let mut command = background_command(path);
+    command
+        .arg("--version")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().map_err(BrushProbeFailure::Launch)?;
+    let started = Instant::now();
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                let output = child
+                    .wait_with_output()
+                    .map_err(BrushProbeFailure::Launch)?;
+                return Ok(BrushProbeOutput {
+                    success: output.status.success(),
+                    exit_code: output.status.code(),
+                    stdout: output.stdout,
+                    stderr: output.stderr,
+                });
+            }
+            Ok(None) if started.elapsed() < BRUSH_PROBE_TIMEOUT => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let output = child
+                    .wait_with_output()
+                    .map_err(BrushProbeFailure::Launch)?;
+                return Err(BrushProbeFailure::TimedOut(BrushProbeOutput {
+                    success: false,
+                    exit_code: output.status.code(),
+                    stdout: output.stdout,
+                    stderr: output.stderr,
+                }));
+            }
+            Err(error) => return Err(BrushProbeFailure::Launch(error)),
+        }
+    }
+}
+
+fn probe_diagnostic(reason: &str, output: &BrushProbeOutput) -> String {
+    format!(
+        "reason={reason}, exit_code={:?}, stdout={:?}, stderr={:?}",
+        output.exit_code,
+        diagnostic_snippet(&output.stdout),
+        diagnostic_snippet(&output.stderr)
+    )
+}
+
+/// Keep diagnostic output bounded and exclude the executable path and command
+/// environment. `--version` receives no user or project path arguments.
+fn diagnostic_snippet(bytes: &[u8]) -> String {
+    let text = String::from_utf8_lossy(bytes);
+    let mut snippet = text
+        .trim()
+        .chars()
+        .take(DIAGNOSTIC_OUTPUT_LIMIT)
+        .map(|character| {
+            if character.is_control() && !matches!(character, '\n' | '\r' | '\t') {
+                '\u{fffd}'
+            } else {
+                character
+            }
+        })
+        .collect::<String>();
+    if text.trim().chars().count() > DIAGNOSTIC_OUTPUT_LIMIT {
+        snippet.push_str("...<truncated>");
+    }
+    if snippet.is_empty() {
+        snippet.push_str("<empty>");
+    }
+    snippet
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn probe_output(
+        success: bool,
+        exit_code: Option<i32>,
+        stdout: &[u8],
+        stderr: &[u8],
+    ) -> BrushProbeOutput {
+        BrushProbeOutput {
+            success,
+            exit_code,
+            stdout: stdout.to_vec(),
+            stderr: stderr.to_vec(),
+        }
+    }
+
+    #[cfg(windows)]
+    fn fake_brush_script(directory: &Path) -> PathBuf {
+        let script = directory.join("fake-brush.cmd");
+        std::fs::write(
+            &script,
+            "@echo off\r\necho call>>\"%~dp0calls.txt\"\r\necho brush-cli 0.3.0\r\n",
+        )
+        .unwrap();
+        script
+    }
+
+    #[cfg(unix)]
+    fn fake_brush_script(directory: &Path) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+
+        let script = directory.join("fake-brush");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\necho call >> \"$(dirname \"$0\")/calls.txt\"\necho brush-cli 0.3.0\n",
+        )
+        .unwrap();
+        let mut permissions = std::fs::metadata(&script).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&script, permissions).unwrap();
+        script
+    }
 
     #[test]
     fn test_detect_returns_info() {
@@ -293,6 +421,67 @@ mod tests {
             brush_version: "0.2.0".into(),
         };
         assert_eq!(adapter.version(), "0.2.0");
+    }
+
+    #[test]
+    fn from_path_runs_the_version_probe_once() {
+        let directory = tempfile::tempdir().unwrap();
+        let script = fake_brush_script(directory.path());
+
+        let adapter = BrushAdapter::from_path(script).unwrap();
+
+        assert_eq!(adapter.version(), "brush-cli 0.3.0");
+        let calls = std::fs::read_to_string(directory.path().join("calls.txt")).unwrap();
+        assert_eq!(calls.lines().count(), 1);
+    }
+
+    #[test]
+    fn parses_version_from_successful_probe_output() {
+        let version =
+            interpret_brush_probe(probe_output(true, Some(0), b"brush-cli 0.3.0\n", b"")).unwrap();
+
+        assert_eq!(version, "brush-cli 0.3.0");
+    }
+
+    #[test]
+    fn non_zero_probe_preserves_bounded_diagnostics() {
+        let error = interpret_brush_probe(probe_output(
+            false,
+            Some(7),
+            b"",
+            b"GPU initialization failed",
+        ))
+        .unwrap_err();
+
+        assert_eq!(error.code, "E-4002");
+        assert!(error.user_message.contains("exit code 7"));
+        let technical = error.technical_message.as_deref().unwrap();
+        assert!(technical.contains("non_zero_exit"));
+        assert!(technical.contains("GPU initialization failed"));
+        assert!(!technical.contains("brush_app.exe"));
+    }
+
+    #[test]
+    fn diagnostic_output_is_sanitized_and_truncated() {
+        let mut output = vec![b'x'; DIAGNOSTIC_OUTPUT_LIMIT + 10];
+        output[2] = 0;
+
+        let diagnostic = diagnostic_snippet(&output);
+
+        assert!(diagnostic.contains('\u{fffd}'));
+        assert!(diagnostic.ends_with("...<truncated>"));
+        assert!(diagnostic.chars().count() <= DIAGNOSTIC_OUTPUT_LIMIT + 14);
+    }
+
+    #[test]
+    fn successful_probe_without_version_is_rejected() {
+        let error = interpret_brush_probe(probe_output(true, Some(0), b"\r\n", b"")).unwrap_err();
+
+        assert_eq!(error.code, "E-4002");
+        assert!(error
+            .technical_message
+            .as_deref()
+            .is_some_and(|message| message.contains("empty_version")));
     }
 
     #[test]

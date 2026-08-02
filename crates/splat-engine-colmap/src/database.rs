@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_process::CommandSpec;
 
+use crate::runtime;
+
 /// Counts read directly from a COLMAP SQLite database.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DatabaseStats {
@@ -490,7 +492,7 @@ impl DatabaseCreator {
     /// colmap database_creator --database_path <database_path>
     /// ```
     pub fn build_command(&self, database_path: &Path, log_path: &Path) -> CommandSpec {
-        CommandSpec::new(
+        runtime::command_spec(
             &self.colmap_path,
             vec![
                 "database_creator",
@@ -731,10 +733,7 @@ mod tests {
             )
             .unwrap();
         connection
-            .execute(
-                "INSERT INTO two_view_geometries VALUES (?1, 20)",
-                [1 * MAX + 2],
-            )
+            .execute("INSERT INTO two_view_geometries VALUES (?1, 20)", [MAX + 2])
             .unwrap();
         connection
             .execute(

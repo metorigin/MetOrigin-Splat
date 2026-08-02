@@ -128,10 +128,9 @@ Do NOT introduce without discussion: databases, microservices, Docker as runtime
 ## V. Recommended Repo Structure
 
 ```
-splat/
+MetOrigin-Splat/
 ├── apps/desktop/
 ├── crates/splat-domain/
-├── crates/splat-core/
 ├── crates/splat-project/
 ├── crates/splat-pipeline/
 ├── crates/splat-process/
@@ -142,9 +141,8 @@ splat/
 ├── schemas/
 ├── presets/
 ├── scripts/
-├── tests/
 ├── docs/
-└── vendor/licenses/
+└── packaging/
 ```
 
 If the repo already has structure, analyze before reorganizing.

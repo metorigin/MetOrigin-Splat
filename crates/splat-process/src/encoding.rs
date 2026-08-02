@@ -31,6 +31,7 @@ pub fn decode_process_output(bytes: &[u8]) -> String {
 }
 
 /// Decode bytes using the specified Windows code page.
+#[cfg(any(target_os = "windows", test))]
 fn decode_codepage(bytes: &[u8], codepage: u32) -> Result<String, ()> {
     let encoding = match codepage {
         936 => encoding_rs::GBK,

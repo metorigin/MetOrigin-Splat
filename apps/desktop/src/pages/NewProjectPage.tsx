@@ -540,7 +540,19 @@ function PreflightStep({ analysis, preflight, checking, selectedPreset, onSelect
         <button className="button button-secondary" type="button" onClick={onRecheck} disabled={checking}>重新检查</button>
       </div>
       <div className="preflight-columns">
-        <div className="preflight-panel"><h3>引擎检查</h3>{preflight?.engine_checks.map((engine) => <div className="check-row" key={engine.name}><span className={engine.available ? "analysis-ok" : "analysis-blocked"}>{engine.available ? <CheckCircle size={16} weight="fill" /> : <Warning size={16} weight="fill" />}</span><strong>{engine.name}</strong><span>{engine.available ? "已就绪" : "未找到"}</span></div>)}</div>
+        <div className="preflight-panel">
+          <h3>引擎与训练环境</h3>
+          {preflight?.engine_checks.map((engine) => (
+            <div className="check-row" key={engine.name} title={engine.path ?? undefined}>
+              <span className={engine.available ? "analysis-ok" : "analysis-blocked"}>{engine.available ? <CheckCircle size={16} weight="fill" /> : <Warning size={16} weight="fill" />}</span>
+              <div className="engine-check-copy">
+                <strong>{engine.name}</strong>
+                {engine.diagnostic && <small>{engine.diagnostic}</small>}
+              </div>
+              <span>{engine.available ? engine.actual_version ?? "已就绪" : "不可用"}</span>
+            </div>
+          ))}
+        </div>
         <div className="preflight-panel"><h3>磁盘空间</h3><Metric label="预计需求（含安全余量）" value={formatBytes(preflight?.estimated_disk_bytes ?? 0)} /><Metric label="目标盘可用" value={formatBytes(preflight?.available_disk_bytes ?? 0)} /></div>
       </div>
       <h3 className="preset-heading">选择质量预设</h3>

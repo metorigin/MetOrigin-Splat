@@ -4,6 +4,7 @@ use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_process::CommandSpec;
 
 use crate::database::{inspect_database, inspect_database_image_names};
+use crate::runtime;
 use crate::types::{CameraModel, FeatureExtractionResult};
 
 /// Configuration options for COLMAP feature extraction.
@@ -99,7 +100,7 @@ impl FeatureExtractor {
         args.push("--ImageReader.camera_model".into());
         args.push(options.camera_model.as_str().into());
 
-        CommandSpec::new(&self.colmap_path, args, log_path)
+        runtime::command_spec(&self.colmap_path, args, log_path)
     }
 
     /// Validate the feature extraction results.

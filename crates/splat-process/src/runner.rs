@@ -14,6 +14,7 @@ use crate::event::{ProcessEvent, ProcessResult};
 use crate::handle::ProcessHandle;
 use crate::log_writer::LogWriter;
 use crate::parser::CompositeParser;
+use crate::platform::configure_background_command;
 
 #[derive(Debug, Clone)]
 pub struct CapturedProcessResult {
@@ -90,6 +91,7 @@ impl ProcessRunner {
 
         // Convert CommandSpec to a tokio::process::Command
         let mut cmd = Command::new(&spec.program);
+        configure_background_command(cmd.as_std_mut());
         cmd.args(&spec.args)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
@@ -597,7 +599,9 @@ async fn read_stream<R>(
 async fn kill_process_tree(pid: u32) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        let output = Command::new("taskkill")
+        let mut command = Command::new("taskkill");
+        configure_background_command(command.as_std_mut());
+        let output = command
             .args(["/T", "/F", "/PID", &pid.to_string()])
             .output()
             .await
@@ -699,6 +703,37 @@ mod tests {
 
         assert!(has_started, "should have received Started event");
         assert!(has_exited, "should have received Exited event");
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn process_runner_has_no_windows_console() {
+        let script = r#"
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class MetOriginRunnerConsoleProbe { [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow(); }'
+[Console]::Out.Write("captured")
+if ([MetOriginRunnerConsoleProbe]::GetConsoleWindow() -eq [IntPtr]::Zero) { exit 0 }
+exit 17
+"#;
+        let spec = CommandSpec::new(
+            "powershell.exe",
+            vec![
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                script,
+            ],
+            test_log_path("no-windows-console"),
+        );
+
+        let captured = ProcessRunner::new()
+            .run_to_completion_capture(spec, CancellationToken::new(), 1024)
+            .await
+            .unwrap();
+
+        assert_eq!(captured.process.exit_code, Some(0));
+        assert_eq!(String::from_utf8_lossy(&captured.stdout).trim(), "captured");
+        assert!(captured.stderr.is_empty());
     }
 
     #[tokio::test]

@@ -2,7 +2,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
-use splat_process::{CommandSpec, ProcessRunner};
+use splat_process::{background_command, CommandSpec, ProcessRunner};
 use tokio_util::sync::CancellationToken;
 
 /// Metadata extracted from a video file via FFprobe.
@@ -93,7 +93,7 @@ pub fn probe_video_with(ffprobe_path: &Path, path: &Path) -> AppResult<VideoMeta
         ));
     }
 
-    let output = std::process::Command::new(ffprobe_path)
+    let output = background_command(ffprobe_path)
         .args(["-v", "quiet"])
         .args(["-print_format", "json"])
         .args(["-show_format", "-show_streams"])

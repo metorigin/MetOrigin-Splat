@@ -1,0 +1,67 @@
+name: Bug report
+description: Report a reproducible defect in MetOrigin Splat
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Do not include private media, credentials, full personal paths, or security vulnerability details. Use the private security-reporting link for vulnerabilities.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Release tag or Git commit SHA where the problem occurs.
+      placeholder: v0.1.0-alpha.1 or abc1234
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Windows version, CPU, GPU, GPU driver, and relevant disk information.
+      placeholder: Windows 11 24H2, RTX ..., driver ...
+    validations:
+      required: true
+  - type: textarea
+    id: engines
+    attributes:
+      label: Engine versions
+      description: FFmpeg, COLMAP, and Brush versions, if the issue involves the processing pipeline.
+      placeholder: FFmpeg ..., COLMAP ..., Brush ...
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem description
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Start ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized diagnostics
+      description: Paste only the relevant, redacted error and log lines. Remove personal paths and media names.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I removed private data, credentials, personal paths, and unlicensed media from this report.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

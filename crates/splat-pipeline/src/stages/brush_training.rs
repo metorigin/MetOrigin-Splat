@@ -7,7 +7,8 @@ use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::pipeline::{PipelineStageId, StageState, StageStatus};
 use splat_domain::progress::TaskProgress;
 use splat_engine_brush::{
-    BrushAdapter, BrushProgressParser, Checkpoint, CheckpointScanner, ExportManager, TrainingConfig,
+    require_nvidia_smi, BrushAdapter, BrushProgressParser, Checkpoint, CheckpointScanner,
+    ExportManager, TrainingConfig,
 };
 use splat_process::{CompositeParser, ProcessResult, ProcessRunner};
 use tokio::sync::broadcast;
@@ -78,6 +79,11 @@ impl PipelineStage for BrushTrainingStage {
                 "Brush was not found in the configured engine directory, application resources, or PATH.",
             ));
         }
+        // This is the last line of defence before Brush consumes GPU time.
+        // The desktop start gate fails earlier for normal UI runs; keeping the
+        // stage gate protects direct library/CLI callers and driver changes
+        // that happen while a long COLMAP reconstruction is running.
+        require_nvidia_smi()?;
         Ok(())
     }
 
