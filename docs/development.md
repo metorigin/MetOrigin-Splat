@@ -1,190 +1,124 @@
-# MetOrigin Splat — Development Guide
+# MetOrigin Splat Development Guide
 
-## Prerequisites
+## Supported development environment
 
-- **Rust**: stable toolchain (install via [rustup](https://rustup.rs/))
-- **Node.js**: 18+ (LTS recommended)
-- **pnpm**: `npm install -g pnpm`
-- **Windows SDK**: For Windows builds, install [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) and [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) with "Desktop development with C++" workload.
+The actively validated development environment is Windows 10/11 x64 with:
 
-### Tauri Prerequisites
+- Rust 1.97.0, pinned by `rust-toolchain.toml`
+- Node.js 22
+- pnpm 11.12.0, pinned by the root `packageManager` field
+- Windows SDK
+- Visual Studio Build Tools with the Desktop development with C++ workload
+- The Windows prerequisites from the [Tauri guide](https://v2.tauri.app/start/prerequisites/)
 
-See [Tauri prerequisites guide](https://v2.tauri.app/start/prerequisites/) for your platform.
+Other host platforms may build individual Rust crates, but they are not supported desktop release targets yet.
 
-## Getting Started
+## Getting started
 
-```bash
-# Clone the repository
-git clone https://github.com/metorigin/splat.git
-cd splat
+```powershell
+git clone https://github.com/metorigin/MetOrigin-Splat.git
+Set-Location MetOrigin-Splat
 
-# Install frontend dependencies
-pnpm install
-
-# Run in development mode
+pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
-## Project Structure
+`pnpm dev` starts only the Vite frontend. Use `pnpm tauri dev` when testing desktop commands, dialogs, filesystem integration, engine detection, or pipeline execution.
 
-```
-splat/
-├── apps/
-│   └── desktop/          # Tauri application
-│       ├── src/          # React + TypeScript frontend
-│       ├── src-tauri/    # Rust backend (Tauri commands)
-│       └── package.json
-├── crates/               # Rust workspace crates
-│   ├── splat-domain/     # Core domain types & state machines
-│   ├── splat-project/    # Project CRUD & serialization
-│   ├── splat-pipeline/   # Pipeline orchestration & stage execution
-│   ├── splat-process/    # External process runner
-│   ├── splat-hardware/   # Hardware detection & profiling
+## External engines
+
+The application integrates with three external programs through Rust adapters:
+
+- FFmpeg / FFprobe for media probing and frame extraction
+- COLMAP for feature extraction, matching, and sparse reconstruction
+- Brush for Gaussian Splatting training and PLY generation
+
+Frontend and core unit tests do not require these programs. Running the complete pipeline and the ignored real-engine tests requires compatible local engine installations.
+
+The versions used for the current Windows technical validation are recorded in `packaging/windows-x64/engine-lock.json`. That lock file and the packaging scripts are reproducibility inputs, not permission to republish the downloaded programs. Read `packaging/windows-x64/README.md` and `packaging/windows-x64/THIRD_PARTY_NOTICES.template.md` before creating or distributing an engine bundle.
+
+## Repository structure
+
+```text
+MetOrigin-Splat/
+├── apps/desktop/
+│   ├── src/                  # React and TypeScript frontend
+│   ├── src-tauri/            # Tauri application and Rust commands
+│   └── package.json
+├── crates/
+│   ├── splat-domain/         # Domain types and state machines
+│   ├── splat-project/        # Project persistence and migration
+│   ├── splat-process/        # External process execution
+│   ├── splat-pipeline/       # Pipeline orchestration and integration tests
+│   ├── splat-hardware/       # Hardware and engine discovery
 │   ├── splat-engine-ffmpeg/  # FFmpeg adapter
 │   ├── splat-engine-colmap/  # COLMAP adapter
-│   └── splat-engine-brush/   # Brush training adapter
-├── schemas/              # JSON Schema definitions
-├── presets/              # Training presets
-├── docs/                 # Documentation
-├── scripts/              # Build & utility scripts
-├── tests/                # Integration & E2E tests
-│   ├── fixtures/         # Test data
-│   ├── integration/      # Integration tests
-│   └── e2e/              # End-to-end tests
-└── vendor/licenses/      # Third-party license texts
+│   └── splat-engine-brush/   # Brush adapter
+├── schemas/                  # JSON Schemas and validation examples
+├── presets/                  # Fast, balanced, and quality presets
+├── docs/                     # Architecture and development documentation
+├── packaging/                # Internal packaging definitions and notices
+└── scripts/                  # Build and packaging utilities
 ```
 
-## Testing Strategy
+Rust integration tests live alongside the relevant crate. Frontend tests live beside the components and pages they cover.
 
-### Unit Tests
+## Validation commands
 
-Coverage targets:
-- State machine transitions
-- Project serialization / deserialization
-- Path generation
-- Error mapping
-- Log parsing
-- Parameter validation
-- Preset loading
-- Project version migration
+Run the checks relevant to your change before opening a pull request:
 
-### Integration Tests
+```powershell
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
 
-Coverage targets:
-- Process runner
-- FFmpeg test videos
-- COLMAP small datasets
-- Brush small training samples
-- Project creation and recovery
-- Process cancellation
-
-### E2E Tests
-
-Test flow:
-```
-Launch app
-→ New project
-→ Select video
-→ Complete frame extraction
-→ Complete COLMAP
-→ Start training
-→ Generate output
-→ Open results
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-targets
 ```
 
-E2E tests do not need to run full training on every commit. CI uses:
-- Mock engines
-- Fake processes
-- Small fixtures
+Schema validation is also performed in GitHub Actions with `ajv-cli`.
 
-Real GPU E2E runs on manual release workflow.
+### Real-engine tests
 
-### Fixture Strategy
+The following tests are ignored by default because they require pinned engines, licensed test media, disk space, and compatible hardware:
 
-- Do not commit large user media to the repository
-- Small test fixtures in `tests/fixtures/`
-- Large test data via: Release Assets, separate test repo, object storage, download scripts
-- Always record: source, license, checksum, expected result
+- `crates/splat-pipeline/tests/real_ffmpeg.rs`
+- `crates/splat-pipeline/tests/real_colmap.rs`
+- `crates/splat-pipeline/tests/real_brush.rs`
+- `crates/splat-pipeline/tests/real_image_pipeline.rs`
 
-## CI/CD
+Their environment variables, commands, and latest validation evidence are documented in `docs/plans/technical-spike.md`. Do not commit private or unlicensed test media. Public fixtures must record their source, license, checksum, and expected result.
 
-### Pull Request CI
+## CI behavior
 
-Each PR runs:
-```
-Rust fmt
-Rust clippy
-Rust unit tests
-TypeScript lint
-TypeScript typecheck
-Frontend tests
-Schema validation
-License checks
-```
+Pull requests targeting `main` run:
 
-### Windows Build
+- Rust formatting, Clippy, and unit/integration tests
+- JSON Schema validation
+- Windows frontend lint, type checking, and production build
+- Windows Rust checks and a Tauri debug build without a bundle
 
-- Rust release build
-- Frontend production build
-- Tauri build
-- Installer generation
-- Artifact upload
+The full offline Windows installer workflow is manual and internal-only. It does not create a public GitHub Release.
 
-### Release Workflow
-
-Trigger: Git tag `v*.*.*`
-
-Executes:
-1. Version validation
-2. Changelog generation
-3. Build installer & portable package
-4. Generate SHA-256
-5. Upload to GitHub Release
-6. Attach third-party licenses
-7. Mark as pre-release or release
-
-### Branch Strategy
-
-```
-main
-feature/*
-fix/*
-docs/*
-release/*
-```
-
-Rules:
-- `main` is always buildable
-- Each feature via PR
-- At least one CI check must pass before merge
-- Squash merge
-- Conventional Commits
-
-Examples:
-```
-feat(pipeline): add resumable stage execution
-fix(colmap): handle paths containing non-ascii characters
-docs: add Windows development guide
-```
-
-## Code Quality
+## Code quality
 
 ### Rust
 
-- `cargo fmt --check` must pass
-- `cargo clippy --all-targets --all-features -- -D warnings` preferred
-- No unwrap in production code without justification
-- No silently discarded errors
-- Public APIs documented
-- Modular responsibility, no giant files
-- Atomic writes for critical files
+- Keep `cargo fmt` and Clippy clean.
+- Propagate or intentionally map errors; do not silently discard them.
+- Avoid `unwrap` in production paths unless an invariant is documented.
+- Use atomic writes for project state and other critical files.
+- Keep external command construction inside engine adapters and `splat-process`.
 
 ### TypeScript
 
-- Strict mode
-- No abuse of `any`
-- Unified API type sources
-- No raw commands in components
-- Single-responsibility components
-- Long-running task state from unified store / query layer
-- Error messages separated from technical details
+- Keep strict type checking enabled.
+- Do not call raw Tauri command names directly from components; use the service layer.
+- Keep long-running task state in the shared application context.
+- Separate user-facing error summaries from technical diagnostics.
+
+## Contribution and security
+
+Read [CONTRIBUTING.md](../CONTRIBUTING.md) before submitting a change. Report vulnerabilities privately according to [SECURITY.md](../SECURITY.md); do not open a public issue for a suspected security problem.
