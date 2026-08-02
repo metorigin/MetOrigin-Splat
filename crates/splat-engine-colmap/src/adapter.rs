@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::hardware::EngineInfo;
-use splat_process::{background_command, CommandSpec};
+#[cfg(target_os = "windows")]
+use splat_process::background_command;
+use splat_process::CommandSpec;
 
 use crate::database::DatabaseCreator;
 use crate::feature::{FeatureExtractionOptions, FeatureExtractor};
