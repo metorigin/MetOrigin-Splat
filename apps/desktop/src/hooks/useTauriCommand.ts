@@ -1,6 +1,7 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useRef, useState } from "react";
-import { formatCommandError } from "../localization";
+import { formatUiError, normalizeCommandError } from "../services/errors";
+import { DesktopCommandError, invokeDesktopCommand } from "../services/desktop";
+import type { UiError } from "../types";
 
 /**
  * Hook for calling Tauri backend commands with loading/error state.
@@ -14,26 +15,42 @@ export function useTauriCommand<T>(
   args?: Record<string, unknown>,
 ) {
   const argsRef = useRef(args);
+  const inFlight = useRef<Promise<T> | null>(null);
   argsRef.current = args;
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uiError, setUiError] = useState<UiError | null>(null);
 
   const execute = useCallback(
-    async (overrideArgs?: Record<string, unknown>) => {
+    (overrideArgs?: Record<string, unknown>): Promise<T> => {
+      if (inFlight.current) return inFlight.current;
       setLoading(true);
       setError(null);
-      try {
-        const result = await invoke<T>(command, overrideArgs ?? argsRef.current);
-        setData(result as T);
-        return result;
-      } catch (e) {
-        const msg = formatCommandError(e, command);
-        setError(msg);
-        throw msg;
-      } finally {
-        setLoading(false);
-      }
+      setUiError(null);
+      const commandPromise = invokeDesktopCommand<T>(
+        command,
+        overrideArgs ?? argsRef.current,
+      );
+      const promise = commandPromise
+        .then((result) => {
+          setData(result);
+          return result;
+        })
+        .catch((cause: unknown) => {
+          const normalized = cause instanceof DesktopCommandError
+            ? cause.uiError
+            : normalizeCommandError(cause, command);
+          setUiError(normalized);
+          setError(formatUiError(normalized));
+          throw cause;
+        })
+        .finally(() => {
+          setLoading(false);
+          inFlight.current = null;
+        });
+      inFlight.current = promise;
+      return promise;
     },
     [command],
   );
@@ -41,8 +58,9 @@ export function useTauriCommand<T>(
   const reset = useCallback(() => {
     setData(null);
     setError(null);
+    setUiError(null);
     setLoading(false);
   }, []);
 
-  return { data, loading, error, execute, reset };
+  return { data, loading, error, uiError, execute, reset };
 }

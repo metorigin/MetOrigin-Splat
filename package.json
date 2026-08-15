@@ -9,7 +9,11 @@
     "lint": "pnpm --dir apps/desktop lint",
     "typecheck": "pnpm --dir apps/desktop typecheck",
     "test": "pnpm --dir apps/desktop test",
+    "test:ux:automated": "node scripts/windows/Run-UxAutomation.mjs",
+    "test:tauri:native-fast": "node scripts/windows/Run-NativeTauriFastValidation.mjs",
+    "test:tauri:native-failure-recovery": "node scripts/windows/Run-NativeTauriFailureRecoveryValidation.mjs",
     "tauri": "pnpm --dir apps/desktop tauri",
+    "build:windows:release": "pnpm --dir apps/desktop build:windows:release",
     "prepare:windows:engines": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/windows/Prepare-EnginePack.ps1",
     "verify:windows:engines": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/windows/Test-EnginePack.ps1",
     "package:windows:full": "pnpm --dir apps/desktop package:windows:full"

@@ -1,7 +1,11 @@
 import { Cpu, DownloadSimple, FolderOpen, Gear, HardDrives, Path, X } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
+import { useRovingFocus } from "../../hooks";
 import { desktopApi, selectEngineDirectory, selectEngineExecutable } from "../../services/desktop";
+import { normalizeCommandError } from "../../services/errors";
+import { ErrorNotice } from "../feedback";
+import { ModalSurface } from "../primitives";
 import type { AppSettings, EngineInfo, ResourceMetrics } from "../../types";
 
 type SettingsTab = "engines" | "defaults" | "performance" | "diagnostics";
@@ -11,9 +15,10 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GiB`;
 }
 
-export function SettingsDrawer({ engines, settings, metrics, projectId, projectPath, onClose, onSettings, onEngines, onError }: {
+export function SettingsDrawer({ engines, settings, loadError, metrics, projectId, projectPath, onClose, onSettings, onEngines, onError, onRetrySettings }: {
   engines: EngineInfo[];
-  settings: AppSettings;
+  settings: AppSettings | null;
+  loadError?: string | null;
   metrics: ResourceMetrics | null;
   projectId: string | null;
   projectPath: string | null;
@@ -21,22 +26,19 @@ export function SettingsDrawer({ engines, settings, metrics, projectId, projectP
   onSettings: (settings: AppSettings) => void;
   onEngines: (engines: EngineInfo[]) => void;
   onError: (error: string) => void;
+  onRetrySettings?: () => void;
 }) {
   const [tab, setTab] = useState<SettingsTab>("engines");
   const [busy, setBusy] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    const previousFocus = document.activeElement as HTMLElement | null;
-    closeRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      previousFocus?.focus();
-    };
-  }, [onClose]);
+  const tabs = ["engines", "defaults", "performance", "diagnostics"] as const;
+  const tabRoving = useRovingFocus({
+    itemCount: tabs.length,
+    orientation: "horizontal",
+    initialIndex: 0,
+    activateOnFocus: true,
+    onActivate: (index) => setTab(tabs[index]),
+  });
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
     try { await action(); } catch (error) { onError(String(error)); } finally { setBusy(false); }
@@ -44,11 +46,30 @@ export function SettingsDrawer({ engines, settings, metrics, projectId, projectP
   const save = (next: AppSettings) => void run(async () => onSettings(await desktopApi.saveAppSettings(next)));
   const refreshEngines = () => void run(async () => onEngines(await desktopApi.checkEngines()));
 
+  if (!settings) {
+    const error = normalizeCommandError(loadError ?? "设置数据不可用。", "get_app_settings");
+    return (
+      <ModalSurface id="settings-drawer" title="应用设置" titleHidden className="settings-drawer" onClose={onClose} initialFocusRef={closeRef}>
+        <header><div><Gear size={20} /><div><strong>设置与系统状态</strong><span>设置尚未加载</span></div></div><button ref={closeRef} className="icon-button" type="button" onClick={onClose} aria-label="关闭设置"><X size={18} /></button></header>
+        <div className="settings-content">
+          <ErrorNotice
+            error={error}
+            blocking
+            onAction={(action) => {
+              if (action.kind === "retry") onRetrySettings?.();
+              if (action.kind === "export_diagnostics") onError("请先打开一个项目后再导出诊断。");
+            }}
+          />
+        </div>
+      </ModalSurface>
+    );
+  }
+
   return (
-    <aside className="settings-drawer" role="dialog" aria-modal="true" aria-label="应用设置">
+    <ModalSurface id="settings-drawer" title="应用设置" titleHidden className="settings-drawer" onClose={onClose} busy={busy} initialFocusRef={closeRef}>
       <header><div><Gear size={20} /><div><strong>设置与系统状态</strong><span>更改将在下一次阶段启动时生效</span></div></div><button ref={closeRef} className="icon-button" type="button" onClick={onClose} aria-label="关闭设置"><X size={18} /></button></header>
-      <nav role="tablist" aria-label="设置分类">{(["engines", "defaults", "performance", "diagnostics"] as SettingsTab[]).map((value) => <button type="button" role="tab" aria-selected={tab === value} key={value} className={tab === value ? "is-active" : ""} onClick={() => setTab(value)}>{value === "engines" ? "引擎" : value === "defaults" ? "项目默认值" : value === "performance" ? "性能" : "诊断"}</button>)}</nav>
-      <div className="settings-content" role="tabpanel">
+      <nav ref={tabRoving.containerRef} role="tablist" aria-label="设置分类">{tabs.map((value, index) => <button id={`settings-tab-${value}`} type="button" role="tab" aria-selected={tab === value} aria-controls={`settings-panel-${value}`} {...tabRoving.getItemProps(index)} key={value} className={tab === value ? "is-active" : ""} onClick={() => { setTab(value); tabRoving.setActiveIndex(index); }}>{value === "engines" ? "引擎" : value === "defaults" ? "项目默认值" : value === "performance" ? "性能" : "诊断"}</button>)}</nav>
+      <div id={`settings-panel-${tab}`} className="settings-content" role="tabpanel" aria-labelledby={`settings-tab-${tab}`}>
         {tab === "engines" && <section className="settings-section"><div className="settings-section-title"><div><h2>引擎定位</h2><p>发布版优先使用已校验的应用内置引擎；高级外部路径仅用于人工恢复。</p></div><button className="button button-secondary" type="button" disabled={busy} onClick={refreshEngines}>重新检测</button></div>
           {settings.engine_directory && <div className="configured-engine-root"><Path size={16} /><span>{settings.engine_directory}</span><button type="button" onClick={() => void run(async () => onSettings(await desktopApi.clearEngineOverride()))}>恢复自动定位</button></div>}
           <div className="engine-settings-list">{engines.map((engine) => <article key={engine.name}><div className="engine-card-title"><strong>{engine.name}</strong><span className={engine.available ? "analysis-ok" : "analysis-blocked"}>{engine.available ? "已验证" : engine.integrity_status === "invalid" ? "需要修复" : "不可用"}</span></div><dl><div><dt>实际版本</dt><dd>{engine.actual_version ?? engine.version ?? "尚未读取"}</dd></div><div><dt>期望版本</dt><dd>{engine.expected_version ?? "外部版本"}</dd></div><div><dt>来源</dt><dd>{engine.source === "environment" ? "METORIGIN_ENGINE_DIR（调试）" : engine.source === "resource" ? "应用内置资源" : engine.source === "configured_or_path" ? "高级外部路径 / PATH" : "未定位"}</dd></div><div><dt>完整性</dt><dd>{engine.integrity_status === "valid" ? `已校验${engine.pack_version ? ` · ${engine.pack_version}` : ""}` : engine.integrity_status === "invalid" ? "校验失败" : "不适用"}</dd></div><div><dt>路径</dt><dd title={engine.path ?? undefined}>{engine.path ?? "尚未定位"}</dd></div></dl>{engine.diagnostic && <div className={engine.available ? "settings-note" : "inline-blocker"}>{engine.diagnostic}</div>}<div className="engine-card-actions"><button type="button" onClick={() => void run(async () => { const path = await selectEngineExecutable(engine.name); if (path) { onSettings(await desktopApi.setEngineExecutable(engine.name, path)); onEngines(await desktopApi.checkEngines()); } })}>单独定位</button><button type="button" disabled={!engine.path || busy} onClick={() => void run(async () => { await desktopApi.openEngineLocation(engine.name); })}>打开位置</button></div></article>)}</div>
@@ -61,6 +82,6 @@ export function SettingsDrawer({ engines, settings, metrics, projectId, projectP
 
         {tab === "diagnostics" && <section className="settings-section"><div className="settings-section-title"><div><h2>脱敏诊断包</h2><p>包含项目状态、日志尾部、引擎和硬件摘要；不包含视频、图片或 PLY。</p></div></div><button className="button button-primary" type="button" disabled={!projectPath || !projectId || busy} onClick={() => projectPath && projectId && void run(async () => { const result = await desktopApi.exportDiagnostics(projectPath); const fileName = result.path.split(/[\\/]/).pop(); if (!fileName) throw new Error("诊断包路径无效。"); await desktopApi.openProjectLocation({ projectId, projectPath, targetType: "artifact", relativePath: `output/${fileName}` }); })}><DownloadSimple size={16} />导出诊断包</button>{!projectPath && <div className="settings-note">请先打开一个项目。</div>}</section>}
       </div>
-    </aside>
+    </ModalSurface>
   );
 }

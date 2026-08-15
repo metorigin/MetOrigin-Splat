@@ -72,11 +72,53 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm test:ux:automated
 
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-targets
 ```
+
+`pnpm test:ux:automated` is a Windows-only, dependency-free frontend acceptance preflight. It builds the production
+frontend, opens it in a local headless Microsoft Edge session through the CDP pipe, injects synthetic Tauri IPC data,
+checks page-context isolation, active-project conflict handling, menu/tab/drawer keyboard behavior, accessibility
+names, forced-colors/reduced-motion hooks, conservative 1024×768 scale viewports, and 20-sample timing runs. It reads
+no real project or media and writes only ignored evidence under `.test-results/ux-automation/`.
+
+This preflight does not replace native Tauri/WebView2 scenarios, Windows sleep/resume, external-process failure tests,
+real project compatibility/checksums, controlled usability sessions, or independent release sign-off.
+
+For an optional native Fast smoke run with licensed local media, start the debug Tauri app with the packaged engine
+directory and a loopback-only WebView2 CDP port, then run `pnpm test:tauri:native-fast` from a second terminal. Provide
+`METORIGIN_TEST_VIDEO`, `METORIGIN_TEST_PROJECT_ROOT`, `METORIGIN_NATIVE_REPORT_DIR`,
+`METORIGIN_EXPECTED_SOURCE_SHA256`, and `METORIGIN_TAURI_DEBUG_PORT`. The project root must be isolated from the source.
+The runner exercises real Tauri IPC, FFmpeg/FFprobe, COLMAP, Brush, pause/resume, checkpoint-preserving cancel/resume,
+artifact/PLY validation, and before/after source hashing. Keep its output under ignored `.test-results/`; never commit
+media, project directories, private paths, raw logs, or native reports.
+
+After that run has produced at least two valid checkpoints, set `METORIGIN_TEST_PROJECT_PATH` to its isolated project
+and run `pnpm test:tauri:native-failure-recovery` from a session allowed to terminate its own test child process. The
+runner refuses to inject a fault if any Brush process already exists or if more than one new candidate appears. It
+checks localized `E-4003` failure persistence, active-slot cleanup, checkpoint preservation, explicit retry to
+Completed, recovered artifacts, source hashing, and recent-index cleanup.
+
+For a Windows desktop release candidate, the frontend and Rust gates above are necessary but not sufficient. Build the local release application through the repository-owned entry point:
+
+```powershell
+pnpm build:windows:release
+```
+
+This command always uses `mainBinaryName = "MetOrigin Splat"`, builds in the isolated `target/windows-release-build` Cargo directory, and resets `artifacts/windows/app` before publishing exactly one runnable application plus its checksum and sanitized build metadata. The isolated target prevents a currently running development or legacy release executable from blocking a new build. `target/release` remains an internal Cargo cache and must not be used as a delivery directory.
+
+The fully offline internal installer remains a separate, explicit packaging operation:
+
+```powershell
+pnpm package:windows:full
+```
+
+It publishes the installer, checksum, and packaging metadata to `artifacts/windows/installer`. Both Windows artifact directories are ignored by Git and contain no project data. A release build must exit with code 0 on Windows before the real Tauri scenarios, keyboard-only and forced-colors checks, 1024×768 at 100%/125%/150% scaling checks, compatibility/checksum comparison, controlled usability protocol, and monotonic-clock samples in `specs/001-frontend-ux-improvements/quickstart.md` are executed. Record only sanitized results in `specs/001-frontend-ux-improvements/validation-results.md`; do not commit screenshots containing project names, private paths, media, raw logs, or diagnostics.
+
+The UX feature is additive: it does not change `project.json`, `schemas/project.schema.json`, recent-project record fields, or legacy Tauri mutation signatures. When extending the boundary, add a service wrapper and contract tests instead of importing raw Tauri `invoke` in a page, component, or hook.
 
 Schema validation is also performed in GitHub Actions with `ajv-cli`.
 

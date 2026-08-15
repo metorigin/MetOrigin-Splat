@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use base64::Engine;
+use chrono::Utc;
 use splat_domain::project::{
     ImageFolderSource, Project, ProjectSource, ProjectStatus, VideoSource,
 };
@@ -99,8 +100,8 @@ pub struct ProjectPreflight {
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteProjectRequest {
-    project_id: String,
-    project_path: String,
+    pub(crate) project_id: String,
+    pub(crate) project_path: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -579,6 +580,7 @@ pub fn list_recent_projects(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<ProjectInfo>, String> {
+    let _writer = state.inner().recent_index_write_guard();
     let mut projects = read_recent_project_index(&app_handle)?;
     refresh_recent_projects(&mut projects);
     projects.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
@@ -586,6 +588,118 @@ pub fn list_recent_projects(
         inner.recent_projects = projects.clone();
     }
     Ok(projects)
+}
+
+/// Return the persisted recent-project index without touching any project path.
+#[tauri::command]
+pub fn list_recent_project_index(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<ProjectInfo>, String> {
+    let _writer = state.inner().recent_index_write_guard();
+    let projects = read_recent_project_index(&app_handle)?;
+    let mut inner = state
+        .0
+        .lock()
+        .map_err(|_| "最近项目状态不可用，请重启应用后重试。".to_string())?;
+    inner.recent_projects = projects.clone();
+    Ok(projects)
+}
+
+#[tauri::command]
+pub async fn check_recent_project_availability(
+    project_id: String,
+    project_path: String,
+) -> Result<ProjectAvailabilityResult, String> {
+    tokio::task::spawn_blocking(move || probe_recent_project(project_id, project_path))
+        .await
+        .map_err(|_| "项目路径检查后台任务意外终止，请重试。".to_string())
+}
+
+#[tauri::command]
+pub fn relink_recent_project(
+    request: RelinkRecentProjectRequest,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<ProjectInfo, String> {
+    let _writer = state.inner().recent_index_write_guard();
+    let index_path = recent_project_index_path(&app_handle)?;
+    let refreshed = relink_recent_project_path(&request, &index_path)?;
+    let projects = read_recent_project_index_path(&index_path)?;
+    let candidate = PathBuf::from(&request.candidate_path);
+    let mut inner = state
+        .0
+        .lock()
+        .map_err(|_| "重定位已保存，但应用状态刷新失败，请重启应用。".to_string())?;
+    inner.recent_projects = projects;
+    if inner
+        .project_dir
+        .as_ref()
+        .is_some_and(|path| paths_refer_to_same_project(path, Path::new(&request.previous_path)))
+    {
+        inner.project_dir = Some(candidate);
+    }
+    Ok(refreshed)
+}
+
+fn relink_recent_project_path(
+    request: &RelinkRecentProjectRequest,
+    index_path: &Path,
+) -> Result<ProjectInfo, String> {
+    let mut projects = read_recent_project_index_path(index_path)?;
+    let Some(index) = projects.iter().position(|project| {
+        project.id == request.project_id && project.path == request.previous_path
+    }) else {
+        return Err(relink_error(
+            "UI-PROJECT-RELINK-CONFLICT",
+            "原最近项目记录已经变化，未修改任何记录，请刷新后重试。",
+            false,
+        ));
+    };
+
+    let candidate = PathBuf::from(&request.candidate_path);
+    let metadata = std::fs::symlink_metadata(&candidate).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            relink_error(
+                "UI-PROJECT-RELINK-MISSING",
+                "所选项目目录不存在，原记录未更改。",
+                false,
+            )
+        } else {
+            relink_error(
+                "UI-PROJECT-RELINK-UNREADABLE",
+                "暂时无法读取所选目录，原记录未更改。",
+                false,
+            )
+        }
+    })?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(relink_error(
+            "UI-PROJECT-RELINK-UNREADABLE",
+            "所选位置不是可用的真实项目目录，原记录未更改。",
+            false,
+        ));
+    }
+    let manager = manager_for_project_dir(&candidate)?;
+    let project = manager.open_project(&candidate).map_err(|_| {
+        relink_error(
+            "UI-PROJECT-RELINK-UNREADABLE",
+            "所选目录中的项目数据无法读取，原记录未更改。",
+            false,
+        )
+    })?;
+    if project.id.to_string() != request.project_id {
+        return Err(relink_error(
+            "UI-PROJECT-RELINK-MISMATCH",
+            "所选目录属于另一个项目，原记录未更改。",
+            true,
+        ));
+    }
+
+    let refreshed = project_info(&project, &candidate);
+    projects[index] = refreshed.clone();
+    install_recent_project_index(index_path, &projects)?;
+    Ok(refreshed)
 }
 
 /// Remove a project from the recent-project index without touching project files.
@@ -596,6 +710,7 @@ pub fn remove_recent_project(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
+    let _writer = state.inner().recent_index_write_guard();
     let requested = PathBuf::from(&project_path);
     {
         let inner = state
@@ -635,6 +750,33 @@ pub fn delete_project(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<DeleteProjectResult, String> {
+    delete_project_inner(request, &app_handle, state.inner())
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ProjectAvailabilityResult {
+    project_id: String,
+    checked_path: String,
+    availability: String,
+    checked_at: String,
+    reason_code: Option<String>,
+    refreshed_project: Option<ProjectInfo>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelinkRecentProjectRequest {
+    project_id: String,
+    previous_path: String,
+    candidate_path: String,
+}
+
+pub(crate) fn delete_project_inner(
+    request: DeleteProjectRequest,
+    app_handle: &tauri::AppHandle,
+    state: &AppState,
+) -> Result<DeleteProjectResult, String> {
+    let _writer = state.recent_index_write_guard();
     let requested = PathBuf::from(&request.project_path);
     {
         let inner = state
@@ -658,7 +800,7 @@ pub fn delete_project(
 
     match std::fs::symlink_metadata(&requested) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return remove_missing_project_record(&request, &app_handle, state.inner());
+            return remove_missing_project_record(&request, app_handle, state);
         }
         Err(_) => return Err("项目目录无法访问，请检查磁盘或目录权限。".into()),
         Ok(_) => {}
@@ -677,19 +819,19 @@ pub fn delete_project(
     if tombstone.exists() {
         return Err("项目删除临时目录已存在，请先检查磁盘状态。".into());
     }
-    let original_projects = read_recent_project_index(&app_handle)?;
+    let original_projects = read_recent_project_index(app_handle)?;
     let mut projects = original_projects.clone();
     projects.retain(|item| item.id != request.project_id && item.path != request.project_path);
     let removed_from_recent = projects.len() != original_projects.len();
 
     std::fs::rename(&project_dir, &tombstone)
         .map_err(|_| "无法锁定项目目录进行删除，请关闭占用该目录的程序后重试。".to_string())?;
-    if let Err(error) = write_recent_project_index(&app_handle, &projects) {
+    if let Err(error) = write_recent_project_index(app_handle, &projects) {
         let _ = std::fs::rename(&tombstone, &project_dir);
         return Err(error);
     }
     if let Err(error) = std::fs::remove_dir_all(&tombstone) {
-        let _ = write_recent_project_index(&app_handle, &original_projects);
+        let _ = write_recent_project_index(app_handle, &original_projects);
         let _ = std::fs::rename(&tombstone, &project_dir);
         return Err(format!("删除项目文件失败，已尝试恢复原目录：{error}"));
     }
@@ -1248,12 +1390,150 @@ fn project_info(
     }
 }
 
+fn manager_for_project_dir(project_dir: &Path) -> Result<ProjectManager, String> {
+    let parent = project_dir
+        .parent()
+        .ok_or_else(|| "项目目录没有有效父目录。".to_string())?;
+    Ok(ProjectManager::new(parent.to_path_buf()))
+}
+
+fn availability_result(
+    project_id: String,
+    checked_path: String,
+    availability: &str,
+    reason_code: Option<&str>,
+    refreshed_project: Option<ProjectInfo>,
+) -> ProjectAvailabilityResult {
+    ProjectAvailabilityResult {
+        project_id,
+        checked_path,
+        availability: availability.into(),
+        checked_at: Utc::now().to_rfc3339(),
+        reason_code: reason_code.map(str::to_string),
+        refreshed_project,
+    }
+}
+
+fn not_found_is_confirmed(path: &Path) -> bool {
+    let mut ancestor = path.parent();
+    while let Some(candidate) = ancestor {
+        match std::fs::metadata(candidate) {
+            Ok(metadata) => return metadata.is_dir(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                ancestor = candidate.parent();
+            }
+            Err(_) => return false,
+        }
+    }
+    false
+}
+
+fn probe_recent_project(project_id: String, project_path: String) -> ProjectAvailabilityResult {
+    let project_dir = PathBuf::from(&project_path);
+    let metadata = match std::fs::symlink_metadata(&project_dir) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let (availability, reason) = if not_found_is_confirmed(&project_dir) {
+                ("missing", "UI-PROJECT-PATH-MISSING")
+            } else {
+                ("check_failed", "UI-PROJECT-PATH-UNAVAILABLE")
+            };
+            return availability_result(project_id, project_path, availability, Some(reason), None);
+        }
+        Err(error) => {
+            let reason = if error.kind() == std::io::ErrorKind::PermissionDenied {
+                "UI-PROJECT-PATH-PERMISSION"
+            } else {
+                "UI-PROJECT-PATH-IO"
+            };
+            return availability_result(
+                project_id,
+                project_path,
+                "check_failed",
+                Some(reason),
+                None,
+            );
+        }
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return availability_result(
+            project_id,
+            project_path,
+            "unreadable",
+            Some("UI-PROJECT-PATH-NOT-DIRECTORY"),
+            None,
+        );
+    }
+
+    let project_json = project_dir.join("project.json");
+    let content = match std::fs::read_to_string(&project_json) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return availability_result(
+                project_id,
+                project_path,
+                "unreadable",
+                Some("UI-PROJECT-DATA-MISSING"),
+                None,
+            );
+        }
+        Err(error) => {
+            let reason = if error.kind() == std::io::ErrorKind::PermissionDenied {
+                "UI-PROJECT-DATA-PERMISSION"
+            } else {
+                "UI-PROJECT-DATA-IO"
+            };
+            return availability_result(
+                project_id,
+                project_path,
+                "check_failed",
+                Some(reason),
+                None,
+            );
+        }
+    };
+    let project: Project = match serde_json::from_str(&content) {
+        Ok(project) => project,
+        Err(_) => {
+            return availability_result(
+                project_id,
+                project_path,
+                "unreadable",
+                Some("UI-PROJECT-DATA-INVALID"),
+                None,
+            );
+        }
+    };
+    if project.id.to_string() != project_id {
+        return availability_result(
+            project_id,
+            project_path,
+            "unreadable",
+            Some("UI-PROJECT-ID-MISMATCH"),
+            None,
+        );
+    }
+    let refreshed = project_info(&project, &project_dir);
+    availability_result(project_id, project_path, "available", None, Some(refreshed))
+}
+
+fn relink_error(code: &str, message: &str, can_open_independently: bool) -> String {
+    serde_json::json!({
+        "code": code,
+        "message": message,
+        "retryable": code != "UI-PROJECT-RELINK-MISMATCH",
+        "can_open_independently": can_open_independently,
+    })
+    .to_string()
+}
+
 fn record_recent_project(
     app_handle: &tauri::AppHandle,
     state: &AppState,
     project: ProjectInfo,
     selected_dir: Option<PathBuf>,
 ) -> Result<(), String> {
+    let _writer = state.recent_index_write_guard();
     let mut projects = read_recent_project_index(app_handle)?;
     projects.retain(|existing| existing.id != project.id && existing.path != project.path);
     projects.insert(0, project);
@@ -1281,13 +1561,7 @@ fn recent_project_index_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, S
 
 fn read_recent_project_index(app_handle: &tauri::AppHandle) -> Result<Vec<ProjectInfo>, String> {
     let path = recent_project_index_path(app_handle)?;
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let content = std::fs::read_to_string(path)
-        .map_err(|_| "读取最近项目索引失败，请检查应用配置目录权限。".to_string())?;
-    serde_json::from_str(&content)
-        .map_err(|_| "最近项目索引已损坏，请重新打开项目以重建索引。".to_string())
+    read_recent_project_index_path(&path)
 }
 
 fn write_recent_project_index(
@@ -1295,6 +1569,63 @@ fn write_recent_project_index(
     projects: &[ProjectInfo],
 ) -> Result<(), String> {
     let path = recent_project_index_path(app_handle)?;
+    install_recent_project_index(&path, projects)
+}
+
+fn index_temporary_path(path: &Path) -> PathBuf {
+    path.with_extension("json.installing")
+}
+
+fn index_recovery_path(path: &Path) -> PathBuf {
+    path.with_extension("json.recovery")
+}
+
+fn parse_recent_project_index(path: &Path) -> Result<Vec<ProjectInfo>, std::io::Error> {
+    let content = std::fs::read_to_string(path)?;
+    serde_json::from_str(&content)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string()))
+}
+
+fn replace_index_file(source: &Path, destination: &Path) -> Result<(), String> {
+    match std::fs::remove_file(destination) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return Err("恢复最近项目索引失败，请检查应用配置目录权限。".into()),
+    }
+    std::fs::rename(source, destination)
+        .map_err(|_| "恢复最近项目索引失败，请检查应用配置目录权限。".to_string())
+}
+
+fn read_recent_project_index_path(path: &Path) -> Result<Vec<ProjectInfo>, String> {
+    match parse_recent_project_index(path) {
+        Ok(projects) => {
+            let _ = std::fs::remove_file(index_temporary_path(path));
+            let _ = std::fs::remove_file(index_recovery_path(path));
+            return Ok(projects);
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => {}
+    }
+
+    let recovery = index_recovery_path(path);
+    if let Ok(projects) = parse_recent_project_index(&recovery) {
+        replace_index_file(&recovery, path)?;
+        let _ = std::fs::remove_file(index_temporary_path(path));
+        return Ok(projects);
+    }
+    let temporary = index_temporary_path(path);
+    if let Ok(projects) = parse_recent_project_index(&temporary) {
+        replace_index_file(&temporary, path)?;
+        return Ok(projects);
+    }
+
+    match std::fs::metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        _ => Err("最近项目索引已损坏，且没有可用的恢复副本。".into()),
+    }
+}
+
+fn install_recent_project_index(path: &Path, projects: &[ProjectInfo]) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| "应用配置目录无效。".to_string())?;
@@ -1302,15 +1633,50 @@ fn write_recent_project_index(
         .map_err(|_| "创建应用配置目录失败，请检查目录权限。".to_string())?;
     let content =
         serde_json::to_vec_pretty(projects).map_err(|_| "序列化最近项目索引失败。".to_string())?;
-    let temporary = path.with_extension("json.tmp");
-    std::fs::write(&temporary, content)
+    let temporary = index_temporary_path(path);
+    let recovery = index_recovery_path(path);
+    let mut file = File::create(&temporary)
         .map_err(|_| "写入最近项目索引失败，请检查目录权限。".to_string())?;
-    if path.exists() {
-        std::fs::remove_file(&path)
-            .map_err(|_| "更新最近项目索引失败，请关闭占用该文件的程序。".to_string())?;
+    file.write_all(&content)
+        .and_then(|_| file.sync_all())
+        .map_err(|_| "写入最近项目索引失败，请检查目录权限。".to_string())?;
+    drop(file);
+    let staged = parse_recent_project_index(&temporary)
+        .map_err(|_| "校验新的最近项目索引失败，原索引未更改。".to_string())?;
+    if staged != projects {
+        let _ = std::fs::remove_file(&temporary);
+        return Err("校验新的最近项目索引失败，原索引未更改。".into());
     }
-    std::fs::rename(temporary, path)
-        .map_err(|_| "保存最近项目索引失败，请检查目录权限。".to_string())
+
+    let had_original = match std::fs::metadata(path) {
+        Ok(_) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(_) => return Err("读取最近项目索引状态失败，请检查目录权限。".into()),
+    };
+    let _ = std::fs::remove_file(&recovery);
+    if had_original {
+        std::fs::rename(path, &recovery)
+            .map_err(|_| "备份最近项目索引失败，原索引未更改。".to_string())?;
+    }
+    if std::fs::rename(&temporary, path).is_err() {
+        if had_original {
+            let _ = std::fs::rename(&recovery, path);
+        }
+        return Err("安装最近项目索引失败，已保留原索引。".into());
+    }
+    match parse_recent_project_index(path) {
+        Ok(installed) if installed == projects => {
+            let _ = std::fs::remove_file(&recovery);
+            Ok(())
+        }
+        _ => {
+            let _ = std::fs::remove_file(path);
+            if had_original {
+                let _ = std::fs::rename(&recovery, path);
+            }
+            Err("安装后的最近项目索引校验失败，已回滚。".into())
+        }
+    }
 }
 
 fn refresh_recent_projects(projects: &mut [ProjectInfo]) {
@@ -1500,5 +1866,182 @@ mod tests {
         assert!(disk_space_blocker(0, 10).is_none());
         let blocker = disk_space_blocker(5, 10).unwrap();
         assert!(blocker.contains("磁盘空间不足"));
+    }
+
+    fn recent_info(id: &str, path: &Path) -> ProjectInfo {
+        ProjectInfo {
+            id: id.into(),
+            name: format!("项目 {id}"),
+            path: path.to_string_lossy().to_string(),
+            status: "ready".into(),
+            updated_at: "2026-08-14T00:00:00Z".into(),
+            stage_label: None,
+        }
+    }
+
+    #[test]
+    fn fast_index_read_does_not_require_project_paths() {
+        let root = temporary_test_root("fast-index");
+        let index = root.join("recent-projects.json");
+        let unreachable = root.join("detached-volume/project.splat-project");
+        let expected = vec![recent_info("detached", &unreachable)];
+        install_recent_project_index(&index, &expected).unwrap();
+
+        let loaded = read_recent_project_index_path(&index).unwrap();
+        assert_eq!(loaded, expected);
+        assert!(!unreachable.exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn availability_probe_classifies_matching_missing_unreadable_and_failed_without_writes() {
+        let root = temporary_test_root("availability");
+        let project_dir = root.join("valid.splat-project");
+        paths::create_project_directories(&project_dir).unwrap();
+        let project = Project::new("可用项目");
+        ProjectManager::new(root.clone())
+            .save_project(&project, &project_dir)
+            .unwrap();
+        let index = root.join("recent-projects.json");
+        let indexed = vec![recent_info(&project.id.to_string(), &project_dir)];
+        install_recent_project_index(&index, &indexed).unwrap();
+        let before = std::fs::read(&index).unwrap();
+
+        let available = probe_recent_project(
+            project.id.to_string(),
+            project_dir.to_string_lossy().to_string(),
+        );
+        assert_eq!(available.availability, "available");
+        let refreshed = available
+            .refreshed_project
+            .expect("available must refresh metadata");
+        assert_eq!(refreshed.id, project.id.to_string());
+        assert_eq!(refreshed.path, project_dir.to_string_lossy());
+
+        let missing_dir = root.join("missing.splat-project");
+        let missing = probe_recent_project("missing".into(), missing_dir.to_string_lossy().into());
+        assert_eq!(missing.availability, "missing");
+        assert!(missing.refreshed_project.is_none());
+
+        let unreadable_dir = root.join("invalid.splat-project");
+        std::fs::create_dir_all(&unreadable_dir).unwrap();
+        let unreadable =
+            probe_recent_project("invalid".into(), unreadable_dir.to_string_lossy().into());
+        assert_eq!(unreadable.availability, "unreadable");
+
+        let failed = probe_recent_project("invalid-input".into(), "bad\0path".into());
+        assert_eq!(failed.availability, "check_failed");
+        assert_eq!(std::fs::read(&index).unwrap(), before);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn index_install_is_validated_and_startup_recovers_backup_or_staged_copy() {
+        let root = temporary_test_root("index-recovery");
+        let index = root.join("recent-projects.json");
+        let first = vec![recent_info("first", &root.join("first.splat-project"))];
+        let second = vec![recent_info("second", &root.join("second.splat-project"))];
+        install_recent_project_index(&index, &first).unwrap();
+        install_recent_project_index(&index, &second).unwrap();
+        assert_eq!(read_recent_project_index_path(&index).unwrap(), second);
+
+        std::fs::write(&index, b"not-json").unwrap();
+        install_recent_project_index(&index_recovery_path(&index), &first).unwrap();
+        let recovered = read_recent_project_index_path(&index).unwrap();
+        assert_eq!(recovered, first);
+        assert_eq!(parse_recent_project_index(&index).unwrap(), first);
+
+        std::fs::write(&index, b"still-not-json").unwrap();
+        install_recent_project_index(&index_temporary_path(&index), &second).unwrap();
+        let recovered_staged = read_recent_project_index_path(&index).unwrap();
+        assert_eq!(recovered_staged, second);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn relink_requires_same_identity_and_preserves_index_on_mismatch_or_conflict() {
+        let root = temporary_test_root("relink");
+        let original_dir = root.join("original.splat-project");
+        let matched_dir = root.join("matched.splat-project");
+        let other_dir = root.join("other.splat-project");
+        let project = Project::new("原项目");
+        let other = Project::new("另一个项目");
+        let manager = ProjectManager::new(root.clone());
+        paths::create_project_directories(&original_dir).unwrap();
+        paths::create_project_directories(&matched_dir).unwrap();
+        paths::create_project_directories(&other_dir).unwrap();
+        manager.save_project(&project, &original_dir).unwrap();
+        manager.save_project(&project, &matched_dir).unwrap();
+        manager.save_project(&other, &other_dir).unwrap();
+        let index = root.join("recent-projects.json");
+        install_recent_project_index(
+            &index,
+            &[recent_info(&project.id.to_string(), &original_dir)],
+        )
+        .unwrap();
+
+        let mismatch_request = RelinkRecentProjectRequest {
+            project_id: project.id.to_string(),
+            previous_path: original_dir.to_string_lossy().into(),
+            candidate_path: other_dir.to_string_lossy().into(),
+        };
+        let before = std::fs::read(&index).unwrap();
+        let mismatch = relink_recent_project_path(&mismatch_request, &index).unwrap_err();
+        assert!(mismatch.contains("UI-PROJECT-RELINK-MISMATCH"));
+        assert_eq!(std::fs::read(&index).unwrap(), before);
+
+        let conflict = RelinkRecentProjectRequest {
+            previous_path: root.join("stale.splat-project").to_string_lossy().into(),
+            ..mismatch_request.clone()
+        };
+        assert!(relink_recent_project_path(&conflict, &index)
+            .unwrap_err()
+            .contains("UI-PROJECT-RELINK-CONFLICT"));
+        assert_eq!(std::fs::read(&index).unwrap(), before);
+
+        let matched = RelinkRecentProjectRequest {
+            candidate_path: matched_dir.to_string_lossy().into(),
+            ..mismatch_request
+        };
+        let refreshed = relink_recent_project_path(&matched, &index).unwrap();
+        assert_eq!(refreshed.id, project.id.to_string());
+        assert_eq!(refreshed.path, matched_dir.to_string_lossy());
+        assert_eq!(
+            read_recent_project_index_path(&index).unwrap(),
+            vec![refreshed]
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn writer_lock_serializes_mutations_recovers_after_panic_and_does_not_cover_probes() {
+        let state = AppState::new();
+        let shared = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut workers = Vec::new();
+        for value in 0..12 {
+            let state = state.clone();
+            let shared = shared.clone();
+            workers.push(std::thread::spawn(move || {
+                let _writer = state.recent_index_write_guard();
+                shared.lock().unwrap().push(value);
+            }));
+        }
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        assert_eq!(shared.lock().unwrap().len(), 12);
+
+        let poison_state = state.clone();
+        let _ = std::thread::spawn(move || {
+            let _writer = poison_state.recent_index_write_guard();
+            panic!("simulate failed mutation");
+        })
+        .join();
+        drop(state.recent_index_write_guard());
+
+        let held = state.recent_index_write_guard();
+        let probe = probe_recent_project("probe".into(), "bad\0path".into());
+        assert_eq!(probe.availability, "check_failed");
+        drop(held);
     }
 }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DeleteProjectDialog } from "./DeleteProjectDialog";
@@ -34,8 +34,21 @@ describe("DeleteProjectDialog", () => {
   });
 
   it("prevents duplicate deletion while busy", () => {
-    const view = render(<DeleteProjectDialog project={project} busy onCancel={vi.fn()} onConfirm={vi.fn()} />);
-    expect(within(view.container).getByRole("button", { name: "正在删除…" })).toBeDisabled();
-    expect(within(view.container).getByRole("button", { name: "取消" })).toBeDisabled();
+    render(<DeleteProjectDialog project={project} busy onCancel={vi.fn()} onConfirm={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "正在删除…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
+    expect(screen.getByRole("alertdialog")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("alertdialog")).toHaveFocus();
+  });
+
+  it("traps forward and reverse Tab within the confirmation", () => {
+    render(<DeleteProjectDialog project={project} busy={false} onCancel={vi.fn()} onConfirm={vi.fn()} />);
+    const close = screen.getByRole("button", { name: "关闭删除项目对话框" });
+    const confirm = screen.getByRole("button", { name: "永久删除" });
+    confirm.focus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(confirm).toHaveFocus();
   });
 });

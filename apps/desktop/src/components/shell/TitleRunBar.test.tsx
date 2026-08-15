@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { TitleRunBar } from "./TitleRunBar";
@@ -7,6 +7,88 @@ const project = { id: "p", name: "自行车街景测试", path: "p", status: "ru
 const state = { stages: {}, current_stage: null, overall_progress: 0.58 };
 
 describe("TitleRunBar", () => {
+  it("does not expose project progress or run controls without a project context", () => {
+    render(
+      <TitleRunBar
+        project={null}
+        pipelineSnapshot={null}
+        onStart={vi.fn()}
+        onPause={vi.fn()}
+        onResume={vi.fn()}
+        onCancel={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onRevealProject={vi.fn()}
+        onRemoveProject={vi.fn()}
+        onDeleteProject={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /开始重建|暂停|继续/ })).not.toBeInTheDocument();
+  });
+
+  it("shows unknown progress without fabricating an ETA", () => {
+    render(
+      <TitleRunBar
+        project={{ ...project, status: "running" }}
+        pipelineSnapshot={null}
+        onStart={vi.fn()}
+        onPause={vi.fn()}
+        onResume={vi.fn()}
+        onCancel={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onRevealProject={vi.fn()}
+        onRemoveProject={vi.fn()}
+        onDeleteProject={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("progressbar")).not.toHaveAttribute("aria-valuenow");
+    expect(screen.getByText("正在估算")).toBeInTheDocument();
+    expect(screen.queryByText(/约 \d+ (分钟|小时)/)).not.toBeInTheDocument();
+    expect(screen.queryByText("预计剩余")).not.toBeInTheDocument();
+  });
+
+  it("describes an active-project conflict and preserves focus after a blocked attempt", () => {
+    const start = vi.fn();
+    const blocked = vi.fn();
+    render(
+      <TitleRunBar
+        project={{ ...project, id: "project-b", name: "项目 B", status: "ready" }}
+        pipelineSnapshot={null}
+        pipelineConflict={{
+          activeProjectId: "project-a",
+          activeProjectName: "项目 A",
+          status: "running",
+          stageLabel: "模型训练",
+          progress: 0.42,
+          updatedAt: Date.now(),
+        }}
+        onBlockedAttempt={blocked}
+        onReturnToActiveProject={vi.fn()}
+        onStart={start}
+        onPause={vi.fn()}
+        onResume={vi.fn()}
+        onCancel={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onRevealProject={vi.fn()}
+        onRemoveProject={vi.fn()}
+        onDeleteProject={vi.fn()}
+      />,
+    );
+
+    const startButton = screen.getByRole("button", { name: "开始重建" });
+    startButton.focus();
+    fireEvent.click(startButton);
+
+    expect(start).not.toHaveBeenCalled();
+    expect(blocked).toHaveBeenCalledOnce();
+    expect(startButton).toHaveFocus();
+    expect(startButton).toHaveAttribute("aria-describedby");
+    expect(screen.getByText(/项目 A.*正在运行/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "返回活动项目" })).toBeInTheDocument();
+  });
+
   it("routes running and paused states to the correct controls", () => {
     const pause = vi.fn();
     const resume = vi.fn();
@@ -26,5 +108,53 @@ describe("TitleRunBar", () => {
     expect(cancelling).toBeDisabled();
     fireEvent.click(cancelling);
     expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it("provides the complete keyboard menu contract and restores its trigger", async () => {
+    render(
+      <TitleRunBar
+        project={{ ...project, status: "ready" }}
+        pipelineSnapshot={null}
+        onStart={vi.fn()}
+        onPause={vi.fn()}
+        onResume={vi.fn()}
+        onCancel={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onRevealProject={vi.fn()}
+        onRemoveProject={vi.fn()}
+        onDeleteProject={vi.fn()}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "操作" });
+    expect(trigger).toHaveAttribute("aria-haspopup", "menu");
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    const first = await screen.findByRole("menuitem", { name: /在资源管理器中显示/ });
+    await waitFor(() => expect(first).toHaveFocus());
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(trigger).toHaveAttribute("aria-controls", screen.getByRole("menu").id);
+
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    expect(screen.getByRole("menuitem", { name: "设置" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "设置" }), { key: "End" });
+    expect(screen.getByRole("menuitem", { name: /永久删除项目/ })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: /永久删除项目/ }), { key: "Home" });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    await waitFor(() => expect(trigger).toHaveFocus());
+
+    fireEvent.keyDown(trigger, { key: "ArrowUp" });
+    await waitFor(() => expect(screen.getByRole("menuitem", { name: /永久删除项目/ })).toHaveFocus());
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: /永久删除项目/ }), { key: "Tab" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("skips disabled destructive items while a project is running", async () => {
+    render(<TitleRunBar project={project} pipelineSnapshot={null} onStart={vi.fn()} onPause={vi.fn()} onResume={vi.fn()} onCancel={vi.fn()} onOpenSettings={vi.fn()} onRevealProject={vi.fn()} onRemoveProject={vi.fn()} onDeleteProject={vi.fn()} />);
+    const trigger = screen.getByRole("button", { name: "操作" });
+    fireEvent.keyDown(trigger, { key: "ArrowUp" });
+    await waitFor(() => expect(screen.getByRole("menuitem", { name: "设置" })).toHaveFocus());
+    expect(screen.getByRole("menuitem", { name: /永久删除项目/ })).toBeDisabled();
   });
 });

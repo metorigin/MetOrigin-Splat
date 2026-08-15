@@ -14,14 +14,20 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useAppContext } from "../context";
+import { ErrorNotice } from "../components";
+import { selectActivePipelineSnapshot, useAppContext } from "../context";
+import { shouldIgnoreShortcut } from "../hooks";
 import {
   desktopApi,
+  confirmCancelProjectCreationExit,
+  confirmDiscardProjectDraft,
+  isActivePipelineConflict,
   isDesktopRuntime,
   selectImageDirectory,
   selectProjectRoot,
   selectVideoFile,
 } from "../services/desktop";
+import { normalizeCommandError } from "../services/errors";
 import type {
   AppSettings,
   ImagePreview,
@@ -29,9 +35,20 @@ import type {
   PresetEstimate,
   ProjectCopyProgress,
   ProjectPreflight,
+  UiError,
 } from "../types";
 
 const STEP_LABELS = ["导入素材", "检查与方案", "确认创建"];
+const STEP_PURPOSES = [
+  "选择要重建的视频或连续照片，并确认素材能够读取。",
+  "检查运行环境和磁盘空间，再选择适合本次尝试的质量方案。",
+  "确认项目名称、保存位置和复制范围，然后开始创建。",
+];
+const STEP_CONDITIONS = [
+  "素材分析成功且没有阻断问题",
+  "环境与空间检查通过",
+  "项目名称非空且检查结果仍然有效",
+];
 
 type DirectoryCheckState = {
   status: "idle" | "checking" | "success" | "error";
@@ -63,8 +80,15 @@ function presetLabel(id: string): string {
   return { fast: "快速", balanced: "均衡", quality: "高质量" }[id] ?? id;
 }
 
-export function NewProjectPage({ settings = null }: { settings?: AppSettings | null }) {
-  const { dispatch } = useAppContext();
+export function NewProjectPage({
+  settings = null,
+  onOpenSettings,
+}: {
+  settings?: AppSettings | null;
+  onOpenSettings?: () => void;
+}) {
+  const { state, dispatch } = useAppContext();
+  const activePipeline = selectActivePipelineSnapshot(state);
   const [step, setStep] = useState(0);
   const [analysis, setAnalysis] = useState<MediaAnalysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -80,8 +104,15 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
   const [projectName, setProjectName] = useState("");
   const [projectRoot, setProjectRoot] = useState<string | null>(settings?.default_project_root ?? null);
   const [creating, setCreating] = useState(false);
+  const [canceling, setCanceling] = useState(false);
   const [copyProgress, setCopyProgress] = useState<ProjectCopyProgress | null>(null);
+  const [creationError, setCreationError] = useState<UiError | null>(null);
+  const [cancelOutcome, setCancelOutcome] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const createInFlight = useRef<Promise<void> | null>(null);
+  const cancelInFlight = useRef<Promise<void> | null>(null);
+  const cancellationRequested = useRef(false);
+  const exitAfterCancellation = useRef(false);
 
   useEffect(() => {
     document.getElementById(`wizard-step-heading-${step}`)?.focus();
@@ -221,11 +252,17 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
   }, [preflight?.can_continue, runPreflight, step]);
 
   const createProject = useCallback(
-    async (startAfterCreate: boolean) => {
-      if (!analysis || !projectName.trim() || checking || !preflight?.can_continue) return;
+    (startAfterCreate: boolean) => {
+      if (!analysis || !projectName.trim() || checking || !preflight?.can_continue || createInFlight.current) {
+        return Promise.resolve();
+      }
       setCreating(true);
       setCopyProgress(null);
+      setCreationError(null);
+      setCancelOutcome(null);
       setLocalError(null);
+      cancellationRequested.current = false;
+      const operation = (async () => {
       try {
         const result = await desktopApi.createProject({
           name: projectName.trim(),
@@ -246,6 +283,22 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
           project: createdProject,
         });
         if (startAfterCreate) {
+          if (activePipeline && activePipeline.project_id !== result.id) {
+            dispatch({
+              type: "SET_PIPELINE_CONFLICT",
+              requestedProjectId: result.id,
+              activeProjectId: activePipeline.project_id,
+            });
+            dispatch({
+              type: "NAVIGATE",
+              page: { type: "project-detail", projectId: result.id, projectPath: result.path },
+            });
+            dispatch({
+              type: "SET_ERROR",
+              error: "项目已创建；另一个项目仍在运行，因此本项目未启动，也未进入队列。",
+            });
+            return;
+          }
           try {
             const snapshot = await desktopApi.startPipeline(result.path);
             dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot });
@@ -258,6 +311,26 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
               },
             });
           } catch (error) {
+            if (isActivePipelineConflict(error)) {
+              const active = await desktopApi.getActivePipelineSummary().catch(() => null);
+              if (active) {
+                dispatch({ type: "SET_ACTIVE_PIPELINE", snapshot: active });
+                dispatch({
+                  type: "SET_PIPELINE_CONFLICT",
+                  requestedProjectId: result.id,
+                  activeProjectId: active.project_id,
+                });
+              }
+              dispatch({
+                type: "NAVIGATE",
+                page: { type: "project-detail", projectId: result.id, projectPath: result.path },
+              });
+              dispatch({
+                type: "SET_ERROR",
+                error: "项目已创建；活动任务在启动前发生变化，本项目未启动，也未进入队列。",
+              });
+              return;
+            }
             dispatch({
               type: "NAVIGATE",
               page: { type: "project-detail", projectId: result.id, projectPath: result.path },
@@ -274,22 +347,78 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
           page: { type: "project-detail", projectId: result.id, projectPath: result.path },
         });
       } catch (error) {
-        setLocalError(String(error));
+        if (cancellationRequested.current) {
+          setCancelOutcome("项目创建已安全取消；未完成目录已清理，原始素材未被修改。");
+        } else {
+          setCreationError(normalizeCommandError(error, "create_project"));
+        }
       } finally {
         setCreating(false);
+        setCanceling(false);
+        cancellationRequested.current = false;
+        createInFlight.current = null;
+        if (exitAfterCancellation.current) {
+          exitAfterCancellation.current = false;
+          dispatch({ type: "NAVIGATE", page: { type: "home" } });
+        }
       }
+      })();
+      createInFlight.current = operation;
+      return operation;
     },
-    [analysis, checking, dispatch, preflight?.can_continue, projectName, projectRoot, selectedPreset],
+    [activePipeline, analysis, checking, dispatch, preflight?.can_continue, projectName, projectRoot, selectedPreset],
   );
 
-  const closeWizard = useCallback(() => {
-    if (creating) return;
+  const requestCancelCreation = useCallback(() => {
+    if (!creating || cancelInFlight.current) return cancelInFlight.current ?? Promise.resolve();
+    cancellationRequested.current = true;
+    setCanceling(true);
+    setCancelOutcome("正在请求安全取消；已复制内容会在后台确认后清理。");
+    const operation = desktopApi.cancelProjectCreation()
+      .then(() => {
+        setCancelOutcome("已发送安全取消请求，正在等待复制任务停止并清理未完成目录。");
+      })
+      .catch((error) => {
+        cancellationRequested.current = false;
+        setCreationError(normalizeCommandError(error, "cancel_project_creation"));
+      })
+      .finally(() => {
+        setCanceling(false);
+        cancelInFlight.current = null;
+      });
+    cancelInFlight.current = operation;
+    return operation;
+  }, [creating]);
+
+  const dirty = Boolean(analysis || projectName.trim() || step > 0);
+  const closeWizard = useCallback(async () => {
+    if (creating) {
+      if (!(await confirmCancelProjectCreationExit())) return;
+      exitAfterCancellation.current = true;
+      await requestCancelCreation();
+      return;
+    }
+    if (dirty && !(await confirmDiscardProjectDraft())) return;
     dispatch({ type: "NAVIGATE", page: { type: "home" } });
-  }, [creating, dispatch]);
+  }, [creating, dirty, dispatch, requestCancelCreation]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirty && !creating) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [creating, dirty]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeWizard();
+      if (shouldIgnoreShortcut(event)) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        void closeWizard();
+      }
       if (event.altKey && event.key === "ArrowLeft" && step > 0 && !creating && !checking) {
         event.preventDefault();
         setStep((current) => current - 1);
@@ -315,7 +444,7 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
             <span className="wizard-eyebrow">新建重建项目</span>
             <h1>新建项目</h1>
           </div>
-          <button className="icon-button" type="button" onClick={closeWizard} disabled={creating} aria-label="关闭新建项目">
+          <button className="icon-button" type="button" onClick={() => void closeWizard()} disabled={canceling} aria-label="关闭新建项目">
             <X size={18} />
           </button>
         </header>
@@ -339,6 +468,11 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
             </Fragment>
           ))}
         </nav>
+
+        <div className="wizard-step-guidance">
+          <strong>当前目标：{STEP_PURPOSES[step]}</strong>
+          <span>继续条件：{STEP_CONDITIONS[step]}</span>
+        </div>
 
         <div className="wizard-body">
           {step === 0 && (
@@ -374,6 +508,7 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
                 setDirectoryCheck({ status: "idle" });
               }}
               onRecheck={() => void runPreflight()}
+              onOpenSettings={onOpenSettings}
             />
           )}
           {step === 2 && analysis && selectedEstimate && (
@@ -401,12 +536,40 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
         </div>
 
         {localError && <div className="wizard-error" role="alert"><Warning size={17} weight="fill" />{localError}</div>}
+        {creationError ? (
+          <ErrorNotice
+            error={creationError}
+            blocking
+            onAction={(action) => {
+              if (action.kind === "open_settings") onOpenSettings?.();
+            }}
+          />
+        ) : null}
+        {cancelOutcome ? <div className="wizard-cancel-outcome" role="status">{cancelOutcome}</div> : null}
 
         {creating && (
-          <div className="copy-progress-panel" aria-live="polite">
-            <div><SpinnerGap className="spin" size={18} /><strong>正在复制素材并创建项目</strong><span>{Math.round((copyProgress?.percent ?? 0) * 100)}%</span></div>
-            <div className="progress-track"><span style={{ width: `${(copyProgress?.percent ?? 0) * 100}%` }} /></div>
-            <p>{formatBytes(copyProgress?.copied_bytes ?? 0)} / {formatBytes(copyProgress?.total_bytes ?? analysis?.size_bytes ?? 0)}</p>
+          <div className="copy-progress-panel" aria-live="polite" aria-busy="true">
+            <div>
+              <SpinnerGap className="spin" size={18} />
+              <strong>{copyProgress ? "正在复制素材" : "正在准备项目目录"}</strong>
+              <span>{copyProgress ? `${Math.round(copyProgress.percent * 100)}%` : "等待首个进度回执"}</span>
+            </div>
+            {copyProgress ? (
+              <div
+                className="progress-track"
+                role="progressbar"
+                aria-label="素材复制进度"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(copyProgress.percent * 100)}
+                aria-valuetext={`${formatBytes(copyProgress.copied_bytes)} / ${formatBytes(copyProgress.total_bytes)}`}
+              >
+                <span style={{ width: `${copyProgress.percent * 100}%` }} />
+              </div>
+            ) : null}
+            <p>{copyProgress
+              ? `${formatBytes(copyProgress.copied_bytes)} / ${formatBytes(copyProgress.total_bytes)}`
+              : "正在验证保存位置并创建可清理的临时目录。"}</p>
           </div>
         )}
 
@@ -418,7 +581,9 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
           </div>
           <div className="wizard-footer-actions">
             {creating ? (
-              <button className="button button-danger" type="button" onClick={() => void desktopApi.cancelProjectCreation()}>取消复制</button>
+              <button className="button button-danger" type="button" disabled={canceling || cancellationRequested.current} onClick={() => void requestCancelCreation()}>
+                {canceling || cancellationRequested.current ? "正在安全取消…" : "取消复制"}
+              </button>
             ) : step < 2 ? (
               <button className="button button-primary" type="button" onClick={() => void goNext()} disabled={step === 0 ? !analysis?.valid || analyzing : !preflight?.can_continue || checking}>
                 {checking ? "正在检查…" : "下一步"}<ArrowRight size={16} />
@@ -450,6 +615,10 @@ function ImportStep({ analysis, analyzing, analyzingKind, estimate, imagePreview
   return (
     <section className="wizard-section">
       <div className="wizard-section-heading"><span>1</span><div><h2 id="wizard-step-heading-0" tabIndex={-1}>导入素材</h2><p>选择一段视频，或选择包含连续照片的文件夹。</p></div></div>
+      <aside className="wizard-notice-group" aria-label="拍摄与素材提示">
+        <strong>更容易成功的素材</strong>
+        <p>围绕静止主体缓慢移动，保持画面清晰、光线稳定和相邻视角充分重叠；原始文件只会读取和复制，不会被修改。</p>
+      </aside>
       {!analysis ? (
         <div className="source-choice-grid">
           <button type="button" onClick={() => void onChoose("video")} disabled={analyzing}><FilmStrip size={31} /><strong>选择视频</strong><span>MP4、MOV、AVI、MKV</span></button>
@@ -504,8 +673,18 @@ function ImportStep({ analysis, analyzing, analyzingKind, estimate, imagePreview
               {analysis.preset_estimates.map((preset) => <span key={preset.id}><strong>{presetLabel(preset.id)}</strong>预计 {preset.estimated_frames} 帧</span>)}
             </div>
           )}
-          {analysis.blockers.map((blocker) => <div className="inline-blocker" key={blocker}><Warning size={16} />{blocker}</div>)}
-          {analysis.warnings.map((warning) => <div className="inline-warning" key={warning}><Warning size={16} />{warning}</div>)}
+          {analysis.warnings.length > 0 ? (
+            <section className="wizard-message-group is-warning" aria-label="可以继续的提醒">
+              <h3>可以继续的提醒</h3>
+              {analysis.warnings.map((warning) => <div className="inline-warning" key={warning}><Warning size={16} />{warning}</div>)}
+            </section>
+          ) : null}
+          {analysis.blockers.length > 0 ? (
+            <section className="wizard-message-group is-blocking" aria-label="需要处理的问题">
+              <h3>需要处理后才能继续</h3>
+              {analysis.blockers.map((blocker) => <div className="inline-blocker" key={blocker}><Warning size={16} />{blocker}<span>请重新选择可读取的素材后再次分析。</span></div>)}
+            </section>
+          ) : null}
         </div>
       )}
       {analyzing && <div className="analysis-loading"><SpinnerGap className="spin" size={18} />{analyzingKind === "images" ? "正在递归扫描并验证图片…" : "正在调用 FFprobe 读取真实媒体信息…"}</div>}
@@ -523,13 +702,14 @@ function ImagePreviewTile({ preview }: { preview: ImagePreview }) {
   );
 }
 
-function PreflightStep({ analysis, preflight, checking, selectedPreset, onSelectPreset, onRecheck }: {
+function PreflightStep({ analysis, preflight, checking, selectedPreset, onSelectPreset, onRecheck, onOpenSettings }: {
   analysis: MediaAnalysis | null;
   preflight: ProjectPreflight | null;
   checking: boolean;
   selectedPreset: string;
   onSelectPreset: (id: string) => void;
   onRecheck: () => void;
+  onOpenSettings?: () => void;
 }) {
   return (
     <section className="wizard-section">
@@ -541,7 +721,7 @@ function PreflightStep({ analysis, preflight, checking, selectedPreset, onSelect
       </div>
       <div className="preflight-columns">
         <div className="preflight-panel">
-          <h3>引擎与训练环境</h3>
+          <h3>处理组件与显卡环境</h3>
           {preflight?.engine_checks.map((engine) => (
             <div className="check-row" key={engine.name} title={engine.path ?? undefined}>
               <span className={engine.available ? "analysis-ok" : "analysis-blocked"}>{engine.available ? <CheckCircle size={16} weight="fill" /> : <Warning size={16} weight="fill" />}</span>
@@ -563,13 +743,27 @@ function PreflightStep({ analysis, preflight, checking, selectedPreset, onSelect
             <strong>{presetLabel(preset.id)}{preset.id === "fast" && <em>推荐首轮</em>}</strong>
             <span>{preset.fps} fps · 最多 {preset.max_frames} 帧</span>
             <span>最长边 {preset.target_long_edge}px</span>
-            <span>Brush {preset.iterations.toLocaleString()} 次</span>
+            <span>优化计算 {preset.iterations.toLocaleString()} 步</span>
             <b>预计 {preset.estimated_frames} 帧</b>
           </button>
         ))}
       </div>
-      {preflight?.blockers.map((blocker) => <div className="inline-blocker" key={blocker}><Warning size={16} />{blocker}</div>)}
-      {preflight?.warnings.map((warning) => <div className="inline-warning" key={warning}><Warning size={16} />{warning}</div>)}
+      {preflight?.warnings.length ? (
+        <section className="wizard-message-group is-warning" aria-label="可以继续的提醒">
+          <h3>可以继续的提醒</h3>
+          {preflight.warnings.map((warning) => <div className="inline-warning" key={warning}><Warning size={16} />{warning}</div>)}
+        </section>
+      ) : null}
+      {preflight?.blockers.length ? (
+        <section className="wizard-message-group is-blocking" aria-label="需要处理的问题">
+          <h3>需要处理后才能继续</h3>
+          {preflight.blockers.map((blocker) => <div className="inline-blocker" key={blocker}><Warning size={16} /><span>{blocker}<small>修复相关组件、显卡环境或保存位置后重新检查。</small></span></div>)}
+          <div className="wizard-repair-actions">
+            {onOpenSettings ? <button type="button" className="button button-secondary" onClick={onOpenSettings}>打开设置</button> : null}
+            <button type="button" className="button button-secondary" onClick={onRecheck} disabled={checking}>重新检查</button>
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }

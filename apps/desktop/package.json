@@ -8,10 +8,11 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "build:windows:release": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ../../scripts/windows/Build-WindowsRelease.ps1",
     "package:windows:full": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ../../scripts/windows/Build-FullInstaller.ps1",
     "lint": "eslint src --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --cache=false"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

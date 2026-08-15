@@ -1,7 +1,8 @@
 import { Trash, WarningCircle, X } from "@phosphor-icons/react";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 
 import type { ProjectInfo } from "../../types";
+import { ModalSurface } from "../primitives";
 
 export function DeleteProjectDialog({
   project,
@@ -16,24 +17,21 @@ export function DeleteProjectDialog({
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    cancelRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) onCancel();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [busy, onCancel, project.id]);
-
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !busy) onCancel();
-    }}>
-      <section className="delete-project-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-project-title">
+    <ModalSurface
+      id={`delete-project-${project.id}`}
+      title="永久删除项目"
+      titleHidden
+      className="delete-project-dialog"
+      role="alertdialog"
+      busy={busy}
+      initialFocusRef={cancelRef}
+      onClose={onCancel}
+    >
         <header>
           <span className="danger-dialog-icon"><WarningCircle size={22} weight="fill" /></span>
           <div>
-            <h2 id="delete-project-title">永久删除项目</h2>
+            <h2 aria-hidden="true">永久删除项目</h2>
             <p>项目素材、重建结果、Checkpoint、日志和 PLY 都会被删除。</p>
           </div>
           <button type="button" className="icon-button" onClick={onCancel} disabled={busy} aria-label="关闭删除项目对话框"><X size={18} /></button>
@@ -52,7 +50,6 @@ export function DeleteProjectDialog({
             <Trash size={16} />{busy ? "正在删除…" : "永久删除"}
           </button>
         </footer>
-      </section>
-    </div>
+    </ModalSurface>
   );
 }

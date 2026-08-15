@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 
 import type {
@@ -13,6 +13,8 @@ import type {
   PipelineSnapshot,
   Project,
   ProjectInfo,
+  ProjectAvailabilityResult,
+  RelinkRecentProjectRequest,
   ProjectPreflight,
   ArtifactSummary,
   CheckpointSummary,
@@ -26,7 +28,56 @@ import type {
   OpenProjectLocationRequest,
   OpenProjectLocationResult,
   OpenEngineLocationResult,
+  ActivePipelineSummary,
+  ActionImpactPreview,
+  WorkspaceActionExecution,
+  WorkspaceActionRequest,
 } from "../types";
+import { normalizeCommandError } from "./errors";
+
+export class DesktopCommandError extends Error {
+  readonly code: string;
+  readonly uiError: ReturnType<typeof normalizeCommandError>;
+
+  constructor(command: string, cause: unknown) {
+    const uiError = normalizeCommandError(cause, command);
+    super(uiError.message);
+    this.name = "DesktopCommandError";
+    this.code = uiError.code;
+    this.uiError = uiError;
+  }
+}
+
+export async function invokeDesktopCommand<T>(
+  command: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
+  try {
+    return await tauriInvoke<T>(command, args);
+  } catch (error) {
+    throw error instanceof DesktopCommandError
+      ? error
+      : new DesktopCommandError(command, error);
+  }
+}
+
+const invoke = invokeDesktopCommand;
+
+export const ACTIVE_PIPELINE_CONFLICT_CODE = "UI-PIPELINE-ACTIVE-CONFLICT";
+
+export function isActivePipelineConflict(error: unknown): boolean {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    return String((error as { code: unknown }).code) === ACTIVE_PIPELINE_CONFLICT_CODE;
+  }
+  const message = String(error);
+  if (message.includes(ACTIVE_PIPELINE_CONFLICT_CODE)) return true;
+  try {
+    const payload = JSON.parse(message) as { code?: string };
+    return payload.code === ACTIVE_PIPELINE_CONFLICT_CODE;
+  } catch {
+    return false;
+  }
+}
 
 export function isDesktopRuntime(): boolean {
   return "__TAURI_INTERNALS__" in window;
@@ -123,6 +174,26 @@ export async function confirmRerunStage(stageLabel: string): Promise<boolean> {
   );
 }
 
+export async function confirmDiscardProjectDraft(): Promise<boolean> {
+  ensureDesktopRuntime();
+  return confirm("尚未提交的素材选择、方案和项目名称将会丢失。是否退出创建向导？", {
+    title: "退出项目创建",
+    kind: "warning",
+    okLabel: "退出并放弃",
+    cancelLabel: "继续编辑",
+  });
+}
+
+export async function confirmCancelProjectCreationExit(): Promise<boolean> {
+  ensureDesktopRuntime();
+  return confirm("素材仍在复制。将先请求安全取消并清理未完成目录，确认取消吗？", {
+    title: "取消项目创建",
+    kind: "warning",
+    okLabel: "安全取消",
+    cancelLabel: "继续创建",
+  });
+}
+
 export async function confirmRemoveRecentProject(projectName: string): Promise<boolean> {
   ensureDesktopRuntime();
   return confirm(`仅从最近项目列表移除“${projectName}”，磁盘中的项目文件会保留。`, {
@@ -138,6 +209,12 @@ export const desktopApi = {
   checkEngines: () => invoke<EngineInfo[]>("check_engines"),
   listRecentProjects: () =>
     invoke<ProjectInfo[]>("list_recent_projects"),
+  listRecentProjectIndex: () =>
+    invoke<ProjectInfo[]>("list_recent_project_index"),
+  checkRecentProjectAvailability: (projectId: string, projectPath: string) =>
+    invoke<ProjectAvailabilityResult>("check_recent_project_availability", { projectId, projectPath }),
+  relinkRecentProject: (request: RelinkRecentProjectRequest) =>
+    invoke<ProjectInfo>("relink_recent_project", { request }),
   removeRecentProject: (projectId: string, projectPath: string) =>
     invoke<void>("remove_recent_project", { projectId, projectPath }),
   deleteProject: (request: DeleteProjectRequest) =>
@@ -167,6 +244,12 @@ export const desktopApi = {
     invoke<PipelineSnapshot>("resume_pipeline", { projectPath }),
   getPipelineState: (projectPath?: string) =>
     invoke<PipelineSnapshot>("get_pipeline_state", { projectPath: projectPath ?? null }),
+  getActivePipelineSummary: () =>
+    invoke<ActivePipelineSummary | null>("get_active_pipeline_summary"),
+  previewWorkspaceAction: (request: WorkspaceActionRequest) =>
+    invoke<ActionImpactPreview>("preview_workspace_action", { request }),
+  executeWorkspaceAction: (previewToken: string) =>
+    invoke<WorkspaceActionExecution>("execute_workspace_action", { previewToken }),
   retryStage: (projectPath: string, stageId: string) =>
     invoke<PipelineSnapshot>("retry_stage", { projectPath, stageId }),
   rerunFromStage: (projectPath: string, stageId: string) =>

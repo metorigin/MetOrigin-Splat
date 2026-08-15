@@ -1,5 +1,6 @@
 # Rust / Cargo
 target/
+.codex-cargo-target/
 **/*.rs.bk
 
 # Node / pnpm
@@ -10,9 +11,14 @@ dist/
 # Pnpm
 .pnpm-store/
 
+# Python caches
+__pycache__/
+*.py[cod]
+
 # Local engines and technical-spike artifacts
 .engines/
 .artifacts/
+artifacts/
 
 # Tauri
 apps/desktop/src-tauri/target/
@@ -35,9 +41,11 @@ apps/desktop/src-tauri/gen/schemas/
 Thumbs.db
 
 # Environment
-.env
-.env.local
+.env*
+!.env.example
 
 # Logs
 *.log
 logs/
+coverage/
+.test-results/

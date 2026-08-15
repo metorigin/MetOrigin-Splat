@@ -33,6 +33,34 @@ pub struct PipelineControlResult {
     preserved_checkpoint: Option<String>,
 }
 
+const ACTIVE_PIPELINE_CONFLICT_CODE: &str = "UI-PIPELINE-ACTIVE-CONFLICT";
+const PIPELINE_STATE_UNAVAILABLE_CODE: &str = "UI-PIPELINE-STATE-UNAVAILABLE";
+
+fn state_unavailable_error() -> String {
+    serde_json::json!({
+        "code": PIPELINE_STATE_UNAVAILABLE_CODE,
+        "message": "处理流程状态暂时不可用，请重启应用后重试。"
+    })
+    .to_string()
+}
+
+fn active_conflict_error(active: &ActivePipeline) -> String {
+    serde_json::json!({
+        "code": ACTIVE_PIPELINE_CONFLICT_CODE,
+        "message": "另一个项目正在运行，当前项目未启动且未进入队列。",
+        "active_project_id": active.project_id
+    })
+    .to_string()
+}
+
+fn ensure_no_active_pipeline(state: &AppState) -> Result<(), String> {
+    let inner = state.0.lock().map_err(|_| state_unavailable_error())?;
+    if let Some(active) = &inner.active_pipeline {
+        return Err(active_conflict_error(active));
+    }
+    Ok(())
+}
+
 /// Start a pipeline in a background task and return as soon as it is accepted.
 #[tauri::command]
 pub async fn start_pipeline(
@@ -40,6 +68,9 @@ pub async fn start_pipeline(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<PipelineSnapshot, String> {
+    // This gate must stay before path access, engine/GPU preflight, or writes.
+    // A second check immediately before installation closes concurrent-start races.
+    ensure_no_active_pipeline(state.inner())?;
     let project_dir = PathBuf::from(&project_path);
     if !project_dir.join("project.json").exists() {
         return Err("项目文件不存在，请重新打开有效项目。".to_string());
@@ -104,14 +135,7 @@ pub async fn start_pipeline(
             .lock()
             .map_err(|_| "处理流程状态不可用，请重启应用后重试。".to_string())?;
         if let Some(active) = &inner.active_pipeline {
-            let project_name = active
-                .project_dir
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("当前项目");
-            return Err(format!(
-                "项目“{project_name}”已有处理流程正在运行，请先等待完成或取消。"
-            ));
+            return Err(active_conflict_error(active));
         }
         inner.project_dir = Some(project_dir.clone());
         inner.active_pipeline = Some(ActivePipeline {
@@ -209,7 +233,7 @@ pub async fn pause_pipeline(
     control_pipeline(state.inner(), PipelineControlIntent::Pause).await
 }
 
-async fn control_pipeline(
+pub(crate) async fn control_pipeline(
     state: &AppState,
     intent: PipelineControlIntent,
 ) -> Result<PipelineControlResult, String> {
@@ -275,9 +299,32 @@ pub async fn resume_pipeline(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<PipelineSnapshot, String> {
-    let project_dir = PathBuf::from(&project_path);
-    persist_transient_status(&project_dir, ProjectStatus::Recovering)?;
+    // start_pipeline performs the authoritative early gate. Avoid persisting a
+    // Recovering state before that gate, so an active project A cannot mutate B.
     start_pipeline(project_path, app_handle, state).await
+}
+
+async fn active_pipeline_summary(state: &AppState) -> Result<Option<PipelineSnapshot>, String> {
+    let active = {
+        let inner = state.0.lock().map_err(|_| state_unavailable_error())?;
+        inner.active_pipeline.clone()
+    };
+    match active {
+        Some(active) => {
+            let pipeline_state = active.orchestrator.get_state().await;
+            Ok(Some(snapshot_from_active(&active, pipeline_state)))
+        }
+        None => Ok(None),
+    }
+}
+
+/// Return only the globally active pipeline. Unlike get_pipeline_state this
+/// never falls back to the selected project's persisted snapshot.
+#[tauri::command]
+pub async fn get_active_pipeline_summary(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<PipelineSnapshot>, String> {
+    active_pipeline_summary(state.inner()).await
 }
 
 /// Return the live pipeline state, or the last state persisted in project.json.
@@ -344,6 +391,14 @@ pub fn rerun_from_stage(
     project_path: String,
     stage_id: String,
     state: tauri::State<'_, AppState>,
+) -> Result<PipelineSnapshot, String> {
+    rerun_from_stage_inner(project_path, stage_id, state.inner())
+}
+
+pub(crate) fn rerun_from_stage_inner(
+    project_path: String,
+    stage_id: String,
+    state: &AppState,
 ) -> Result<PipelineSnapshot, String> {
     {
         let inner = state
@@ -721,7 +776,36 @@ fn phase_for_stage(stage: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::engine_check_blocker;
+    use std::path::PathBuf;
+    use std::sync::atomic::AtomicU64;
+    use std::sync::{Arc, Mutex};
+
+    use splat_pipeline::PipelineOrchestrator;
+
+    use crate::state::{ActivePipeline, AppState, PipelineControlIntent};
+
+    use super::{
+        active_pipeline_summary, engine_check_blocker, ensure_no_active_pipeline,
+        ACTIVE_PIPELINE_CONFLICT_CODE, PIPELINE_STATE_UNAVAILABLE_CODE,
+    };
+
+    fn install_active_pipeline(state: &AppState, project_id: &str) -> Arc<PipelineOrchestrator> {
+        let project_dir = PathBuf::from(format!("C:/test/{project_id}"));
+        let orchestrator = Arc::new(PipelineOrchestrator::new_default(project_dir.clone()));
+        let (_completion_tx, completion) = tokio::sync::watch::channel(false);
+        state.0.lock().unwrap().active_pipeline = Some(ActivePipeline {
+            project_id: project_id.to_string(),
+            project_dir,
+            orchestrator: orchestrator.clone(),
+            completion,
+            control_intent: Arc::new(Mutex::new(PipelineControlIntent::None)),
+            accepted_at: "2026-08-14T08:00:00Z".into(),
+            started_at: Arc::new(Mutex::new(Some("2026-08-14T08:00:01Z".into()))),
+            sequence: Arc::new(AtomicU64::new(7)),
+            abort_handle: Arc::new(Mutex::new(None)),
+        });
+        orchestrator
+    }
 
     #[test]
     fn engine_gate_accepts_only_fully_available_checks() {
@@ -743,5 +827,71 @@ mod tests {
         let blocker = engine_check_blocker(&checks).unwrap();
         assert!(blocker.contains("brush"));
         assert!(blocker.contains("重新安装或修复应用"));
+    }
+
+    #[tokio::test]
+    async fn active_summary_is_null_without_an_active_pipeline() {
+        let summary = active_pipeline_summary(&AppState::new()).await.unwrap();
+        assert!(summary.is_none());
+    }
+
+    #[tokio::test]
+    async fn active_summary_returns_the_live_pipeline_only() {
+        let state = AppState::new();
+        install_active_pipeline(&state, "project-a");
+
+        let summary = active_pipeline_summary(&state).await.unwrap().unwrap();
+        assert_eq!(summary.project_id, "project-a");
+        assert_eq!(summary.sequence, 7);
+        assert_eq!(summary.started_at.as_deref(), Some("2026-08-14T08:00:01Z"));
+    }
+
+    #[tokio::test]
+    async fn active_summary_uses_a_stable_safe_lock_error() {
+        let state = AppState::new();
+        let shared = state.0.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = shared.lock().unwrap();
+            panic!("poison test lock");
+        })
+        .join();
+
+        let error = active_pipeline_summary(&state).await.unwrap_err();
+        assert!(error.contains(PIPELINE_STATE_UNAVAILABLE_CODE));
+        assert!(!error.contains("PoisonError"));
+        assert!(!error.contains("C:\\"));
+    }
+
+    #[test]
+    fn early_conflict_gate_preserves_a_and_does_not_queue_or_control_it() {
+        let state = AppState::new();
+        let orchestrator = install_active_pipeline(&state, "project-a");
+
+        let error = ensure_no_active_pipeline(&state).unwrap_err();
+        assert!(error.contains(ACTIVE_PIPELINE_CONFLICT_CODE));
+        let inner = state.0.lock().unwrap();
+        let active = inner.active_pipeline.as_ref().unwrap();
+        assert!(Arc::ptr_eq(&active.orchestrator, &orchestrator));
+        assert_eq!(
+            *active.control_intent.lock().unwrap(),
+            PipelineControlIntent::None
+        );
+    }
+
+    #[test]
+    fn source_contract_keeps_the_gate_before_preflight_and_resume_writes() {
+        let source = include_str!("pipeline.rs");
+        let start = source.split("pub async fn start_pipeline").nth(1).unwrap();
+        let gate = start.find("ensure_no_active_pipeline").unwrap();
+        assert!(gate < start.find("project.json").unwrap());
+        assert!(gate < start.find("check_engines_blocking").unwrap());
+        assert!(gate < start.find("require_nvidia_smi").unwrap());
+
+        let resume = source.split("pub async fn resume_pipeline").nth(1).unwrap();
+        let resume = resume
+            .split("async fn active_pipeline_summary")
+            .next()
+            .unwrap();
+        assert!(!resume.contains("persist_transient_status"));
     }
 }

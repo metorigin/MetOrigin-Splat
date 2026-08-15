@@ -1,19 +1,35 @@
+import { useEffect } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppProvider, useAppContext } from "../context";
-import { desktopApi, selectImageDirectory, selectProjectRoot } from "../services/desktop";
-import type { ProjectPreflight } from "../types";
+import {
+  confirmCancelProjectCreationExit,
+  confirmDiscardProjectDraft,
+  desktopApi,
+  selectImageDirectory,
+  selectProjectRoot,
+} from "../services/desktop";
+import type { PipelineSnapshot, ProjectCopyProgress, ProjectPreflight } from "../types";
 import { NewProjectPage } from "./NewProjectPage";
 
 const analyzeMedia = vi.fn();
+const eventListeners = vi.hoisted(() => new Map<string, (event: { payload: unknown }) => void>());
 
-vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => undefined) }));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn((event: string, listener: (event: { payload: unknown }) => void) => {
+    eventListeners.set(event, listener);
+    return Promise.resolve(() => eventListeners.delete(event));
+  }),
+}));
 vi.mock("../services/desktop", () => ({
   isDesktopRuntime: () => true,
+  isActivePipelineConflict: () => false,
   selectVideoFile: vi.fn().mockResolvedValue("D:\\dataset\\bike.mp4"),
   selectImageDirectory: vi.fn(),
   selectProjectRoot: vi.fn(),
+  confirmDiscardProjectDraft: vi.fn(),
+  confirmCancelProjectCreationExit: vi.fn(),
   desktopApi: {
     analyzeMedia: (...args: unknown[]) => analyzeMedia(...args),
     getImagePreviews: vi.fn(),
@@ -21,14 +37,59 @@ vi.mock("../services/desktop", () => ({
     createProject: vi.fn(),
     cancelProjectCreation: vi.fn(),
     startPipeline: vi.fn(),
+    getActivePipelineSummary: vi.fn(),
   },
 }));
+
+async function advanceToConfirmation() {
+  fireEvent.click(screen.getByRole("button", { name: /选择视频/ }));
+  await screen.findByText("3840 × 2160");
+  fireEvent.click(screen.getByRole("button", { name: /下一步/ }));
+  await waitFor(() => expect(desktopApi.preflightProject).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole("button", { name: /下一步/ }));
+  await screen.findByRole("heading", { name: "确认创建" });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+function StateProbe() {
+  const { state } = useAppContext();
+  return <><output data-testid="page">{state.page.type}</output>{state.error ? <div role="alert">{state.error}</div> : null}</>;
+}
+
+function SeedActivePipeline({ snapshot }: { snapshot: PipelineSnapshot }) {
+  const { dispatch } = useAppContext();
+  useEffect(() => {
+    dispatch({ type: "SET_ACTIVE_PIPELINE", snapshot });
+  }, [dispatch, snapshot]);
+  return null;
+}
+
+function SeedWizardPage() {
+  const { dispatch } = useAppContext();
+  useEffect(() => {
+    dispatch({ type: "NAVIGATE", page: { type: "new-project" } });
+  }, [dispatch]);
+  return null;
+}
 
 describe("NewProjectPage", () => {
   afterEach(cleanup);
 
   beforeEach(() => {
     vi.clearAllMocks();
+    eventListeners.clear();
+    vi.mocked(confirmDiscardProjectDraft).mockResolvedValue(true);
+    vi.mocked(confirmCancelProjectCreationExit).mockResolvedValue(true);
+    vi.mocked(desktopApi.cancelProjectCreation).mockResolvedValue(undefined);
     analyzeMedia.mockResolvedValue({
       source_kind: "video",
       source_path: "D:\\dataset\\bike.mp4",
@@ -297,5 +358,142 @@ describe("NewProjectPage", () => {
     await screen.findByText("new.JPG");
     resolveFirst([{ relative_path: "old.JPG", display_name: "old.JPG", width: 10, height: 10, data_url: "data:image/jpeg;base64,AA==" }]);
     await waitFor(() => expect(screen.queryByText("old.JPG")).not.toBeInTheDocument());
+  });
+
+  it("states each step purpose and separates notices, warnings, and blockers", async () => {
+    const base = await analyzeMedia("D:\\dataset\\bike.mp4");
+    analyzeMedia.mockClear();
+    analyzeMedia.mockResolvedValue({
+      ...base,
+      valid: false,
+      warnings: ["少量照片曝光不一致，但仍可继续检查。"],
+      blockers: ["没有足够的可读取画面。"],
+    });
+    render(<AppProvider><NewProjectPage /></AppProvider>);
+
+    expect(screen.getByText(/当前目标：选择要重建的视频或连续照片/)).toBeVisible();
+    expect(screen.getByText(/围绕静止主体缓慢移动/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /选择视频/ }));
+
+    expect(await screen.findByRole("region", { name: "可以继续的提醒" })).toHaveTextContent("曝光不一致");
+    expect(screen.getByRole("region", { name: "需要处理的问题" })).toHaveTextContent("没有足够");
+    expect(screen.getByRole("button", { name: /下一步/ })).toBeDisabled();
+  });
+
+  it("invalidates the old preflight when the quality plan changes", async () => {
+    const base = await analyzeMedia("D:\\dataset\\bike.mp4");
+    analyzeMedia.mockClear();
+    analyzeMedia.mockResolvedValue({
+      ...base,
+      preset_estimates: [
+        ...base.preset_estimates,
+        { ...base.preset_estimates[0], id: "quality", name: "Quality", iterations: 30_000 },
+      ],
+    });
+    render(<AppProvider><NewProjectPage /></AppProvider>);
+
+    fireEvent.click(screen.getByRole("button", { name: /选择视频/ }));
+    await screen.findByText("3840 × 2160");
+    fireEvent.click(screen.getByRole("button", { name: /下一步/ }));
+    await waitFor(() => expect(desktopApi.preflightProject).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: /高质量/ }));
+
+    expect(screen.getByRole("button", { name: /下一步/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "重新检查" }));
+    await waitFor(() => expect(desktopApi.preflightProject).toHaveBeenLastCalledWith({
+      sourcePath: "D:\\dataset\\bike.mp4",
+      projectRoot: null,
+      preset: "quality",
+    }));
+  });
+
+  it("confirms before discarding a dirty wizard draft", async () => {
+    vi.mocked(confirmDiscardProjectDraft).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    render(<AppProvider><SeedWizardPage /><NewProjectPage /><StateProbe /></AppProvider>);
+    await waitFor(() => expect(screen.getByTestId("page")).toHaveTextContent("new-project"));
+    fireEvent.click(screen.getByRole("button", { name: /选择视频/ }));
+    await screen.findByText("3840 × 2160");
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭新建项目" }));
+    expect(confirmDiscardProjectDraft).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("page")).toHaveTextContent("new-project");
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭新建项目" }));
+    await waitFor(() => expect(screen.getByTestId("page")).toHaveTextContent("home"));
+  });
+
+  it("shows event-backed copy progress, cancels safely, and keeps create single-flight", async () => {
+    const creation = deferred<Awaited<ReturnType<typeof desktopApi.createProject>>>();
+    vi.mocked(desktopApi.createProject).mockReturnValue(creation.promise);
+    render(<AppProvider><NewProjectPage /></AppProvider>);
+    await advanceToConfirmation();
+
+    const submit = screen.getByRole("button", { name: "创建并开始重建" });
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+    expect(desktopApi.createProject).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("progressbar", { name: "素材复制进度" })).not.toBeInTheDocument();
+    expect(screen.getByText("等待首个进度回执")).toBeVisible();
+
+    const progress: ProjectCopyProgress = {
+      project_id: "project-1",
+      copied_bytes: 512,
+      total_bytes: 1024,
+      percent: 0.5,
+      completed: false,
+    };
+    act(() => eventListeners.get("project://copy-progress")?.({ payload: progress }));
+    expect(screen.getByRole("progressbar", { name: "素材复制进度" })).toHaveAttribute("aria-valuenow", "50");
+
+    const cancel = screen.getByRole("button", { name: "取消复制" });
+    fireEvent.click(cancel);
+    fireEvent.click(cancel);
+    expect(desktopApi.cancelProjectCreation).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      creation.reject(new Error("cancelled"));
+      await Promise.resolve();
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("项目创建已安全取消");
+  });
+
+  it("does not submit or exit for editing and IME shortcuts", async () => {
+    render(<AppProvider><NewProjectPage /></AppProvider>);
+    await advanceToConfirmation();
+    const name = screen.getByRole("textbox", { name: "项目名称" });
+
+    fireEvent.keyDown(name, { key: "Enter", ctrlKey: true });
+    fireEvent.keyDown(name, { key: "Escape" });
+    fireEvent.keyDown(name, { key: "Enter", ctrlKey: true, isComposing: true, keyCode: 229 });
+
+    expect(desktopApi.createProject).not.toHaveBeenCalled();
+    expect(confirmDiscardProjectDraft).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "确认创建" })).toBeVisible();
+  });
+
+  it("creates B but skips start and queueing when project A is active", async () => {
+    const active: PipelineSnapshot = {
+      project_id: "project-a",
+      project_path: "D:\\projects\\a.splat-project",
+      status: "running",
+      state: { stages: {}, current_stage: "BrushTraining", overall_progress: 0.4 },
+      sequence: 7,
+      accepted_at: "2026-08-14T08:00:00Z",
+      started_at: "2026-08-14T08:00:01Z",
+      control_intent: "none",
+    };
+    render(
+      <AppProvider>
+        <SeedActivePipeline snapshot={active} />
+        <NewProjectPage />
+        <StateProbe />
+      </AppProvider>,
+    );
+    await advanceToConfirmation();
+    fireEvent.click(screen.getByRole("button", { name: "创建并开始重建" }));
+
+    await waitFor(() => expect(screen.getByTestId("page")).toHaveTextContent("project-detail"));
+    expect(desktopApi.createProject).toHaveBeenCalledTimes(1);
+    expect(desktopApi.startPipeline).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("未启动，也未进入队列");
   });
 });

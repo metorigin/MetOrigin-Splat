@@ -70,6 +70,30 @@ export interface PipelineSnapshot {
   control_intent: "none" | "pause" | "cancel";
 }
 
+/** The new active-summary command intentionally reuses the stable snapshot wire shape. */
+export type ActivePipelineSummary = PipelineSnapshot;
+
+export interface PipelineConflictInfo {
+  activeProjectId: string;
+  activeProjectName: string;
+  status: import("./project").ProjectStatus;
+  stageLabel: string | null;
+  progress: number | null;
+  updatedAt: number | null;
+}
+
+export function isActivePipelineStatus(
+  status: import("./project").ProjectStatus | null | undefined,
+): boolean {
+  return status != null && [
+    "starting",
+    "running",
+    "pausing",
+    "cancelling",
+    "recovering",
+  ].includes(status);
+}
+
 export interface PipelineControlResult {
   project_id: string;
   status: import("./project").ProjectStatus;

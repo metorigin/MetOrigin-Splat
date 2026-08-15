@@ -198,7 +198,17 @@ try {
         -Path (Join-Path $metadataDirectory "internal-build.json") `
         -Content (($buildMetadata | ConvertTo-Json -Depth 5) + "`n")
 
+    $windowsArtifactRoot = Resolve-MetOriginPath -Path "artifacts/windows"
+    New-Item -ItemType Directory -Path $windowsArtifactRoot -Force | Out-Null
+    $publishedDirectory = Reset-MetOriginDirectory `
+        -Path (Join-Path $windowsArtifactRoot "installer") `
+        -AllowedParent $windowsArtifactRoot
+    Copy-Item -LiteralPath $finalInstaller -Destination (Join-Path $publishedDirectory $finalName)
+    Copy-Item -LiteralPath $installerSums -Destination (Join-Path $publishedDirectory "SHA256SUMS.txt")
+    Copy-Item -LiteralPath $metadataDirectory -Destination (Join-Path $publishedDirectory "metadata") -Recurse
+
     Write-Host "Created internal installer: $finalInstaller"
+    Write-Host "Published internal installer: $(Join-Path $publishedDirectory $finalName)"
     Write-Host "Installer SHA-256: $installerHash"
 }
 finally {

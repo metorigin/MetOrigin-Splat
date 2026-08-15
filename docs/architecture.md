@@ -37,6 +37,21 @@ MetOrigin Splat is structured as a layered architecture with clean separation be
 
 ## Core Design Principles
 
+### Desktop command boundary and UX compatibility
+
+React pages and components call Tauri only through `apps/desktop/src/services/desktop.ts`. The shared application reducer stores UI-derived freshness, per-project snapshots, project availability, and the single active-pipeline summary; durable project and pipeline facts continue to come from Rust and `project.json`.
+
+The interaction improvements add these commands without changing existing command or event names, parameters, or response meanings:
+
+- `list_recent_project_index` returns the persisted recent index without probing project directories.
+- `check_recent_project_availability` performs one read-only path/identity check and distinguishes available, missing, unreadable, and temporarily failed checks.
+- `relink_recent_project` atomically replaces a recent path only when the project identity and previous path still match.
+- `get_active_pipeline_summary` returns the one authoritative active pipeline, if any.
+- `preview_workspace_action` creates an expiring, single-use impact token.
+- `execute_workspace_action` revalidates that token and either completes the action or returns a zero-write stale/expired/replay result.
+
+Existing open/start/pause/cancel/resume/rerun/checkpoint/delete commands remain available for compatible callers and retain server-side identity and legality checks. New UI surfaces use the guarded preview/execute path for high-impact actions. Availability and preview tokens are runtime-derived and are never written to `project.json`, the recent-project JSON shape, or the project schema; no data migration is required.
+
 ### 1. External Engines Must Use Adapters
 
 UI and business logic must never construct FFmpeg, COLMAP, or Brush commands directly. A unified adapter layer is mandatory:

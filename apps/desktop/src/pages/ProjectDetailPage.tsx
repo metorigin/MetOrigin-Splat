@@ -19,28 +19,76 @@ import {
   XCircle,
 } from "@phosphor-icons/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject } from "react";
 
-import { ActivityWorkbench, CheckpointDrawer, PointCloudPreview } from "../components/workspace";
-import { useAppContext } from "../context";
-import { useTauriCommand } from "../hooks";
+import { ActionReceipt, AsyncStatus } from "../components";
+import { ModalSurface } from "../components/primitives";
+import {
+  ActivityWorkbench,
+  CheckpointDrawer,
+  PointCloudPreview,
+  WorkspaceActionDialog,
+} from "../components/workspace";
+import {
+  selectActivePipelineSnapshot,
+  selectProjectPipelineSnapshot,
+  useAppContext,
+} from "../context";
+import { useAsyncResource, useTauriCommand } from "../hooks";
 import { getStageLabel } from "../localization";
-import { confirmRerunStage, desktopApi } from "../services/desktop";
+import { desktopApi, isActivePipelineConflict, isDesktopRuntime } from "../services/desktop";
+import { normalizeCommandError } from "../services/errors";
 import { PHASES, phaseStatus, phaseStatusLabel, plyActionState, stageStatusLabel } from "./projectTimeline";
 import type {
   ArtifactSummary,
+  ActionReceipt as ActionReceiptModel,
   CheckpointSummary,
   FramePreview,
+  PipelineEventEnvelope,
   PipelineStageId,
   PlyPreview,
   Project,
   ProjectStatus,
   SparsePreviewPack,
+  WorkspaceActionRequest,
 } from "../types";
 
 interface ProjectDetailPageProps {
   projectId: string;
   projectPath: string;
+}
+
+type StagePreview =
+  | { stageId: PipelineStageId; kind: "frame"; value: FramePreview }
+  | { stageId: PipelineStageId; kind: "sparse"; value: SparsePreviewPack }
+  | { stageId: PipelineStageId; kind: "ply"; value: PlyPreview };
+
+function ResponsiveInspectorSurface({
+  open,
+  onClose,
+  closeRef,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  closeRef: RefObject<HTMLElement>;
+  children: ReactNode;
+}) {
+  if (!open) return <>{children}</>;
+  return (
+    <ModalSurface
+      id="mobile-project-inspector"
+      title="预览与质量"
+      titleHidden
+      className="mobile-inspector-surface"
+      onClose={onClose}
+      initialFocusRef={closeRef}
+    >
+      {children}
+    </ModalSurface>
+  );
 }
 
 function normalizeStatus(status: string): ProjectStatus {
@@ -52,31 +100,31 @@ function normalizeStatus(status: string): ProjectStatus {
 
 export function ProjectDetailPage({ projectId, projectPath }: ProjectDetailPageProps) {
   const { state, dispatch } = useAppContext();
+  const activePipeline = selectActivePipelineSnapshot(state);
   const openCmd = useTauriCommand<Project>("open_project");
   const openProject = openCmd.execute;
   const [project, setProject] = useState<Project | null>(null);
   const [expandedPhase, setExpandedPhase] = useState<string | null>(null);
   const [selectedStage, setSelectedStage] = useState<PipelineStageId | null>(null);
-  const [artifacts, setArtifacts] = useState<ArtifactSummary | null>(null);
-  const [checkpoints, setCheckpoints] = useState<CheckpointSummary[]>([]);
-  const [framePreview, setFramePreview] = useState<FramePreview | null>(null);
-  const [sparsePreview, setSparsePreview] = useState<SparsePreviewPack | null>(null);
-  const [plyPreview, setPlyPreview] = useState<PlyPreview | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [stageFocus, setStageFocus] = useState<PipelineStageId | null>(null);
+  const [previewRelativePath, setPreviewRelativePath] = useState<string | null>(null);
+  const artifactResource = useAsyncResource<ArtifactSummary>();
+  const checkpointResource = useAsyncResource<CheckpointSummary[]>();
+  const previewResource = useAsyncResource<StagePreview>();
+  const artifacts = artifactResource.resource.data;
+  const checkpoints = checkpointResource.resource.data ?? [];
+  const resourceRequest = useRef(0);
   const [checkpointOpen, setCheckpointOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [qualityAction, setQualityAction] = useState<"output" | "ply" | null>(null);
   const [recoveringStage, setRecoveringStage] = useState<PipelineStageId | null>(null);
   const [qualityDialogOpen, setQualityDialogOpen] = useState(false);
   const [qualityAccepting, setQualityAccepting] = useState(false);
+  const [activityRefreshSignal, setActivityRefreshSignal] = useState(0);
+  const [workspaceAction, setWorkspaceAction] = useState<WorkspaceActionRequest | null>(null);
+  const [actionReceipt, setActionReceipt] = useState<ActionReceiptModel | null>(null);
   const qualityCancelRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!qualityDialogOpen) return;
-    const frame = window.requestAnimationFrame(() => qualityCancelRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
-  }, [qualityDialogOpen]);
+  const inspectorCloseRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     void openProject({ path: projectPath })
@@ -115,37 +163,88 @@ export function ProjectDetailPage({ projectId, projectPath }: ProjectDetailPageP
       .catch(() => undefined);
   }, [dispatch, openProject, projectPath]);
 
-  useEffect(() => {
-    let disposed = false;
-    const refresh = async () => {
-      const [artifactResult, checkpointResult] = await Promise.allSettled([
-        desktopApi.getProjectArtifacts(projectPath),
-        desktopApi.listCheckpoints(projectPath),
-      ]);
-      if (disposed) return;
-      if (artifactResult.status === "fulfilled") {
-        setArtifacts(artifactResult.value);
-        setSelectedStage((current) => current
-          ?? (artifactResult.value.scene_ply.validated
-            ? "Export"
-            : artifactResult.value.colmap_result.validated
-              ? "ColmapValidation"
-              : artifactResult.value.frames_manifest.validated
-                ? "FrameExtraction"
-                : "MediaValidation"));
-      }
-      if (checkpointResult.status === "fulfilled") setCheckpoints(checkpointResult.value);
-    };
-    void refresh();
-    const timer = window.setInterval(() => {
-      if (!document.hidden) void refresh();
-    }, 10_000);
-    return () => { disposed = true; window.clearInterval(timer); };
-  }, [projectPath]);
+  const loadArtifacts = artifactResource.load;
+  const loadCheckpoints = checkpointResource.load;
+  const refreshWorkspaceResources = useCallback(async () => {
+    const requestId = ++resourceRequest.current;
+    const [artifactResult] = await Promise.allSettled([
+      loadArtifacts(
+        `${projectPath}:artifacts:${requestId}`,
+        async () => {
+          const data = await desktopApi.getProjectArtifacts(projectPath);
+          const artifactItems = [
+            ["帧清单", data.frames_manifest],
+            ["相机重建", data.colmap_result],
+            ["最终 Splat", data.scene_ply],
+            ["导出清单", data.output_manifest],
+          ] as const;
+          const partialIssues = artifactItems.flatMap(([scope, item]) => item.error ? [{
+            scope,
+            error: normalizeCommandError(item.error, "get_project_artifacts"),
+            retryActionKey: `artifacts:${scope}`,
+          }] : []);
+          return {
+            data,
+            completeness: partialIssues.length > 0 ? "partial" as const : "complete" as const,
+            partialIssues,
+          };
+        },
+        (error) => normalizeCommandError(error, "get_project_artifacts"),
+      ),
+      loadCheckpoints(
+        `${projectPath}:checkpoints:${requestId}`,
+        () => desktopApi.listCheckpoints(projectPath),
+        (error) => normalizeCommandError(error, "list_checkpoints"),
+      ),
+    ]);
+    if (artifactResult.status === "fulfilled") {
+      const data = artifactResult.value;
+      setSelectedStage((current) => current
+        ?? (data.scene_ply.validated
+          ? "Export"
+          : data.colmap_result.validated
+            ? "ColmapValidation"
+            : data.frames_manifest.validated
+              ? "FrameExtraction"
+              : "MediaValidation"));
+    }
+  }, [loadArtifacts, loadCheckpoints, projectPath]);
 
-  const liveSnapshot = project && state.pipelineSnapshot?.project_id === project.id
-    ? state.pipelineSnapshot
-    : null;
+  useEffect(() => {
+    void refreshWorkspaceResources();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void refreshWorkspaceResources();
+    }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [refreshWorkspaceResources]);
+
+  useEffect(() => {
+    if (!isDesktopRuntime()) return;
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    void listen<PipelineEventEnvelope>("pipeline://event", ({ payload }) => {
+      if (disposed || payload.project_id !== projectId) return;
+      setActivityRefreshSignal((current) => Math.max(current + 1, payload.sequence));
+      if ([
+        "stage_completed",
+        "stage_failed",
+        "pipeline_completed",
+        "pipeline_failed",
+        "pipeline_cancelled",
+      ].includes(payload.event.kind)) {
+        void refreshWorkspaceResources();
+      }
+    }).then((dispose) => {
+      if (disposed) dispose();
+      else unlisten = dispose;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [projectId, refreshWorkspaceResources]);
+
+  const liveSnapshot = selectProjectPipelineSnapshot(state, project?.id ?? projectId);
   const pipelineState = liveSnapshot?.state ?? project?.pipeline_state;
   const currentStage = pipelineState?.current_stage ?? project?.current_stage ?? null;
   const latestCheckpointPath = checkpoints[checkpoints.length - 1]?.relative_path ?? null;
@@ -155,45 +254,61 @@ export function ProjectDetailPage({ projectId, projectPath }: ProjectDetailPageP
       phase.stages.includes(currentStage as PipelineStageId),
     );
     setExpandedPhase(current?.id ?? null);
+    setStageFocus(currentStage as PipelineStageId);
   }, [currentStage]);
 
   useEffect(() => {
-    if (currentStage) setSelectedStage(currentStage as PipelineStageId);
+    if (currentStage) {
+      setPreviewRelativePath(null);
+      setSelectedStage(currentStage as PipelineStageId);
+    }
   }, [currentStage]);
 
-  useEffect(() => {
+  const loadSelectedPreview = useCallback(async () => {
     if (!selectedStage) return;
-    let disposed = false;
-    setPreviewLoading(true);
-    setPreviewError(null);
-    setFramePreview(null);
-    setSparsePreview(null);
-    setPlyPreview(null);
-    const load = async () => {
-      try {
-        if (["MediaValidation", "FrameExtraction", "ImagePreprocessing"].includes(selectedStage)) {
-          const preview = await desktopApi.getFramePreview(projectPath);
-          if (!disposed) setFramePreview(preview);
-        } else if (["ColmapFeatureExtraction", "ColmapMatching", "ColmapMapping", "ColmapValidation"].includes(selectedStage)) {
-          const preview = await desktopApi.getSparsePreviewPack(projectPath);
-          if (!disposed) setSparsePreview(preview);
-        } else if (["TrainingPreparation", "BrushTraining", "ModelValidation"].includes(selectedStage)) {
-          if (!latestCheckpointPath) throw new Error("训练 Checkpoint 尚未生成。");
-          const preview = await desktopApi.inspectPly(projectPath, latestCheckpointPath);
-          if (!disposed) setPlyPreview(preview);
-        } else {
-          const preview = await desktopApi.inspectPly(projectPath);
-          if (!disposed) setPlyPreview(preview);
-        }
-      } catch (error) {
-        if (!disposed) setPreviewError(String(error));
-      } finally {
-        if (!disposed) setPreviewLoading(false);
-      }
-    };
-    void load();
-    return () => { disposed = true; };
-  }, [latestCheckpointPath, projectPath, selectedStage]);
+    const stageId = selectedStage;
+    const previewCommand = ["MediaValidation", "FrameExtraction", "ImagePreprocessing"].includes(stageId)
+      ? "get_frame_preview"
+      : ["ColmapFeatureExtraction", "ColmapMatching", "ColmapMapping", "ColmapValidation"].includes(stageId)
+        ? "get_sparse_preview_pack"
+        : "inspect_ply";
+    try {
+      await previewResource.load(
+        `${projectPath}:preview:${stageId}:${previewRelativePath ?? latestCheckpointPath ?? "output"}`,
+        async (): Promise<StagePreview> => {
+          if (["MediaValidation", "FrameExtraction", "ImagePreprocessing"].includes(stageId)) {
+            return { stageId, kind: "frame", value: await desktopApi.getFramePreview(projectPath) };
+          }
+          if (["ColmapFeatureExtraction", "ColmapMatching", "ColmapMapping", "ColmapValidation"].includes(stageId)) {
+            return { stageId, kind: "sparse", value: await desktopApi.getSparsePreviewPack(projectPath) };
+          }
+          if (["TrainingPreparation", "BrushTraining", "ModelValidation"].includes(stageId)) {
+            const checkpointPath = previewRelativePath ?? latestCheckpointPath;
+            if (!checkpointPath) throw new Error("训练 Checkpoint 尚未生成。");
+            return { stageId, kind: "ply", value: await desktopApi.inspectPly(projectPath, checkpointPath) };
+          }
+          return {
+            stageId,
+            kind: "ply",
+            value: await desktopApi.inspectPly(projectPath, previewRelativePath ?? undefined),
+          };
+        },
+        (error) => normalizeCommandError(error, previewCommand),
+      );
+    } catch {
+      // AsyncResource keeps the last valid preview and exposes the normalized error.
+    }
+  }, [latestCheckpointPath, previewRelativePath, previewResource, projectPath, selectedStage]);
+  const loadSelectedPreviewRef = useRef(loadSelectedPreview);
+  loadSelectedPreviewRef.current = loadSelectedPreview;
+
+  useEffect(() => {
+    void loadSelectedPreviewRef.current();
+  }, [latestCheckpointPath, previewRelativePath, projectPath, selectedStage]);
+
+  const selectedPreview = previewResource.resource.data?.stageId === selectedStage
+    ? previewResource.resource.data
+    : null;
 
   const openOutputDirectory = async () => {
     if (qualityAction) return;
@@ -220,35 +335,14 @@ export function ProjectDetailPage({ projectId, projectPath }: ProjectDetailPageP
       return;
     }
     setQualityAction("ply");
-    setPreviewLoading(true);
-    setPreviewError(null);
-    try {
-      const preview = await desktopApi.inspectPly(projectPath, artifacts.scene_ply.relative_path);
-      setSelectedStage("Export");
-      setFramePreview(null);
-      setSparsePreview(null);
-      setPlyPreview(preview);
-    } catch (error) {
-      setPreviewError(String(error));
-      dispatch({ type: "SET_ERROR", error: `无法打开 PLY：${String(error)}` });
-    } finally {
-      setPreviewLoading(false);
-      setQualityAction(null);
-    }
+    setPreviewRelativePath(artifacts.scene_ply.relative_path);
+    setSelectedStage("Export");
+    setQualityAction(null);
   };
 
-  const previewCheckpoint = async (checkpoint: CheckpointSummary) => {
+  const previewCheckpoint = (checkpoint: CheckpointSummary) => {
+    setPreviewRelativePath(checkpoint.relative_path);
     setSelectedStage("BrushTraining");
-    setPreviewLoading(true);
-    setPreviewError(null);
-    try {
-      setPlyPreview(await desktopApi.inspectPly(projectPath, checkpoint.relative_path));
-    } catch (error) {
-      setPreviewError(String(error));
-      dispatch({ type: "SET_ERROR", error: `无法预览 Checkpoint：${String(error)}` });
-    } finally {
-      setPreviewLoading(false);
-    }
   };
 
   const revealCheckpoint = async (checkpoint: CheckpointSummary) => {
@@ -265,21 +359,110 @@ export function ProjectDetailPage({ projectId, projectPath }: ProjectDetailPageP
     }
   };
   const currentStageLabel = currentStage ? getStageLabel(currentStage) : "尚未开始";
+  const moveStageFocus = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    stages: readonly PipelineStageId[],
+    stage: PipelineStageId,
+  ) => {
+    const index = stages.indexOf(stage);
+    let nextIndex = -1;
+    if (event.key === "ArrowDown") nextIndex = (index + 1) % stages.length;
+    if (event.key === "ArrowUp") nextIndex = (index - 1 + stages.length) % stages.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = stages.length - 1;
+    if (nextIndex < 0) return;
+    event.preventDefault();
+    const next = stages[nextIndex];
+    setStageFocus(next);
+    const element = document.getElementById(`stage-button-${next}`);
+    if (element) element.focus();
+    else window.requestAnimationFrame(() => document.getElementById(`stage-button-${next}`)?.focus());
+  };
   const pipelineBusy = ["starting", "running", "pausing", "cancelling", "recovering"].includes(
     liveSnapshot?.status ?? project?.status ?? "ready",
   );
+  const blockForActiveProject = () => {
+    if (!activePipeline || activePipeline.project_id === projectId) return false;
+    dispatch({
+      type: "SET_PIPELINE_CONFLICT",
+      requestedProjectId: projectId,
+      activeProjectId: activePipeline.project_id,
+    });
+    dispatch({
+      type: "SET_ERROR",
+      error: "另一个项目正在运行；当前项目未启动，也未进入队列。请返回活动项目查看状态。",
+    });
+    return true;
+  };
+  const captureRaceConflict = async (error: unknown) => {
+    if (!isActivePipelineConflict(error)) return false;
+    const active = await desktopApi.getActivePipelineSummary().catch(() => null);
+    if (active) {
+      dispatch({ type: "SET_ACTIVE_PIPELINE", snapshot: active });
+      dispatch({
+        type: "SET_PIPELINE_CONFLICT",
+        requestedProjectId: projectId,
+        activeProjectId: active.project_id,
+      });
+    }
+    dispatch({
+      type: "SET_ERROR",
+      error: "活动任务在操作前发生变化；当前项目未启动，也未进入队列。",
+    });
+    return true;
+  };
+
+  const completeWorkspaceAction = async (receipt: ActionReceiptModel) => {
+    const completedAction = workspaceAction;
+    setActionReceipt(receipt);
+    try {
+      await refreshWorkspaceResources();
+      const reset = await desktopApi.getPipelineState(projectPath);
+      dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot: reset });
+
+      if (completedAction?.action === "rerun_stage") {
+        const running = await desktopApi.startPipeline(projectPath);
+        dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot: running });
+        setProject((current) => current ? {
+          ...current,
+          status: running.status,
+          pipeline_state: running.state,
+          current_stage: running.state.current_stage,
+        } : current);
+      } else {
+        setProject((current) => current ? {
+          ...current,
+          status: reset.status,
+          pipeline_state: reset.state,
+          current_stage: reset.state.current_stage,
+        } : current);
+      }
+    } catch (error) {
+      if (!(await captureRaceConflict(error))) {
+        dispatch({ type: "SET_ERROR", error: String(error) });
+      }
+    } finally {
+      setWorkspaceAction(null);
+      setRecoveringStage(null);
+    }
+  };
 
   const recoverFromStage = async (stage: PipelineStageId, status: string) => {
     if (recoveringStage || pipelineBusy) return;
+    if (blockForActiveProject()) return;
     if (["completed", "skipped"].includes(status)) {
-      const confirmed = await confirmRerunStage(getStageLabel(stage));
-      if (!confirmed) return;
+      setRecoveringStage(stage);
+      setWorkspaceAction({
+        projectId,
+        projectPath,
+        action: "rerun_stage",
+        stageId: stage,
+      });
+      return;
     }
     setRecoveringStage(stage);
     try {
-      const reset = ["failed", "cancelled"].includes(status)
-        ? await desktopApi.retryStage(projectPath, stage)
-        : await desktopApi.rerunFromStage(projectPath, stage);
+      const reset = await desktopApi.retryStage(projectPath, stage);
       dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot: reset });
       const running = await desktopApi.startPipeline(projectPath);
       dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot: running });
@@ -304,6 +487,7 @@ export function ProjectDetailPage({ projectId, projectPath }: ProjectDetailPageP
         current_stage: running.state.current_stage,
       } : current);
     } catch (error) {
+      if (await captureRaceConflict(error)) return;
       dispatch({ type: "SET_ERROR", error: `无法从“${getStageLabel(stage)}”重新运行：${String(error)}` });
     } finally {
       setRecoveringStage(null);
@@ -311,6 +495,7 @@ export function ProjectDetailPage({ projectId, projectPath }: ProjectDetailPageP
   };
   const acceptQualityRisk = async () => {
     if (qualityAccepting || pipelineBusy) return;
+    if (blockForActiveProject()) return;
     setQualityAccepting(true);
     try {
       const reset = await desktopApi.acceptColmapQualityRisk(projectPath);
@@ -325,6 +510,7 @@ export function ProjectDetailPage({ projectId, projectPath }: ProjectDetailPageP
         current_stage: running.state.current_stage,
       } : current);
     } catch (error) {
+      if (await captureRaceConflict(error)) return;
       dispatch({ type: "SET_ERROR", error: `无法确认 COLMAP 质量风险：${String(error)}` });
     } finally {
       setQualityAccepting(false);
@@ -358,6 +544,19 @@ export function ProjectDetailPage({ projectId, projectPath }: ProjectDetailPageP
           <Database size={16} /> Checkpoint ({checkpoints.length})
         </button>
       </div>
+      <div className="project-resource-feedback">
+        <AsyncStatus
+          resource={artifactResource.resource}
+          label="项目产物"
+          onRetry={() => void refreshWorkspaceResources()}
+        />
+        <AsyncStatus
+          resource={checkpointResource.resource}
+          label="恢复点"
+          empty={checkpoints.length === 0}
+          onRetry={() => void refreshWorkspaceResources()}
+        />
+      </div>
       <section className="timeline-panel panel">
         {state.pipelineError && (
           <div className="pipeline-stale-warning" role="status">
@@ -379,9 +578,20 @@ export function ProjectDetailPage({ projectId, projectPath }: ProjectDetailPageP
                 key={phase.id}
               >
                 <button
+                  id={`phase-summary-${phase.id}`}
                   type="button"
                   className="phase-summary"
-                  onClick={() => setExpandedPhase(expanded ? null : phase.id)}
+                  aria-expanded={expanded}
+                  aria-controls={`phase-stage-list-${phase.id}`}
+                  onClick={() => {
+                    setExpandedPhase(expanded ? null : phase.id);
+                    if (!expanded) {
+                      const preferred = currentStage && phase.stages.includes(currentStage as PipelineStageId)
+                        ? currentStage as PipelineStageId
+                        : phase.stages[0];
+                      setStageFocus(preferred);
+                    }
+                  }}
                 >
                   <span className="phase-index-icon" aria-hidden="true">
                     {status === "completed" ? (
@@ -409,14 +619,24 @@ export function ProjectDetailPage({ projectId, projectPath }: ProjectDetailPageP
                 </button>
 
                 {expanded && (
-                  <div className="stage-list">
+                  <div id={`phase-stage-list-${phase.id}`} className="stage-list" role="list" aria-labelledby={`phase-summary-${phase.id}`}>
                     {phase.stages.map((stage) => {
                       const stageState = pipelineState?.stages[stage] ?? project.pipeline_state.stages[stage];
                       const stageStatus = stageState?.status ?? "pending";
                       const canRecover = ["failed", "cancelled", "completed", "skipped"].includes(stageStatus);
                       return (
-                        <div className={`stage-list-item ${selectedStage === stage ? "is-selected" : ""}`} key={stage}>
-                          <button type="button" className={`stage-list-row ${selectedStage === stage ? "is-selected" : ""}`} onClick={() => setSelectedStage(stage)}>
+                        <div role="listitem" className={`stage-list-item ${selectedStage === stage ? "is-selected" : ""}`} key={stage}>
+                          <button
+                            id={`stage-button-${stage}`}
+                            type="button"
+                            tabIndex={stageFocus === stage || (!stageFocus && phase.stages[0] === stage) ? 0 : -1}
+                            aria-current={currentStage === stage ? "step" : undefined}
+                            aria-pressed={selectedStage === stage}
+                            className={`stage-list-row ${selectedStage === stage ? "is-selected" : ""}`}
+                            onFocus={() => setStageFocus(stage)}
+                            onKeyDown={(event) => moveStageFocus(event, phase.stages, stage)}
+                            onClick={() => { setPreviewRelativePath(null); setSelectedStage(stage); }}
+                          >
                             <span className={`stage-dot status-${stageStatus}`} />
                             <span>{getStageLabel(stage)}</span>
                             <span className="stage-list-progress">
@@ -454,22 +674,28 @@ export function ProjectDetailPage({ projectId, projectPath }: ProjectDetailPageP
         </div>
       </section>
 
-      {inspectorOpen && <button type="button" className="mobile-drawer-backdrop" aria-label="关闭预览与质量" onClick={() => setInspectorOpen(false)} />}
+      <ResponsiveInspectorSurface open={inspectorOpen} onClose={() => setInspectorOpen(false)} closeRef={inspectorCloseRef}>
       <aside className={`inspector-column ${inspectorOpen ? "is-mobile-open" : ""}`}>
         <div className="mobile-inspector-heading">
           <strong>预览与质量</strong>
-          <button type="button" className="icon-button" aria-label="关闭预览与质量" onClick={() => setInspectorOpen(false)}><X size={18} /></button>
+          <button ref={inspectorCloseRef} type="button" className="icon-button" aria-label="关闭预览与质量" onClick={() => setInspectorOpen(false)}><X size={18} /></button>
         </div>
         <section className="preview-panel panel">
           <div className="panel-title">
             <span>真实产物预览</span>
             <span className="panel-subtitle">{selectedStage ? getStageLabel(selectedStage) : currentStageLabel}</span>
           </div>
-          {previewLoading ? <div className="preview-empty"><SpinnerGap size={35} className="spin" /><strong>正在读取真实产物</strong><span>解析完成后将上传到 GPU。</span></div>
-            : sparsePreview ? <PointCloudPreview points={sparsePreview.points} cameras={sparsePreview.cameras} label={`${sparsePreview.point_count.toLocaleString()} 稀疏点 · ${sparsePreview.registered_images} 相机`} />
-              : plyPreview ? <PointCloudPreview points={plyPreview.points} label={`${plyPreview.vertex_count.toLocaleString()} splats · 点模式`} />
-                : framePreview && framePreview.items.length > 0 ? <div className="frame-contact-sheet">{framePreview.items.map((path) => <img key={path} src={convertFileSrc(path)} alt="抽取帧缩略图" />)}<span>从 {framePreview.total_frames} 帧中均匀显示 {framePreview.items.length} 帧</span></div>
-                  : <div className="preview-empty"><Cube size={42} weight="thin" /><strong>预览尚未生成</strong><span>{previewError ?? "选择已完成阶段后，将在此读取真实产物。"}</span></div>}
+          <AsyncStatus
+            resource={previewResource.resource}
+            label="真实产物预览"
+            empty={selectedPreview?.kind === "frame" && selectedPreview.value.items.length === 0}
+            onRetry={() => void loadSelectedPreview()}
+          />
+          {previewResource.resource.status === "loading" ? <div className="preview-empty"><SpinnerGap size={35} className="spin" /><strong>正在读取真实产物</strong><span>解析完成后将上传到 GPU。</span></div>
+            : selectedPreview?.kind === "sparse" ? <PointCloudPreview points={selectedPreview.value.points} cameras={selectedPreview.value.cameras} label={`${selectedPreview.value.point_count.toLocaleString()} 稀疏点 · ${selectedPreview.value.registered_images} 相机`} />
+              : selectedPreview?.kind === "ply" ? <PointCloudPreview points={selectedPreview.value.points} label={`${selectedPreview.value.vertex_count.toLocaleString()} splats · 点模式`} />
+                : selectedPreview?.kind === "frame" && selectedPreview.value.items.length > 0 ? <div className="frame-contact-sheet">{selectedPreview.value.items.map((path) => <img key={path} src={convertFileSrc(path)} alt="抽取帧缩略图" />)}<span>从 {selectedPreview.value.total_frames} 帧中均匀显示 {selectedPreview.value.items.length} 帧</span></div>
+                  : <div className="preview-empty"><Cube size={42} weight="thin" /><strong>预览尚未生成</strong><span>选择已完成阶段后，将在此读取真实产物。</span></div>}
         </section>
 
         <section className="quality-panel panel">
@@ -563,21 +789,27 @@ export function ProjectDetailPage({ projectId, projectPath }: ProjectDetailPageP
           </div>
         </section>
       </aside>
+      </ResponsiveInspectorSurface>
 
-      <ActivityWorkbench projectPath={projectPath} />
+      <ActivityWorkbench
+        projectPath={projectPath}
+        selectedStage={selectedStage}
+        onSelectStage={(stageId) => { setPreviewRelativePath(null); setSelectedStage(stageId as PipelineStageId); }}
+        refreshSignal={activityRefreshSignal}
+      />
       {qualityDialogOpen && (
-        <div className="dialog-backdrop" onMouseDown={(event) => {
-          if (event.target === event.currentTarget && !qualityAccepting) setQualityDialogOpen(false);
-        }}>
-          <section
-            className="quality-risk-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="quality-risk-title"
-            aria-describedby="quality-risk-description"
-          >
+        <ModalSurface
+          id="quality-risk-dialog"
+          title="仍然使用低于建议质量的重建？"
+          titleHidden
+          className="quality-risk-dialog"
+          ariaDescribedBy="quality-risk-description"
+          busy={qualityAccepting}
+          onClose={() => setQualityDialogOpen(false)}
+          initialFocusRef={qualityCancelRef}
+        >
             <Warning size={28} weight="fill" />
-            <h2 id="quality-risk-title">仍然使用低于建议质量的重建？</h2>
+            <h2 aria-hidden="true">仍然使用低于建议质量的重建？</h2>
             <p id="quality-risk-description">
               当前模型满足最低训练条件，但可能只覆盖场景的一部分。确认只绑定当前稀疏模型；模型变化后会自动失效，报告会永久保留“已接受风险”状态。
             </p>
@@ -606,10 +838,41 @@ export function ProjectDetailPage({ projectId, projectPath }: ProjectDetailPageP
                 确认风险并继续
               </button>
             </div>
-          </section>
-        </div>
+        </ModalSurface>
       )}
-      {checkpointOpen && <CheckpointDrawer checkpoints={checkpoints} onClose={() => setCheckpointOpen(false)} onPreview={(checkpoint) => void previewCheckpoint(checkpoint)} onRestore={(checkpoint) => void desktopApi.restoreCheckpoint(projectPath, checkpoint.iteration).then(setCheckpoints).catch((error) => dispatch({ type: "SET_ERROR", error: String(error) }))} onDelete={(checkpoint) => void desktopApi.deleteCheckpoint(projectPath, checkpoint.iteration).then(() => desktopApi.listCheckpoints(projectPath).then(setCheckpoints)).catch((error) => dispatch({ type: "SET_ERROR", error: String(error) }))} onOpen={(checkpoint) => void revealCheckpoint(checkpoint)} />}
+      {checkpointOpen && (
+        <CheckpointDrawer
+          checkpoints={checkpoints}
+          onClose={() => setCheckpointOpen(false)}
+          onPreview={(checkpoint) => void previewCheckpoint(checkpoint)}
+          onRestore={(checkpoint) => setWorkspaceAction({
+            projectId,
+            projectPath,
+            action: "restore_checkpoint",
+            checkpointIteration: checkpoint.iteration,
+          })}
+          onDelete={(checkpoint) => setWorkspaceAction({
+            projectId,
+            projectPath,
+            action: "delete_checkpoint",
+            checkpointIteration: checkpoint.iteration,
+          })}
+          onOpen={(checkpoint) => void revealCheckpoint(checkpoint)}
+        />
+      )}
+      {workspaceAction && (
+        <WorkspaceActionDialog
+          request={workspaceAction}
+          onClose={() => {
+            setWorkspaceAction(null);
+            setRecoveringStage(null);
+          }}
+          onCompleted={completeWorkspaceAction}
+        />
+      )}
+      {actionReceipt ? (
+        <ActionReceipt receipt={actionReceipt} onDismiss={() => setActionReceipt(null)} />
+      ) : null}
     </div>
   );
 }
