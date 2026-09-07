@@ -37,9 +37,9 @@ describe("ActivityWorkbench", () => {
   it("loads cursor pages and deterministically de-duplicates 1,000-record histories", async () => {
     const first = Array.from({ length: 800 }, (_, index) => event(index + 201));
     const older = Array.from({ length: 201 }, (_, index) => event(index + 1));
-    vi.mocked(desktopApi.getPipelineEvents)
-      .mockResolvedValueOnce(page(first, 200))
-      .mockResolvedValueOnce(page(older, null));
+    vi.mocked(desktopApi.getPipelineEvents).mockImplementation(async (_path, query) =>
+      query?.cursor === 200 ? page(older, null) : page(first, 200),
+    );
 
     render(<ActivityWorkbench projectPath={"D:\\project"} />);
     expect(await screen.findByText("事件 1000")).toBeInTheDocument();
@@ -47,7 +47,9 @@ describe("ActivityWorkbench", () => {
 
     await waitFor(() => expect(screen.getByText("事件 1")).toBeInTheDocument());
     expect(screen.getAllByRole("button", { name: /事件 \d+/ })).toHaveLength(1000);
-    expect(desktopApi.getPipelineEvents).toHaveBeenLastCalledWith(
+    // Automatic refresh can run while the 1,000 accessible rows are inspected.
+    // Verify the pagination request without assuming it remains the latest call.
+    expect(desktopApi.getPipelineEvents).toHaveBeenCalledWith(
       "D:\\project",
       expect.objectContaining({ cursor: 200 }),
     );
