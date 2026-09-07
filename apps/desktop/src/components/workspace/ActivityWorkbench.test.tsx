@@ -43,11 +43,14 @@ describe("ActivityWorkbench", () => {
 
     render(<ActivityWorkbench projectPath={"D:\\project"} />);
     expect(await screen.findByText("事件 1000")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "加载更早记录" }));
+    fireEvent.click(screen.getByText("加载更早记录", { selector: "button" }));
 
     await waitFor(() => expect(screen.getByText("事件 1")).toBeInTheDocument());
-    expect(screen.getAllByRole("button", { name: /事件 \d+/ })).toHaveLength(1000);
-    // Automatic refresh can run while the 1,000 accessible rows are inspected.
+    // Count rendered messages without computing 1,000 accessible button names.
+    const messages = screen.getAllByText(/^事件 \d+$/);
+    expect(messages).toHaveLength(1000);
+    expect(new Set(messages.map((message) => message.textContent)).size).toBe(1000);
+    // Automatic refresh can run while the 1,000 rows are inspected.
     // Verify the pagination request without assuming it remains the latest call.
     expect(desktopApi.getPipelineEvents).toHaveBeenCalledWith(
       "D:\\project",
