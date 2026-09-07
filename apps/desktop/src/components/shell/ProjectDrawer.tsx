@@ -1,4 +1,4 @@
-import { X } from "@phosphor-icons/react";
+import { X } from "../primitives/icons";
 import { useRef } from "react";
 
 import { ModalSurface } from "../primitives";

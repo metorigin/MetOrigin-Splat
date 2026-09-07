@@ -63,6 +63,10 @@ pub fn run() {
             commands::workspace::get_frame_preview,
             commands::workspace::get_sparse_preview_pack,
             commands::workspace::inspect_ply,
+            commands::preview::get_gaussian_preview,
+            commands::preview::get_gaussian_camera,
+            commands::preview::read_gaussian_ply,
+            commands::preview::poll_live_preview,
         ])
         .setup(|_app| {
             #[cfg(debug_assertions)]

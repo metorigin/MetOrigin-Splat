@@ -1,115 +1,65 @@
 # Troubleshooting
 
-## Error Architecture
+Use the application's stage error and diagnostic information to identify the failing step. Keep raw logs and media local; redact personal paths and sensitive content before sharing a report.
 
-All errors in MetOrigin Splat are converted to a unified `AppError` type before reaching the user. Raw exceptions, stack traces, panics, or segmentation faults are never displayed as default user-facing error messages.
+## Desktop startup
 
-## Error Hierarchy
+| Symptom | Check |
+| --- | --- |
+| Port 1420 is already in use | `pnpm tauri dev` already starts Vite. Stop the extra development server you started, then run the desktop command once. |
+| Native file selection or engine commands fail in a browser | Run `pnpm tauri dev`. `pnpm dev` alone has no native Tauri backend; `?ui-preview` supplies sample data only. |
+| Frontend changed, but native behavior did not | Restart the desktop development process after Rust/Tauri changes. Refreshing Vite does not rebuild the running backend. |
+| Rust linking or WebView startup fails | Check the pinned toolchain, C++ Build Tools, Windows SDK and WebView2 Runtime in [development](development.md). |
 
-```
-User errors            — incorrect input or configuration
-Environment errors     — missing dependencies or drivers
-Media errors           — unsupported or corrupted media files
-Engine errors          — external engine failures
-Filesystem errors      — permission, disk, path issues
-System resource errors — low memory, disk, GPU resources
-Internal errors        — unexpected bugs in the application
-```
+## Engines unavailable
 
-## Error Code Reference
+Open Settings & Engines and inspect each component's path and status. Source checkouts do not include executables. Prepare and verify the pinned pack, or configure existing installations:
 
-| Range      | Category              |
-| ---------- | --------------------- |
-| 1000–1099  | Project & file errors |
-| 1100–1199  | Media errors          |
-| 1200–1299  | Disk & permissions    |
-| 2000–2099  | FFmpeg errors         |
-| 3000–3099  | COLMAP errors         |
-| 4000–4099  | Brush errors          |
-| 5000–5099  | GPU & hardware        |
-| 9000–9099  | Internal errors       |
-
-## Error Structure
-
-```rust
-pub struct AppError {
-    pub code: String,
-    pub category: ErrorCategory,
-    pub title: String,
-    pub user_message: String,
-    pub technical_message: Option<String>,
-    pub suggestions: Vec<String>,
-    pub retryable: bool,
-    pub log_path: Option<PathBuf>,
-}
+```powershell
+pnpm prepare:windows:engines
+pnpm verify:windows:engines
 ```
 
-## Common Issues
+The prepared directory is `target/distribution/windows-x64/engines`. Select that directory in settings. A packaged integrity failure should be repaired by preparing/reinstalling the matching pack; replacing random executable files can leave its manifest inconsistent. `METORIGIN_ENGINE_DIR` is a development override and is ignored in release mode. See [engine integration](engine-integration.md).
 
-### COLMAP Fails to Register Images
+## Import and preflight
 
-**Symptom**: Very few images registered (e.g., 4 out of 180).
+- **The image folder picker does not show images:** the current import uses a file picker that displays JPG/JPEG/PNG. Select one image to import its entire parent folder, including subfolders. A Windows dialog restricted to folders is the earlier behavior; restart the current desktop build if it remains visible.
+- **Some images are ignored:** inspect valid, damaged and ignored counts. Check actual file format and readability; renaming an unsupported file's extension does not convert it.
+- **Continue is disabled after changing a preset:** switching the preset reruns preflight. Wait for the current check; if it fails, resolve the displayed blocking item and retry. Only the latest preset's result can enable continuation.
+- **Destination rejected:** check the name, writable parent directory, collision with an existing project and available space. The destination must be separate from the source.
+- **Disk space is unknown:** the project center queries the application's executable volume; project-specific checks query the relevant project/destination. Check whether the location is accessible. Unknown is different from a measured zero.
 
-**Possible Causes**:
-1. Video motion is too fast or contains blur
-2. Scene lacks sufficient texture
-3. Adjacent frames have insufficient overlap
-4. Scene contains many dynamic objects
+The import and preflight behavior is described in the [user guide](user-operation-flow.zh-CN.md).
 
-**Suggestions**:
-1. Use slower, more continuous camera movement
-2. Reduce the frame extraction interval (more frames)
-3. Ensure the subject is captured from multiple angles
-4. Avoid highly reflective, transparent, or solid-color surfaces
-5. Switch matching strategy (sequential → exhaustive for photos)
+## Reconstruction failures
 
-### FFmpeg Fails to Process Video
+| Stage | What to inspect |
+| --- | --- |
+| FFmpeg / frame preparation | Source decoding, supported media, source access and output space |
+| COLMAP features/matching/mapping | Overlap, blur, texture, reflections, moving objects and whether enough views register into one model |
+| COLMAP validation | Registration and connectivity results; inspect warnings before choosing an allowed continuation |
+| Brush training | GPU availability, driver compatibility, device memory, prepared dataset and engine error code |
+| Export / model validation | Valid completed PLY, output access and free space |
 
-**Possible Causes**:
-1. Corrupted or incomplete video file
-2. Unsupported codec
-3. Variable frame rate not handled
-4. File path contains unusual characters
+A higher preset cannot compensate for missing viewpoints or wrong camera reconstruction. For a device-memory failure, try a lower preset after reviewing its effect on previously completed stages. Do not manually delete files during a running task.
 
-**Suggestions**:
-1. Verify the video plays correctly in a media player
-2. Try a different encoding (H.264 MP4 is most compatible)
-3. Re-encode the video with standard settings
+## Pause, cancel and recovery
 
-### Application Won't Start
+Pause/cancel requests are not necessarily instantaneous. Wait for the application to apply the operation and settle its state before restarting or moving the project. A valid saved checkpoint can support geometry recovery, but does not restore the entire optimizer state.
 
-**Possible Causes**:
-1. Missing GPU driver (NVIDIA CUDA-compatible)
-2. Missing Visual C++ Redistributable
-3. Antivirus blocking the application
+After an interruption, open the full `.splat-project` directory and allow artifact checks to finish. A partial checkpoint is not a completed model. If an engine process failed, use the recorded stage error and retry/recovery action rather than changing `project.json` by hand. See [project format](project-format.md).
 
-**Suggestions**:
-1. Install/update your GPU driver
-2. Install the latest Visual C++ Redistributable
-3. Check antivirus quarantine
+## Preview problems
 
-### Training Fails Silently
+- **No preview yet:** the selected stage may not have produced a viewable artifact. Wait or select a completed stage. COLMAP sparse geometry and a trained Gaussian model are different outputs.
+- **Saved model works but training does not update:** check that `brush_live.exe` is beside the configured `brush_app.exe`, start a new training session, follow the current stage and choose “实时” or “低频”. A hidden page or “暂停预览” stops requesting snapshots.
+- **Viewing an old checkpoint:** manual checkpoint selection pins that file. Use “跟随当前阶段” to return to current output.
+- **PLY rejected:** the Gaussian path accepts complete binary little-endian float32 PLY with required Gaussian properties, SH degree 0–3, up to the implemented 1 GiB limit. Incomplete writes and files outside the validated project path are rejected.
+- **WebGL/GPU rendering fails:** use the native desktop environment with WebView2 and a supported GPU/driver. A synthetic browser preview cannot establish rendering compatibility.
 
-**Possible Causes**:
-1. Insufficient GPU memory
-2. Brush cannot read the COLMAP output format
-3. Incompatible Brush version
+For the companion build, model update protocol and native reproduction steps, read [Gaussian live preview](gaussian-live-preview.zh-CN.md).
 
-**Suggestions**:
-1. Try the "Fast" preset which uses lower resolution
-2. Check the training logs in the project directory
-3. Ensure the bundled Brush version matches the COLMAP output format
+## Reporting a problem
 
-### Low Disk Space
-
-The application checks available disk space before starting each stage. If space is insufficient:
-- Clear the project cache
-- Remove completed projects you no longer need
-- Free up disk space on the system drive
-
-## Logs
-
-- Application logs are stored in each project's `logs/` directory
-- Each pipeline stage has its own log file
-- Technical details (stack traces, engine raw output) are only in log files, not in user-facing error messages
-- Users can access detailed logs through the UI's "Show Logs" entry
+Include the application version, Windows version, engine versions, GPU/driver, preset, failing stage, error code and steps to reproduce. Use the application's diagnostic export where available and review its contents before sharing. Never attach private project media or credentials to an issue. Security vulnerabilities should be reported through [SECURITY.md](../SECURITY.md).

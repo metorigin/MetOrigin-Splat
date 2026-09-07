@@ -16,6 +16,8 @@
     "build:windows:release": "pnpm --dir apps/desktop build:windows:release",
     "prepare:windows:engines": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/windows/Prepare-EnginePack.ps1",
     "verify:windows:engines": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/windows/Test-EnginePack.ps1",
-    "package:windows:full": "pnpm --dir apps/desktop package:windows:full"
+    "package:windows:full": "pnpm --dir apps/desktop package:windows:full",
+    "build:brush:live": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/windows/Build-BrushLive.ps1",
+    "test:gaussian:native": "node scripts/windows/Validate-GaussianPreview.mjs"
   }
 }

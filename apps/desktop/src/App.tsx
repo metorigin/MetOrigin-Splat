@@ -1,12 +1,9 @@
-import { WarningCircle, X } from "@phosphor-icons/react";
+import { WarningCircle, X } from "./components/primitives/icons";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { BackgroundTaskSummary } from "./components/shell/BackgroundTaskSummary";
 import { ProjectSidebar } from "./components/shell/ProjectSidebar";
-import { SystemStatusBar } from "./components/shell/SystemStatusBar";
 import { TitleRunBar } from "./components/shell/TitleRunBar";
-import { WorkspaceHeader } from "./components/shell/WorkspaceHeader";
 import { SettingsDrawer } from "./components/settings";
 import { ActionReceipt, StatusAnnouncer } from "./components/feedback";
 import { WorkspaceActionDialog } from "./components/workspace";
@@ -28,6 +25,7 @@ import {
   isDesktopRuntime,
   selectProjectDirectory,
 } from "./services/desktop";
+import { isUiPreviewMode } from "./services/uiPreview";
 import type {
   AppSettings,
   PipelineConflictInfo,
@@ -41,7 +39,10 @@ import type {
   ActionReceipt as ActionReceiptModel,
   WorkspaceActionRequest,
 } from "./types";
-import "./App.css";
+import { useTheme } from "./hooks/useTheme";
+import "@fontsource-variable/inter";
+import "@fontsource/jetbrains-mono/400.css";
+import "./styles/buzz.css";
 
 function normalizeProjectStatus(status: string): ProjectStatus {
   const normalized = status.toLowerCase();
@@ -75,18 +76,24 @@ function toProjectInfo(project: Project, path: string): ProjectInfo {
 }
 
 export function AppWorkspace() {
+  useTheme();
+  const previewNavigated = useRef(false);
   const { state, dispatch } = useAppContext();
+  const previewOverlay = isUiPreviewMode()
+    ? new URLSearchParams(window.location.search).get("preview-overlay")
+    : null;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<ResourceMetrics | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(() => previewOverlay === "settings");
   const [deleteCandidate, setDeleteCandidate] = useState<ProjectInfo | null>(null);
   const [workspaceAction, setWorkspaceAction] = useState<WorkspaceActionRequest | null>(null);
   const [actionReceipt, setActionReceipt] = useState<ActionReceiptModel | null>(null);
   const [taskProgressByProject, setTaskProgressByProject] = useState<Record<string, TaskProgress>>({});
   const [announcement, setAnnouncement] = useState("");
+  const [workspaceActivitySignal, setWorkspaceActivitySignal] = useState(0);
   const { retryProjectAvailability } = useProjectAvailability(
     state.recentProjects,
     state.projectAvailability,
@@ -177,6 +184,7 @@ export function AppWorkspace() {
   useEffect(() => {
     let disposed = false;
     let timer = 0;
+    setMetrics(null);
     const sample = async () => {
       try {
         const result = await desktopApi.getResourceMetrics(activeProjectPath ?? undefined);
@@ -195,6 +203,26 @@ export function AppWorkspace() {
   useEffect(() => {
     void loadApplicationData();
   }, [loadApplicationData]);
+
+  useEffect(() => {
+    if (!isUiPreviewMode() || previewNavigated.current) return;
+    const previewPage = new URLSearchParams(window.location.search).get("preview-page");
+    if (previewPage === "new-project") {
+      previewNavigated.current = true;
+      dispatch({ type: "NAVIGATE", page: { type: "new-project" } });
+      return;
+    }
+    if (previewPage === "workspace") {
+      const project = state.recentProjects[0];
+      if (project) {
+        previewNavigated.current = true;
+        dispatch({
+          type: "NAVIGATE",
+          page: { type: "project-detail", projectId: project.id, projectPath: project.path },
+        });
+      }
+    }
+  }, [dispatch, state.recentProjects]);
 
   useEffect(() => {
     let disposed = false;
@@ -296,22 +324,6 @@ export function AppWorkspace() {
     };
   }, [activeProject, activeProjectPath, dispatch]);
 
-  const returnToActiveProject = useCallback(() => {
-    if (!activePipelineSnapshot) return;
-    dispatch({
-      type: "NAVIGATE",
-      page: {
-        type: "project-detail",
-        projectId: activePipelineSnapshot.project_id,
-        projectPath: activePipelineSnapshot.project_path,
-      },
-    });
-    dispatch({ type: "CLEAR_PIPELINE_CONFLICT" });
-    window.requestAnimationFrame(() => {
-      document.querySelector<HTMLElement>(".title-run-bar h1")?.focus();
-    });
-  }, [activePipelineSnapshot, dispatch]);
-
   const blockForActiveProject = useCallback((requestedProjectId: string): boolean => {
     if (!activePipelineSnapshot || activePipelineSnapshot.project_id === requestedProjectId) return false;
     dispatch({
@@ -327,6 +339,7 @@ export function AppWorkspace() {
     error: unknown,
   ): Promise<boolean> => {
     if (!isActivePipelineConflict(error)) return false;
+    dispatch({ type: "SET_ERROR", error: "当前有重建任务尚未结束，请先暂停或结束任务后再开始新的重建。" });
     const active = await refreshActivePipeline();
     if (active && active.project_id !== requestedProjectId) {
       dispatch({
@@ -539,12 +552,22 @@ export function AppWorkspace() {
   const page = (() => {
     switch (state.page.type) {
       case "home":
-        return <HomePage onRetry={() => void loadApplicationData()} />;
+        return (
+          <HomePage
+            engines={state.engines}
+            metrics={metrics}
+            onOpenProject={() => void handleOpenProject()}
+            onRetry={() => void loadApplicationData()}
+          />
+        );
       case "new-project":
         return <NewProjectPage settings={settings} onOpenSettings={() => setSettingsOpen(true)} />;
       case "project-detail":
         return (
           <ProjectDetailPage
+            key={state.page.projectId}
+            metrics={metrics}
+            activityOpenSignal={workspaceActivitySignal}
             projectId={state.page.projectId}
             projectPath={state.page.projectPath}
           />
@@ -553,32 +576,38 @@ export function AppWorkspace() {
   })();
 
   return (
-    <div className="workspace-shell">
-      <ProjectSidebar
-        projects={state.recentProjects}
-        availability={state.projectAvailability}
-        loading={state.recentProjectsLoading}
-        loadError={state.recentProjectsError}
-        activeProjectPath={activeProjectPath}
-        collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed((value) => !value)}
-        onHome={() => dispatch({ type: "NAVIGATE", page: { type: "home" } })}
-        onNewProject={() =>
-          dispatch({ type: "NAVIGATE", page: { type: "new-project" } })
-        }
-        onOpenProject={() => void handleOpenProject()}
-        onSelectProject={(project) => void openSelectedProject(project)}
-        onRevealProject={(project) => void handleRevealProject(project)}
-        onRemoveProject={(project) => void handleRemoveProject(project)}
-        onDeleteProject={requestProjectDeletion}
-        onRetryAvailability={retryProjectAvailability}
-        onRelinkProject={handleRelinkProject}
-        onOpenIndependent={handleOpenIndependent}
-        onRetry={() => void loadApplicationData()}
-      />
+    <div className={`workspace-shell page-${state.page.type}`}>
+      {state.page.type !== "new-project" ? (
+        <ProjectSidebar
+          projects={state.recentProjects}
+          availability={state.projectAvailability}
+          loading={state.recentProjectsLoading}
+          loadError={state.recentProjectsError}
+          activeProjectPath={activeProjectPath}
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed((value) => !value)}
+          onHome={() => dispatch({ type: "NAVIGATE", page: { type: "home" } })}
+          onNewProject={() =>
+            dispatch({ type: "NAVIGATE", page: { type: "new-project" } })
+          }
+          onOpenProject={() => void handleOpenProject()}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onSelectProject={(project) => void openSelectedProject(project)}
+          onRevealProject={(project) => void handleRevealProject(project)}
+          onRemoveProject={(project) => void handleRemoveProject(project)}
+          onDeleteProject={requestProjectDeletion}
+          onRetryAvailability={retryProjectAvailability}
+          onRelinkProject={handleRelinkProject}
+          onOpenIndependent={handleOpenIndependent}
+          onRetry={() => void loadApplicationData()}
+          engines={state.engines}
+          metrics={metrics}
+        />
+      ) : null}
 
       <section className="workspace-surface">
         <div className="workspace-header-stack">
+          {state.page.type === "home" ? <h1 className="sr-only">项目中心</h1> : null}
           {state.page.type === "project-detail" ? (
             <TitleRunBar
               project={activeProject}
@@ -586,50 +615,28 @@ export function AppWorkspace() {
               pipelineConflict={pipelineConflict}
               taskProgress={activeProject ? taskProgressByProject[activeProject.id] ?? null : null}
               updatedAt={viewedPipelineFreshness.updatedAt}
+              onHome={() => dispatch({ type: "NAVIGATE", page: { type: "home" } })}
               onBlockedAttempt={() => activeProject && blockForActiveProject(activeProject.id)}
-              onReturnToActiveProject={returnToActiveProject}
               onStart={() => void handleStart()}
               onPause={handlePause}
               onResume={() => void handleResume()}
               onCancel={handleCancel}
-              onOpenSettings={() => setSettingsOpen(true)}
               onRevealProject={() => activeProject && void handleRevealProject(activeProject)}
               onRemoveProject={() => activeProject && void handleRemoveProject(activeProject)}
               onDeleteProject={() => activeProject && requestProjectDeletion(activeProject)}
+              onViewActivity={() => setWorkspaceActivitySignal((value) => value + 1)}
             />
-          ) : (
-            <WorkspaceHeader
-              page={state.page}
-              onNewProject={() => dispatch({ type: "NAVIGATE", page: { type: "new-project" } })}
-              onOpenProject={() => void handleOpenProject()}
-              onBackHome={() => dispatch({ type: "NAVIGATE", page: { type: "home" } })}
-            />
-          )}
-          {state.page.type !== "project-detail" && activePipelineSnapshot && activePipelineProject && (
-            <BackgroundTaskSummary
-              project={activePipelineProject}
-              snapshot={activePipelineSnapshot}
-              updatedAt={activePipelineFreshness.updatedAt}
-              onReturn={returnToActiveProject}
-            />
-          )}
+          ) : null}
         </div>
         <main className="workspace-content">{page}</main>
       </section>
 
-      <SystemStatusBar
-        engines={state.engines}
-        enginesLoading={state.enginesLoading}
-        enginesError={state.enginesError}
-        version={version}
-        metrics={metrics}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onRetryEngines={() => void loadApplicationData()}
-      />
-
       {settingsOpen && (
         <SettingsDrawer
           engines={state.engines}
+          enginesLoading={state.enginesLoading}
+          enginesError={state.enginesError}
+          version={version}
           settings={settings}
           loadError={settingsError}
           metrics={metrics}
@@ -654,6 +661,8 @@ export function AppWorkspace() {
         />
       )}
       {actionReceipt ? <ActionReceipt receipt={actionReceipt} onDismiss={() => setActionReceipt(null)} /> : null}
+
+      {isUiPreviewMode() ? <div className="preview-mode-label">界面预览 · 示例数据</div> : null}
 
       {state.error && (
         <div className="global-error" role="alert">

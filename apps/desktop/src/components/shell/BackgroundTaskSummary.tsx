@@ -1,4 +1,4 @@
-import { ArrowRight, ClockCounterClockwise } from "@phosphor-icons/react";
+import { ArrowRight, ClockCounterClockwise } from "../primitives/icons";
 
 import { formatRelativeTime, getProjectStatusLabel, getStageLabel } from "../../localization";
 import type { PipelineSnapshot, ProjectInfo } from "../../types";

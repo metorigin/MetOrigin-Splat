@@ -1,182 +1,67 @@
-# Engine Integration Guide
+# Engine integration
 
-## Overview
+The application runs FFmpeg, COLMAP and Brush as local child processes. Engine adapters construct arguments and parse results; `splat-process` owns execution, output capture and cancellation. Pages do not build shell commands or launch engines directly.
 
-All external engines (FFmpeg, COLMAP, Brush) are accessed through a common adapter pattern. The application core never directly constructs CLI commands for these engines. This ensures each engine can be replaced independently without affecting the rest of the system.
+## Version authority and setup
 
-```rust
-pub trait EngineAdapter {
-    fn name(&self) -> &'static str;
-    fn detect(&self) -> Result<EngineInfo, EngineError>;
-    fn validate(&self, context: &TaskContext) -> Result<(), EngineError>;
-    fn build_command(&self, context: &TaskContext) -> Result<CommandSpec, EngineError>;
-}
+[engine-lock.json](../packaging/windows-x64/engine-lock.json) is the authority for packaged archives, versions, download locations and SHA-256 values. The current set is FFmpeg/FFprobe **8.1.2**, COLMAP **4.1.0 CUDA** and Brush **0.3.0**, with the locked Microsoft VC++ runtime prerequisite. A different executable passing a version command does not establish full pipeline compatibility.
+
+Configure local executable paths or a containing engine directory through Settings & Engines. To prepare the locked pack from the repository root:
+
+```powershell
+pnpm prepare:windows:engines
+pnpm verify:windows:engines
 ```
 
-## FFmpeg Adapter (`splat-engine-ffmpeg`)
+The engine directory is `target/distribution/windows-x64/engines`. Select it in Settings & Engines for development. Downloads are cached under `.engines/downloads`; generated files stay out of Git. See [Windows packaging](../packaging/windows-x64/README.md) for offline preparation and distribution requirements.
 
-### Responsibilities
+## Resolution and integrity
 
-- Detect FFmpeg availability and version
-- Read video metadata via FFprobe
-- Calculate frame extraction parameters
-- Execute frame extraction
-- Parse progress output
-- Validate output frames
-- Generate frame manifest
+Path selection is implemented by [EngineLocator](../crates/splat-hardware/src/locator.rs), with desktop context supplied by [system commands](../apps/desktop/src-tauri/src/commands/system.rs).
 
-### Input → Output
+- Development mode accepts `METORIGIN_ENGINE_DIR` as an explicit developer override. Otherwise it considers configured executable/directory paths, available resource engines and then `PATH` for missing components.
+- The desktop application can discover a local or portable `.engines` directory. A prepared pack can also be selected explicitly in settings.
+- Release mode ignores `METORIGIN_ENGINE_DIR` and prefers the verified resource pack. Missing or corrupt expected pack resources are surfaced as errors rather than silently switching to arbitrary executables on `PATH`.
+- Manifest verification checks the packaged inventory and integrity. Engine status and reconstruction use the resolved paths, avoiding a separate unverified launch path.
 
-```
-input.mp4
-    ↓
-frames/000001.jpg
-frames/000002.jpg
-frames/000003.jpg
-frames/frames.json
-```
+The exact fallback behavior is defined by the locator and its tests. Preserve the distinction between an absent development engine and a corrupt packaged engine.
 
-### Must Handle
+## Adapter responsibilities
 
-- Corrupted video files
-- Unsupported codecs
-- Variable frame rate
-- Rotation metadata
-- CJK characters in filenames
-- Output directory permission issues
-- Insufficient disk space
-- User cancellation
+| Adapter | Inputs and outputs |
+| --- | --- |
+| [FFmpeg](../crates/splat-engine-ffmpeg/src/) | FFprobe metadata; planned video extraction; progress parsing; frame files and manifest |
+| [COLMAP](../crates/splat-engine-colmap/src/) | Prepared images; database, features and matches; sparse models; selected-model and quality information |
+| [Brush](../crates/splat-engine-brush/src/) | Prepared COLMAP dataset and preset; training progress, PLY checkpoints and optional live snapshots |
 
-### Adapter Interface
+Video import extracts frames; image-folder import validates and prepares existing images. Preprocessing preserves aspect ratio. Frame limits and training parameters come from [presets](../presets/) and project settings.
 
-```rust
-pub struct FfmpegAdapter;
+COLMAP may produce more than one sparse model. Downstream stages use the selected model recorded in `colmap/result.json`; they must not assume model `0`. Quality checks report registration rate, sparse-point count, reprojection error and reconstruction-attempt information when available.
 
-impl EngineAdapter for FfmpegAdapter {
-    fn name(&self) -> &'static str { "ffmpeg" }
-    fn detect(&self) -> Result<EngineInfo, EngineError> { /* ... */ }
-    fn validate(&self, context: &TaskContext) -> Result<(), EngineError> { /* ... */ }
-    fn build_command(&self, context: &TaskContext) -> Result<CommandSpec, EngineError> { /* ... */ }
-}
+Brush v0.3.0 uses a positional dataset path with options such as `--total-steps`, `--sh-degree`, `--export-every`, `--export-path` and `--export-name`. It has no `train` subcommand. The adapter is the authority for the emitted arguments; the [historical baseline](validation/engine-baseline.md) explains compatibility issues found during real runs.
+
+## Brush live-preview companion
+
+The stock CLI emits saved checkpoints. Continuous inspection of the unsaved training model uses `brush_live.exe`, built from the pinned Brush v0.3.0 source plus the files in [integrations/brush-live](../integrations/brush-live/).
+
+```powershell
+pnpm build:brush:live
+# Use cached source and Cargo dependencies:
+pnpm build:brush:live -Offline
+# Build beside a separately installed Brush executable:
+pnpm build:brush:live -OutputDirectory 'D:/Engines/Brush'
 ```
 
-Additional FFmpeg-specific methods:
+The default companion output directory is `.engines/brush-v0.3.0-windows-x64`. The script verifies the source archive and builds in isolated directories under `target/`; the generated upstream copy and executable are not repository source. Pack preparation includes the companion and its license.
 
-```rust
-impl FfmpegAdapter {
-    pub fn probe_metadata(&self, video_path: &Path) -> Result<VideoMetadata, EngineError>;
-    pub fn plan_extraction(&self, metadata: &VideoMetadata, preset: &Preset) -> ExtractionPlan;
-    pub fn parse_frame_progress(&self, line: &str) -> Option<f64>;
-    pub fn validate_frames(&self, frame_dir: &Path, plan: &ExtractionPlan) -> Result<FrameManifest, EngineError>;
-}
-```
+When the companion is beside the configured `brush_app.exe`, new training sessions select it automatically. An already running stock process is not replaced. Preview snapshots are demand-driven, acknowledged and session-scoped; they do not change recovery checkpoint intervals. See [Gaussian live preview](gaussian-live-preview.zh-CN.md) for the rendering protocol and limitations.
 
-## COLMAP Adapter (`splat-engine-colmap`)
+## Recovery and failure handling
 
-### Pipeline Stages
+- Completed stages validate their artifacts before reusing them. A partial output file alone does not establish successful completion.
+- Brush recovery loads a valid PLY checkpoint and iteration. This restores geometry, not optimizer state.
+- `training/result.json` must refer to a valid final model before training is treated as complete.
+- Missing metrics remain unknown. In particular, stock Brush CLI output does not provide training loss; the application does not invent one.
+- Cancellation is applied through the process runner and preserves valid checkpoints. Failure details go to diagnostics; user-facing errors retain stable codes and localized explanations.
 
-COLMAP is split into multiple independently executable stages:
-
-```
-colmap_database_init
-colmap_feature_extraction
-colmap_feature_matching
-colmap_mapping
-colmap_model_validation
-```
-
-### Matching Strategies
-
-| Source Type | Recommended Strategy     |
-| ----------- | ------------------------ |
-| Video frames| Sequential matching      |
-| Independent photos | Exhaustive matching |
-| Any         | Vocabulary tree matching (future) |
-
-### Integration Requirements
-
-- Never hard-code unverified CLI parameters in core code
-- Read bound version's help text at integration time
-- Maintain version compatibility records for each COLMAP version
-- Validate commands with fixed test data
-- Check registered image count
-- Check sparse model existence
-- Verify cameras, images, and points3D data integrity
-
-### Result Type
-
-```rust
-pub struct ColmapResult {
-    pub registered_images: usize,
-    pub total_images: usize,
-    pub point_count: usize,
-    pub model_path: PathBuf,
-}
-```
-
-### Failure Tips (User-Facing)
-
-```
-无法建立稳定的相机轨迹。
-
-已注册图像：4 / 180
-
-可能原因：
-1. 视频运动过快或存在模糊
-2. 场景纹理不足
-3. 相邻画面重叠不够
-4. 画面中存在大量动态物体
-
-建议：
-1. 使用更缓慢、连续的拍摄方式
-2. 降低抽帧间隔
-3. 确保目标从多个角度被拍摄
-4. 避免强反光、透明和纯色表面
-```
-
-## Brush Adapter (`splat-engine-brush`)
-
-### Design Principles
-
-- Do not assume Brush CLI parameters are stable long-term
-- Pin the Brush version used during development
-- Save bound version and checksum
-- Maintain Brush version compatibility matrix
-- Implement pre-training capability detection
-- Verify Brush can read current COLMAP output format
-- Build a unified parsing layer for training output
-- Never let the UI depend on raw Brush log format
-
-### Training Engine Trait
-
-```rust
-pub trait TrainingEngine {
-    fn detect(&self) -> Result<TrainingEngineInfo, EngineError>;
-    fn validate_dataset(&self, dataset: &Dataset) -> Result<(), EngineError>;
-    fn start_training(
-        &self,
-        request: TrainingRequest
-    ) -> Result<TrainingProcess, EngineError>;
-    fn find_checkpoints(
-        &self,
-        project: &Project
-    ) -> Result<Vec<Checkpoint>, EngineError>;
-    fn export(
-        &self,
-        request: ExportRequest
-    ) -> Result<ExportResult, EngineError>;
-}
-```
-
-### Adapter Responsibilities
-
-- Version detection
-- Dataset format compatibility check
-- Training configuration generation
-- Training process launch
-- Progress parsing
-- Output detection
-- Checkpoint scanning
-- Training cancellation
-- Training resume verification
-- Output model validation
+Use the opt-in [real-engine tests](development.md) after changing argument generation, output parsing, engine versions, cancellation or recovery. Record the actual engine/GPU/input context, and keep private media and raw reports out of Git.

@@ -5,7 +5,7 @@ import {
   MagnifyingGlass,
   Warning,
   XCircle,
-} from "@phosphor-icons/react";
+} from "../primitives/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAsyncResource, useRovingFocus } from "../../hooks";

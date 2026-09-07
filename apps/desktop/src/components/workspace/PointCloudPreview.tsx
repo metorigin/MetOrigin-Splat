@@ -1,4 +1,4 @@
-import { ArrowsOut, Eye, GridFour } from "@phosphor-icons/react";
+import { ArrowsOut, Eye, GridFour } from "../primitives/icons";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";

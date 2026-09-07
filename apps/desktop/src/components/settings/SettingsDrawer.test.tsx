@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { SettingsDrawer } from "./SettingsDrawer";
+import type { EngineInfo, ResourceMetrics } from "../../types";
 
 const settings = {
   engine_directory: null,
@@ -28,6 +29,33 @@ function loadedProps(onClose = vi.fn()) {
 }
 
 describe("SettingsDrawer", () => {
+  it("shows detected engine versions and live system information inside settings", () => {
+    const engine: EngineInfo = {
+      name: "ffmpeg", version: "8.1", actual_version: "8.1.2-essentials_build",
+      path: "D:\\engines\\ffmpeg.exe", available: true, source: "configured_or_path",
+      pack_version: null, integrity_status: "not_applicable", expected_version: null,
+      diagnostic: null, checked_at: "2026-09-06T12:00:00Z",
+    };
+    const metrics: ResourceMetrics = {
+      timestamp: "2026-09-06T12:00:00Z", operating_system: "Windows 11 Home China",
+      cpu_name: null, cpu_usage_percent: 10, memory_total_bytes: 32 * 1024 ** 3,
+      memory_used_bytes: 8 * 1024 ** 3, project_disk_available_bytes: 100 * 1024 ** 3, warnings: [],
+      disk_path: "D:\\MetOrigin",
+      gpu: { name: "NVIDIA GeForce RTX 5080 Laptop GPU", driver_version: null,
+        memory_total_bytes: 15.9 * 1024 ** 3, memory_used_bytes: 2.7 * 1024 ** 3,
+        utilization_percent: 3, temperature_celsius: null },
+    };
+    const view = render(<SettingsDrawer {...loadedProps()} engines={[engine]} metrics={metrics} version="0.1.0" />);
+    expect(screen.getByText("版本：8.1.2-essentials_build")).toBeVisible();
+    expect(screen.getByText("Windows 11 Home China")).toBeVisible();
+    expect(screen.getByText("v0.1.0")).toBeVisible();
+    expect(screen.getByText("2.7 / 15.9 GB")).toBeVisible();
+    expect(screen.getByText("3%")).toBeVisible();
+    view.rerender(<SettingsDrawer {...loadedProps()} engines={[engine]} metrics={{ ...metrics, gpu: { ...metrics.gpu!, utilization_percent: 0, memory_used_bytes: 0 } }} version="0.1.0" />);
+    expect(screen.getByText("0%")).toBeVisible();
+    expect(screen.getByText("0.0 / 15.9 GB")).toBeVisible();
+  });
+
   it("remains open with actionable feedback when settings totally fail to load", () => {
     const retry = vi.fn();
     render(

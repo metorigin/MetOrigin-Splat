@@ -1,5 +1,7 @@
 # Rust / Cargo
 target/
+# Isolated root build directories (for example target-codex-debug)
+/target-*/
 .codex-cargo-target/
 **/*.rs.bk
 

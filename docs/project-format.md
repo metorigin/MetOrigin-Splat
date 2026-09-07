@@ -1,120 +1,73 @@
-# Project Format
+# Project format
 
-## Overview
+A MetOrigin Splat project is a **directory** whose name ends in `.splat-project`, not a single archive. It stores the project description, copied source material, intermediate results and final output together.
 
-The project is the single source of truth in MetOrigin Splat. All business state is stored in a project directory on disk. The UI reads from and writes to the project through the core layer; it never maintains independent business state.
+The format is currently Alpha. [project.schema.json](../schemas/project.schema.json), [domain types](../crates/splat-domain/src/project.rs) and [project persistence](../crates/splat-project/src/) define the implemented format. Do not infer persisted field names from frontend labels or from the separate preset-file format.
 
-## Project Directory Structure
+## Directory layout
 
-```
+```text
 example.splat-project/
-├── project.json          # Core project metadata & stage state
-├── source/               # Original input media
-│   └── input.mp4
-├── frames/               # Extracted video frames
-├── processed/            # Preprocessed images
-├── colmap/               # COLMAP output
+├── project.json
+├── source/                   # Copied source video or images
+├── frames/
+│   └── frames.json           # Prepared-frame manifest
+├── processed/                # Images after preprocessing
+├── colmap/
 │   ├── database.db
-│   ├── sparse/
-│   └── logs/
-├── training/             # Training artifacts
-│   ├── checkpoints/
+│   ├── sparse/               # One or more reconstructed models
+│   └── result.json           # Selected model and reconstruction result
+├── training/
 │   ├── config/
-│   └── logs/
-├── output/               # Final deliverables
-│   ├── scene.ply
-│   └── manifest.json
-├── cache/                # Temporary/cached data
-└── logs/                 # Application and engine logs
+│   ├── dataset/              # Prepared training dataset
+│   ├── checkpoints/          # Saved PLY recovery checkpoints
+│   ├── live-preview/         # Temporary, session-scoped viewer snapshots
+│   └── result.json
+├── output/
+│   ├── scene.ply             # Final exported Gaussian model
+│   └── manifest.json         # Output and preview metadata
+├── cache/
+└── logs/
 ```
 
-## `project.json` Schema
+Files appear when the corresponding stage produces them. A newly created or interrupted project will not contain every file shown. Standard paths are centralized in [paths.rs](../crates/splat-project/src/paths.rs). Lock and temporary persistence files are managed by the application.
 
-### Fields
+## `project.json`
 
-| Field           | Type     | Description                                    |
-| --------------- | -------- | ---------------------------------------------- |
-| schemaVersion   | number   | Schema version for migration support           |
-| id              | UUID     | Unique project identifier (UUID v7)            |
-| name            | string   | Human-readable project name                    |
-| createdAt       | datetime | ISO 8601 creation timestamp                    |
-| updatedAt       | datetime | ISO 8601 last update timestamp                 |
-| source          | object   | Source media metadata                          |
-| preset          | string   | Training preset ID (fast / balanced / quality)  |
-| status          | string   | Project lifecycle status                       |
-| currentStage    | string   | ID of the currently active stage               |
-| stages          | object   | Map of stage ID → stage state                  |
+Persisted project fields use **snake_case**:
 
-### Example
+| Field | Meaning |
+| --- | --- |
+| `schema_version` | Schema version, currently `1` |
+| `id` | Project UUID |
+| `name` | Display name |
+| `created_at`, `updated_at` | Timestamps |
+| `source` | `null` or a tagged `Video` / `ImageFolder` source |
+| `settings` | Preset ID and project reconstruction settings |
+| `status` | Lowercase lifecycle status |
+| `current_stage` | Backend stage identifier or `null` |
+| `pipeline_state` | Persisted per-stage execution and recovery state |
 
-```json
-{
-  "schemaVersion": 1,
-  "id": "0194f6b3-9c35-7b21-92e8-bf0ef22d8a11",
-  "name": "museum-room",
-  "createdAt": "2026-07-12T12:00:00Z",
-  "updatedAt": "2026-07-12T12:30:00Z",
-  "source": {
-    "type": "video",
-    "originalPath": "source/input.mp4"
-  },
-  "preset": "balanced",
-  "status": "running",
-  "currentStage": "colmap_mapping",
-  "stages": {
-    "media_validation": {
-      "status": "completed",
-      "progress": 1.0
-    },
-    "frame_extraction": {
-      "status": "completed",
-      "progress": 1.0
-    },
-    "colmap_feature_extraction": {
-      "status": "completed",
-      "progress": 1.0
-    },
-    "colmap_matching": {
-      "status": "completed",
-      "progress": 1.0
-    },
-    "colmap_mapping": {
-      "status": "running",
-      "progress": 0.46
-    }
-  }
-}
-```
+The [valid example](../schemas/examples/project.valid.json) is a minimal schema fixture. Settings omitted from a minimal/older record are handled by the typed defaults and migration logic; use the application to write full project records.
 
-## Save Semantics
+Source tags use the field `type`, with values `Video` or `ImageFolder`. Video records include `filename` and `copied_to_project`. Image-folder records include `folder_name`, `image_count` and `copied_to_project`.
 
-- Stage completion triggers an atomic project state write
-- Use write-to-temp → flush → atomic-replace pattern
-- Never overwrite `project.json` in place (risk of corruption)
-- Always preserve the previous valid state until the new one is fully written
+Project statuses include `creating`, `starting`, `ready`, `running`, `pausing`, `paused`, `cancelling`, `cancelled`, `recovering`, `completed` and `failed`. Backend stage identifiers retain their enum spelling, such as `BrushTraining`. They are listed in [architecture](architecture.md).
 
-## Path Conventions
+The standalone JSON files under [presets](../presets/) have their own schema and camelCase parameter groups such as `frameExtraction`; those names should not be copied into `project.json` settings.
 
-- All internal project paths are relative to the project root
-- External source files may record: original absolute path, whether copied into project, and current accessibility
-- Never rely solely on absolute paths
+## Persistence and portability
 
-## Version Migration
+Critical project state is written atomically, and locks prevent simultaneous execution against a project. Opening an interrupted project validates recorded state against the actual artifacts before allowing recovery. Do not manually edit state or remove lock files while a task is running.
 
-- `schemaVersion` enables future format evolution
-- A migration mechanism must be prepared from the start
-- Future versions may add, remove, or restructure fields
-- Migration runs on project open if schema version differs
+Source material is copied into the project; the original input should remain unchanged. A project can contain large intermediates. Move or back up the whole directory with the task stopped, then reopen it through the application. Copying only `project.json` or `output/scene.ply` does not preserve the complete resumable project.
 
-## Project Manager (`splat-project`)
+Recent-project records and application settings are separate from the project directory. Removing a recent entry does not delete the project files; permanent deletion is a distinct confirmed operation.
 
-### Responsibilities
+## Checkpoints, previews and outputs
 
-- Create project (initialize directory structure + project.json)
-- Open existing project (validate, migrate if needed)
-- Validate project integrity
-- Save project (atomic write)
-- Project version migration
-- Path management
-- Cache cleanup
-- Disk usage statistics
+A saved PLY checkpoint supports geometry recovery with its iteration, but does not contain the full Brush optimizer state. A live snapshot is temporary viewer data and is not a recovery checkpoint. Completed training requires a valid final result, not merely an existing partial checkpoint.
+
+The final model is exported to `output/scene.ply`. The Gaussian viewer reads full model attributes; the sparse COLMAP viewer reads a different stage artifact. See [live-preview details](gaussian-live-preview.zh-CN.md) for accepted PLY formats and size limits.
+
+Project directories, media, generated PLY files and raw logs are local data and should not be committed. The repository ignores `.splat-project` directories; schema fixtures and intentionally licensed small test inputs are maintained separately.

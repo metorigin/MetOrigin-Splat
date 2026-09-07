@@ -120,6 +120,25 @@ impl BrushAdapter {
         &self.brush_path
     }
 
+    /// Only use a companion that explicitly implements our preview protocol.
+    pub fn live_preview_executable(&self) -> Option<PathBuf> {
+        if self.brush_version.contains("+metorigin-live.1") {
+            return Some(self.brush_path.clone());
+        }
+        let companion = self.brush_path.with_file_name(if cfg!(windows) {
+            "brush_live.exe"
+        } else {
+            "brush_live"
+        });
+        if !companion.is_file() {
+            return None;
+        }
+        Self::get_brush_version(&companion)
+            .ok()
+            .filter(|version| version.contains("+metorigin-live.1"))
+            .map(|_| companion)
+    }
+
     // ─── Preset Loading ─────────────────────────────────────────────────
 
     /// Load a training preset from a JSON file and generate a training config.

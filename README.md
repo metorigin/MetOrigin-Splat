@@ -1,122 +1,108 @@
 # MetOrigin Splat
 
-[简体中文](README.zh-CN.md)
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-> **Alpha / source preview:** the source code is available for development and review. No public binary release or supported offline installer is available yet.
+A Windows desktop application that turns a video or a folder of photos into a 3D Gaussian Splatting scene. FFmpeg prepares the frames, COLMAP reconstructs the cameras and sparse geometry, and Brush trains the model locally.
 
-MetOrigin Splat is a Windows-first desktop application for turning videos or photos into Gaussian Splatting scenes with local compute. User media is processed locally by the application and is not uploaded to a cloud service.
+**Status: Alpha / v0.1.0.** The core workflow is implemented; Windows installers are for internal validation. There is no supported public binary release yet.
 
-## Project status
+## What you can do
 
-The core desktop workflow, project model, external-process orchestration, engine adapters, recovery logic, preview, and export path are implemented and covered by automated tests. The project is still pre-release software:
+- Create projects from MP4, MOV, AVI, MKV, or folders containing JPG, JPEG and PNG images.
+- Inspect media and hardware before choosing Fast, Balanced or High Quality reconstruction.
+- Monitor the four processing phases, inspect stage outputs, pause or cancel a task, and resume from validated recovery data.
+- View sparse COLMAP geometry and full Gaussian models, including updates during training with the companion Brush engine.
+- Open recent projects, inspect quality metrics and resource usage, and export PLY results.
+- Configure engines, storage, performance and light/dark/system appearance in one settings drawer.
 
-- Windows 10/11 x64 is the only release target currently under validation.
-- A compatible NVIDIA GPU is expected for Brush training.
-- FFmpeg, COLMAP, and Brush compatibility is pinned and tested against a limited hardware and dataset matrix.
-- Real-engine integration tests require local engines, test media, substantial disk space, and a compatible GPU.
-- The full offline installer is internal-only until third-party redistribution obligations are complete.
+Media processing runs on your computer. Engine preparation and dependency installation may download software; they do not upload your project media.
 
-Do not rely on the current project format or command-line behavior as a stable public API.
+## Run locally
 
-## Pipeline
+Use Windows 10/11 x64 with:
 
-```text
-Video / Images
-    ↓
-Media Validation
-    ↓
-FFmpeg Frame Extraction
-    ↓
-Image Preprocessing
-    ↓
-COLMAP Feature Extraction / Matching / Sparse Reconstruction
-    ↓
-Brush Local GPU Training
-    ↓
-Checkpoint / PLY
-    ↓
-Preview & Export
-```
+- Rust **1.97.0**, including `x86_64-pc-windows-msvc`
+- Node.js **22** and pnpm **11.12.0**
+- Visual Studio Build Tools: **Desktop development with C++**, plus the Windows SDK
+- Microsoft Edge WebView2 Runtime
+- A compatible NVIDIA GPU for the currently validated reconstruction path
 
-## Current scope
-
-| Area | Current scope |
-| --- | --- |
-| OS | Windows 10/11 x64 |
-| Input | MP4, MOV, JPG, PNG |
-| Scenes | Static objects and static indoor/outdoor scenes |
-| SfM | Local COLMAP |
-| Trainer | Brush |
-| GPU | NVIDIA, subject to Brush compatibility |
-| Output | PLY, project files, logs |
-| UI | Tauri, React, TypeScript |
-| Backend | Rust |
-| Privacy | Local processing; no user-media upload |
-
-Cloud training, accounts, cloud sync, public sharing, dynamic 3DGS, multi-GPU training, mobile clients, a full Gaussian editor, and official macOS/Linux releases are outside the current scope.
-
-## Development quick start
-
-### Prerequisites
-
-- Rust 1.97.0 with the `x86_64-pc-windows-msvc` target
-- Node.js 22
-- pnpm 11.12.0
-- Windows SDK and Visual Studio Build Tools with the Desktop development with C++ workload
-- Tauri prerequisites for Windows
+From the repository root:
 
 ```powershell
-git clone https://github.com/metorigin/MetOrigin-Splat.git
-Set-Location MetOrigin-Splat
-
 pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
-Building the application does not bundle public redistributable copies of FFmpeg, COLMAP, or Brush. Running the complete 3D pipeline requires compatible local engine installations. See the [development guide](docs/development.md), [engine integration guide](docs/engine-integration.md), and [Windows packaging boundary](packaging/windows-x64/README.md).
+`pnpm tauri dev` starts both the desktop application and its Vite server. Do not start another `pnpm dev` on port 1420 at the same time. Restart this command after Rust/Tauri changes; frontend changes support hot reload.
 
-## Validation
+### Prepare the reconstruction engines
+
+A source checkout does not contain engine executables. Configure existing installations through **设置与引擎** (Settings & Engines), or prepare the pinned local engine pack:
+
+```powershell
+pnpm prepare:windows:engines
+pnpm verify:windows:engines
+```
+
+The generated engine directory is `target/distribution/windows-x64/engines`; select it in Settings & Engines for local use. The pack includes FFmpeg/FFprobe, COLMAP and Brush. Versions and checksums are defined in [engine-lock.json](packaging/windows-x64/engine-lock.json). Building the companion engine may take time on the first run.
+
+For an existing local Brush installation, the companion can also be built separately:
+
+```powershell
+pnpm build:brush:live
+```
+
+The default output is `.engines/brush-v0.3.0-windows-x64/brush_live.exe`. Place it beside the configured `brush_app.exe`; new training sessions use it automatically. Stock Brush can still provide saved checkpoints, but live updates of unsaved training models require this companion. See [engine setup](docs/engine-integration.md) and [live preview details (中文)](docs/gaussian-live-preview.zh-CN.md).
+
+### Preview only the interface
+
+```powershell
+pnpm dev
+```
+
+Open `http://localhost:1420/?ui-preview` for the development-only sample-data view. This runs in a browser and cannot validate native file dialogs, real reconstruction or live GPU rendering.
+
+## Typical workflow
+
+1. Select **新建项目**, choose a video or browse an image in the folder to import. Image import includes the selected image's entire parent folder, including subfolders.
+2. Review media analysis and preflight checks, then select a reconstruction preset.
+3. Confirm the project name and location, then choose to create only or create and start reconstruction.
+4. Follow **预处理 → 特征提取 → 训练重建 → 质量评估**. Expand a phase to inspect individual stages and their outputs.
+5. Inspect the Gaussian model, quality report and checkpoints; open the output directory to use `output/scene.ply`.
+
+One reconstruction task can run at a time. You can browse other projects while it runs. A PLY checkpoint restores model geometry, not the complete optimizer state. Live preview uses model snapshots between processes, so its update rate depends on training speed and model size.
+
+## Development checks
 
 ```powershell
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm build
 cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-targets
 ```
 
-Real-engine tests are ignored by default. Their requirements and commands are documented in [the technical spike](docs/plans/technical-spike.md).
+Real-engine tests require explicit opt-in, local media and suitable hardware. See [development and validation](docs/development.md) for commands and build outputs.
 
-## Repository structure
+## Repository guide
 
-```text
-MetOrigin-Splat/
-├── apps/desktop/        # Tauri desktop application and frontend tests
-├── crates/              # Rust workspace crates and integration tests
-├── schemas/             # JSON Schema definitions and examples
-├── presets/             # Training presets
-├── docs/                # Architecture, development, and project documentation
-├── packaging/           # Internal packaging definitions and license gates
-└── scripts/             # Build and packaging utilities
-```
+| Path | Contents |
+| --- | --- |
+| `apps/desktop/` | React/TypeScript UI, Tauri commands and frontend tests |
+| `crates/` | Rust domain, project storage, process runner, pipeline, hardware and engine adapters |
+| `integrations/brush-live/` | Companion source for training snapshots |
+| `presets/`, `schemas/` | Reconstruction parameters and persisted-data schemas |
+| `scripts/`, `packaging/` | Validation, Windows builds, pinned engines and third-party notices |
+| `docs/` | Current usage, implementation and release guides |
+| `specs/` | Historical design contracts and acceptance protocols |
 
-## Documentation
+Start with the [documentation index](docs/README.md), [user guide (中文)](docs/user-operation-flow.zh-CN.md), [architecture](docs/architecture.md), or [troubleshooting](docs/troubleshooting.md). Contribution and vulnerability reporting instructions are in [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
-- [Architecture](docs/architecture.md)
-- [Development guide](docs/development.md)
-- [Engine integration](docs/engine-integration.md)
-- [Project format](docs/project-format.md)
-- [Release process](docs/release-process.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
+## License and distribution
 
-## Contributing
+Application source is available under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option. Third-party engines and dependencies retain their own licenses.
 
-Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a change. Security vulnerabilities must be reported privately according to [SECURITY.md](SECURITY.md).
-
-## License
-
-MetOrigin Splat source code is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
-
-Third-party programs, model weights, icons, and other dependencies retain their own licenses. The project license does not grant permission to redistribute the internal full engine pack; consult [the packaging notices](packaging/windows-x64/THIRD_PARTY_NOTICES.template.md) before distributing binaries.
+Source availability does not authorize redistribution of the bundled engine pack. See the [release process](docs/release-process.md) and [Windows packaging notices](packaging/windows-x64/THIRD_PARTY_NOTICES.template.md) for the current binary release gates.

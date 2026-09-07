@@ -1,34 +1,35 @@
 import {
+  ArrowClockwise,
   CaretDown,
+  Export,
   FolderOpen,
   Pause,
   Play,
-  SlidersHorizontal,
   StopCircle,
   Trash,
   XCircle,
-} from "@phosphor-icons/react";
+} from "../primitives/icons";
 import { useId, useState } from "react";
 
 import { useMenuFocus } from "../../hooks";
 import { getProjectStatusLabel, getStageLabel } from "../../localization";
 import type { PipelineConflictInfo, PipelineSnapshot, ProjectInfo, TaskProgress } from "../../types";
-import { PipelineConflictNotice } from "./PipelineConflictNotice";
+import appIconUrl from "../../../src-tauri/icons/app-icon.svg";
 
 interface TitleRunBarProps {
   project: ProjectInfo | null;
   pipelineSnapshot: PipelineSnapshot | null;
   onStart: () => void;
+  onHome?: () => void;
   onPause: () => void;
   onResume: () => void;
   onCancel: () => void;
-  onOpenSettings: () => void;
   onRevealProject: () => void;
   onRemoveProject: () => void;
   onDeleteProject: () => void;
+  onViewActivity?: () => void;
   pipelineConflict?: PipelineConflictInfo | null;
   onBlockedAttempt?: () => void;
-  onReturnToActiveProject?: () => void;
   taskProgress?: TaskProgress | null;
   updatedAt?: number | null;
 }
@@ -37,16 +38,16 @@ export function TitleRunBar({
   project,
   pipelineSnapshot,
   onStart,
+  onHome = () => undefined,
   onPause,
   onResume,
   onCancel,
-  onOpenSettings,
   onRevealProject,
   onRemoveProject,
   onDeleteProject,
+  onViewActivity = () => undefined,
   pipelineConflict = null,
   onBlockedAttempt = () => undefined,
-  onReturnToActiveProject = () => undefined,
   taskProgress = null,
   updatedAt = null,
 }: TitleRunBarProps) {
@@ -58,11 +59,14 @@ export function TitleRunBar({
   const isRunning = ["starting", "running", "pausing", "cancelling", "recovering"].includes(status);
   const isControlling = ["starting", "pausing", "cancelling", "recovering"].includes(status);
   const canResume = status === "paused" || status === "cancelled";
+  const isFailed = status === "failed";
+  const isComplete = status === "completed";
+  const statusLabel = status === "running" ? "处理中" : status === "failed" ? "已阻塞" : status === "ready" ? "等待中" : getProjectStatusLabel(status);
   const menu = useMenuFocus({
     open: menuOpen,
     onOpenChange: setMenuOpen,
-    itemCount: 4,
-    isDisabled: (index) => isRunning && index >= 2,
+    itemCount: 3,
+    isDisabled: (index) => isRunning && index >= 1,
   });
   if (!project) return null;
   const progress = pipelineSnapshot && Number.isFinite(pipelineSnapshot.state.overall_progress)
@@ -95,12 +99,18 @@ export function TitleRunBar({
   return (
     <header className="title-run-bar">
       <div className="title-row">
+        <button type="button" className="workspace-brand-button" onClick={onHome} title="返回项目中心">
+          <img src={appIconUrl} alt="" />
+          <span>MetOrigin Splat</span>
+        </button>
         <div className="project-heading">
-          <h1>{project.name}</h1>
+          <h1 aria-label={project.name}>{project.name}</h1>
+          <p>{project.path}</p>
         </div>
 
         <div className="run-actions">
-          {isRunning && (
+          <span className={`status-pill status-${status}`}><i />{statusLabel}</span>
+          {(status === "running" || status === "cancelling") && (
             <button
               type="button"
               className="button button-danger"
@@ -108,20 +118,22 @@ export function TitleRunBar({
               disabled={isControlling}
             >
               <StopCircle size={17} />
-              {status === "cancelling" ? "正在取消…" : "取消（安全）"}
+              {status === "cancelling" ? "正在取消…" : "取消任务"}
             </button>
           )}
+          {isFailed ? <button type="button" className="button button-secondary" onClick={onViewActivity}>查看日志</button> : null}
           <button
             type="button"
-            className="button button-secondary"
-            onClick={handleRunAction}
+            className={`button ${isFailed || canResume ? "button-primary" : "button-secondary"}`}
+            onClick={isComplete ? onRevealProject : handleRunAction}
             disabled={isControlling}
-            aria-disabled={pipelineConflict ? true : undefined}
-            aria-describedby={pipelineConflict ? conflictDescriptionId : undefined}
-            title={isRunning ? "安全暂停并保留有效产物" : canResume ? "校验产物后继续重建" : "开始重建"}
+            aria-disabled={pipelineConflict && !isComplete ? true : undefined}
+            aria-describedby={pipelineConflict && !isComplete ? conflictDescriptionId : undefined}
+            title={isComplete ? "打开项目文件目录" : isFailed ? "重新启动任务并校验现有产物" : isRunning ? "安全暂停并保留有效产物" : canResume ? "校验产物后继续重建" : "开始重建"}
+            aria-label={isRunning ? "暂停" : undefined}
           >
-            {isRunning ? <Pause size={17} weight="fill" /> : <Play size={17} weight="fill" />}
-            {isControlling ? "正在处理…" : isRunning ? "暂停" : canResume ? "继续" : "开始重建"}
+            {isComplete ? <Export size={17} /> : isFailed ? <ArrowClockwise size={17} /> : isRunning ? <Pause size={17} weight="fill" /> : <Play size={17} weight="fill" />}
+            {isControlling ? "正在处理…" : isComplete ? "查看项目文件" : isFailed ? "重试任务" : isRunning ? "暂停任务" : canResume ? "继续" : "开始重建"}
           </button>
           <div className="project-action-menu">
             <button
@@ -143,14 +155,11 @@ export function TitleRunBar({
                 <button type="button" {...menu.getItemProps(0)} onClick={() => { setMenuOpen(false); onRevealProject(); }}>
                   <FolderOpen size={15} /> 在资源管理器中显示
                 </button>
-                <button type="button" {...menu.getItemProps(1)} onClick={() => { setMenuOpen(false); onOpenSettings(); }}>
-                  <SlidersHorizontal size={15} /> 设置
-                </button>
                 <span className="action-menu-separator" />
-                <button type="button" {...menu.getItemProps(2)} disabled={isRunning} title={isRunning ? "请先安全取消重建" : undefined} onClick={() => { setMenuOpen(false); onRemoveProject(); }}>
+                <button type="button" {...menu.getItemProps(1)} disabled={isRunning} title={isRunning ? "请先安全取消重建" : undefined} onClick={() => { setMenuOpen(false); onRemoveProject(); }}>
                   <XCircle size={15} /> 从最近项目移除
                 </button>
-                <button type="button" {...menu.getItemProps(3)} className="is-danger" disabled={isRunning} title={isRunning ? "请先安全取消重建" : undefined} onClick={() => { setMenuOpen(false); onDeleteProject(); }}>
+                <button type="button" {...menu.getItemProps(2)} className="is-danger" disabled={isRunning} title={isRunning ? "请先安全取消重建" : undefined} onClick={() => { setMenuOpen(false); onDeleteProject(); }}>
                   <Trash size={15} /> 永久删除项目
                 </button>
               </div>
@@ -188,13 +197,10 @@ export function TitleRunBar({
           <strong>{updatedAt ? new Date(updatedAt).toLocaleTimeString("zh-CN", { hour12: false }) : "等待活动"}</strong>
         </div>
       </div>
-      {pipelineConflict && (
-        <PipelineConflictNotice
-          id={conflictDescriptionId}
-          conflict={pipelineConflict}
-          assertive={conflictAssertive}
-          onReturn={onReturnToActiveProject}
-        />
+      {pipelineConflict && !isComplete && (
+        <p id={conflictDescriptionId} className={conflictAssertive ? "run-conflict-feedback" : "sr-only"} role={conflictAssertive ? "alert" : undefined}>
+          当前有重建任务尚未结束，请先暂停或结束任务后再开始新的重建。
+        </p>
       )}
     </header>
   );

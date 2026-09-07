@@ -81,7 +81,9 @@ vi.mock("./pages", async () => {
       const { dispatch } = useAppContext();
       return (
         <div data-testid="page">
+          <h1>创建新项目</h1>
           创建向导内容
+          <button type="button" onClick={() => dispatch({ type: "NAVIGATE", page: { type: "home" } })}>退出创建</button>
           <button
             type="button"
             onClick={() => {
@@ -155,7 +157,9 @@ describe("App workspace contexts", () => {
     expect(await screen.findByRole("heading", { name: "创建新项目" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "开始重建" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "返回活动项目" }));
+    expect(screen.queryByRole("button", { name: "返回活动项目" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "退出创建" }));
+    fireEvent.click(await screen.findByRole("button", { name: projectA.name }));
     expect(await screen.findByRole("heading", { name: projectA.name })).toBeInTheDocument();
     expect(screen.getByTestId("page")).toHaveTextContent("project-a project-a");
   });
@@ -167,7 +171,7 @@ describe("App workspace contexts", () => {
     const projectBButtons = await screen.findAllByRole("button", { name: new RegExp(projectB.name) });
     fireEvent.click(projectBButtons.find((button) => !button.getAttribute("aria-label")) ?? projectBButtons[0]);
     expect(await screen.findByRole("heading", { name: projectB.name })).toBeInTheDocument();
-    expect(screen.getByText(/活动项目 A.*正在运行/)).toBeInTheDocument();
+    expect(screen.queryByText(/活动项目 A.*正在运行/)).not.toBeInTheDocument();
     expect(screen.getByTestId("page")).toHaveTextContent("project-b project-b");
 
     const start = screen.getByRole("button", { name: "开始重建" });
@@ -176,11 +180,12 @@ describe("App workspace contexts", () => {
     expect(api.startPipeline).not.toHaveBeenCalled();
     expect(start).toHaveFocus();
 
-    fireEvent.click(screen.getByRole("button", { name: "返回活动项目" }));
+    expect(screen.queryByRole("button", { name: "返回活动项目" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: projectA.name }));
     await waitFor(() => expect(screen.getByRole("heading", { name: projectA.name })).toBeInTheDocument());
   });
 
-  it("keeps newly created B valid but unqueued and provides one-step return to active A", async () => {
+  it("keeps newly created B valid but unqueued and allows navigation through recent projects", async () => {
     render(<App />);
     await screen.findByRole("heading", { name: "项目中心" });
     fireEvent.click(screen.getAllByRole("button", { name: /新建项目/ })[0]);
@@ -190,7 +195,8 @@ describe("App workspace contexts", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("未启动，也未进入队列");
     expect(api.startPipeline).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "返回活动项目" }));
+    expect(screen.queryByRole("button", { name: "返回活动项目" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: projectA.name }));
     await waitFor(() => expect(screen.getByRole("heading", { name: projectA.name })).toBeInTheDocument());
   });
 
@@ -210,7 +216,7 @@ describe("App workspace contexts", () => {
     fireEvent.click(start);
 
     await waitFor(() => expect(api.startPipeline).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText(/活动项目 A.*正在运行/)).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("当前有重建任务尚未结束");
     expect(start).toHaveFocus();
   });
 

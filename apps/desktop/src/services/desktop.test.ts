@@ -1,10 +1,40 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { invoke } from "@tauri-apps/api/core";
-import { DesktopCommandError, desktopApi } from "./desktop";
+import { open } from "@tauri-apps/plugin-dialog";
+import { DesktopCommandError, desktopApi, selectImageDirectory } from "./desktop";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn(), open: vi.fn() }));
+
+describe("image folder selection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each([
+    ["D:\\datasets\\自行车\\images\\DSC06134.JPG", "D:\\datasets\\自行车\\images"],
+    ["D:/captures/frame.png", "D:/captures"],
+    ["C:\\image.jpg", "C:\\"],
+    ["/image.jpeg", "/"],
+    ["\\\\server\\share\\image.JPG", "\\\\server\\share"],
+  ])("browses images and imports their containing folder: %s", async (image, folder) => {
+    vi.mocked(open).mockResolvedValue(image);
+    await expect(selectImageDirectory()).resolves.toBe(folder);
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({
+      directory: false,
+      multiple: false,
+      filters: [{ name: "图片文件", extensions: ["jpg", "jpeg", "png"] }],
+    }));
+  });
+
+  it("keeps the existing source when the image browser is cancelled", async () => {
+    vi.mocked(open).mockResolvedValue(null);
+    await expect(selectImageDirectory()).resolves.toBeNull();
+  });
+});
 
 describe("desktop invoke boundary", () => {
   beforeEach(() => vi.clearAllMocks());

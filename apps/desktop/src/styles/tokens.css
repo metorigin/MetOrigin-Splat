@@ -1,0 +1,57 @@
+/* Buzz's semantic surface system, adapted for Splat's desktop workspace. */
+:root {
+  font-family: "Inter Variable", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  font-size: 16px;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  --bg-canvas: #eeeee8;
+  --bg-sidebar: #f4f4ed;
+  --bg-panel: #ffffff;
+  --bg-elevated: #f2f3f5;
+  --bg-input: #ffffff;
+  --border-subtle: #e7e8ec;
+  --border-strong: #d3d6dc;
+  --text-primary: #262931;
+  --text-secondary: #5d6470;
+  --text-muted: #6d7480;
+  --accent-primary: #2563eb;
+  --accent-primary-hover: #1d4ed8;
+  --accent-active: #2563eb;
+  --accent-soft: #edf3ff;
+  --state-success: #207650;
+  --state-warning: #96620a;
+  --state-danger: #c03646;
+  --success-soft: #edf7f0;
+  --warning-soft: #fff6df;
+  --danger-soft: #fff0f0;
+  --shadow-popover: 0 12px 40px #252d4318, 0 2px 8px #252d430b;
+  --shadow-modal: 0 24px 100px #10182830;
+  --sidebar-width: 15rem;
+  --status-height: 2rem;
+  --radius: .625rem;
+}
+
+:root[data-theme="dark"] {
+  --bg-canvas: #17191f;
+  --bg-sidebar: #1e2027;
+  --bg-panel: #24262e;
+  --bg-elevated: #2e313c;
+  --bg-input: #20222a;
+  --border-subtle: #353842;
+  --border-strong: #4a4f5b;
+  --text-primary: #e6e8f0;
+  --text-secondary: #b8bdcc;
+  --text-muted: #a1a8b9;
+  --accent-primary: #6193f5;
+  --accent-primary-hover: #79a6ff;
+  --accent-active: #8bb4ff;
+  --accent-soft: #293851;
+  --state-success: #8bd5ae;
+  --state-warning: #efc478;
+  --state-danger: #f198a6;
+  --success-soft: #243b32;
+  --warning-soft: #3e3627;
+  --danger-soft: #442c34;
+  --shadow-popover: 0 12px 40px #0005;
+  --shadow-modal: 0 24px 100px #0008;
+}

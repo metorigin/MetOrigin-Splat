@@ -1,4 +1,4 @@
-import { Trash, WarningCircle, X } from "@phosphor-icons/react";
+import { Trash, WarningCircle, X } from "../primitives/icons";
 import { useRef } from "react";
 
 import type { ProjectInfo } from "../../types";

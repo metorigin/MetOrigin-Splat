@@ -10,7 +10,7 @@ import {
   Trash,
   WarningCircle,
   XCircle,
-} from "@phosphor-icons/react";
+} from "../primitives/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { formatRelativeTime, getProjectStatusLabel, getStageLabel } from "../../localization";

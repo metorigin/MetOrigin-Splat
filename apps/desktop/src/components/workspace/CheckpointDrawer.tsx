@@ -1,4 +1,4 @@
-import { ArrowCounterClockwise, Eye, FolderOpen, Trash, X } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, Eye, FolderOpen, Trash, X } from "../primitives/icons";
 import { useRef } from "react";
 
 import type { CheckpointSummary } from "../../types";

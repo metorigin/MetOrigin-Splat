@@ -21,6 +21,10 @@ import type {
   EventPage,
   FramePreview,
   PlyPreview,
+  GaussianPreviewSource,
+  GaussianCamera,
+  LivePreviewMode,
+  LivePreviewStatus,
   SparsePreviewPack,
   AppSettings,
   DiagnosticExport,
@@ -34,6 +38,9 @@ import type {
   WorkspaceActionRequest,
 } from "../types";
 import { normalizeCommandError } from "./errors";
+import { isUiPreviewMode, resolveUiPreviewCommand } from "./uiPreview";
+
+export { isUiPreviewMode } from "./uiPreview";
 
 export class DesktopCommandError extends Error {
   readonly code: string;
@@ -53,6 +60,9 @@ export async function invokeDesktopCommand<T>(
   args?: Record<string, unknown>,
 ): Promise<T> {
   try {
+    if (isUiPreviewMode()) {
+      return resolveUiPreviewCommand(command, args) as T;
+    }
     return await tauriInvoke<T>(command, args);
   } catch (error) {
     throw error instanceof DesktopCommandError
@@ -90,6 +100,7 @@ function ensureDesktopRuntime(): void {
 }
 
 export async function selectVideoFile(): Promise<string | null> {
+  if (isUiPreviewMode()) return "D:\\Captures\\courtyard_walkthrough.mp4";
   ensureDesktopRuntime();
   return open({
     title: "选择重建视频",
@@ -105,13 +116,22 @@ export async function selectVideoFile(): Promise<string | null> {
 }
 
 export async function selectImageDirectory(): Promise<string | null> {
+  if (isUiPreviewMode()) return "D:\\Captures\\courtyard_images";
   ensureDesktopRuntime();
-  return open({
-    title: "选择图片文件夹",
+  // Windows' folder-only dialog hides files. Browse images, then use the
+  // selected image's parent as the existing recursive folder import source.
+  const imagePath = await open({
+    title: "选择任意一张图片，导入其所在文件夹",
     multiple: false,
-    directory: true,
-    recursive: true,
+    directory: false,
+    filters: [{ name: "图片文件", extensions: ["jpg", "jpeg", "png"] }],
   });
+  if (!imagePath) return null;
+  const separator = Math.max(imagePath.lastIndexOf("/"), imagePath.lastIndexOf("\\"));
+  if (separator < 0) throw new Error("无法确定图片所在文件夹，请重新选择图片。");
+  // Preserve filesystem roots (C:\\, /) and UNC share paths.
+  const end = separator === 2 && imagePath[1] === ":" ? 3 : Math.max(separator, 1);
+  return imagePath.slice(0, end);
 }
 
 export async function selectProjectDirectory(): Promise<string | null> {
@@ -172,26 +192,6 @@ export async function confirmRerunStage(stageLabel: string): Promise<boolean> {
       cancelLabel: "取消",
     },
   );
-}
-
-export async function confirmDiscardProjectDraft(): Promise<boolean> {
-  ensureDesktopRuntime();
-  return confirm("尚未提交的素材选择、方案和项目名称将会丢失。是否退出创建向导？", {
-    title: "退出项目创建",
-    kind: "warning",
-    okLabel: "退出并放弃",
-    cancelLabel: "继续编辑",
-  });
-}
-
-export async function confirmCancelProjectCreationExit(): Promise<boolean> {
-  ensureDesktopRuntime();
-  return confirm("素材仍在复制。将先请求安全取消并清理未完成目录，确认取消吗？", {
-    title: "取消项目创建",
-    kind: "warning",
-    okLabel: "安全取消",
-    cancelLabel: "继续创建",
-  });
 }
 
 export async function confirmRemoveRecentProject(projectName: string): Promise<boolean> {
@@ -281,6 +281,14 @@ export const desktopApi = {
     invoke<SparsePreviewPack>("get_sparse_preview_pack", { projectPath }),
   inspectPly: (projectPath: string, relativePath?: string) =>
     invoke<PlyPreview>("inspect_ply", { projectPath, relativePath: relativePath ?? null }),
+  getGaussianPreview: (projectId: string, projectPath: string, relativePath?: string | null) =>
+    invoke<GaussianPreviewSource>("get_gaussian_preview", { projectId, projectPath, relativePath: relativePath ?? null }),
+  getGaussianCamera: (projectId: string, projectPath: string) =>
+    invoke<GaussianCamera | null>("get_gaussian_camera", { projectId, projectPath }),
+  readGaussianPly: (projectId: string, projectPath: string, source: GaussianPreviewSource) =>
+    invoke<ArrayBuffer>("read_gaussian_ply", { projectId, projectPath, relativePath: source.relative_path, expectedRevision: source.revision }),
+  pollLivePreview: (projectId: string, projectPath: string, mode: LivePreviewMode, afterRevision: number, sessionId: string | null) =>
+    invoke<LivePreviewStatus>("poll_live_preview", { projectId, projectPath, mode, afterRevision, sessionId }),
   getAppSettings: () => invoke<AppSettings>("get_app_settings"),
   saveAppSettings: (settings: AppSettings) => invoke<AppSettings>("save_app_settings", { settings }),
   setEngineDirectory: (path: string) => invoke<AppSettings>("set_engine_directory", { path }),

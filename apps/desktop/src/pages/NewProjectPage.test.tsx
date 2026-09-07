@@ -1,11 +1,9 @@
 import { useEffect } from "react";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppProvider, useAppContext } from "../context";
 import {
-  confirmCancelProjectCreationExit,
-  confirmDiscardProjectDraft,
   desktopApi,
   selectImageDirectory,
   selectProjectRoot,
@@ -28,8 +26,6 @@ vi.mock("../services/desktop", () => ({
   selectVideoFile: vi.fn().mockResolvedValue("D:\\dataset\\bike.mp4"),
   selectImageDirectory: vi.fn(),
   selectProjectRoot: vi.fn(),
-  confirmDiscardProjectDraft: vi.fn(),
-  confirmCancelProjectCreationExit: vi.fn(),
   desktopApi: {
     analyzeMedia: (...args: unknown[]) => analyzeMedia(...args),
     getImagePreviews: vi.fn(),
@@ -87,8 +83,6 @@ describe("NewProjectPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     eventListeners.clear();
-    vi.mocked(confirmDiscardProjectDraft).mockResolvedValue(true);
-    vi.mocked(confirmCancelProjectCreationExit).mockResolvedValue(true);
     vi.mocked(desktopApi.cancelProjectCreation).mockResolvedValue(undefined);
     analyzeMedia.mockResolvedValue({
       source_kind: "video",
@@ -380,13 +374,14 @@ describe("NewProjectPage", () => {
     expect(screen.getByRole("button", { name: /下一步/ })).toBeDisabled();
   });
 
-  it("invalidates the old preflight when the quality plan changes", async () => {
+  it("automatically checks each newly selected preset and enables continue after success", async () => {
     const base = await analyzeMedia("D:\\dataset\\bike.mp4");
     analyzeMedia.mockClear();
     analyzeMedia.mockResolvedValue({
       ...base,
       preset_estimates: [
         ...base.preset_estimates,
+        { ...base.preset_estimates[0], id: "balanced", name: "Balanced", description: "Default preset with good quality", iterations: 7000 },
         { ...base.preset_estimates[0], id: "quality", name: "Quality", iterations: 30_000 },
       ],
     });
@@ -396,30 +391,120 @@ describe("NewProjectPage", () => {
     await screen.findByText("3840 × 2160");
     fireEvent.click(screen.getByRole("button", { name: /下一步/ }));
     await waitFor(() => expect(desktopApi.preflightProject).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole("button", { name: /高质量/ }));
-
-    expect(screen.getByRole("button", { name: /下一步/ })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "重新检查" }));
-    await waitFor(() => expect(desktopApi.preflightProject).toHaveBeenLastCalledWith({
-      sourcePath: "D:\\dataset\\bike.mp4",
-      projectRoot: null,
-      preset: "quality",
-    }));
+    const allowed = await desktopApi.preflightProject({ sourcePath: base.source_path, projectRoot: null, preset: "fast" });
+    expect(screen.getByText("兼顾重建质量与处理时间，适合大多数场景。")).toBeVisible();
+    expect(screen.queryByText("Default preset with good quality")).not.toBeInTheDocument();
+    for (const [id, label] of [["balanced", "均衡"], ["quality", "高质量"], ["fast", "快速"]]) {
+      const pending = deferred<ProjectPreflight>();
+      vi.mocked(desktopApi.preflightProject).mockReturnValueOnce(pending.promise);
+      fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${label}`) }));
+      expect(desktopApi.preflightProject).toHaveBeenLastCalledWith({ sourcePath: base.source_path, projectRoot: null, preset: id });
+      expect(screen.getByRole("button", { name: /下一步/ })).toBeDisabled();
+      expect(screen.getByText(/正在按当前预设检查/)).toBeVisible();
+      await act(async () => pending.resolve(allowed));
+      expect(screen.getByRole("button", { name: /下一步/ })).toBeEnabled();
+    }
+    fireEvent.click(screen.getByRole("button", { name: /下一步/ }));
+    expect(await screen.findByRole("heading", { name: "确认创建" })).toBeVisible();
   });
 
-  it("confirms before discarding a dirty wizard draft", async () => {
-    vi.mocked(confirmDiscardProjectDraft).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+  it.each([true, false])("ignores a stale preset result after the latest check finishes (latest allowed: %s)", async (latestAllowed) => {
+    const base = await analyzeMedia("D:\\dataset\\bike.mp4");
+    const allowed = await desktopApi.preflightProject({ sourcePath: base.source_path, projectRoot: null, preset: "fast" });
+    analyzeMedia.mockResolvedValue({ ...base, preset_estimates: [
+      ...base.preset_estimates,
+      { ...base.preset_estimates[0], id: "balanced" },
+      { ...base.preset_estimates[0], id: "quality" },
+    ] });
+    render(<AppProvider><NewProjectPage /></AppProvider>);
+    fireEvent.click(screen.getByRole("button", { name: /选择视频/ }));
+    await screen.findByText("3840 × 2160");
+    fireEvent.click(screen.getByRole("button", { name: /下一步/ }));
+    await screen.findByRole("heading", { name: "重建预设" });
+    const old = deferred<ProjectPreflight>();
+    const latest = deferred<ProjectPreflight>();
+    vi.mocked(desktopApi.preflightProject).mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
+    fireEvent.click(screen.getByRole("button", { name: /^高质量/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^均衡/ }));
+    await act(async () => latest.resolve({ ...allowed, can_continue: latestAllowed, blockers: latestAllowed ? [] : ["当前预设磁盘空间不足"] }));
+    await act(async () => { if (latestAllowed) old.reject(new Error("过时请求失败")); else old.resolve(allowed); });
+    const next = screen.getByRole("button", { name: /下一步/ });
+    if (latestAllowed) expect(next).toBeEnabled();
+    else {
+      expect(next).toBeDisabled();
+      expect(screen.getByText("当前预设磁盘空间不足")).toBeVisible();
+    }
+    expect(screen.queryByText(/过时请求失败/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/正在按当前预设检查/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the draft until the app dialog confirms discarding, with safe focus and Escape", async () => {
     render(<AppProvider><SeedWizardPage /><NewProjectPage /><StateProbe /></AppProvider>);
     await waitFor(() => expect(screen.getByTestId("page")).toHaveTextContent("new-project"));
     fireEvent.click(screen.getByRole("button", { name: /选择视频/ }));
     await screen.findByText("3840 × 2160");
 
-    fireEvent.click(screen.getByRole("button", { name: "关闭新建项目" }));
-    expect(confirmDiscardProjectDraft).toHaveBeenCalledTimes(1);
+    const exitButton = screen.getByRole("button", { name: "关闭新建项目" });
+    exitButton.focus();
+    fireEvent.click(exitButton);
+    const dialog = screen.getByRole("alertdialog", { name: "退出项目创建？" });
+    expect(dialog).toHaveAttribute("aria-describedby", "wizard-exit-description");
+    expect(within(dialog).getByRole("button", { name: "继续编辑" })).toHaveFocus();
     expect(screen.getByTestId("page")).toHaveTextContent("new-project");
+    fireEvent.keyDown(dialog, { key: "Enter", ctrlKey: true });
+    expect(desktopApi.preflightProject).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "继续编辑" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByText("3840 × 2160")).toBeVisible();
+    await waitFor(() => expect(exitButton).toHaveFocus());
+
+    fireEvent.click(exitButton);
+    fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" });
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("page")).toHaveTextContent("new-project");
+    await waitFor(() => expect(exitButton).toHaveFocus());
+
+    fireEvent.click(exitButton);
+    fireEvent.click(screen.getByRole("button", { name: "退出并放弃" }));
+    await waitFor(() => expect(screen.getByTestId("page")).toHaveTextContent("home"));
+  });
+
+  it("exits an untouched wizard without a confirmation", () => {
+    render(<AppProvider><SeedWizardPage /><NewProjectPage /><StateProbe /></AppProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "关闭新建项目" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("page")).toHaveTextContent("home");
+  });
+
+  it.each([true, false])("waits for creation to stop before exiting; cancellation accepted: %s", async (accepted) => {
+    const creation = deferred<Awaited<ReturnType<typeof desktopApi.createProject>>>();
+    vi.mocked(desktopApi.createProject).mockReturnValue(creation.promise);
+    if (!accepted) vi.mocked(desktopApi.cancelProjectCreation).mockRejectedValueOnce(new Error("无法取消复制"));
+    render(<AppProvider><SeedWizardPage /><NewProjectPage /><StateProbe /></AppProvider>);
+    await advanceToConfirmation();
+    fireEvent.click(screen.getByRole("button", { name: "仅创建项目" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭新建项目" }));
+    const dialog = screen.getByRole("alertdialog", { name: "取消项目创建？" });
+    expect(within(dialog).getByRole("button", { name: "继续创建" })).toHaveFocus();
+    fireEvent.click(within(dialog).getByRole("button", { name: "继续创建" }));
+    expect(desktopApi.cancelProjectCreation).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "关闭新建项目" }));
-    await waitFor(() => expect(screen.getByTestId("page")).toHaveTextContent("home"));
+    fireEvent.click(screen.getByRole("button", { name: "安全取消并退出" }));
+    await waitFor(() => expect(desktopApi.cancelProjectCreation).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("page")).toHaveTextContent("new-project");
+    if (accepted) {
+      fireEvent.click(screen.getByRole("button", { name: "关闭新建项目" }));
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(desktopApi.cancelProjectCreation).toHaveBeenCalledTimes(1);
+    } else {
+      expect(await screen.findByRole("alert")).toHaveTextContent("操作未完成");
+    }
+
+    await act(async () => { creation.reject(new Error(accepted ? "cancelled" : "copy failed")); });
+    expect(screen.getByTestId("page")).toHaveTextContent(accepted ? "home" : "new-project");
+    expect(desktopApi.startPipeline).not.toHaveBeenCalled();
   });
 
   it("shows event-backed copy progress, cancels safely, and keeps create single-flight", async () => {
@@ -466,7 +551,7 @@ describe("NewProjectPage", () => {
     fireEvent.keyDown(name, { key: "Enter", ctrlKey: true, isComposing: true, keyCode: 229 });
 
     expect(desktopApi.createProject).not.toHaveBeenCalled();
-    expect(confirmDiscardProjectDraft).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "确认创建" })).toBeVisible();
   });
 

@@ -1,5 +1,5 @@
 import type { StageState } from "../types";
-import { CheckCircle, Circle, SpinnerGap, WarningCircle, XCircle } from "@phosphor-icons/react";
+import { CheckCircle, Circle, SpinnerGap, WarningCircle, XCircle } from "./primitives/icons";
 import {
   formatCommandError,
   getStageLabel,

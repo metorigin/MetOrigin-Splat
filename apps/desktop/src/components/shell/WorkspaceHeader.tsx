@@ -1,4 +1,4 @@
-import { ArrowLeft, FolderOpen, Plus } from "@phosphor-icons/react";
+import { ArrowLeft, FolderOpen, Plus } from "../primitives/icons";
 
 import type { Page } from "../../context";
 
@@ -35,7 +35,7 @@ export function WorkspaceHeader({
       <div>
         <p className="workspace-context-eyebrow">项目管理</p>
         <h1 id="workspace-page-title">项目中心</h1>
-        <p>创建、打开或继续本机上的重建项目。</p>
+        <p>从最近项目继续，或创建一次新的 3D 重建。</p>
       </div>
       <div className="workspace-context-actions" role="group" aria-label="项目中心操作">
         <button type="button" className="button button-secondary" onClick={onOpenProject}>

@@ -11,6 +11,7 @@ pub mod config;
 pub mod dataset;
 pub mod export;
 pub mod gpu;
+pub mod live_preview;
 pub mod progress;
 pub mod training;
 

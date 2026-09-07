@@ -5,3 +5,14 @@ coverage/
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+
+# Generated Rust/native artifacts and local validation data
+target/
+/target-*/
+.codex-cargo-target/
+.engines/
+.artifacts/
+artifacts/
+.test-results/
+apps/desktop/src-tauri/gen/schemas/
+*.splat-project/

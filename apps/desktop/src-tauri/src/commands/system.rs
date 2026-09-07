@@ -60,7 +60,8 @@ pub struct ResourceMetrics {
     cpu_usage_percent: f32,
     memory_total_bytes: u64,
     memory_used_bytes: u64,
-    project_disk_available_bytes: u64,
+    project_disk_available_bytes: Option<u64>,
+    disk_path: Option<String>,
     gpu: Option<GpuMetrics>,
     warnings: Vec<String>,
 }
@@ -586,12 +587,27 @@ fn append_diagnostic(target: &mut Option<String>, message: String) {
     }
 }
 
+fn collect_disk_metrics(project_path: Option<&Path>) -> (Option<String>, Option<u64>) {
+    // Home has no project path: use the installed executable, not the process's
+    // working directory (which can be changed by a shortcut or shell).
+    let disk_path = project_path.map(Path::to_path_buf).or_else(|| {
+        std::env::current_exe()
+            .ok()
+            .and_then(|executable| executable.parent().map(Path::to_path_buf))
+    });
+    let available = disk_path
+        .as_deref()
+        .and_then(|path| fs2::available_space(path).ok());
+    (
+        disk_path.map(|path| path.to_string_lossy().into_owned()),
+        available,
+    )
+}
+
 fn collect_resource_metrics(project_path: Option<&Path>) -> ResourceMetrics {
     let mut system = System::new_all();
     system.refresh_all();
-    let project_disk_available_bytes = project_path
-        .and_then(|path| fs2::available_space(path).ok())
-        .unwrap_or(0);
+    let (disk_path, project_disk_available_bytes) = collect_disk_metrics(project_path);
     let gpu = query_nvidia_gpu();
     let mut warnings = Vec::new();
     if let Some(gpu) = &gpu {
@@ -618,6 +634,7 @@ fn collect_resource_metrics(project_path: Option<&Path>) -> ResourceMetrics {
         memory_total_bytes: system.total_memory(),
         memory_used_bytes: system.used_memory(),
         project_disk_available_bytes,
+        disk_path,
         gpu,
         warnings,
     }
@@ -813,6 +830,35 @@ fn redact_text(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disk_metrics_default_to_the_application_directory() {
+        let executable = std::env::current_exe().unwrap();
+        let expected = executable.parent().unwrap();
+        let (path, available) = collect_disk_metrics(None);
+        assert_eq!(path.as_deref(), expected.to_str());
+        let available = available.expect("application disk should be readable");
+        assert!(available <= fs2::total_space(expected).unwrap());
+    }
+
+    #[test]
+    fn disk_metrics_use_the_project_directory_when_provided() {
+        let project = std::env::temp_dir();
+        let (path, available) = collect_disk_metrics(Some(&project));
+        assert_eq!(path.as_deref(), project.to_str());
+        assert!(available.is_some());
+    }
+
+    #[test]
+    fn disk_metrics_report_unknown_instead_of_zero_for_unreadable_paths() {
+        #[cfg(windows)]
+        let missing = PathBuf::from(format!(r"\\?\Volume{{{}}}\", uuid::Uuid::now_v7()));
+        #[cfg(not(windows))]
+        let missing = std::env::temp_dir().join(uuid::Uuid::now_v7().to_string());
+        let (path, available) = collect_disk_metrics(Some(&missing));
+        assert_eq!(path.as_deref(), missing.to_str());
+        assert_eq!(available, None);
+    }
 
     #[test]
     fn diagnostic_documents_redact_credentials_paths_and_unrelated_event_content() {

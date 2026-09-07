@@ -40,6 +40,22 @@ binary embeds LPIPS/VGG model weights. **Public distribution is blocked** until
 the provenance and redistribution terms of those weights have been documented
 and approved.
 
+### MetOrigin Brush live preview companion
+
+- Based on Brush v0.3.0: https://github.com/ArthurBrussee/brush/tree/v0.3.0
+- Source archive SHA-256: `510698AF9E6FDACE4B3D0BBE8695E5549F2F969AD0260A32B4B49694BCC51C0A`
+- Modified executable: `brush/brush_live.exe` (`0.3.0+metorigin-live.1`)
+- License: `brush/BRUSH-LIVE-LICENSE` (Apache-2.0)
+- Changes: headless entry point and on-demand training preview snapshots. The
+  extension sources are in `integrations/brush-live`, with the reproducible build
+  procedure in `scripts/windows/Build-BrushLive.ps1` in the MetOrigin source tree.
+
+### Spark 2.1.0
+
+The application uses Spark for Gaussian rendering in its WebView.
+Source: https://github.com/sparkjsdev/spark/tree/v2.1.0 . License: MIT,
+included in the installed JavaScript dependency and `licenses/spark/LICENSE`.
+
 ## Microsoft Visual C++ Redistributable {{VCREDIST_VERSION}}
 
 - Installer source: {{VCREDIST_SOURCE_URL}}

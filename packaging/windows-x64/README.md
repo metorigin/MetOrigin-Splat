@@ -12,15 +12,17 @@ From the repository root on Windows 10/11 x64:
 pnpm package:windows:full
 ```
 
-The command verifies the pinned Node, pnpm and Rust toolchain, acquires each
-locked component, prepares and hashes the engine staging tree, executes all four
-engine version checks, builds only the Tauri NSIS bundle, and renames it to:
+The command verifies the pinned Node, pnpm and Rust toolchain, acquires the
+locked components, and prepares and hashes the engine staging tree. It builds
+and verifies the Brush live-preview companion, checks the stock engines,
+then builds the Tauri NSIS bundle and publishes it as:
 
 ```text
-target/release/bundle/nsis/MetOrigin-Splat-Full-Setup-0.1.0-internal.exe
+artifacts/windows/installer/MetOrigin-Splat-Full-Setup-0.1.0-internal.exe
 ```
 
-Its SHA-256 and review metadata are written next to the installer. The staging
+The installer checksum and review metadata are written next to the installer.
+The isolated Cargo bundle directory is a build cache, not the delivery directory. The staging
 tree is generated at `target/distribution/windows-x64/` and is intentionally
 ignored by Git.
 
@@ -32,7 +34,9 @@ pnpm verify:windows:engines
 ```
 
 `Acquire-EngineArchives.ps1 -Offline` can be used after all four files named in
-`engine-lock.json` have been placed in `.engines/downloads`. An exact installed
+`engine-lock.json` have been placed in `.engines/downloads`. Offline companion
+builds additionally need the pinned Brush source archive and cached Cargo dependencies;
+see [engine integration](../../docs/engine-integration.md). An exact installed
 copy of the locked VC++ Runtime is also detected automatically.
 
 ## Distribution boundary

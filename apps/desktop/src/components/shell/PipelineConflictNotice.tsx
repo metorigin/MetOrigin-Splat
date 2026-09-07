@@ -1,4 +1,4 @@
-import { ArrowRight, WarningCircle } from "@phosphor-icons/react";
+import { ArrowRight, WarningCircle } from "../primitives/icons";
 
 import { getProjectStatusLabel } from "../../localization";
 import type { PipelineConflictInfo } from "../../types";

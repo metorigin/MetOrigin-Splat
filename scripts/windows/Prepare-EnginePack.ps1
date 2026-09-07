@@ -187,6 +187,14 @@ try {
         Copy-RequiredFile -Source (Join-Path $brushSourceRoot $name) -Destination (Join-Path $brushDestination $name)
     }
 
+    # Build the pinned headless companion so packaged training also provides live previews.
+    $liveArguments = @{}
+    if ($Offline) { $liveArguments.Offline = $true }
+    & (Join-Path $PSScriptRoot "Build-BrushLive.ps1") @liveArguments
+    $liveRoot = Join-Path $repositoryRoot ".engines/brush-v0.3.0-windows-x64"
+    Copy-RequiredFile -Source (Join-Path $liveRoot "brush_live.exe") -Destination (Join-Path $brushDestination "brush_live.exe")
+    Copy-RequiredFile -Source (Join-Path $liveRoot "BRUSH-LIVE-LICENSE") -Destination (Join-Path $brushDestination "BRUSH-LIVE-LICENSE")
+
     # Generate the explicit internal-only third-party notice from the locked metadata.
     $noticeTemplatePath = Join-Path $repositoryRoot "packaging\windows-x64\THIRD_PARTY_NOTICES.template.md"
     $notice = Get-Content -LiteralPath $noticeTemplatePath -Raw
@@ -263,6 +271,9 @@ try {
     Copy-RequiredFile -Source (Join-Path $ffmpegDestination "LICENSE") -Destination (Join-Path $licenseRoot "ffmpeg\LICENSE")
     Copy-RequiredFile -Source (Join-Path $colmapDestination "COPYING.txt") -Destination (Join-Path $licenseRoot "colmap\COPYING.txt")
     Copy-RequiredFile -Source (Join-Path $brushDestination "LICENSE") -Destination (Join-Path $licenseRoot "brush\LICENSE")
+
+    Copy-RequiredFile -Source (Join-Path $brushDestination "BRUSH-LIVE-LICENSE") -Destination (Join-Path $licenseRoot "brush/BRUSH-LIVE-LICENSE")
+    Copy-RequiredFile -Source (Join-Path $repositoryRoot "apps/desktop/node_modules/@sparkjsdev/spark/LICENSE") -Destination (Join-Path $licenseRoot "spark/LICENSE")
 
     # The prerequisite is a temporary installer resource, not an engine manifest entry.
     Copy-RequiredFile `
