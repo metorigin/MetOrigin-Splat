@@ -3,6 +3,7 @@ param(
     [string]$LockFile = "packaging/windows-x64/engine-lock.json",
     [string]$CacheDirectory = ".engines/downloads",
     [string]$OutputRoot = "target/distribution/windows-x64",
+    [string]$CargoTargetDirectory = "target/windows-release-build",
     [string]$VCRedistPath,
     [switch]$OfflineEngines,
     [switch]$SkipAcquire
@@ -11,6 +12,7 @@ param(
 . (Join-Path $PSScriptRoot "Packaging.Common.ps1")
 
 $repositoryRoot = Get-MetOriginRepositoryRoot
+$previousCargoTargetDirectory = $env:CARGO_TARGET_DIR
 if ($env:OS -ne "Windows_NT" -or -not [Environment]::Is64BitOperatingSystem) {
     throw "The full internal installer must be built on 64-bit Windows."
 }
@@ -93,6 +95,11 @@ if ($rustVersion -notmatch [regex]::Escape("rustc $expectedRust")) {
 
 Push-Location $repositoryRoot
 try {
+    $env:CARGO_TARGET_DIR = Resolve-MetOriginPath -Path $CargoTargetDirectory
+    $sourceRevision = (& git rev-parse HEAD | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot determine source revision.' }
+    $workingTreeState = (& git status --porcelain | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot determine working tree state.' }
     $cargoMetadataText = Invoke-CheckedTool `
         -FilePath $cargo `
         -Arguments @("metadata", "--format-version", "1", "--no-deps") `
@@ -192,6 +199,11 @@ try {
         installer = $finalName
         installer_sha256 = $installerHash
         unsigned_internal_build = $true
+        source_revision = $sourceRevision
+        working_tree_dirty = -not [string]::IsNullOrWhiteSpace($workingTreeState)
+        installer_signature_status = [string](Get-AuthenticodeSignature -LiteralPath $finalInstaller).Status
+        application_sha256 = Get-MetOriginSha256 -Path (Join-Path $targetDirectory 'release/MetOrigin Splat.exe')
+        application_signature_status = [string](Get-AuthenticodeSignature -LiteralPath (Join-Path $targetDirectory 'release/MetOrigin Splat.exe')).Status
         created_utc = [DateTime]::UtcNow.ToString("o")
     }
     Write-MetOriginUtf8File `
@@ -212,5 +224,9 @@ try {
     Write-Host "Installer SHA-256: $installerHash"
 }
 finally {
+    if ($null -eq $previousCargoTargetDirectory) {
+        Remove-Item Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue
+    }
+    else { $env:CARGO_TARGET_DIR = $previousCargoTargetDirectory }
     Pop-Location
 }

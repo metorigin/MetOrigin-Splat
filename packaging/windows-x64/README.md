@@ -44,5 +44,12 @@ copy of the locked VC++ Runtime is also detected automatically.
 The GitHub workflow is manual (`workflow_dispatch`) and uploads an unsigned
 artifact for 14 days. It does not create a GitHub Release. Before any public
 distribution, resolve every gate documented in the generated
-`THIRD_PARTY_NOTICES.md`, produce an SBOM, sign the installer, and complete the
-clean-machine compatibility matrix.
+`THIRD_PARTY_NOTICES.md`, complete the SBOM review and clean-machine compatibility
+matrix. Stable releases require signing; explicitly labelled unsigned Alpha
+candidates may be prepared under the release policy.
+
+The installer now includes dependency license texts and an explicitly incomplete
+CycloneDX review SBOM. Use `scripts/windows/Publish-WindowsDraft.ps1 -Tag
+v0.1.0-alpha.1` after a clean committed build to upload a maintainer-only draft.
+See [Windows Alpha preparation](../../docs/windows-alpha-release.zh-CN.md) for the
+remaining corresponding-source, binary dependency and model-weight evidence.

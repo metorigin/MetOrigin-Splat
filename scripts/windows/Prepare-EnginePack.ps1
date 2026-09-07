@@ -279,6 +279,14 @@ try {
     Copy-RequiredFile `
         -Source (Get-LockedArchivePath -ComponentId "vcredist") `
         -Destination (Join-Path $installerRoot "vc_redist.x64.exe")
+
+    # Collect actual dependency texts and a review SBOM before checksums and bundling.
+    $evidenceArguments = @((Join-Path $PSScriptRoot 'Generate-ReleaseEvidence.mjs'), $output)
+    if ($Offline) { $evidenceArguments += '--offline' }
+    & node @evidenceArguments
+    if ($LASTEXITCODE -ne 0) { throw 'Release dependency evidence generation failed.' }
+    & node (Join-Path $PSScriptRoot 'Test-ReleaseEvidence.mjs') $output
+    if ($LASTEXITCODE -ne 0) { throw 'Release dependency evidence verification failed.' }
 }
 finally {
     $safeWorkRoot = Assert-MetOriginChildPath -Path $workRoot -Parent $output

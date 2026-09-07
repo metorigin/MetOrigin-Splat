@@ -24,6 +24,7 @@
 
 - [Release process](release-process.md)：源码发布、内部安装包与公开分发条件。
 - [Windows packaging](../packaging/windows-x64/README.md)：打包命令、输出位置与引擎包。
+- [Windows Alpha 发布准备](windows-alpha-release.zh-CN.md)：第三方源码、许可证、SBOM、签名与 GitHub 草稿。
 - [Changelog](../CHANGELOG.md)、[Security policy](../SECURITY.md)。
 
 ## 历史验证与设计记录 / Historical records

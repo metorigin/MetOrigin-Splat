@@ -8,7 +8,7 @@
 !macro METORIGIN_REQUIRE_STOPPED_PROCESSES
   ; Windows 10/11 always includes Windows PowerShell 5.1. Use process names
   ; rather than paths so upgrades also catch an older installation directory.
-  nsExec::ExecToStack /TIMEOUT=15000 '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "if (@(Get-Process -Name $\'MetOrigin Splat$\',$\'splat-desktop$\',$\'ffmpeg$\',$\'ffprobe$\',$\'colmap$\',$\'brush_app$\' -ErrorAction SilentlyContinue).Count -gt 0) { exit 20 }"'
+  nsExec::ExecToStack /TIMEOUT=15000 '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "if (@(Get-Process -Name $\'MetOrigin Splat$\',$\'splat-desktop$\',$\'ffmpeg$\',$\'ffprobe$\',$\'colmap$\',$\'brush_app$\',$\'brush_live$\' -ErrorAction SilentlyContinue).Count -gt 0) { exit 20 }"'
   Pop $R8
   Pop $R9
   ${If} $R8 == 20
