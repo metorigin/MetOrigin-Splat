@@ -11,8 +11,11 @@ param(
 $root = Get-MetOriginRepositoryRoot
 $installerDirectory = Join-Path $root 'artifacts/windows/installer'
 $metadata = Get-Content -LiteralPath (Join-Path $installerDirectory 'metadata/internal-build.json') -Raw | ConvertFrom-Json
-$revision = (& git -C $root rev-parse HEAD | Out-String).Trim()
-if ($LASTEXITCODE -ne 0) { throw 'Cannot read source revision.' }
+# A publisher-only fix may be newer than the build. Always archive and target the
+# exact clean revision recorded by the installer, never substitute the latest HEAD.
+if ($metadata.source_revision -notmatch '^[0-9a-f]{40}$') { throw 'Installer has no valid recorded source revision; rebuild it.' }
+$revision = (& git -C $root rev-parse --verify "$($metadata.source_revision)^{commit}" | Out-String).Trim()
+if ($LASTEXITCODE -ne 0) { throw 'Recorded build source revision is not available locally.' }
 $dirty = (& git -C $root status --porcelain | Out-String).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Cannot read working tree status.' }
 if ($dirty -or $metadata.working_tree_dirty -or $metadata.source_revision -ne $revision) {
@@ -43,7 +46,15 @@ foreach ($name in @('SBOM.cdx.json', 'release-readiness.json', 'native-payload-i
 }
 Copy-Item -LiteralPath (Join-Path $installerDirectory 'metadata/internal-build.json') -Destination (Join-Path $output 'build-info.json')
 Copy-Item -LiteralPath (Join-Path $installerDirectory 'metadata/engine-manifest.json') -Destination (Join-Path $output 'engine-manifest.json')
-Compress-Archive -LiteralPath $licenseRoot -DestinationPath (Join-Path $output 'Third-Party-Notices.zip')
+# Unlike Compress-Archive on Windows PowerShell 5.1, ZipFile clamps source dates
+# outside ZIP's 1980-2107 range (some upstream package license dates are in 1970).
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::CreateFromDirectory(
+    $licenseRoot,
+    (Join-Path $output 'Third-Party-Notices.zip'),
+    [System.IO.Compression.CompressionLevel]::Optimal,
+    $true
+)
 $sourceZip = Join-Path $output "MetOrigin-Splat-Source-$Tag.zip"
 & git -C $root archive --format=zip "--output=$sourceZip" $revision
 if ($LASTEXITCODE -ne 0) { throw 'Could not archive exact application source revision.' }
