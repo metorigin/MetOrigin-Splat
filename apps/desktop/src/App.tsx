@@ -1,23 +1,48 @@
-import { WarningCircle, X } from "@phosphor-icons/react";
+import { WarningCircle, X } from "./components/primitives/icons";
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { DeleteProjectDialog } from "./components/shell/DeleteProjectDialog";
 import { ProjectSidebar } from "./components/shell/ProjectSidebar";
-import { SystemStatusBar } from "./components/shell/SystemStatusBar";
 import { TitleRunBar } from "./components/shell/TitleRunBar";
 import { SettingsDrawer } from "./components/settings";
-import { AppProvider, useAppContext } from "./context";
+import { ActionReceipt, StatusAnnouncer } from "./components/feedback";
+import { WorkspaceActionDialog } from "./components/workspace";
+import {
+  AppProvider,
+  selectActivePipelineSnapshot,
+  selectPipelineFreshness,
+  selectProjectPipelineSnapshot,
+  useAppContext,
+} from "./context";
+import { shouldIgnoreShortcut, useProjectAvailability } from "./hooks";
+import { getStageLabel } from "./localization";
 import { HomePage, NewProjectPage, ProjectDetailPage } from "./pages";
 import {
-  confirmSafeCancel,
   confirmRemoveRecentProject,
+  DesktopCommandError,
   desktopApi,
+  isActivePipelineConflict,
   isDesktopRuntime,
   selectProjectDirectory,
 } from "./services/desktop";
-import type { AppSettings, PipelineEventEnvelope, Project, ProjectInfo, ProjectStatus, ResourceMetrics } from "./types";
-import "./App.css";
+import { isUiPreviewMode } from "./services/uiPreview";
+import type {
+  AppSettings,
+  PipelineConflictInfo,
+  PipelineEventEnvelope,
+  PipelineSnapshot,
+  Project,
+  ProjectInfo,
+  ProjectStatus,
+  ResourceMetrics,
+  TaskProgress,
+  ActionReceipt as ActionReceiptModel,
+  WorkspaceActionRequest,
+} from "./types";
+import { useTheme } from "./hooks/useTheme";
+import "@fontsource-variable/inter";
+import "@fontsource/jetbrains-mono/400.css";
+import "./styles/buzz.css";
 
 function normalizeProjectStatus(status: string): ProjectStatus {
   const normalized = status.toLowerCase();
@@ -50,15 +75,35 @@ function toProjectInfo(project: Project, path: string): ProjectInfo {
   };
 }
 
-function AppWorkspace() {
+export function AppWorkspace() {
+  useTheme();
+  const previewNavigated = useRef(false);
   const { state, dispatch } = useAppContext();
+  const previewOverlay = isUiPreviewMode()
+    ? new URLSearchParams(window.location.search).get("preview-overlay")
+    : null;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<ResourceMetrics | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(() => previewOverlay === "settings");
   const [deleteCandidate, setDeleteCandidate] = useState<ProjectInfo | null>(null);
-  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [workspaceAction, setWorkspaceAction] = useState<WorkspaceActionRequest | null>(null);
+  const [actionReceipt, setActionReceipt] = useState<ActionReceiptModel | null>(null);
+  const [taskProgressByProject, setTaskProgressByProject] = useState<Record<string, TaskProgress>>({});
+  const [announcement, setAnnouncement] = useState("");
+  const [workspaceActivitySignal, setWorkspaceActivitySignal] = useState(0);
+  const { retryProjectAvailability } = useProjectAvailability(
+    state.recentProjects,
+    state.projectAvailability,
+    dispatch,
+  );
+  const previousPipelineAnnouncement = useRef<{
+    projectId: string;
+    stage: string | null;
+    stale: boolean;
+  } | null>(null);
 
   const activeProjectPath =
     state.page.type === "project-detail" ? state.page.projectPath : null;
@@ -69,38 +114,77 @@ function AppWorkspace() {
       ) ?? null,
     [activeProjectPath, state.recentProjects],
   );
-  const pipelineStatus = state.pipelineSnapshot?.status ?? null;
+  const viewedPipelineSnapshot = selectProjectPipelineSnapshot(state, activeProject?.id);
+  const viewedPipelineFreshness = selectPipelineFreshness(state, activeProject?.id);
+  const activePipelineSnapshot = selectActivePipelineSnapshot(state);
+  const activePipelineProject = useMemo(() => {
+    if (!activePipelineSnapshot) return null;
+    return state.recentProjects.find((project) => project.id === activePipelineSnapshot.project_id) ?? {
+      id: activePipelineSnapshot.project_id,
+      name: "活动项目",
+      path: activePipelineSnapshot.project_path,
+      status: activePipelineSnapshot.status,
+      updated_at: activePipelineSnapshot.started_at ?? activePipelineSnapshot.accepted_at ?? new Date().toISOString(),
+      stage_label: activePipelineSnapshot.state.current_stage ?? undefined,
+    };
+  }, [activePipelineSnapshot, state.recentProjects]);
+  const activePipelineFreshness = selectPipelineFreshness(state, activePipelineSnapshot?.project_id);
+  const pipelineStatus = activePipelineSnapshot?.status ?? viewedPipelineSnapshot?.status ?? null;
+  const pipelineConflict = useMemo<PipelineConflictInfo | null>(() => {
+    if (!activeProject || !activePipelineSnapshot || !activePipelineProject) return null;
+    if (activeProject.id === activePipelineSnapshot.project_id) return null;
+    return {
+      activeProjectId: activePipelineSnapshot.project_id,
+      activeProjectName: activePipelineProject.name,
+      status: activePipelineSnapshot.status,
+      stageLabel: activePipelineSnapshot.state.current_stage
+        ? activePipelineProject.stage_label ?? activePipelineSnapshot.state.current_stage
+        : null,
+      progress: Number.isFinite(activePipelineSnapshot.state.overall_progress)
+        ? activePipelineSnapshot.state.overall_progress
+        : null,
+      updatedAt: activePipelineFreshness.updatedAt,
+    };
+  }, [activePipelineFreshness.updatedAt, activePipelineProject, activePipelineSnapshot, activeProject]);
+
+  const refreshActivePipeline = useCallback(async (): Promise<PipelineSnapshot | null> => {
+    try {
+      const snapshot = await desktopApi.getActivePipelineSummary();
+      dispatch({ type: "SET_ACTIVE_PIPELINE", snapshot });
+      return snapshot;
+    } catch (error) {
+      dispatch({ type: "SET_PIPELINE_ERROR", error: String(error) });
+      return null;
+    }
+  }, [dispatch]);
 
   const loadApplicationData = useCallback(async () => {
     dispatch({ type: "SET_ENGINES_LOADING" });
     dispatch({ type: "SET_RECENT_PROJECTS_LOADING" });
-    const [versionResult, enginesResult, projectsResult, settingsResult] =
-      await Promise.allSettled([
-        desktopApi.appVersion(),
-        desktopApi.checkEngines(),
-        desktopApi.listRecentProjects(),
-        desktopApi.getAppSettings(),
-      ]);
-
-    if (versionResult.status === "fulfilled") {
-      setVersion(versionResult.value);
-    }
-    if (enginesResult.status === "fulfilled") {
-      dispatch({ type: "SET_ENGINES", engines: enginesResult.value });
-    } else {
-      dispatch({ type: "SET_ENGINES_ERROR", error: String(enginesResult.reason) });
-    }
-    if (projectsResult.status === "fulfilled") {
-      dispatch({ type: "SET_RECENT_PROJECTS", projects: projectsResult.value });
-    } else {
-      dispatch({ type: "SET_RECENT_PROJECTS_ERROR", error: String(projectsResult.reason) });
-    }
-    if (settingsResult.status === "fulfilled") setSettings(settingsResult.value);
+    const versionTask = desktopApi.appVersion()
+      .then(setVersion)
+      .catch(() => undefined);
+    const enginesTask = desktopApi.checkEngines()
+      .then((engines) => dispatch({ type: "SET_ENGINES", engines }))
+      .catch((error) => dispatch({ type: "SET_ENGINES_ERROR", error: String(error) }));
+    // Recent records must become interactive as soon as the index read ends;
+    // engine/settings checks may touch slower resources and must not gate it.
+    const projectsTask = desktopApi.listRecentProjectIndex()
+      .then((projects) => dispatch({ type: "SET_RECENT_PROJECTS", projects }))
+      .catch((error) => dispatch({ type: "SET_RECENT_PROJECTS_ERROR", error: String(error) }));
+    const settingsTask = desktopApi.getAppSettings()
+      .then((nextSettings) => {
+        setSettings(nextSettings);
+        setSettingsError(null);
+      })
+      .catch((error) => setSettingsError(String(error)));
+    await Promise.all([versionTask, enginesTask, projectsTask, settingsTask]);
   }, [dispatch]);
 
   useEffect(() => {
     let disposed = false;
     let timer = 0;
+    setMetrics(null);
     const sample = async () => {
       try {
         const result = await desktopApi.getResourceMetrics(activeProjectPath ?? undefined);
@@ -121,13 +205,78 @@ function AppWorkspace() {
   }, [loadApplicationData]);
 
   useEffect(() => {
-    dispatch({ type: "SET_PIPELINE_ERROR", error: null });
-    if (!activeProjectPath) {
-      dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot: null });
+    if (!isUiPreviewMode() || previewNavigated.current) return;
+    const previewPage = new URLSearchParams(window.location.search).get("preview-page");
+    if (previewPage === "new-project") {
+      previewNavigated.current = true;
+      dispatch({ type: "NAVIGATE", page: { type: "new-project" } });
       return;
     }
+    if (previewPage === "workspace") {
+      const project = state.recentProjects[0];
+      if (project) {
+        previewNavigated.current = true;
+        dispatch({
+          type: "NAVIGATE",
+          page: { type: "project-detail", projectId: project.id, projectPath: project.path },
+        });
+      }
+    }
+  }, [dispatch, state.recentProjects]);
+
+  useEffect(() => {
     let disposed = false;
     let unlistenPipeline: (() => void) | null = null;
+    const refresh = (event?: PipelineEventEnvelope) => {
+      if (event?.event.progress) {
+        setTaskProgressByProject((current) => ({
+          ...current,
+          [event.project_id]: event.event.progress as TaskProgress,
+        }));
+      }
+      if (!disposed) void refreshActivePipeline();
+    };
+    refresh();
+    if (isDesktopRuntime()) {
+      void listen<PipelineEventEnvelope>("pipeline://event", ({ payload }) => refresh(payload)).then((unlisten) => {
+        if (disposed) unlisten();
+        else unlistenPipeline = unlisten;
+      });
+    }
+    const timer = window.setInterval(refresh, 3_000);
+    return () => {
+      disposed = true;
+      unlistenPipeline?.();
+      window.clearInterval(timer);
+    };
+  }, [refreshActivePipeline]);
+
+  useEffect(() => {
+    if (!activePipelineSnapshot) {
+      previousPipelineAnnouncement.current = null;
+      return;
+    }
+    const next = {
+      projectId: activePipelineSnapshot.project_id,
+      stage: activePipelineSnapshot.state.current_stage,
+      stale: activePipelineFreshness.stale,
+    };
+    const previous = previousPipelineAnnouncement.current;
+    previousPipelineAnnouncement.current = next;
+    if (!previous || previous.projectId !== next.projectId) return;
+    if (previous.stage !== next.stage && next.stage) {
+      setAnnouncement(`当前阶段已切换为${getStageLabel(next.stage)}。`);
+    } else if (!previous.stale && next.stale) {
+      setAnnouncement("任务状态暂时无法刷新，正在显示最后一次有效状态。");
+    } else if (previous.stale && !next.stale) {
+      setAnnouncement("任务状态已恢复更新。");
+    }
+  }, [activePipelineFreshness.stale, activePipelineSnapshot]);
+
+  useEffect(() => {
+    dispatch({ type: "SET_PIPELINE_ERROR", error: null });
+    if (!activeProjectPath) return;
+    let disposed = false;
     let refreshInFlight = false;
     let refreshQueued = false;
     const refresh = async (): Promise<void> => {
@@ -167,23 +316,40 @@ function AppWorkspace() {
       }
     };
     void refresh();
-    if (isDesktopRuntime()) {
-      void listen<PipelineEventEnvelope>("pipeline://event", (event) => {
-        if (!activeProject || event.payload.project_id !== activeProject.id) return;
-        void refresh();
-      }).then((unlisten) => {
-        if (disposed) unlisten();
-        else unlistenPipeline = unlisten;
-      });
-    }
     const activelyRunning = activeProject && ["starting", "running", "pausing", "cancelling", "recovering"].includes(activeProject.status);
     const timer = window.setInterval(() => void refresh(), activelyRunning ? 3_000 : 10_000);
     return () => {
       disposed = true;
-      unlistenPipeline?.();
       window.clearInterval(timer);
     };
   }, [activeProject, activeProjectPath, dispatch]);
+
+  const blockForActiveProject = useCallback((requestedProjectId: string): boolean => {
+    if (!activePipelineSnapshot || activePipelineSnapshot.project_id === requestedProjectId) return false;
+    dispatch({
+      type: "SET_PIPELINE_CONFLICT",
+      requestedProjectId,
+      activeProjectId: activePipelineSnapshot.project_id,
+    });
+    return true;
+  }, [activePipelineSnapshot, dispatch]);
+
+  const captureRaceConflict = useCallback(async (
+    requestedProjectId: string,
+    error: unknown,
+  ): Promise<boolean> => {
+    if (!isActivePipelineConflict(error)) return false;
+    dispatch({ type: "SET_ERROR", error: "当前有重建任务尚未结束，请先暂停或结束任务后再开始新的重建。" });
+    const active = await refreshActivePipeline();
+    if (active && active.project_id !== requestedProjectId) {
+      dispatch({
+        type: "SET_PIPELINE_CONFLICT",
+        requestedProjectId,
+        activeProjectId: active.project_id,
+      });
+    }
+    return true;
+  }, [dispatch, refreshActivePipeline]);
 
   const openSelectedProject = useCallback(
     async (project: ProjectInfo) => {
@@ -212,6 +378,51 @@ function AppWorkspace() {
     }
   }, [dispatch, openSelectedProject]);
 
+  const handleOpenIndependent = useCallback(async (path: string) => {
+    try {
+      const project = await desktopApi.openProject(path);
+      const info = toProjectInfo(project, path);
+      dispatch({ type: "ADD_RECENT_PROJECT", project: info });
+      await openSelectedProject(info);
+    } catch (error) {
+      dispatch({ type: "SET_ERROR", error: String(error) });
+    }
+  }, [dispatch, openSelectedProject]);
+
+  const handleRelinkProject = useCallback(async (project: ProjectInfo) => {
+    const candidatePath = await selectProjectDirectory();
+    if (!candidatePath) return { kind: "cancelled" as const };
+    try {
+      const refreshed = await desktopApi.relinkRecentProject({
+        projectId: project.id,
+        previousPath: project.path,
+        candidatePath,
+      });
+      dispatch({ type: "RELINK_RECENT_PROJECT", project: refreshed, previousPath: project.path });
+      if (activeProjectPath === project.path) {
+        dispatch({
+          type: "NAVIGATE",
+          page: { type: "project-detail", projectId: refreshed.id, projectPath: refreshed.path },
+        });
+      }
+      return { kind: "success" as const };
+    } catch (error) {
+      if (error instanceof DesktopCommandError && error.code === "UI-PROJECT-RELINK-MISMATCH") {
+        return {
+          kind: "mismatch" as const,
+          candidatePath,
+          code: error.code,
+        };
+      }
+      const normalized = error instanceof DesktopCommandError ? error.uiError : null;
+      return {
+        kind: "error" as const,
+        code: normalized?.code ?? "UI-PROJECT-RELINK-FAILED",
+        message: normalized?.message ?? "无法验证所选项目位置，原记录未更改。",
+      };
+    }
+  }, [activeProjectPath, dispatch]);
+
   const handleRevealProject = useCallback(async (project: ProjectInfo) => {
     try {
       const result = await desktopApi.openProjectLocation({
@@ -221,19 +432,11 @@ function AppWorkspace() {
       });
       if (result.missing) {
         dispatch({ type: "SET_ERROR", error: result.message ?? "项目目录已移动或删除。" });
-        const remove = await confirmRemoveRecentProject(project.name);
-        if (remove) {
-          await desktopApi.removeRecentProject(project.id, project.path);
-          dispatch({ type: "REMOVE_RECENT_PROJECT", projectId: project.id });
-          if (activeProjectPath === project.path) {
-            dispatch({ type: "NAVIGATE", page: { type: "home" } });
-          }
-        }
       }
     } catch (error) {
       dispatch({ type: "SET_ERROR", error: String(error) });
     }
-  }, [activeProjectPath, dispatch]);
+  }, [dispatch]);
 
   const handleRemoveProject = useCallback(async (project: ProjectInfo) => {
     try {
@@ -249,28 +452,18 @@ function AppWorkspace() {
     }
   }, [activeProjectPath, dispatch]);
 
-  const handleDeleteProject = useCallback(async () => {
-    if (!deleteCandidate) return;
-    setDeleteBusy(true);
-    try {
-      await desktopApi.deleteProject({
-        projectId: deleteCandidate.id,
-        projectPath: deleteCandidate.path,
-      });
-      dispatch({ type: "REMOVE_RECENT_PROJECT", projectId: deleteCandidate.id });
-      if (activeProjectPath === deleteCandidate.path) {
-        dispatch({ type: "NAVIGATE", page: { type: "home" } });
-      }
-      setDeleteCandidate(null);
-    } catch (error) {
-      dispatch({ type: "SET_ERROR", error: String(error) });
-    } finally {
-      setDeleteBusy(false);
-    }
-  }, [activeProjectPath, deleteCandidate, dispatch]);
+  const requestProjectDeletion = useCallback((project: ProjectInfo) => {
+    setDeleteCandidate(project);
+    setWorkspaceAction({
+      projectId: project.id,
+      projectPath: project.path,
+      action: "delete_project",
+    });
+  }, []);
 
   const handleStart = useCallback(async () => {
     if (!activeProject) return;
+    if (blockForActiveProject(activeProject.id)) return;
     try {
       const snapshot = await desktopApi.startPipeline(activeProject.path);
       dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot });
@@ -278,50 +471,70 @@ function AppWorkspace() {
         type: "ADD_RECENT_PROJECT",
         project: { ...activeProject, status: "running" },
       });
+      setAnnouncement(`项目“${activeProject.name}”已开始重建。`);
     } catch (error) {
+      if (await captureRaceConflict(activeProject.id, error)) return;
       dispatch({ type: "SET_ERROR", error: String(error) });
     }
-  }, [activeProject, dispatch]);
+  }, [activeProject, blockForActiveProject, captureRaceConflict, dispatch]);
 
-  const handlePause = useCallback(async () => {
+  const handlePause = useCallback(() => {
     if (!activeProject) return;
-    try {
-      await desktopApi.pausePipeline();
-      const snapshot = await desktopApi.getPipelineState(activeProject.path);
-      dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot });
-      dispatch({ type: "ADD_RECENT_PROJECT", project: { ...activeProject, status: snapshot.status } });
-    } catch (error) {
-      dispatch({ type: "SET_ERROR", error: String(error) });
-    }
-  }, [activeProject, dispatch]);
+    setWorkspaceAction({
+      projectId: activeProject.id,
+      projectPath: activeProject.path,
+      action: "pause",
+    });
+  }, [activeProject]);
 
   const handleResume = useCallback(async () => {
     if (!activeProject) return;
+    if (blockForActiveProject(activeProject.id)) return;
     try {
       const snapshot = await desktopApi.resumePipeline(activeProject.path);
       dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot });
       dispatch({ type: "ADD_RECENT_PROJECT", project: { ...activeProject, status: snapshot.status } });
+      setAnnouncement(`项目“${activeProject.name}”已继续重建。`);
     } catch (error) {
+      if (await captureRaceConflict(activeProject.id, error)) return;
       dispatch({ type: "SET_ERROR", error: String(error) });
     }
-  }, [activeProject, dispatch]);
+  }, [activeProject, blockForActiveProject, captureRaceConflict, dispatch]);
 
-  const handleCancel = useCallback(async () => {
+  const handleCancel = useCallback(() => {
     if (!activeProject) return;
-    try {
-      const confirmed = await confirmSafeCancel(
-        activeProject.stage_label ?? "当前阶段",
-      );
-      if (!confirmed) return;
-      await desktopApi.cancelPipeline();
-      void loadApplicationData();
-    } catch (error) {
-      dispatch({ type: "SET_ERROR", error: String(error) });
+    setWorkspaceAction({
+      projectId: activeProject.id,
+      projectPath: activeProject.path,
+      action: "cancel",
+    });
+  }, [activeProject]);
+
+  const handleWorkspaceActionCompleted = useCallback(async (receipt: ActionReceiptModel) => {
+    setActionReceipt(receipt);
+    setAnnouncement(receipt.message);
+    if (workspaceAction?.action === "delete_project" && deleteCandidate) {
+      dispatch({ type: "REMOVE_RECENT_PROJECT", projectId: deleteCandidate.id });
+      if (activeProjectPath === deleteCandidate.path) {
+        dispatch({ type: "NAVIGATE", page: { type: "home" } });
+      }
+      setDeleteCandidate(null);
+    } else if (activeProject) {
+      try {
+        const snapshot = await desktopApi.getPipelineState(activeProject.path);
+        dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot });
+        dispatch({ type: "ADD_RECENT_PROJECT", project: { ...activeProject, status: snapshot.status } });
+      } catch {
+        void refreshActivePipeline();
+      }
     }
-  }, [activeProject, dispatch, loadApplicationData]);
+    setWorkspaceAction(null);
+    void loadApplicationData();
+  }, [activeProject, activeProjectPath, deleteCandidate, dispatch, loadApplicationData, refreshActivePipeline, workspaceAction]);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
+      if (shouldIgnoreShortcut(event)) return;
       if (!event.ctrlKey) return;
       if (event.key.toLowerCase() === "n") {
         event.preventDefault();
@@ -339,12 +552,22 @@ function AppWorkspace() {
   const page = (() => {
     switch (state.page.type) {
       case "home":
-        return <HomePage onRetry={() => void loadApplicationData()} />;
+        return (
+          <HomePage
+            engines={state.engines}
+            metrics={metrics}
+            onOpenProject={() => void handleOpenProject()}
+            onRetry={() => void loadApplicationData()}
+          />
+        );
       case "new-project":
-        return <NewProjectPage settings={settings} />;
+        return <NewProjectPage settings={settings} onOpenSettings={() => setSettingsOpen(true)} />;
       case "project-detail":
         return (
           <ProjectDetailPage
+            key={state.page.projectId}
+            metrics={metrics}
+            activityOpenSignal={workspaceActivitySignal}
             projectId={state.page.projectId}
             projectPath={state.page.projectPath}
           />
@@ -353,56 +576,69 @@ function AppWorkspace() {
   })();
 
   return (
-    <div className="workspace-shell">
-      <ProjectSidebar
-        projects={state.recentProjects}
-        loading={state.recentProjectsLoading}
-        loadError={state.recentProjectsError}
-        activeProjectPath={activeProjectPath}
-        collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed((value) => !value)}
-        onHome={() => dispatch({ type: "NAVIGATE", page: { type: "home" } })}
-        onNewProject={() =>
-          dispatch({ type: "NAVIGATE", page: { type: "new-project" } })
-        }
-        onOpenProject={() => void handleOpenProject()}
-        onSelectProject={(project) => void openSelectedProject(project)}
-        onRevealProject={(project) => void handleRevealProject(project)}
-        onRemoveProject={(project) => void handleRemoveProject(project)}
-        onDeleteProject={setDeleteCandidate}
-        onRetry={() => void loadApplicationData()}
-      />
+    <div className={`workspace-shell page-${state.page.type}`}>
+      {state.page.type !== "new-project" ? (
+        <ProjectSidebar
+          projects={state.recentProjects}
+          availability={state.projectAvailability}
+          loading={state.recentProjectsLoading}
+          loadError={state.recentProjectsError}
+          activeProjectPath={activeProjectPath}
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed((value) => !value)}
+          onHome={() => dispatch({ type: "NAVIGATE", page: { type: "home" } })}
+          onNewProject={() =>
+            dispatch({ type: "NAVIGATE", page: { type: "new-project" } })
+          }
+          onOpenProject={() => void handleOpenProject()}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onSelectProject={(project) => void openSelectedProject(project)}
+          onRevealProject={(project) => void handleRevealProject(project)}
+          onRemoveProject={(project) => void handleRemoveProject(project)}
+          onDeleteProject={requestProjectDeletion}
+          onRetryAvailability={retryProjectAvailability}
+          onRelinkProject={handleRelinkProject}
+          onOpenIndependent={handleOpenIndependent}
+          onRetry={() => void loadApplicationData()}
+          engines={state.engines}
+          metrics={metrics}
+        />
+      ) : null}
 
       <section className="workspace-surface">
-        <TitleRunBar
-          project={activeProject}
-          pipelineSnapshot={state.pipelineSnapshot}
-          onStart={() => void handleStart()}
-          onPause={() => void handlePause()}
-          onResume={() => void handleResume()}
-          onCancel={() => void handleCancel()}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onRevealProject={() => activeProject && void handleRevealProject(activeProject)}
-          onRemoveProject={() => activeProject && void handleRemoveProject(activeProject)}
-          onDeleteProject={() => activeProject && setDeleteCandidate(activeProject)}
-        />
+        <div className="workspace-header-stack">
+          {state.page.type === "home" ? <h1 className="sr-only">项目中心</h1> : null}
+          {state.page.type === "project-detail" ? (
+            <TitleRunBar
+              project={activeProject}
+              pipelineSnapshot={viewedPipelineSnapshot}
+              pipelineConflict={pipelineConflict}
+              taskProgress={activeProject ? taskProgressByProject[activeProject.id] ?? null : null}
+              updatedAt={viewedPipelineFreshness.updatedAt}
+              onHome={() => dispatch({ type: "NAVIGATE", page: { type: "home" } })}
+              onBlockedAttempt={() => activeProject && blockForActiveProject(activeProject.id)}
+              onStart={() => void handleStart()}
+              onPause={handlePause}
+              onResume={() => void handleResume()}
+              onCancel={handleCancel}
+              onRevealProject={() => activeProject && void handleRevealProject(activeProject)}
+              onRemoveProject={() => activeProject && void handleRemoveProject(activeProject)}
+              onDeleteProject={() => activeProject && requestProjectDeletion(activeProject)}
+              onViewActivity={() => setWorkspaceActivitySignal((value) => value + 1)}
+            />
+          ) : null}
+        </div>
         <main className="workspace-content">{page}</main>
       </section>
 
-      <SystemStatusBar
-        engines={state.engines}
-        enginesLoading={state.enginesLoading}
-        enginesError={state.enginesError}
-        version={version}
-        metrics={metrics}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onRetryEngines={() => void loadApplicationData()}
-      />
-
-      {settingsOpen && settings && (
+      {settingsOpen && (
         <SettingsDrawer
           engines={state.engines}
+          enginesLoading={state.enginesLoading}
+          enginesError={state.enginesError}
+          version={version}
           settings={settings}
+          loadError={settingsError}
           metrics={metrics}
           projectId={activeProject?.id ?? null}
           projectPath={activeProjectPath}
@@ -410,17 +646,23 @@ function AppWorkspace() {
           onSettings={setSettings}
           onEngines={(engines) => dispatch({ type: "SET_ENGINES", engines })}
           onError={(error) => dispatch({ type: "SET_ERROR", error })}
+          onRetrySettings={() => void loadApplicationData()}
         />
       )}
 
-      {deleteCandidate && (
-        <DeleteProjectDialog
-          project={deleteCandidate}
-          busy={deleteBusy}
-          onCancel={() => setDeleteCandidate(null)}
-          onConfirm={() => void handleDeleteProject()}
+      {workspaceAction && (
+        <WorkspaceActionDialog
+          request={workspaceAction}
+          onClose={() => {
+            setWorkspaceAction(null);
+            if (workspaceAction.action === "delete_project") setDeleteCandidate(null);
+          }}
+          onCompleted={handleWorkspaceActionCompleted}
         />
       )}
+      {actionReceipt ? <ActionReceipt receipt={actionReceipt} onDismiss={() => setActionReceipt(null)} /> : null}
+
+      {isUiPreviewMode() ? <div className="preview-mode-label">界面预览 · 示例数据</div> : null}
 
       {state.error && (
         <div className="global-error" role="alert">
@@ -442,6 +684,7 @@ function AppWorkspace() {
           <p>正在处理…</p>
         </div>
       )}
+      <StatusAnnouncer message={announcement} />
     </div>
   );
 }

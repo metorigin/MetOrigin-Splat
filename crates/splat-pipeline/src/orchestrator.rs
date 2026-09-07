@@ -418,7 +418,10 @@ impl PipelineOrchestrator {
         let mut state = self.state.write().await;
         if let Some(stage) = state.stages.get_mut(&stage_id) {
             stage.status = StageStatus::Failed;
-            stage.error = Some(error.to_string());
+            // StageState.error is a legacy persisted string. Keep its schema
+            // stable, but never persist raw engine-facing English or technical
+            // details into the default UI surface.
+            stage.error = Some(error.localized_for_ui().to_string());
             stage.ended_at = Some(chrono::Utc::now());
         }
         state.current_stage = None;
@@ -635,6 +638,14 @@ mod tests {
                 .status,
             StageStatus::Failed
         );
+        let error = state
+            .stages
+            .get(&PipelineStageId::MediaValidation)
+            .and_then(|stage| stage.error.as_deref())
+            .expect("failed stage should persist a safe user-facing error");
+        assert!(error.contains("E-9999"));
+        assert!(error.contains("应用内部"));
+        assert!(!error.contains("Simulated stage failure"));
     }
 
     #[tokio::test]

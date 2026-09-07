@@ -8,17 +8,21 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "build:windows:release": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ../../scripts/windows/Build-WindowsRelease.ps1",
     "package:windows:full": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ../../scripts/windows/Build-FullInstaller.ps1",
     "lint": "eslint src --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --cache=false"
   },
   "dependencies": {
-    "@phosphor-icons/react": "^2.1.10",
+    "@fontsource-variable/inter": "5.2.8",
+    "@fontsource/jetbrains-mono": "5.3.0",
+    "@sparkjsdev/spark": "2.1.0",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@tauri-apps/plugin-shell": "^2.0.0",
+    "lucide-react": "1.0.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "three": "^0.185.1"

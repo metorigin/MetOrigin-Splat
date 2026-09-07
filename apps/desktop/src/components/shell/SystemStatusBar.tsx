@@ -4,7 +4,7 @@ import {
   HardDrives,
   Monitor,
   WarningCircle,
-} from "@phosphor-icons/react";
+} from "../primitives/icons";
 
 import type { EngineInfo, ResourceMetrics } from "../../types";
 
@@ -16,6 +16,8 @@ interface SystemStatusBarProps {
   metrics: ResourceMetrics | null;
   onOpenSettings: () => void;
   onRetryEngines: () => void;
+  context?: "home" | "workspace";
+  pipelineStatus?: string | null;
 }
 
 function gib(bytes: number) {

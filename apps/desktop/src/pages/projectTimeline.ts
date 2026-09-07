@@ -8,10 +8,10 @@ export interface PhaseDefinition {
 }
 
 export const PHASES: PhaseDefinition[] = [
-  { id: "media", label: "素材准备", description: "视频抽帧或图片标准化、图像预处理", stages: ["MediaValidation", "FrameExtraction", "ImagePreprocessing"] },
-  { id: "camera", label: "相机重建", description: "COLMAP 相机轨迹与稀疏点云", stages: ["ColmapFeatureExtraction", "ColmapMatching", "ColmapMapping", "ColmapValidation"] },
-  { id: "training", label: "模型训练", description: "3D Gaussian Splat 优化与验证", stages: ["TrainingPreparation", "BrushTraining", "ModelValidation"] },
-  { id: "export", label: "结果导出", description: "生成 scene.ply 与预览清单", stages: ["Export", "PreviewGeneration"] },
+  { id: "media", label: "预处理", description: "素材标准化与有效帧筛选", stages: ["MediaValidation", "FrameExtraction", "ImagePreprocessing"] },
+  { id: "camera", label: "特征提取", description: "相机轨迹与稀疏点云", stages: ["ColmapFeatureExtraction", "ColmapMatching", "ColmapMapping", "ColmapValidation"] },
+  { id: "training", label: "训练重建", description: "Gaussian Splat 优化", stages: ["TrainingPreparation", "BrushTraining", "ModelValidation"] },
+  { id: "export", label: "质量评估", description: "验证模型并生成结果", stages: ["Export", "PreviewGeneration"] },
 ];
 
 export function phaseStatus(pipelineState: Project["pipeline_state"], phase: PhaseDefinition): StageStatus {
@@ -49,4 +49,21 @@ export function plyActionState(artifact: ArtifactItem | null | undefined): { rea
   if (!artifact?.exists) return { ready: false, message: "PLY 尚未生成，结果导出完成后即可打开。" };
   if (!artifact.validated) return { ready: false, message: artifact.error ?? "PLY 未通过完整性校验，请查看结果导出日志。" };
   return { ready: true, message: "在应用内预览最终 PLY" };
+}
+
+export function phaseProgressPercent(pipelineState: Project["pipeline_state"], phase: PhaseDefinition): number {
+  if (!phase.stages.length) return 0;
+  const completed = phase.stages.reduce((total, stage) => {
+    const item = pipelineState.stages[stage];
+    if (!item) return total;
+    if (item.status === "completed" || item.status === "skipped") return total + 1;
+    return total + (Number.isFinite(item.progress) ? Math.max(0, Math.min(1, item.progress)) : 0);
+  }, 0);
+  return Math.round(completed / phase.stages.length * 100);
+}
+
+export function failedStageId(pipelineState: Project["pipeline_state"] | null | undefined): PipelineStageId | null {
+  const current = pipelineState?.current_stage as PipelineStageId | null;
+  if (current && pipelineState?.stages[current]?.status === "failed") return current;
+  return (Object.keys(pipelineState?.stages ?? {}) as PipelineStageId[]).find((stage) => pipelineState?.stages[stage]?.status === "failed") ?? null;
 }

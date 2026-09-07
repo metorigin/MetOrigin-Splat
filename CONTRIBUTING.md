@@ -22,6 +22,8 @@ pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
+The [commit-scope guidance](docs/development.md#what-belongs-in-git) distinguishes source and license inputs from generated engines, caches and private project data. Keep both dependency lockfiles when dependencies change.
+
 ## Branches and commits
 
 - Create a short-lived branch from the latest `main`.

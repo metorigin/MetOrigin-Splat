@@ -60,6 +60,32 @@ export interface ProjectInfo {
   stage_label?: string;
 }
 
+export type ProjectAvailability = "available" | "missing" | "unreadable" | "check_failed";
+export type ProjectAvailabilityStatus = "unknown" | "checking" | ProjectAvailability;
+
+export interface ProjectAvailabilityResult {
+  project_id: string;
+  checked_path: string;
+  availability: ProjectAvailability;
+  checked_at: string;
+  reason_code: string | null;
+  refreshed_project: ProjectInfo | null;
+}
+
+export interface RecentProjectAvailability {
+  status: ProjectAvailabilityStatus;
+  checkedPath: string;
+  checkedAt: string | null;
+  reasonCode: string | null;
+  generation: number;
+}
+
+export interface RelinkRecentProjectRequest {
+  projectId: string;
+  previousPath: string;
+  candidatePath: string;
+}
+
 /** Result returned by the `create_project` Tauri command. */
 export interface CreateProjectResult {
   id: string;

@@ -1,343 +1,89 @@
-# MetOrigin Splat — Architecture
+# Architecture
 
-## Overview
+MetOrigin Splat is a Windows-first Tauri 2 application with a React/TypeScript interface and a Rust reconstruction pipeline. This document describes implemented boundaries; the older UX design records are indexed under [specs](../specs/README.md).
 
-MetOrigin Splat is structured as a layered architecture with clean separation between the desktop UI, the Rust application core, and the external engines.
+## Modules
 
-```
-┌───────────────────────────────────────────┐
-│               Desktop UI                  │
-│        Tauri + React + TypeScript          │
-│                                           │
-│ 项目管理 / 素材导入 / 设置 / 进度 / 预览     │
-└──────────────────────┬────────────────────┘
-                       │ Tauri Commands / Events
-┌──────────────────────▼────────────────────┐
-│              Rust Application Core        │
-│                                           │
-│ Project Manager                           │
-│ Pipeline Orchestrator                     │
-│ Process Runner                            │
-│ Hardware Detector                         │
-│ Event Bus                                 │
-│ Error Mapper                              │
-│ Checkpoint Manager                        │
-└───────┬──────────────┬──────────────┬─────┘
-        │              │              │
-┌───────▼──────┐ ┌─────▼───────┐ ┌────▼───────────┐
-│ FFmpeg Adapter│ │COLMAP Adapter│ │ Brush Adapter  │
-└───────┬──────┘ └─────┬───────┘ └────┬───────────┘
-        │              │              │
-┌───────▼──────────────▼──────────────▼─────┐
-│               Project Workspace           │
-│ source / frames / colmap / training       │
-│ output / logs / cache / project.json      │
-└───────────────────────────────────────────┘
+| Location | Responsibility |
+| --- | --- |
+| `apps/desktop/src/` | Project navigation, creation wizard, timeline, settings, rendering and interaction state |
+| `apps/desktop/src/services/desktop.ts` | Typed frontend wrappers for Tauri IPC |
+| `apps/desktop/src-tauri/src/` | Desktop commands, application state, events and validated file access |
+| `crates/splat-domain/` | Project, settings, stage, event and error types |
+| `crates/splat-project/` | Project creation, persistence, locking, migration and recent-project index |
+| `crates/splat-process/` | Child-process execution, output capture, cancellation and process-tree cleanup |
+| `crates/splat-pipeline/` | Stage orchestration, preflight, progress, cache checks, recovery and export |
+| `crates/splat-hardware/` | Hardware/resource detection, engine discovery and engine-pack integrity |
+| `crates/splat-engine-ffmpeg/` | Media probing and video frame extraction |
+| `crates/splat-engine-colmap/` | Features, matching, sparse reconstruction and quality reports |
+| `crates/splat-engine-brush/` | Training, checkpoint parsing and live-preview protocol |
+| `integrations/brush-live/` | Source injected into the pinned Brush build to export requested training snapshots |
+
+```text
+React pages and shared state
+        │ typed desktop service calls / project-scoped events
+Tauri commands and application state
+        │
+Pipeline orchestrator ── Project persistence / hardware and engine discovery
+        │
+FFmpeg / COLMAP / Brush adapters
+        │
+splat-process ── local child processes ── project artifacts
 ```
 
-## Core Design Principles
+Components use the desktop service layer instead of importing raw Tauri commands. Domain and pipeline crates do not depend on the visual layout.
 
-### 1. External Engines Must Use Adapters
+## Interface and state
 
-UI and business logic must never construct FFmpeg, COLMAP, or Brush commands directly. A unified adapter layer is mandatory:
+The application has a project center, a three-step creation wizard and a project-detail workspace. The sidebar contains creation/open actions, recent projects and the single Settings & Engines entry. The theme is managed through `useTheme`; active styles are `styles/buzz.css`, `styles/tokens.css` and `styles/interaction-surfaces.css`.
 
-```rust
-pub trait EngineAdapter {
-    fn name(&self) -> &'static str;
-    fn detect(&self) -> Result<EngineInfo, EngineError>;
-    fn validate(&self, context: &TaskContext) -> Result<(), EngineError>;
-    fn build_command(&self, context: &TaskContext) -> Result<CommandSpec, EngineError>;
-}
+The selected project and the running project are separate concepts. Only one pipeline owns the active execution slot, but users can inspect another project or prepare a new one. Project identity and sequence information prevent late events from being applied to the wrong view. Recent-index reads precede bounded availability checks so a slow or missing location does not block the list.
+
+The creation wizard analyzes the selected source, runs preflight for the chosen preset, then validates the destination before copying source media. Changing the preset triggers a new preflight; outdated results cannot enable the next step. Image selection uses a browsable file picker and derives the parent folder for whole-folder import.
+
+Frontend async resources distinguish loading, unavailable data and failures. Missing resource measurements are not represented as zero. The project center queries the executable's volume by default; project-specific resource views can query the project location.
+
+## Pipeline
+
+The UI groups twelve backend stage identifiers into four phases:
+
+| Phase | Stage identifiers |
+| --- | --- |
+| 预处理 / Preprocessing | `MediaValidation`, `FrameExtraction`, `ImagePreprocessing` |
+| 特征提取 / Feature extraction | `ColmapFeatureExtraction`, `ColmapMatching`, `ColmapMapping`, `ColmapValidation` |
+| 训练重建 / Training | `TrainingPreparation`, `BrushTraining`, `ModelValidation` |
+| 质量评估 / Quality assessment | `Export`, `PreviewGeneration` |
+
+The phase cards are collapsed until clicked. Selecting a stage changes the artifact being inspected; following the current stage restores automatic selection. The last phase includes final validation output and export, rather than a separate training engine.
+
+Each stage checks its prerequisites and existing output before execution. Valid cached output can be reused. Invalidating a stage also affects its dependent stages. Progress comes from stage state and available engine measurements, not a simulated timer.
+
+## Persistence and recovery
+
+A `.splat-project` is a directory containing `project.json`, copied media, intermediate output, checkpoints, final artifacts and logs. [Project format](project-format.md) describes the layout and serialization.
+
+Project locks prevent concurrent writers. Critical state is written atomically. On reopening an interrupted project, recovery validates persisted stage state and files before deciding what is reusable. A partial Brush checkpoint makes the stage resumable; it does not mark training complete.
+
+Pause, cancel, rerun, recovery and deletion use explicit application actions. High-impact operations that expose a preview/confirmation token verify that token against current state before mutation. Removing a recent entry and deleting its project directory remain different operations.
+
+## Artifact and live rendering
+
+Preprocessing displays image artifacts. COLMAP displays sparse geometry and camera poses. Training and final-model stages use the lazy-loaded Spark/WebGL2 Gaussian renderer and full model attributes.
+
+The live path is:
+
+```text
+Viewer demand → Tauri request → Brush TrainStep model
+             → complete binary PLY + atomic latest.json
+             → validated binary IPC → Spark renderer → acknowledgement
 ```
 
-This allows future replacement:
-- Brush → OpenSplat (or other training engines)
-- COLMAP → GLOMAP (or other SfM)
-- FFmpeg → other media processors
+The companion exports only when requested and when the prior frame has been acknowledged. Session identities isolate runs; expiring requests and a two-frame cache bound unattended work. Model replacement preserves the user's camera. Saved recovery checkpoints are separate from transient live-preview files.
 
-### 2. Pipeline Must Be a State Machine
+This is a snapshot channel to the training model, not an embedded native Brush window or a shared GPU texture. See [Gaussian live preview](gaussian-live-preview.zh-CN.md) for cadence, formats and limits.
 
-A single long function that executes all commands sequentially is not acceptable.
+## Verification boundaries
 
-Every stage must contain:
-- Unique ID
-- Inputs
-- Outputs
-- Current status
-- Start / end time
-- Retry count
-- Failure reason
-- Log path
-- Whether skippable
-- Whether resumable
+Unit and integration tests cover domain transitions, persistence, adapter behavior and frontend interactions. The browser UI preview uses development-only synthetic data. Native WebView2 and real-engine tests are separate because rendering, file dialogs, GPU drivers and child-process failures cannot be validated by a browser mock alone.
 
-### 3. Project Is the Single Source of Truth
-
-The UI does not independently maintain business state. Core state is stored in `project.json` (and runtime state store). The UI reads from and writes to the project through the core.
-
-### 4. Unified Process Runner
-
-All external processes (FFmpeg, COLMAP, Brush) must be launched through a single `ProcessRunner` that handles:
-- stdout / stderr streaming
-- Log file writing
-- Exit code handling
-- Cancellation
-- Timeout
-- Process tree termination (Windows)
-- Progress parsing
-- Crash recording
-- Windows path and encoding compatibility
-
-## Domain Module (`splat-domain`)
-
-Core types without UI or engine dependencies:
-
-```rust
-Project
-ProjectSettings
-ProjectStatus
-Pipeline
-PipelineStage
-StageStatus
-TaskProgress
-EngineInfo
-HardwareProfile
-AppError
-RecoveryState
-ExportResult
-```
-
-Requirements:
-- Serializable
-- Version-upgradable
-- No UI dependency
-- No engine-specific dependency
-- Unit tests covering major state transitions
-
-## Process Runner (`splat-process`)
-
-The most important infrastructure crate in the first version.
-
-```rust
-pub struct CommandSpec {
-    pub program: PathBuf,
-    pub args: Vec<OsString>,
-    pub cwd: Option<PathBuf>,
-    pub env: HashMap<OsString, OsString>,
-    pub log_file: PathBuf,
-    pub timeout: Option<Duration>,
-}
-
-pub struct ProcessHandle {
-    pub process_id: u32,
-    pub started_at: DateTime<Utc>,
-}
-
-pub enum ProcessEvent {
-    Started,
-    StdoutLine(String),
-    StderrLine(String),
-    Progress(TaskProgress),
-    Exited(i32),
-    Cancelled,
-    TimedOut,
-}
-```
-
-Acceptance criteria:
-- Correct handling of Windows paths with CJK characters and spaces
-- Real-time stdout/stderr streaming
-- Simultaneous log file writing
-- Process cancellation without residue
-- Distinguish user cancellation from process crash
-- No shell string command construction (avoid injection/escaping issues)
-- Sensitive paths not sent to external services
-
-## Hardware Manager (`splat-hardware`)
-
-MVP detection includes:
-- OS type
-- CPU info
-- Total memory
-- GPU name and VRAM
-- Available disk space
-- DirectX / Vulkan capability
-- Engine launch capability
-
-```rust
-pub struct HardwareProfile {
-    pub operating_system: OperatingSystem,
-    pub cpu_name: Option<String>,
-    pub memory_total_bytes: u64,
-    pub gpu_devices: Vec<GpuDevice>,
-    pub available_disk_bytes: u64,
-    pub recommended_preset: PresetId,
-    pub warnings: Vec<HardwareWarning>,
-}
-```
-
-Do not infer everything from GPU name alone. The primary compatibility check is whether the engine self-test passes.
-
-## Pipeline Orchestrator (`splat-pipeline`)
-
-### Pipeline Stage IDs
-
-```rust
-pub enum PipelineStageId {
-    MediaValidation,
-    FrameExtraction,
-    ImagePreprocessing,
-    ColmapFeatureExtraction,
-    ColmapMatching,
-    ColmapMapping,
-    ColmapValidation,
-    TrainingPreparation,
-    BrushTraining,
-    ModelValidation,
-    PreviewGeneration,
-    Export,
-}
-```
-
-### Stage Status
-
-```rust
-pub enum StageStatus {
-    Pending,
-    Preparing,
-    Running,
-    Pausing,
-    Paused,
-    Cancelling,
-    Cancelled,
-    Completed,
-    Failed,
-    Skipped,
-}
-```
-
-### Pipeline capabilities
-
-- Start
-- Cancel
-- Retry failed stage
-- Resume from last successful stage
-- Check existing outputs
-- Re-execute a stage
-- Stage-level logging
-- Crash recovery
-
-**MVP note**: True arbitrary pause is not implemented initially (external programs don't natively support pause). MVP defines "cancel and preserve results" rather than "pause any process and resume in place."
-
-## Error Mapper
-
-### Error Hierarchy
-
-```
-User errors
-Environment errors
-Media errors
-Engine errors
-Filesystem errors
-System resource errors
-Internal errors
-```
-
-### Error Code Ranges
-
-| Range      | Type                  |
-| ---------- | --------------------- |
-| 1000–1099  | Project & file errors |
-| 1100–1199  | Media errors          |
-| 1200–1299  | Disk & permission     |
-| 2000–2099  | FFmpeg errors         |
-| 3000–3099  | COLMAP errors         |
-| 4000–4099  | Brush errors          |
-| 5000–5099  | GPU & hardware        |
-| 9000–9099  | Internal errors       |
-
-### Error Structure
-
-```rust
-pub struct AppError {
-    pub code: String,
-    pub category: ErrorCategory,
-    pub title: String,
-    pub user_message: String,
-    pub technical_message: Option<String>,
-    pub suggestions: Vec<String>,
-    pub retryable: bool,
-    pub log_path: Option<PathBuf>,
-}
-```
-
-## UI Pages
-
-### Home
-- New project
-- Open project
-- Recent projects
-- Software version
-- Engine status
-- Environment warnings
-
-### New Project Wizard
-```
-Select input
-→ Media analysis
-→ Choose save location
-→ Select preset
-→ Create project
-```
-
-### Project Page
-- Project name, media count, current stage, disk usage
-- Training preset, registered image count, last run time
-- Actions: continue training, re-execute, open output directory
-
-### Training Page
-- Overall progress, current stage, stage progress
-- Elapsed time, training iteration, resource usage
-- Latest log, cancel button, detailed log entry
-
-### Results Page
-
-**MVP**: Open external viewer, show output path, export PLY, open output directory.
-
-**Future**: Embedded WebGPU viewer, camera bookmarks, basic cropping, background settings, quality statistics.
-
-### Settings Page
-- Engine paths
-- Default project directory
-- Cache policy
-- Log level
-- Update channel
-- Advanced parameters
-- Privacy notice
-- Third-party licenses
-
-## Risks
-
-### Brush CLI Instability
-- CLI parameters may change
-- Output log format may change
-- Checkpoint format may change
-- GPU backend behavior differs
-
-**Mitigation**: Version pinning, adapter isolation, version detection, compatibility tests, no raw Brush log parsing in UI.
-
-### COLMAP Success Rate
-- Poor user media quality
-- Low texture, blur, dynamic objects, repetitive patterns
-- Insufficient overlap between adjacent frames
-
-**Mitigation**: Media pre-check, frame extraction strategy, multiple matching modes, registration rate detection, failure suggestions, future auto-retry.
-
-### Large Installer Size
-**Mitigation**: Separate app from engine pack, first-run engine download, offline full pack option, on-demand engine updates.
-
-### GPU Compatibility
-**Mitigation**: No blanket GPU promises, engine self-test on first launch, device/result logging, public compatibility matrix, prioritize one GPU class for stability.
-
-### Third-Party Licenses
-**Mitigation**: License audit in first week, record binary sources, preserve license texts, clarify FFmpeg build config, do not distribute binaries with unclear license status.
+See [development](development.md) for validation commands and [engine integration](engine-integration.md) for engine selection and compatibility boundaries.

@@ -1,7 +1,8 @@
-import { ArrowCounterClockwise, Eye, FolderOpen, Trash, X } from "@phosphor-icons/react";
-import { useEffect, useRef } from "react";
+import { ArrowCounterClockwise, Eye, FolderOpen, Trash, X } from "../primitives/icons";
+import { useRef } from "react";
 
 import type { CheckpointSummary } from "../../types";
+import { ModalSurface } from "../primitives";
 
 function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(2)} MiB`;
@@ -16,20 +17,8 @@ export function CheckpointDrawer({ checkpoints, onClose, onPreview, onRestore, o
   onOpen: (checkpoint: CheckpointSummary) => void;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    const previousFocus = document.activeElement as HTMLElement | null;
-    closeRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      previousFocus?.focus();
-    };
-  }, [onClose]);
   return (
-    <aside className="checkpoint-drawer" role="dialog" aria-modal="true" aria-label="Checkpoint 管理器">
+    <ModalSurface id="checkpoint-drawer" title="Checkpoint 管理器" titleHidden className="checkpoint-drawer" onClose={onClose} initialFocusRef={closeRef}>
       <header><div><strong>Checkpoint 管理器</strong><span>Brush PLY 几何恢复点，不包含优化器状态</span></div><button ref={closeRef} className="icon-button" type="button" onClick={onClose} aria-label="关闭 Checkpoint 管理器"><X size={17} /></button></header>
       <div className="checkpoint-list">
         {checkpoints.length === 0 ? <div className="checkpoint-empty">尚未生成合法 Checkpoint</div> : checkpoints.map((checkpoint) => (
@@ -40,6 +29,6 @@ export function CheckpointDrawer({ checkpoints, onClose, onPreview, onRestore, o
           </article>
         ))}
       </div>
-    </aside>
+    </ModalSurface>
   );
 }

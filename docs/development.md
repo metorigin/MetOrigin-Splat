@@ -1,124 +1,119 @@
-# MetOrigin Splat Development Guide
+# Development
 
-## Supported development environment
+## Toolchain and startup
 
-The actively validated development environment is Windows 10/11 x64 with:
+The validated desktop target is Windows 10/11 x64. Install Rust **1.97.0** with `x86_64-pc-windows-msvc`, Node.js **22**, pnpm **11.12.0**, Visual Studio C++ Build Tools, the Windows SDK and WebView2 Runtime. Rust and pnpm versions are pinned in [rust-toolchain.toml](../rust-toolchain.toml) and [package.json](../package.json).
 
-- Rust 1.97.0, pinned by `rust-toolchain.toml`
-- Node.js 22
-- pnpm 11.12.0, pinned by the root `packageManager` field
-- Windows SDK
-- Visual Studio Build Tools with the Desktop development with C++ workload
-- The Windows prerequisites from the [Tauri guide](https://v2.tauri.app/start/prerequisites/)
-
-Other host platforms may build individual Rust crates, but they are not supported desktop release targets yet.
-
-## Getting started
+From the repository root:
 
 ```powershell
-git clone https://github.com/metorigin/MetOrigin-Splat.git
-Set-Location MetOrigin-Splat
-
 pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
-`pnpm dev` starts only the Vite frontend. Use `pnpm tauri dev` when testing desktop commands, dialogs, filesystem integration, engine detection, or pipeline execution.
+Tauri starts Vite on port 1420 through `beforeDevCommand`. Start only this command for normal desktop development. Restart it after Rust/Tauri changes. Vite handles frontend hot reload.
 
-## External engines
+For frontend-only work, use `pnpm dev`, then open `http://localhost:1420/?ui-preview`. Add `&preview-page=new-project` and optionally `&preview-step=2` or `3` to inspect wizard steps with sample data. The sample mode is gated by `import.meta.env.DEV` and cannot replace native or GPU validation.
 
-The application integrates with three external programs through Rust adapters:
+## Engines and live preview
 
-- FFmpeg / FFprobe for media probing and frame extraction
-- COLMAP for feature extraction, matching, and sparse reconstruction
-- Brush for Gaussian Splatting training and PLY generation
+Source checkouts do not contain the engine binaries. See [engine integration](engine-integration.md) for configuring installed engines or preparing the pinned pack:
 
-Frontend and core unit tests do not require these programs. Running the complete pipeline and the ignored real-engine tests requires compatible local engine installations.
-
-The versions used for the current Windows technical validation are recorded in `packaging/windows-x64/engine-lock.json`. That lock file and the packaging scripts are reproducibility inputs, not permission to republish the downloaded programs. Read `packaging/windows-x64/README.md` and `packaging/windows-x64/THIRD_PARTY_NOTICES.template.md` before creating or distributing an engine bundle.
-
-## Repository structure
-
-```text
-MetOrigin-Splat/
-├── apps/desktop/
-│   ├── src/                  # React and TypeScript frontend
-│   ├── src-tauri/            # Tauri application and Rust commands
-│   └── package.json
-├── crates/
-│   ├── splat-domain/         # Domain types and state machines
-│   ├── splat-project/        # Project persistence and migration
-│   ├── splat-process/        # External process execution
-│   ├── splat-pipeline/       # Pipeline orchestration and integration tests
-│   ├── splat-hardware/       # Hardware and engine discovery
-│   ├── splat-engine-ffmpeg/  # FFmpeg adapter
-│   ├── splat-engine-colmap/  # COLMAP adapter
-│   └── splat-engine-brush/   # Brush adapter
-├── schemas/                  # JSON Schemas and validation examples
-├── presets/                  # Fast, balanced, and quality presets
-├── docs/                     # Architecture and development documentation
-├── packaging/                # Internal packaging definitions and notices
-└── scripts/                  # Build and packaging utilities
+```powershell
+pnpm prepare:windows:engines
+pnpm verify:windows:engines
 ```
 
-Rust integration tests live alongside the relevant crate. Frontend tests live beside the components and pages they cover.
+The generated engine directory is `target/distribution/windows-x64/engines`; select that directory in Settings & Engines for local use. The downloaded archives remain in `.engines/downloads`. The pack preparation also builds the Brush live-preview companion.
 
-## Validation commands
+To build that companion separately for an existing Brush installation:
 
-Run the checks relevant to your change before opening a pull request:
+```powershell
+pnpm build:brush:live
+# With a complete local dependency/source cache:
+pnpm build:brush:live -Offline
+```
+
+The default output is `.engines/brush-v0.3.0-windows-x64/brush_live.exe`. Use `-OutputDirectory` to place it beside another configured `brush_app.exe`. This builds the companion only, not the complete stock engine pack.
+
+## Routine checks
+
+Run checks relevant to the change:
 
 ```powershell
 pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
-
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-targets
 ```
 
-Schema validation is also performed in GitHub Actions with `ajv-cli`.
+Frontend tests live beside the components and pages they exercise; Rust tests live in their crates. On non-Windows hosts, core-only CI excludes `splat-desktop`. JSON Schemas and fixtures are validated by the commands in [ci.yml](../.github/workflows/ci.yml).
 
-### Real-engine tests
+`pnpm test:ux:automated` builds the frontend and uses a local headless Edge session with synthetic IPC data. It covers interaction/layout checks and writes ignored evidence under `.test-results/ux-automation/`. It does not exercise real media, engines, native file dialogs or Windows sleep/resume.
 
-The following tests are ignored by default because they require pinned engines, licensed test media, disk space, and compatible hardware:
+The Windows CI gate also runs:
 
-- `crates/splat-pipeline/tests/real_ffmpeg.rs`
-- `crates/splat-pipeline/tests/real_colmap.rs`
-- `crates/splat-pipeline/tests/real_brush.rs`
-- `crates/splat-pipeline/tests/real_image_pipeline.rs`
+```powershell
+pnpm --dir apps/desktop tauri build --debug --no-bundle
+```
 
-Their environment variables, commands, and latest validation evidence are documented in `docs/plans/technical-spike.md`. Do not commit private or unlicensed test media. Public fixtures must record their source, license, checksum, and expected result.
+## Real-engine validation
 
-## CI behavior
+These integration tests are ignored by default. Run them against disposable test projects and media you are authorized to use; they create or modify files and may run substantial CPU/GPU workloads.
 
-Pull requests targeting `main` run:
+| Test target in `splat-pipeline` | Required environment variables / prior output |
+| --- | --- |
+| `real_ffmpeg` | `METORIGIN_TEST_VIDEO`, `METORIGIN_TEST_PROJECT_DIR`, `METORIGIN_TEST_FFMPEG`, `METORIGIN_TEST_FFPROBE` |
+| `real_colmap` | `METORIGIN_TEST_PROJECT_DIR` containing prepared frames; `METORIGIN_TEST_COLMAP` |
+| `real_brush` | `METORIGIN_TEST_PROJECT_DIR` containing a valid COLMAP result; `METORIGIN_TEST_BRUSH` |
+| `real_image_pipeline` | `METORIGIN_TEST_IMAGE_DIR`, isolated `METORIGIN_TEST_PROJECT_ROOT`, `METORIGIN_TEST_COLMAP` |
 
-- Rust formatting, Clippy, and unit/integration tests
-- JSON Schema validation
-- Windows frontend lint, type checking, and production build
-- Windows Rust checks and a Tauri debug build without a bundle
+After setting the appropriate variables, select a target, for example:
 
-The full offline Windows installer workflow is manual and internal-only. It does not create a public GitHub Release.
+```powershell
+cargo test -p splat-pipeline --test real_brush -- --ignored --nocapture
+```
 
-## Code quality
+The [2026-07-13 engine baseline](validation/engine-baseline.md) records one historical run and its compatibility findings. It is not a current all-hardware pass claim.
 
-### Rust
+For native Gaussian rendering and a separate training run, follow [the live-preview validation procedure](gaussian-live-preview.zh-CN.md). `pnpm test:tauri:native-fast` and `pnpm test:tauri:native-failure-recovery` provide additional opt-in native scenarios. Their setup variables and behavior are documented in [Run-NativeTauriFastValidation.mjs](../scripts/windows/Run-NativeTauriFastValidation.mjs) and [Run-NativeTauriFailureRecoveryValidation.mjs](../scripts/windows/Run-NativeTauriFailureRecoveryValidation.mjs). The latter intentionally terminates its own test engine process and requires an isolated project with valid checkpoints.
 
-- Keep `cargo fmt` and Clippy clean.
-- Propagate or intentionally map errors; do not silently discard them.
-- Avoid `unwrap` in production paths unless an invariant is documented.
-- Use atomic writes for project state and other critical files.
-- Keep external command construction inside engine adapters and `splat-process`.
+Keep raw screenshots, logs, generated models, browser profiles and native reports in `.test-results/` or `.artifacts/`. Record sanitized, dated outcomes only when retaining evidence is useful. Historical [acceptance protocols](../specs/README.md) remain available for broader release verification.
 
-### TypeScript
+## Windows build outputs
 
-- Keep strict type checking enabled.
-- Do not call raw Tauri command names directly from components; use the service layer.
-- Keep long-running task state in the shared application context.
-- Separate user-facing error summaries from technical diagnostics.
+| Command | Result |
+| --- | --- |
+| `pnpm build` | Frontend production assets in `apps/desktop/dist/` |
+| `pnpm build:windows:release` | Application executable, checksum and metadata in `artifacts/windows/app/` |
+| `pnpm prepare:windows:engines` | Engine/license staging tree in `target/distribution/windows-x64/` |
+| `pnpm package:windows:full` | Internal NSIS installer, checksum and metadata in `artifacts/windows/installer/` |
 
-## Contribution and security
+The release application build uses `target/windows-release-build` as an isolated Cargo cache. Do not distribute executables directly from a Cargo cache. The standalone app build and the full engine installer are separate operations; public binary distribution remains subject to [release gates](release-process.md).
 
-Read [CONTRIBUTING.md](../CONTRIBUTING.md) before submitting a change. Report vulnerabilities privately according to [SECURITY.md](../SECURITY.md); do not open a public issue for a suspected security problem.
+## What belongs in Git
+
+Commit source, tests, schemas, presets, build/validation scripts, configuration, current documentation and required license notices. Commit both `Cargo.lock` and `pnpm-lock.yaml` when their dependencies change. The source under `integrations/brush-live/` is necessary to reproduce the companion build.
+
+Do not commit:
+
+- Cargo targets (`target/`, root `target-*/`, `.codex-cargo-target/`), frontend output or dependency caches.
+- `.engines/`, `artifacts/`, `.artifacts/`, `.test-results/`, coverage or raw logs.
+- User `.splat-project` directories, source media, generated PLY/checkpoints or private datasets.
+- Local environment files, credentials, signing keys or personal editor settings.
+
+Put local data inside the ignored directories instead of adding broad exclusions for every image or binary extension: application icons and deliberately licensed test fixtures may belong in Git. Git ignore rules do not remove already tracked files, so inspect both the tracked diff and untracked candidates before staging:
+
+```powershell
+git status --short
+git diff --stat
+git diff --check
+git ls-files --others --exclude-standard
+# After intentionally staging the files for a change:
+git diff --cached --stat
+```
+
+Keep persisted state atomic, external execution inside adapters/`splat-process`, and frontend IPC behind the service layer. See [architecture](architecture.md), [CONTRIBUTING.md](../CONTRIBUTING.md) and [SECURITY.md](../SECURITY.md).

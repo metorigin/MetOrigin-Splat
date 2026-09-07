@@ -1,27 +1,34 @@
 import {
   ArrowLeft,
   ArrowRight,
-  Check,
   CheckCircle,
   FilmStrip,
   FolderOpen,
   Gauge,
   Images,
   SpinnerGap,
+  UploadSimple,
   Warning,
   X,
-} from "@phosphor-icons/react";
+} from "../components/primitives/icons";
 import { listen } from "@tauri-apps/api/event";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useAppContext } from "../context";
+import { ErrorNotice } from "../components";
+import { ModalSurface } from "../components/primitives/ModalSurface";
+import { selectActivePipelineSnapshot, useAppContext } from "../context";
+import { shouldIgnoreShortcut } from "../hooks";
 import {
   desktopApi,
+  isActivePipelineConflict,
   isDesktopRuntime,
   selectImageDirectory,
   selectProjectRoot,
   selectVideoFile,
 } from "../services/desktop";
+import { normalizeCommandError } from "../services/errors";
+import { isUiPreviewMode } from "../services/uiPreview";
+import appIconUrl from "../../src-tauri/icons/app-icon.svg";
 import type {
   AppSettings,
   ImagePreview,
@@ -29,9 +36,15 @@ import type {
   PresetEstimate,
   ProjectCopyProgress,
   ProjectPreflight,
+  UiError,
 } from "../types";
 
-const STEP_LABELS = ["导入素材", "检查与方案", "确认创建"];
+const STEP_LABELS = ["选择素材", "预检与参数", "确认创建"];
+const STEP_PURPOSES = [
+  "选择要重建的视频或连续照片，并确认素材能够读取。",
+  "检查运行环境和磁盘空间，再选择适合本次尝试的质量方案。",
+  "确认项目名称、保存位置和复制范围，然后开始创建。",
+];
 
 type DirectoryCheckState = {
   status: "idle" | "checking" | "success" | "error";
@@ -63,9 +76,28 @@ function presetLabel(id: string): string {
   return { fast: "快速", balanced: "均衡", quality: "高质量" }[id] ?? id;
 }
 
-export function NewProjectPage({ settings = null }: { settings?: AppSettings | null }) {
-  const { dispatch } = useAppContext();
-  const [step, setStep] = useState(0);
+function presetDescription(id: string, fallback: string): string {
+  return {
+    fast: "使用较低分辨率和较少训练次数，快速验证素材能否完成重建。",
+    balanced: "兼顾重建质量与处理时间，适合大多数场景。",
+    quality: "使用更高分辨率和更多训练次数，保留更多细节，需要更多显存与磁盘空间。",
+  }[id] ?? fallback;
+}
+
+export function NewProjectPage({
+  settings = null,
+  onOpenSettings,
+}: {
+  settings?: AppSettings | null;
+  onOpenSettings?: () => void;
+}) {
+  const { state, dispatch } = useAppContext();
+  const activePipeline = selectActivePipelineSnapshot(state);
+  const [step, setStep] = useState(() => {
+    if (!isUiPreviewMode()) return 0;
+    const requested = Number(new URLSearchParams(window.location.search).get("preview-step") ?? "1");
+    return Number.isFinite(requested) ? Math.max(0, Math.min(2, requested - 1)) : 0;
+  });
   const [analysis, setAnalysis] = useState<MediaAnalysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzingKind, setAnalyzingKind] = useState<"video" | "images" | null>(null);
@@ -75,17 +107,48 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
   const sourceRequest = useRef(0);
   const [selectedPreset, setSelectedPreset] = useState(settings?.default_preset ?? "fast");
   const [preflight, setPreflight] = useState<ProjectPreflight | null>(null);
+  const preflightRequest = useRef(0);
   const [checking, setChecking] = useState(false);
   const [directoryCheck, setDirectoryCheck] = useState<DirectoryCheckState>({ status: "idle" });
   const [projectName, setProjectName] = useState("");
   const [projectRoot, setProjectRoot] = useState<string | null>(settings?.default_project_root ?? null);
   const [creating, setCreating] = useState(false);
+  const [canceling, setCanceling] = useState(false);
+  const [exitConfirmationOpen, setExitConfirmationOpen] = useState(false);
+  const continueEditingRef = useRef<HTMLButtonElement>(null);
   const [copyProgress, setCopyProgress] = useState<ProjectCopyProgress | null>(null);
+  const [creationError, setCreationError] = useState<UiError | null>(null);
+  const [cancelOutcome, setCancelOutcome] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const createInFlight = useRef<Promise<void> | null>(null);
+  const cancelInFlight = useRef<Promise<void> | null>(null);
+  const cancellationRequested = useRef(false);
+  const exitAfterCancellation = useRef(false);
 
   useEffect(() => {
     document.getElementById(`wizard-step-heading-${step}`)?.focus();
   }, [step]);
+
+  useEffect(() => {
+    if (!isUiPreviewMode() || step === 0 || analysis) return;
+    let disposed = false;
+    void desktopApi.analyzeMedia("D:\\Captures\\courtyard_walkthrough.mp4").then(async (result) => {
+      if (disposed) return;
+      setAnalysis(result);
+      setProjectName("Courtyard Scan");
+      const preset = result.preset_estimates.some((item) => item.id === "balanced")
+        ? "balanced"
+        : result.preset_estimates[0]?.id ?? "fast";
+      setSelectedPreset(preset);
+      const checked = await desktopApi.preflightProject({
+        sourcePath: result.source_path,
+        projectRoot: settings?.default_project_root ?? null,
+        preset,
+      });
+      if (!disposed) setPreflight(checked);
+    });
+    return () => { disposed = true; };
+  }, [analysis, settings?.default_project_root, step]);
 
   useEffect(() => {
     if (!isDesktopRuntime()) return;
@@ -100,6 +163,7 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
 
   useEffect(() => () => {
     sourceRequest.current += 1;
+    preflightRequest.current += 1;
   }, []);
 
   const selectedEstimate = useMemo(
@@ -119,6 +183,9 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
         const path = kind === "video" ? await selectVideoFile() : await selectImageDirectory();
         if (!path) return;
         requestId = ++sourceRequest.current;
+        preflightRequest.current += 1;
+        setPreflight(null);
+        setChecking(false);
         setLocalError(null);
         setPreviewError(null);
         setImagePreviews([]);
@@ -164,11 +231,13 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
 
   const runPreflight = useCallback(async (
     targetRoot: string | null = projectRoot,
-    options: { navigateToPreflight?: boolean; announceDirectoryResult?: boolean } = {},
+    options: { navigateToPreflight?: boolean; announceDirectoryResult?: boolean; preset?: string } = {},
   ) => {
     if (!analysis?.valid) return;
-    const { navigateToPreflight = true, announceDirectoryResult = false } = options;
+    const { navigateToPreflight = true, announceDirectoryResult = false, preset = selectedPreset } = options;
+    const requestId = ++preflightRequest.current;
     setChecking(true);
+    setPreflight(null);
     setLocalError(null);
     if (announceDirectoryResult) {
       setDirectoryCheck({
@@ -180,8 +249,9 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
       const result = await desktopApi.preflightProject({
         sourcePath: analysis.source_path,
         projectRoot: targetRoot,
-        preset: selectedPreset,
+        preset,
       });
+      if (requestId !== preflightRequest.current) return;
       setPreflight(result);
       if (announceDirectoryResult) {
         setDirectoryCheck(result.can_continue
@@ -198,6 +268,7 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
       }
       if (navigateToPreflight) setStep(1);
     } catch (error) {
+      if (requestId !== preflightRequest.current) return;
       setPreflight(null);
       if (announceDirectoryResult) {
         setDirectoryCheck({
@@ -208,7 +279,7 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
         setLocalError(String(error));
       }
     } finally {
-      setChecking(false);
+      if (requestId === preflightRequest.current) setChecking(false);
     }
   }, [analysis, projectRoot, selectedPreset]);
 
@@ -221,11 +292,17 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
   }, [preflight?.can_continue, runPreflight, step]);
 
   const createProject = useCallback(
-    async (startAfterCreate: boolean) => {
-      if (!analysis || !projectName.trim() || checking || !preflight?.can_continue) return;
+    (startAfterCreate: boolean) => {
+      if (!analysis || !projectName.trim() || checking || !preflight?.can_continue || createInFlight.current) {
+        return Promise.resolve();
+      }
       setCreating(true);
       setCopyProgress(null);
+      setCreationError(null);
+      setCancelOutcome(null);
       setLocalError(null);
+      cancellationRequested.current = false;
+      const operation = (async () => {
       try {
         const result = await desktopApi.createProject({
           name: projectName.trim(),
@@ -246,6 +323,22 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
           project: createdProject,
         });
         if (startAfterCreate) {
+          if (activePipeline && activePipeline.project_id !== result.id) {
+            dispatch({
+              type: "SET_PIPELINE_CONFLICT",
+              requestedProjectId: result.id,
+              activeProjectId: activePipeline.project_id,
+            });
+            dispatch({
+              type: "NAVIGATE",
+              page: { type: "project-detail", projectId: result.id, projectPath: result.path },
+            });
+            dispatch({
+              type: "SET_ERROR",
+              error: "项目已创建；另一个项目仍在运行，因此本项目未启动，也未进入队列。",
+            });
+            return;
+          }
           try {
             const snapshot = await desktopApi.startPipeline(result.path);
             dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot });
@@ -258,6 +351,26 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
               },
             });
           } catch (error) {
+            if (isActivePipelineConflict(error)) {
+              const active = await desktopApi.getActivePipelineSummary().catch(() => null);
+              if (active) {
+                dispatch({ type: "SET_ACTIVE_PIPELINE", snapshot: active });
+                dispatch({
+                  type: "SET_PIPELINE_CONFLICT",
+                  requestedProjectId: result.id,
+                  activeProjectId: active.project_id,
+                });
+              }
+              dispatch({
+                type: "NAVIGATE",
+                page: { type: "project-detail", projectId: result.id, projectPath: result.path },
+              });
+              dispatch({
+                type: "SET_ERROR",
+                error: "项目已创建；活动任务在启动前发生变化，本项目未启动，也未进入队列。",
+              });
+              return;
+            }
             dispatch({
               type: "NAVIGATE",
               page: { type: "project-detail", projectId: result.id, projectPath: result.path },
@@ -274,22 +387,87 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
           page: { type: "project-detail", projectId: result.id, projectPath: result.path },
         });
       } catch (error) {
-        setLocalError(String(error));
+        if (cancellationRequested.current) {
+          setCancelOutcome("项目创建已安全取消；未完成目录已清理，原始素材未被修改。");
+        } else {
+          setCreationError(normalizeCommandError(error, "create_project"));
+        }
       } finally {
         setCreating(false);
+        setCanceling(false);
+        cancellationRequested.current = false;
+        createInFlight.current = null;
+        if (exitAfterCancellation.current) {
+          exitAfterCancellation.current = false;
+          dispatch({ type: "NAVIGATE", page: { type: "home" } });
+        }
       }
+      })();
+      createInFlight.current = operation;
+      return operation;
     },
-    [analysis, checking, dispatch, preflight?.can_continue, projectName, projectRoot, selectedPreset],
+    [activePipeline, analysis, checking, dispatch, preflight?.can_continue, projectName, projectRoot, selectedPreset],
   );
 
+  const requestCancelCreation = useCallback(() => {
+    if (!creating || cancelInFlight.current) return cancelInFlight.current ?? Promise.resolve();
+    cancellationRequested.current = true;
+    setCanceling(true);
+    setCancelOutcome("正在请求安全取消；已复制内容会在后台确认后清理。");
+    const operation = desktopApi.cancelProjectCreation()
+      .then(() => {
+        setCancelOutcome("已发送安全取消请求，正在等待复制任务停止并清理未完成目录。");
+      })
+      .catch((error) => {
+        cancellationRequested.current = false;
+        exitAfterCancellation.current = false;
+        setCreationError(normalizeCommandError(error, "cancel_project_creation"));
+      })
+      .finally(() => {
+        setCanceling(false);
+        cancelInFlight.current = null;
+      });
+    cancelInFlight.current = operation;
+    return operation;
+  }, [creating]);
+
+  const dirty = Boolean(analysis || projectName.trim() || step > 0);
   const closeWizard = useCallback(() => {
-    if (creating) return;
+    if (canceling || cancellationRequested.current) return;
+    if (creating || dirty) {
+      setExitConfirmationOpen(true);
+      return;
+    }
     dispatch({ type: "NAVIGATE", page: { type: "home" } });
-  }, [creating, dispatch]);
+  }, [canceling, creating, dirty, dispatch]);
+
+  const confirmExit = () => {
+    setExitConfirmationOpen(false);
+    if (creating) {
+      exitAfterCancellation.current = true;
+      void requestCancelCreation();
+      return;
+    }
+    dispatch({ type: "NAVIGATE", page: { type: "home" } });
+  };
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirty && !creating) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [creating, dirty]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeWizard();
+      if (shouldIgnoreShortcut(event)) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        void closeWizard();
+      }
       if (event.altKey && event.key === "ArrowLeft" && step > 0 && !creating && !checking) {
         event.preventDefault();
         setStep((current) => current - 1);
@@ -311,12 +489,13 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
     <div className="wizard-page">
       <section className="project-wizard" aria-label="新建项目向导">
         <header className="wizard-header">
-          <div>
-            <span className="wizard-eyebrow">新建重建项目</span>
-            <h1>新建项目</h1>
-          </div>
-          <button className="icon-button" type="button" onClick={closeWizard} disabled={creating} aria-label="关闭新建项目">
-            <X size={18} />
+          <button className="wizard-brand" type="button" onClick={() => void closeWizard()} disabled={canceling} title="返回项目中心">
+            <img src={appIconUrl} alt="" />
+            <span>MetOrigin Splat</span>
+          </button>
+          <h1>创建新项目</h1>
+          <button className="button button-subtle" type="button" onClick={() => void closeWizard()} disabled={canceling} aria-label="关闭新建项目">
+            退出创建
           </button>
         </header>
 
@@ -333,12 +512,14 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
                 className={`wizard-step ${index === step ? "is-current" : ""} ${index < step ? "is-complete" : ""}`}
                 aria-current={index === step ? "step" : undefined}
               >
-                <span>{index < step ? <Check size={14} weight="bold" /> : index + 1}</span>
-                <strong>{label}</strong>
+                <span className="wizard-step-index">{`0${index + 1}`}</span>
+                <span className="wizard-step-copy"><strong>{label}</strong><small>{index < step ? "已完成" : index === step ? "当前步骤" : "下一步"}</small></span>
               </div>
             </Fragment>
           ))}
         </nav>
+
+        <p className="sr-only">当前目标：{STEP_PURPOSES[step]}</p>
 
         <div className="wizard-body">
           {step === 0 && (
@@ -353,6 +534,8 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
               onChoose={chooseSource}
               onClear={() => {
                 sourceRequest.current += 1;
+                preflightRequest.current += 1;
+                setChecking(false);
                 setAnalysis(null);
                 setPreflight(null);
                 setDirectoryCheck({ status: "idle" });
@@ -369,11 +552,13 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
               checking={checking}
               selectedPreset={selectedPreset}
               onSelectPreset={(preset) => {
+                if (preset === selectedPreset) return;
                 setSelectedPreset(preset);
-                setPreflight(null);
                 setDirectoryCheck({ status: "idle" });
+                void runPreflight(projectRoot, { preset, navigateToPreflight: false });
               }}
               onRecheck={() => void runPreflight()}
+              onOpenSettings={onOpenSettings}
             />
           )}
           {step === 2 && analysis && selectedEstimate && (
@@ -401,27 +586,57 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
         </div>
 
         {localError && <div className="wizard-error" role="alert"><Warning size={17} weight="fill" />{localError}</div>}
+        {creationError ? (
+          <ErrorNotice
+            error={creationError}
+            blocking
+            onAction={(action) => {
+              if (action.kind === "open_settings") onOpenSettings?.();
+            }}
+          />
+        ) : null}
+        {cancelOutcome ? <div className="wizard-cancel-outcome" role="status">{cancelOutcome}</div> : null}
 
         {creating && (
-          <div className="copy-progress-panel" aria-live="polite">
-            <div><SpinnerGap className="spin" size={18} /><strong>正在复制素材并创建项目</strong><span>{Math.round((copyProgress?.percent ?? 0) * 100)}%</span></div>
-            <div className="progress-track"><span style={{ width: `${(copyProgress?.percent ?? 0) * 100}%` }} /></div>
-            <p>{formatBytes(copyProgress?.copied_bytes ?? 0)} / {formatBytes(copyProgress?.total_bytes ?? analysis?.size_bytes ?? 0)}</p>
+          <div className="copy-progress-panel" aria-live="polite" aria-busy="true">
+            <div>
+              <SpinnerGap className="spin" size={18} />
+              <strong>{copyProgress ? "正在复制素材" : "正在准备项目目录"}</strong>
+              <span>{copyProgress ? `${Math.round(copyProgress.percent * 100)}%` : "等待首个进度回执"}</span>
+            </div>
+            {copyProgress ? (
+              <div
+                className="progress-track"
+                role="progressbar"
+                aria-label="素材复制进度"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(copyProgress.percent * 100)}
+                aria-valuetext={`${formatBytes(copyProgress.copied_bytes)} / ${formatBytes(copyProgress.total_bytes)}`}
+              >
+                <span style={{ width: `${copyProgress.percent * 100}%` }} />
+              </div>
+            ) : null}
+            <p>{copyProgress
+              ? `${formatBytes(copyProgress.copied_bytes)} / ${formatBytes(copyProgress.total_bytes)}`
+              : "正在验证保存位置并创建可清理的临时目录。"}</p>
           </div>
         )}
 
         <footer className="wizard-footer">
           <div className="wizard-footer-left">
             {step > 0 && <button className="button button-secondary" type="button" disabled={creating || checking} onClick={() => setStep((current) => current - 1)}><ArrowLeft size={16} />上一步</button>}
-            {step === 0 && !analysis?.valid && <span>请选择并成功分析素材后继续</span>}
+            {step === 0 && !analysis?.valid && <span>第 1 / 3 步 · 尚未选择素材</span>}
             {step === 1 && preflight && !preflight.can_continue && <span>解决阻断项后才能继续</span>}
           </div>
           <div className="wizard-footer-actions">
             {creating ? (
-              <button className="button button-danger" type="button" onClick={() => void desktopApi.cancelProjectCreation()}>取消复制</button>
+              <button className="button button-danger" type="button" disabled={canceling || cancellationRequested.current} onClick={() => void requestCancelCreation()}>
+                {canceling || cancellationRequested.current ? "正在安全取消…" : "取消复制"}
+              </button>
             ) : step < 2 ? (
               <button className="button button-primary" type="button" onClick={() => void goNext()} disabled={step === 0 ? !analysis?.valid || analyzing : !preflight?.can_continue || checking}>
-                {checking ? "正在检查…" : "下一步"}<ArrowRight size={16} />
+                <span className="sr-only">下一步：</span>{checking ? "正在检查…" : step === 0 ? "分析素材" : "继续"}<ArrowRight size={16} />
               </button>
             ) : (
               <>
@@ -432,6 +647,31 @@ export function NewProjectPage({ settings = null }: { settings?: AppSettings | n
           </div>
         </footer>
       </section>
+      {exitConfirmationOpen && (
+        <ModalSurface
+          id="wizard-exit-dialog"
+          className="wizard-exit-dialog"
+          role="alertdialog"
+          title={creating ? "取消项目创建？" : "退出项目创建？"}
+          ariaDescribedBy="wizard-exit-description"
+          initialFocusRef={continueEditingRef}
+          onClose={() => setExitConfirmationOpen(false)}
+        >
+          <p id="wizard-exit-description">
+            {creating
+              ? "素材仍在复制。退出前将安全取消复制并清理未完成的项目目录，原始素材不会被修改。"
+              : "退出后，本次选择的素材、重建预设和项目名称将不会保存，原始素材不会被修改。"}
+          </p>
+          <div className="dialog-actions">
+            <button ref={continueEditingRef} className="button button-secondary" type="button" onClick={() => setExitConfirmationOpen(false)}>
+              {creating ? "继续创建" : "继续编辑"}
+            </button>
+            <button className="button button-danger" type="button" onClick={confirmExit}>
+              {creating ? "安全取消并退出" : "退出并放弃"}
+            </button>
+          </div>
+        </ModalSurface>
+      )}
     </div>
   );
 }
@@ -448,12 +688,19 @@ function ImportStep({ analysis, analyzing, analyzingKind, estimate, imagePreview
   onClear: () => void;
 }) {
   return (
-    <section className="wizard-section">
-      <div className="wizard-section-heading"><span>1</span><div><h2 id="wizard-step-heading-0" tabIndex={-1}>导入素材</h2><p>选择一段视频，或选择包含连续照片的文件夹。</p></div></div>
+    <section className="wizard-section import-step">
+      <div className="wizard-section-heading"><div><h2 id="wizard-step-heading-0" tabIndex={-1}>选择重建素材</h2><p>导入一段连续视频或一组围绕目标拍摄的照片。</p></div></div>
+      <div className="import-primary-panel">
       {!analysis ? (
-        <div className="source-choice-grid">
-          <button type="button" onClick={() => void onChoose("video")} disabled={analyzing}><FilmStrip size={31} /><strong>选择视频</strong><span>MP4、MOV、AVI、MKV</span></button>
-          <button type="button" onClick={() => void onChoose("images")} disabled={analyzing}><Images size={31} /><strong>选择图片文件夹</strong><span>JPG、JPEG、PNG</span></button>
+        <div className="source-drop-zone">
+          <span className="source-upload-icon" aria-hidden="true"><UploadSimple size={31} /></span>
+          <strong>拖放素材到这里</strong>
+          <span>支持 MP4、MOV 或 JPG、PNG 图片文件夹<br />建议 80–500 张图像，单次导入不超过 20 GB</span>
+          <div className="source-choice-grid">
+            <button type="button" onClick={() => void onChoose("video")} disabled={analyzing}><FilmStrip size={19} /><strong>选择视频</strong><span>MP4、MOV、AVI、MKV</span></button>
+            <button type="button" onClick={() => void onChoose("images")} disabled={analyzing} aria-describedby="image-folder-selection-hint"><Images size={19} /><strong>选择图片文件夹</strong><span>浏览 JPG、JPEG、PNG 图片</span></button>
+          </div>
+          <p id="image-folder-selection-hint" className="source-selection-hint">选择任意一张图片，即可导入其所在文件夹及子文件夹中的全部有效图片。</p>
         </div>
       ) : (
         <div className="media-analysis-card">
@@ -504,11 +751,33 @@ function ImportStep({ analysis, analyzing, analyzingKind, estimate, imagePreview
               {analysis.preset_estimates.map((preset) => <span key={preset.id}><strong>{presetLabel(preset.id)}</strong>预计 {preset.estimated_frames} 帧</span>)}
             </div>
           )}
-          {analysis.blockers.map((blocker) => <div className="inline-blocker" key={blocker}><Warning size={16} />{blocker}</div>)}
-          {analysis.warnings.map((warning) => <div className="inline-warning" key={warning}><Warning size={16} />{warning}</div>)}
+          {analysis.warnings.length > 0 ? (
+            <section className="wizard-message-group is-warning" aria-label="可以继续的提醒">
+              <h3>可以继续的提醒</h3>
+              {analysis.warnings.map((warning) => <div className="inline-warning" key={warning}><Warning size={16} />{warning}</div>)}
+            </section>
+          ) : null}
+          {analysis.blockers.length > 0 ? (
+            <section className="wizard-message-group is-blocking" aria-label="需要处理的问题">
+              <h3>需要处理后才能继续</h3>
+              {analysis.blockers.map((blocker) => <div className="inline-blocker" key={blocker}><Warning size={16} />{blocker}<span>请重新选择可读取的素材后再次分析。</span></div>)}
+            </section>
+          ) : null}
         </div>
       )}
       {analyzing && <div className="analysis-loading"><SpinnerGap className="spin" size={18} />{analyzingKind === "images" ? "正在递归扫描并验证图片…" : "正在调用 FFprobe 读取真实媒体信息…"}</div>}
+      </div>
+      <aside className="capture-tips-panel" aria-label="拍摄与素材提示">
+        <h2>提高重建质量</h2>
+        <ol>
+          <li>保持 70% 以上画面重叠</li>
+          <li>围绕静止主体缓慢移动，避免跳跃</li>
+          <li>锁定曝光并减少动态物体</li>
+          <li>补拍顶部、背面和遮挡区域</li>
+        </ol>
+        <p className="capture-report-note"><CheckCircle size={17} weight="fill" />导入后检查素材与运行环境</p>
+        <p className="local-processing-note">素材默认仅在本机处理<br />除非你主动导出，否则不会上传。</p>
+      </aside>
     </section>
   );
 }
@@ -523,53 +792,66 @@ function ImagePreviewTile({ preview }: { preview: ImagePreview }) {
   );
 }
 
-function PreflightStep({ analysis, preflight, checking, selectedPreset, onSelectPreset, onRecheck }: {
+function PreflightStep({ analysis, preflight, checking, selectedPreset, onSelectPreset, onRecheck, onOpenSettings }: {
   analysis: MediaAnalysis | null;
   preflight: ProjectPreflight | null;
   checking: boolean;
   selectedPreset: string;
   onSelectPreset: (id: string) => void;
   onRecheck: () => void;
+  onOpenSettings?: () => void;
 }) {
+  const selectedEstimate = analysis?.preset_estimates.find((preset) => preset.id === selectedPreset);
+  const effectiveFrameCount = selectedEstimate?.estimated_frames ?? preflight?.estimated_frames;
+  const resolution = analysis?.video_metadata ? `${analysis.video_metadata.width} × ${analysis.video_metadata.height}` : "原始分辨率";
+  const warnings = [...new Set([...(analysis?.warnings ?? []), ...(preflight?.warnings ?? [])])];
   return (
-    <section className="wizard-section">
-      <div className="wizard-section-heading"><span>2</span><div><h2 id="wizard-step-heading-1" tabIndex={-1}>检查与方案</h2><p>确认引擎、磁盘空间和本次处理参数。</p></div></div>
-      <div className={`preflight-summary ${preflight?.can_continue ? "is-ready" : "is-blocked"}`}>
-        {checking ? <SpinnerGap className="spin" size={22} /> : preflight?.can_continue ? <CheckCircle size={22} weight="fill" /> : <Warning size={22} weight="fill" />}
-        <div><strong>{checking ? "正在检查" : preflight?.can_continue ? "可以开始" : "暂时不能开始"}</strong><span>{preflight?.can_continue ? "素材、引擎和空间检查均已通过" : "请处理下方阻断项后重新检查"}</span></div>
-        <button className="button button-secondary" type="button" onClick={onRecheck} disabled={checking}>重新检查</button>
-      </div>
-      <div className="preflight-columns">
-        <div className="preflight-panel">
-          <h3>引擎与训练环境</h3>
-          {preflight?.engine_checks.map((engine) => (
-            <div className="check-row" key={engine.name} title={engine.path ?? undefined}>
-              <span className={engine.available ? "analysis-ok" : "analysis-blocked"}>{engine.available ? <CheckCircle size={16} weight="fill" /> : <Warning size={16} weight="fill" />}</span>
-              <div className="engine-check-copy">
-                <strong>{engine.name}</strong>
-                {engine.diagnostic && <small>{engine.diagnostic}</small>}
-              </div>
-              <span>{engine.available ? engine.actual_version ?? "已就绪" : "不可用"}</span>
+    <section className="wizard-section preflight-step">
+      <div className="preflight-results-panel">
+        <header className="preflight-results-heading">
+          <div><h2 id="wizard-step-heading-1" tabIndex={-1}>素材分析结果</h2><p>{analysis?.display_name ?? "等待素材分析"}</p></div>
+          <span className={`status-pill ${preflight?.can_continue ? "status-completed" : "status-failed"}`}><i />{checking ? "检查中" : preflight?.can_continue ? "已完成" : "需处理"}</span>
+        </header>
+        <div className="analysis-metrics">
+          <Metric label="预计处理帧数" value={effectiveFrameCount?.toLocaleString() ?? "—"} detail="根据素材与所选预设估算" />
+          <Metric label="源分辨率" value={resolution} detail="保留原始长宽比" />
+          <Metric label="训练迭代" value={selectedEstimate?.iterations.toLocaleString() ?? "—"} detail="预设目标次数" />
+        </div>
+        <h3 className="preflight-checks-heading">预检结果</h3>
+        {checking && <p className="preflight-progress-note" role="status"><SpinnerGap className="spin" size={16} />正在按当前预设检查磁盘空间与运行环境…</p>}
+        <div className="visual-check-list">
+          <div><span><strong>素材可用性</strong><small>{analysis?.valid ? "素材格式与读取检查通过" : "等待素材检查"}</small></span><span className="status-pill"><i />{analysis?.valid ? "通过" : "待检查"}</span></div>
+          {(preflight?.engine_checks ?? []).map((engine) => <div key={engine.name}><span><strong>{engine.name}</strong>{engine.actual_version ? <small>{engine.actual_version}</small> : null}<small>{engine.diagnostic ?? (engine.available ? "组件检查通过" : "未通过组件检查")}</small></span><span className={`status-pill ${engine.available ? "status-completed" : "status-failed"}`}><i />{engine.available ? "就绪" : "不可用"}</span></div>)}
+        </div>
+        {warnings.map((warning) => <div className="inline-warning" key={warning}><Warning size={16} /><span>{warning}</span></div>)}
+        {preflight?.blockers.length ? (
+          <section className="wizard-message-group is-blocking" aria-label="需要处理的问题">
+            <h3>需要处理后才能继续</h3>
+            {preflight.blockers.map((blocker) => <div className="inline-blocker" key={blocker}><Warning size={16} /><span>{blocker}<small>修复相关组件、显卡环境或保存位置后重新检查。</small></span></div>)}
+            <div className="wizard-repair-actions">
+              {onOpenSettings ? <button type="button" className="button button-secondary" onClick={onOpenSettings}>打开设置</button> : null}
             </div>
+          </section>
+        ) : null}
+      </div>
+      <aside className="preset-panel">
+        <div><h2>重建预设</h2><p>选择处理帧数、分辨率与训练迭代次数。</p></div>
+        <div className="preset-table">
+          {analysis?.preset_estimates.map((preset) => (
+            <button type="button" key={preset.id} className={selectedPreset === preset.id ? "is-selected" : ""} onClick={() => onSelectPreset(preset.id)}>
+              <span><strong>{presetLabel(preset.id)}{preset.id === "balanced" && <em>推荐</em>}</strong><small>{selectedPreset === preset.id ? "已选择" : "选择"}</small></span>
+              <span>{preset.estimated_frames} 帧 · {preset.iterations.toLocaleString()} 次迭代 · 约 {formatBytes(preset.estimated_disk_bytes)}</span>
+              <span>{presetDescription(preset.id, preset.description)}</span>
+            </button>
           ))}
         </div>
-        <div className="preflight-panel"><h3>磁盘空间</h3><Metric label="预计需求（含安全余量）" value={formatBytes(preflight?.estimated_disk_bytes ?? 0)} /><Metric label="目标盘可用" value={formatBytes(preflight?.available_disk_bytes ?? 0)} /></div>
-      </div>
-      <h3 className="preset-heading">选择质量预设</h3>
-      <div className="preset-table">
-        {analysis?.preset_estimates.map((preset) => (
-          <button type="button" key={preset.id} className={selectedPreset === preset.id ? "is-selected" : ""} onClick={() => onSelectPreset(preset.id)}>
-            <span className="preset-radio">{selectedPreset === preset.id && <Check size={13} weight="bold" />}</span>
-            <strong>{presetLabel(preset.id)}{preset.id === "fast" && <em>推荐首轮</em>}</strong>
-            <span>{preset.fps} fps · 最多 {preset.max_frames} 帧</span>
-            <span>最长边 {preset.target_long_edge}px</span>
-            <span>Brush {preset.iterations.toLocaleString()} 次</span>
-            <b>预计 {preset.estimated_frames} 帧</b>
-          </button>
-        ))}
-      </div>
-      {preflight?.blockers.map((blocker) => <div className="inline-blocker" key={blocker}><Warning size={16} />{blocker}</div>)}
-      {preflight?.warnings.map((warning) => <div className="inline-warning" key={warning}><Warning size={16} />{warning}</div>)}
+        <details className="advanced-parameter-details">
+          <summary className="advanced-parameter-row">参数详情 <span>当前预设</span></summary>
+          {selectedEstimate ? <div className="preflight-engine-summary"><div>训练最长边：{selectedEstimate.target_long_edge} px</div><div>相机重建最长边：{selectedEstimate.colmap_long_edge} px</div><div>检查点间隔：{selectedEstimate.checkpoint_interval} 次迭代</div><div>球谐阶数：{selectedEstimate.sh_degree}</div></div> : null}
+        </details>
+        <p className="preset-capacity-note">磁盘用量为预估值。训练耗时与显存占用以实际运行数据为准。</p>
+        <button type="button" className="button button-secondary preflight-recheck" onClick={onRecheck} disabled={checking}>{checking ? "检查中…" : "重新检查"}</button>
+      </aside>
     </section>
   );
 }
@@ -627,6 +909,6 @@ function ConfirmStep({ analysis, estimate, preflight, directoryCheck, projectNam
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
-  return <div className="metadata-metric"><span>{label}</span><strong>{value}</strong></div>;
+function Metric({ label, value, detail }: { label: string; value: string; detail?: string }) {
+  return <div className="metadata-metric"><span>{label}</span><strong>{value}</strong>{detail ? <small>{detail}</small> : null}</div>;
 }

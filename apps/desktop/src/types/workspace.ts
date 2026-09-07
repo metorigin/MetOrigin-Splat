@@ -142,6 +142,31 @@ export interface PlyPreview {
   points: PreviewPoint[];
 }
 
+export type LivePreviewMode = "live" | "low" | "off";
+
+export interface GaussianCamera {
+  position: [number, number, number];
+  forward: [number, number, number];
+  up: [number, number, number];
+  fov_y_degrees: number;
+}
+
+export interface GaussianPreviewSource {
+  relative_path: string;
+  revision: string;
+  vertex_count: number;
+  size_bytes: number;
+  iteration: number | null;
+}
+
+export interface LivePreviewStatus {
+  session_id: string | null;
+  available: boolean;
+  running: boolean;
+  revision: number;
+  frame: GaussianPreviewSource | null;
+}
+
 export type ProjectLocationTarget = "project_root" | "output_directory" | "artifact";
 
 export interface OpenProjectLocationRequest {

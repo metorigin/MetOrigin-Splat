@@ -277,6 +277,12 @@ if (-not $SkipRuntimeChecks) {
         -FilePath (Join-Path $engineRoot "brush\brush_app.exe") `
         -Arguments @("--version") `
         -ExpectedPattern '(brush-cli|brush) 0\.3\.0'
+    Invoke-CheckedVersionCommand `
+        -Name "Brush live preview" `
+        -FilePath (Join-Path $engineRoot "brush/brush_live.exe") `
+        -Arguments @("--version") `
+        -ExpectedPattern 'brush-cli 0\.3\.0\+metorigin-live\.1'
+
 }
 
 Write-Host "Windows x64 engine pack verification passed: $engineRoot"

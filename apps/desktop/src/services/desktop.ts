@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 
 import type {
@@ -13,12 +13,18 @@ import type {
   PipelineSnapshot,
   Project,
   ProjectInfo,
+  ProjectAvailabilityResult,
+  RelinkRecentProjectRequest,
   ProjectPreflight,
   ArtifactSummary,
   CheckpointSummary,
   EventPage,
   FramePreview,
   PlyPreview,
+  GaussianPreviewSource,
+  GaussianCamera,
+  LivePreviewMode,
+  LivePreviewStatus,
   SparsePreviewPack,
   AppSettings,
   DiagnosticExport,
@@ -26,7 +32,62 @@ import type {
   OpenProjectLocationRequest,
   OpenProjectLocationResult,
   OpenEngineLocationResult,
+  ActivePipelineSummary,
+  ActionImpactPreview,
+  WorkspaceActionExecution,
+  WorkspaceActionRequest,
 } from "../types";
+import { normalizeCommandError } from "./errors";
+import { isUiPreviewMode, resolveUiPreviewCommand } from "./uiPreview";
+
+export { isUiPreviewMode } from "./uiPreview";
+
+export class DesktopCommandError extends Error {
+  readonly code: string;
+  readonly uiError: ReturnType<typeof normalizeCommandError>;
+
+  constructor(command: string, cause: unknown) {
+    const uiError = normalizeCommandError(cause, command);
+    super(uiError.message);
+    this.name = "DesktopCommandError";
+    this.code = uiError.code;
+    this.uiError = uiError;
+  }
+}
+
+export async function invokeDesktopCommand<T>(
+  command: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
+  try {
+    if (isUiPreviewMode()) {
+      return resolveUiPreviewCommand(command, args) as T;
+    }
+    return await tauriInvoke<T>(command, args);
+  } catch (error) {
+    throw error instanceof DesktopCommandError
+      ? error
+      : new DesktopCommandError(command, error);
+  }
+}
+
+const invoke = invokeDesktopCommand;
+
+export const ACTIVE_PIPELINE_CONFLICT_CODE = "UI-PIPELINE-ACTIVE-CONFLICT";
+
+export function isActivePipelineConflict(error: unknown): boolean {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    return String((error as { code: unknown }).code) === ACTIVE_PIPELINE_CONFLICT_CODE;
+  }
+  const message = String(error);
+  if (message.includes(ACTIVE_PIPELINE_CONFLICT_CODE)) return true;
+  try {
+    const payload = JSON.parse(message) as { code?: string };
+    return payload.code === ACTIVE_PIPELINE_CONFLICT_CODE;
+  } catch {
+    return false;
+  }
+}
 
 export function isDesktopRuntime(): boolean {
   return "__TAURI_INTERNALS__" in window;
@@ -39,6 +100,7 @@ function ensureDesktopRuntime(): void {
 }
 
 export async function selectVideoFile(): Promise<string | null> {
+  if (isUiPreviewMode()) return "D:\\Captures\\courtyard_walkthrough.mp4";
   ensureDesktopRuntime();
   return open({
     title: "选择重建视频",
@@ -54,13 +116,22 @@ export async function selectVideoFile(): Promise<string | null> {
 }
 
 export async function selectImageDirectory(): Promise<string | null> {
+  if (isUiPreviewMode()) return "D:\\Captures\\courtyard_images";
   ensureDesktopRuntime();
-  return open({
-    title: "选择图片文件夹",
+  // Windows' folder-only dialog hides files. Browse images, then use the
+  // selected image's parent as the existing recursive folder import source.
+  const imagePath = await open({
+    title: "选择任意一张图片，导入其所在文件夹",
     multiple: false,
-    directory: true,
-    recursive: true,
+    directory: false,
+    filters: [{ name: "图片文件", extensions: ["jpg", "jpeg", "png"] }],
   });
+  if (!imagePath) return null;
+  const separator = Math.max(imagePath.lastIndexOf("/"), imagePath.lastIndexOf("\\"));
+  if (separator < 0) throw new Error("无法确定图片所在文件夹，请重新选择图片。");
+  // Preserve filesystem roots (C:\\, /) and UNC share paths.
+  const end = separator === 2 && imagePath[1] === ":" ? 3 : Math.max(separator, 1);
+  return imagePath.slice(0, end);
 }
 
 export async function selectProjectDirectory(): Promise<string | null> {
@@ -138,6 +209,12 @@ export const desktopApi = {
   checkEngines: () => invoke<EngineInfo[]>("check_engines"),
   listRecentProjects: () =>
     invoke<ProjectInfo[]>("list_recent_projects"),
+  listRecentProjectIndex: () =>
+    invoke<ProjectInfo[]>("list_recent_project_index"),
+  checkRecentProjectAvailability: (projectId: string, projectPath: string) =>
+    invoke<ProjectAvailabilityResult>("check_recent_project_availability", { projectId, projectPath }),
+  relinkRecentProject: (request: RelinkRecentProjectRequest) =>
+    invoke<ProjectInfo>("relink_recent_project", { request }),
   removeRecentProject: (projectId: string, projectPath: string) =>
     invoke<void>("remove_recent_project", { projectId, projectPath }),
   deleteProject: (request: DeleteProjectRequest) =>
@@ -167,6 +244,12 @@ export const desktopApi = {
     invoke<PipelineSnapshot>("resume_pipeline", { projectPath }),
   getPipelineState: (projectPath?: string) =>
     invoke<PipelineSnapshot>("get_pipeline_state", { projectPath: projectPath ?? null }),
+  getActivePipelineSummary: () =>
+    invoke<ActivePipelineSummary | null>("get_active_pipeline_summary"),
+  previewWorkspaceAction: (request: WorkspaceActionRequest) =>
+    invoke<ActionImpactPreview>("preview_workspace_action", { request }),
+  executeWorkspaceAction: (previewToken: string) =>
+    invoke<WorkspaceActionExecution>("execute_workspace_action", { previewToken }),
   retryStage: (projectPath: string, stageId: string) =>
     invoke<PipelineSnapshot>("retry_stage", { projectPath, stageId }),
   rerunFromStage: (projectPath: string, stageId: string) =>
@@ -198,6 +281,14 @@ export const desktopApi = {
     invoke<SparsePreviewPack>("get_sparse_preview_pack", { projectPath }),
   inspectPly: (projectPath: string, relativePath?: string) =>
     invoke<PlyPreview>("inspect_ply", { projectPath, relativePath: relativePath ?? null }),
+  getGaussianPreview: (projectId: string, projectPath: string, relativePath?: string | null) =>
+    invoke<GaussianPreviewSource>("get_gaussian_preview", { projectId, projectPath, relativePath: relativePath ?? null }),
+  getGaussianCamera: (projectId: string, projectPath: string) =>
+    invoke<GaussianCamera | null>("get_gaussian_camera", { projectId, projectPath }),
+  readGaussianPly: (projectId: string, projectPath: string, source: GaussianPreviewSource) =>
+    invoke<ArrayBuffer>("read_gaussian_ply", { projectId, projectPath, relativePath: source.relative_path, expectedRevision: source.revision }),
+  pollLivePreview: (projectId: string, projectPath: string, mode: LivePreviewMode, afterRevision: number, sessionId: string | null) =>
+    invoke<LivePreviewStatus>("poll_live_preview", { projectId, projectPath, mode, afterRevision, sessionId }),
   getAppSettings: () => invoke<AppSettings>("get_app_settings"),
   saveAppSettings: (settings: AppSettings) => invoke<AppSettings>("save_app_settings", { settings }),
   setEngineDirectory: (path: string) => invoke<AppSettings>("set_engine_directory", { path }),

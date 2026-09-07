@@ -24,7 +24,8 @@ export interface ResourceMetrics {
   cpu_usage_percent: number;
   memory_total_bytes: number;
   memory_used_bytes: number;
-  project_disk_available_bytes: number;
+  project_disk_available_bytes: number | null;
+  disk_path: string | null;
   gpu: GpuMetrics | null;
   warnings: string[];
 }

@@ -136,7 +136,13 @@ impl PipelineStage for BrushTrainingStage {
             .with_items(start_iteration as u64, config.iterations as u64),
         );
 
-        let command = adapter
+        let live_program = adapter.live_preview_executable();
+        let live_session = splat_engine_brush::live_preview::LiveSession::start(
+            &ctx.project_dir,
+            live_program.is_some(),
+        )
+        .map_err(io_error)?;
+        let mut command = adapter
             .build_train_command(
                 &config,
                 &ctx.paths.training_dataset,
@@ -150,6 +156,15 @@ impl PipelineStage for BrushTrainingStage {
                 "brush_cli=info,brush_process=info,brush_dataset::formats=info",
             )
             .with_timeout(Duration::from_secs(24 * 60 * 60));
+        if let Some(program) = live_program {
+            command.program = program;
+            command = command
+                .with_env("METORIGIN_BRUSH_LIVE_DIR", &live_session.directory)
+                .with_env(
+                    "METORIGIN_BRUSH_LIVE_SESSION",
+                    &live_session.session.session_id,
+                );
+        }
         let mut parsers = CompositeParser::new();
         parsers.add(Box::new(BrushProgressParser::new(
             "BrushTraining",
@@ -165,9 +180,11 @@ impl PipelineStage for BrushTrainingStage {
         ));
         let process_result = ProcessRunner::with_parser(parsers)
             .run_to_completion(command, ctx.cancellation.clone(), Some(progress_tx))
-            .await?;
+            .await;
         monitor_stop.cancel();
         let _ = monitor.await;
+        drop(live_session);
+        let process_result = process_result?;
         ensure_process_success(&process_result)?;
 
         let final_checkpoint = CheckpointScanner::find_latest(&ctx.paths.training_checkpoints)?

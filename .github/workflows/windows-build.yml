@@ -43,20 +43,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Resolve Cargo target directory
-        id: cargo-metadata
-        shell: powershell
-        run: |
-          $metadata = cargo metadata --format-version 1 --no-deps | ConvertFrom-Json
-          "target_dir=$($metadata.target_directory)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
       - name: Build full offline installer
         run: pnpm package:windows:full
 
       - name: Verify internal artifact set
         shell: powershell
         run: |
-          $bundle = Join-Path '${{ steps.cargo-metadata.outputs.target_dir }}' 'release/bundle/nsis'
+          $bundle = Join-Path '${{ github.workspace }}' 'artifacts/windows/installer'
           $setup = Join-Path $bundle 'MetOrigin-Splat-Full-Setup-0.1.0-internal.exe'
           $sums = Join-Path $bundle 'SHA256SUMS.txt'
           $manifest = Join-Path $bundle 'metadata/engine-manifest.json'
@@ -80,6 +73,6 @@ jobs:
           retention-days: 14
           compression-level: 0
           path: |
-            ${{ steps.cargo-metadata.outputs.target_dir }}/release/bundle/nsis/MetOrigin-Splat-Full-Setup-0.1.0-internal.exe
-            ${{ steps.cargo-metadata.outputs.target_dir }}/release/bundle/nsis/SHA256SUMS.txt
-            ${{ steps.cargo-metadata.outputs.target_dir }}/release/bundle/nsis/metadata/**
+            artifacts/windows/installer/MetOrigin-Splat-Full-Setup-0.1.0-internal.exe
+            artifacts/windows/installer/SHA256SUMS.txt
+            artifacts/windows/installer/metadata/**

@@ -60,7 +60,8 @@ pub struct ResourceMetrics {
     cpu_usage_percent: f32,
     memory_total_bytes: u64,
     memory_used_bytes: u64,
-    project_disk_available_bytes: u64,
+    project_disk_available_bytes: Option<u64>,
+    disk_path: Option<String>,
     gpu: Option<GpuMetrics>,
     warnings: Vec<String>,
 }
@@ -401,15 +402,17 @@ pub fn export_diagnostics(
     let redact = |content: String| redact_text(content, &project_dir, engine_root, home.as_deref());
 
     if let Ok(project_json) = std::fs::read_to_string(project_dir.join("project.json")) {
-        zip.start_file("project-summary.json", options)
-            .map_err(|_| "写入诊断包失败。".to_string())?;
-        zip.write_all(redact(project_json).as_bytes())
-            .map_err(|_| "写入诊断包失败。".to_string())?;
+        if let Some(sanitized) = sanitize_json_document(&project_json, &redact, true) {
+            zip.start_file("project-summary.json", options)
+                .map_err(|_| "写入诊断包失败。".to_string())?;
+            zip.write_all(sanitized.as_bytes())
+                .map_err(|_| "写入诊断包失败。".to_string())?;
+        }
     }
     if let Ok(events) = tail_file(&project_dir.join("logs/events.jsonl"), 512 * 1024) {
         zip.start_file("events-tail.jsonl", options)
             .map_err(|_| "写入诊断包失败。".to_string())?;
-        zip.write_all(redact(events).as_bytes())
+        zip.write_all(sanitize_event_tail(&events, &redact).as_bytes())
             .map_err(|_| "写入诊断包失败。".to_string())?;
     }
     let metrics = collect_resource_metrics(Some(&project_dir));
@@ -424,7 +427,10 @@ pub fn export_diagnostics(
     let engines = check_engines_blocking(app_handle);
     zip.start_file("engines.json", options)
         .map_err(|_| "写入诊断包失败。".to_string())?;
-    zip.write_all(redact(serde_json::to_string_pretty(&engines).unwrap_or_default()).as_bytes())
+    let engine_json = serde_json::to_string_pretty(&engines).unwrap_or_default();
+    let sanitized_engines =
+        sanitize_json_document(&engine_json, &redact, false).unwrap_or_else(|| "[]".to_string());
+    zip.write_all(sanitized_engines.as_bytes())
         .map_err(|_| "写入诊断包失败。".to_string())?;
     zip.finish().map_err(|_| "完成诊断包失败。".to_string())?;
     Ok(DiagnosticExport {
@@ -581,12 +587,27 @@ fn append_diagnostic(target: &mut Option<String>, message: String) {
     }
 }
 
+fn collect_disk_metrics(project_path: Option<&Path>) -> (Option<String>, Option<u64>) {
+    // Home has no project path: use the installed executable, not the process's
+    // working directory (which can be changed by a shortcut or shell).
+    let disk_path = project_path.map(Path::to_path_buf).or_else(|| {
+        std::env::current_exe()
+            .ok()
+            .and_then(|executable| executable.parent().map(Path::to_path_buf))
+    });
+    let available = disk_path
+        .as_deref()
+        .and_then(|path| fs2::available_space(path).ok());
+    (
+        disk_path.map(|path| path.to_string_lossy().into_owned()),
+        available,
+    )
+}
+
 fn collect_resource_metrics(project_path: Option<&Path>) -> ResourceMetrics {
     let mut system = System::new_all();
     system.refresh_all();
-    let project_disk_available_bytes = project_path
-        .and_then(|path| fs2::available_space(path).ok())
-        .unwrap_or(0);
+    let (disk_path, project_disk_available_bytes) = collect_disk_metrics(project_path);
     let gpu = query_nvidia_gpu();
     let mut warnings = Vec::new();
     if let Some(gpu) = &gpu {
@@ -613,6 +634,7 @@ fn collect_resource_metrics(project_path: Option<&Path>) -> ResourceMetrics {
         memory_total_bytes: system.total_memory(),
         memory_used_bytes: system.used_memory(),
         project_disk_available_bytes,
+        disk_path,
         gpu,
         warnings,
     }
@@ -657,6 +679,133 @@ fn tail_file(path: &Path, max_bytes: u64) -> Result<String, String> {
     Ok(content)
 }
 
+fn sanitize_json_document<F>(content: &str, redact: &F, redact_identity: bool) -> Option<String>
+where
+    F: Fn(String) -> String,
+{
+    let mut value = serde_json::from_str::<serde_json::Value>(content).ok()?;
+    sanitize_json_value(&mut value, redact, redact_identity);
+    serde_json::to_string_pretty(&value).ok()
+}
+
+fn sanitize_event_tail<F>(content: &str, redact: &F) -> String
+where
+    F: Fn(String) -> String,
+{
+    content
+        .lines()
+        .filter_map(|line| {
+            let mut value = serde_json::from_str::<serde_json::Value>(line).ok()?;
+            if let Some(object) = value.as_object_mut() {
+                for field in ["technical_message", "source_log", "metrics"] {
+                    object.remove(field);
+                }
+            }
+            sanitize_json_value(&mut value, redact, false);
+            serde_json::to_string(&value).ok()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn sanitize_json_value<F>(value: &mut serde_json::Value, redact: &F, redact_identity: bool)
+where
+    F: Fn(String) -> String,
+{
+    match value {
+        serde_json::Value::Object(object) => {
+            for (key, nested) in object.iter_mut() {
+                let normalized = key.to_ascii_lowercase();
+                if [
+                    "token",
+                    "password",
+                    "secret",
+                    "api_key",
+                    "authorization",
+                    "private_key",
+                ]
+                .contains(&normalized.as_str())
+                {
+                    *nested = serde_json::Value::String("[REDACTED]".into());
+                } else if [
+                    "technical_message",
+                    "source_log",
+                    "stdout",
+                    "stderr",
+                    "stack",
+                    "raw_output",
+                    "command",
+                    "arguments",
+                ]
+                .contains(&normalized.as_str())
+                {
+                    *nested = serde_json::Value::Null;
+                } else if normalized.contains("path")
+                    || normalized.contains("directory")
+                    || normalized.contains("executable")
+                {
+                    if nested.is_string() {
+                        *nested = serde_json::Value::String("[REDACTED_PATH]".into());
+                    } else {
+                        sanitize_json_value(nested, redact, redact_identity);
+                    }
+                } else if redact_identity && matches!(normalized.as_str(), "name" | "id") {
+                    *nested = serde_json::Value::String("[REDACTED_PROJECT]".into());
+                } else {
+                    sanitize_json_value(nested, redact, redact_identity);
+                }
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for nested in values {
+                sanitize_json_value(nested, redact, redact_identity);
+            }
+        }
+        serde_json::Value::String(text) => *text = redact(std::mem::take(text)),
+        _ => {}
+    }
+}
+
+fn redact_marker_value(mut content: String, marker: &str) -> String {
+    let mut search_from = 0;
+    loop {
+        let lowercase = content.to_ascii_lowercase();
+        let Some(relative_start) = lowercase[search_from..].find(marker) else {
+            break;
+        };
+        let marker_start = search_from + relative_start;
+        let value_start = marker_start + marker.len();
+        let value_end = content[value_start..]
+            .char_indices()
+            .find_map(|(offset, character)| {
+                (character.is_whitespace() || matches!(character, ',' | ';' | '"' | '\''))
+                    .then_some(value_start + offset)
+            })
+            .unwrap_or(content.len());
+        content.replace_range(value_start..value_end, "[REDACTED]");
+        search_from = value_start + "[REDACTED]".len();
+    }
+    content
+}
+
+fn redact_inline_secrets(mut content: String) -> String {
+    for marker in [
+        "token=",
+        "token:",
+        "password=",
+        "password:",
+        "secret=",
+        "secret:",
+        "api_key=",
+        "api-key=",
+        "authorization=",
+        "bearer ",
+    ] {
+        content = redact_marker_value(content, marker);
+    }
+    content
+}
+
 fn redact_text(
     mut content: String,
     project_root: &Path,
@@ -675,12 +824,88 @@ fn redact_text(
                 .replace(&display.replace('\\', "/"), replacement);
         }
     }
-    content
+    redact_inline_secrets(content)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disk_metrics_default_to_the_application_directory() {
+        let executable = std::env::current_exe().unwrap();
+        let expected = executable.parent().unwrap();
+        let (path, available) = collect_disk_metrics(None);
+        assert_eq!(path.as_deref(), expected.to_str());
+        let available = available.expect("application disk should be readable");
+        assert!(available <= fs2::total_space(expected).unwrap());
+    }
+
+    #[test]
+    fn disk_metrics_use_the_project_directory_when_provided() {
+        let project = std::env::temp_dir();
+        let (path, available) = collect_disk_metrics(Some(&project));
+        assert_eq!(path.as_deref(), project.to_str());
+        assert!(available.is_some());
+    }
+
+    #[test]
+    fn disk_metrics_report_unknown_instead_of_zero_for_unreadable_paths() {
+        #[cfg(windows)]
+        let missing = PathBuf::from(format!(r"\\?\Volume{{{}}}\", uuid::Uuid::now_v7()));
+        #[cfg(not(windows))]
+        let missing = std::env::temp_dir().join(uuid::Uuid::now_v7().to_string());
+        let (path, available) = collect_disk_metrics(Some(&missing));
+        assert_eq!(path.as_deref(), missing.to_str());
+        assert_eq!(available, None);
+    }
+
+    #[test]
+    fn diagnostic_documents_redact_credentials_paths_and_unrelated_event_content() {
+        let project_root = Path::new(r"D:\projects\private-project");
+        let engine_root = Path::new(r"D:\engines\private-pack");
+        let home = Path::new(r"C:\Users\PrivateUser");
+        let redact =
+            |content: String| redact_text(content, project_root, Some(engine_root), Some(home));
+        let project = serde_json::json!({
+            "id": "private-project-id",
+            "name": "private-project-name",
+            "project_path": project_root,
+            "authorization": "Bearer METORIGIN_TEST_SECRET_DO_NOT_EXPOSE",
+            "technical_message": "RAW_ENGINE_OUTPUT_CANARY",
+            "nested": { "message": "token=METORIGIN_TEST_SECRET_DO_NOT_EXPOSE" }
+        });
+        let sanitized_project = sanitize_json_document(&project.to_string(), &redact, true)
+            .expect("valid diagnostic JSON");
+
+        for canary in [
+            "METORIGIN_TEST_SECRET_DO_NOT_EXPOSE",
+            "PrivateUser",
+            "private-project-name",
+            "RAW_ENGINE_OUTPUT_CANARY",
+        ] {
+            assert!(!sanitized_project.contains(canary));
+        }
+        assert!(sanitized_project.contains("[REDACTED]"));
+        assert!(sanitized_project.contains("[REDACTED_PATH]"));
+
+        let event = serde_json::json!({
+            "event_id": "event-1",
+            "user_message": "failed token=METORIGIN_TEST_SECRET_DO_NOT_EXPOSE C:\\Users\\PrivateUser\\scene.json",
+            "technical_message": "RAW_ENGINE_OUTPUT_CANARY",
+            "source_log": "UNRELATED_LOG_CANARY",
+            "metrics": { "path": "C:\\Users\\PrivateUser\\metrics.json" }
+        });
+        let sanitized_events = sanitize_event_tail(&event.to_string(), &redact);
+        for canary in [
+            "METORIGIN_TEST_SECRET_DO_NOT_EXPOSE",
+            "PrivateUser",
+            "RAW_ENGINE_OUTPUT_CANARY",
+            "UNRELATED_LOG_CANARY",
+        ] {
+            assert!(!sanitized_events.contains(canary));
+        }
+    }
 
     #[test]
     fn pinned_version_mismatch_marks_engine_unavailable() {

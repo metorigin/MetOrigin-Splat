@@ -84,14 +84,14 @@ pub struct StageLogPage {
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CheckpointSummary {
-    iteration: u32,
-    relative_path: String,
-    size_bytes: u64,
-    created_at: String,
-    vertex_count: u64,
-    valid: bool,
-    current: bool,
-    brush_version: String,
+    pub(crate) iteration: u32,
+    pub(crate) relative_path: String,
+    pub(crate) size_bytes: u64,
+    pub(crate) created_at: String,
+    pub(crate) vertex_count: u64,
+    pub(crate) valid: bool,
+    pub(crate) current: bool,
+    pub(crate) brush_version: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -350,6 +350,10 @@ pub fn list_checkpoints(project_path: String) -> Result<Vec<CheckpointSummary>, 
 
 #[tauri::command]
 pub fn delete_checkpoint(project_path: String, iteration: u32) -> Result<(), String> {
+    delete_checkpoint_inner(project_path, iteration)
+}
+
+pub(crate) fn delete_checkpoint_inner(project_path: String, iteration: u32) -> Result<(), String> {
     let project_dir = valid_project_dir(&project_path)?;
     let checkpoints = checkpoint_summaries(&project_dir)?;
     let valid_count = checkpoints
@@ -370,6 +374,13 @@ pub fn delete_checkpoint(project_path: String, iteration: u32) -> Result<(), Str
 
 #[tauri::command]
 pub fn restore_checkpoint(
+    project_path: String,
+    iteration: u32,
+) -> Result<Vec<CheckpointSummary>, String> {
+    restore_checkpoint_inner(project_path, iteration)
+}
+
+pub(crate) fn restore_checkpoint_inner(
     project_path: String,
     iteration: u32,
 ) -> Result<Vec<CheckpointSummary>, String> {
@@ -591,7 +602,7 @@ pub fn inspect_ply(
     parse_ply_preview(&path, &relative, 200_000)
 }
 
-fn checkpoint_summaries(project_dir: &Path) -> Result<Vec<CheckpointSummary>, String> {
+pub(crate) fn checkpoint_summaries(project_dir: &Path) -> Result<Vec<CheckpointSummary>, String> {
     let directory = project_dir.join("training/checkpoints");
     let checkpoints =
         CheckpointScanner::scan(&directory).map_err(|error| error.user_message_zh())?;

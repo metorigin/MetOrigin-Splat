@@ -34,14 +34,20 @@ pub fn run() {
             commands::project::cancel_project_creation,
             commands::project::open_project,
             commands::project::list_recent_projects,
+            commands::project::list_recent_project_index,
+            commands::project::check_recent_project_availability,
+            commands::project::relink_recent_project,
             commands::project::remove_recent_project,
             commands::project::delete_project,
+            commands::actions::preview_workspace_action,
+            commands::actions::execute_workspace_action,
             // Pipeline
             commands::pipeline::start_pipeline,
             commands::pipeline::cancel_pipeline,
             commands::pipeline::pause_pipeline,
             commands::pipeline::resume_pipeline,
             commands::pipeline::get_pipeline_state,
+            commands::pipeline::get_active_pipeline_summary,
             commands::pipeline::retry_stage,
             commands::pipeline::rerun_from_stage,
             commands::pipeline::accept_colmap_quality_risk,
@@ -57,6 +63,10 @@ pub fn run() {
             commands::workspace::get_frame_preview,
             commands::workspace::get_sparse_preview_pack,
             commands::workspace::inspect_ply,
+            commands::preview::get_gaussian_preview,
+            commands::preview::get_gaussian_camera,
+            commands::preview::read_gaussian_ply,
+            commands::preview::poll_live_preview,
         ])
         .setup(|_app| {
             #[cfg(debug_assertions)]
