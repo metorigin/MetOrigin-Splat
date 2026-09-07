@@ -554,15 +554,28 @@ async function run() {
 
     await clickButton("自动化项目 B");
     await waitFor("[...document.querySelectorAll('h1')].some((node) => node.textContent?.trim() === '自动化项目 B')", 10_000, "未进入项目 B。");
-    await waitFor("document.body.innerText.includes('自动化项目 A') && document.body.innerText.includes('返回活动项目')", 10_000, "项目 B 未显示活动项目冲突提示。");
+    await waitFor("Boolean(document.querySelector('.run-actions button[aria-disabled=\"true\"][aria-describedby]'))", 10_000, "项目 B 未阻止与活动项目冲突的启动操作。");
     const conflictState = await evaluate(`(() => {
       const button = [...document.querySelectorAll('button')].find((item) => item.textContent?.includes('开始重建'));
-      return button ? { focusable: !button.disabled, ariaDisabled: button.getAttribute('aria-disabled'), described: Boolean(button.getAttribute('aria-describedby')) } : null;
+      return button ? { focusable: !button.disabled, ariaDisabled: button.getAttribute('aria-disabled'), described: Boolean(document.getElementById(button.getAttribute('aria-describedby'))?.textContent?.trim()) } : null;
     })()`);
     check("active-project-conflict", conflictState?.focusable && conflictState.ariaDisabled === "true" && conflictState.described,
       "Project B remains navigable while its start action is focusable, described, and blocked by active project A.");
-    await clickButton("返回活动项目");
+    await evaluate(`(() => {
+      const button = document.querySelector('.run-actions button[aria-disabled="true"]');
+      button.focus();
+      button.click();
+    })()`);
+    await waitFor("document.querySelector('.run-conflict-feedback[role=alert]')?.textContent?.includes('当前有重建任务尚未结束')", 2_000, "受阻的启动操作未显示原因。");
+    const blockedAttempt = await evaluate(`({
+      focusRetained: document.activeElement?.getAttribute('aria-disabled') === 'true',
+      started: window.__E2E__.state.commandCalls.some((call) => call.command === 'start_pipeline'),
+    })`);
+    check("active-project-blocked-attempt", blockedAttempt.focusRetained && !blockedAttempt.started,
+      "Attempting the blocked start explains the conflict, retains focus, and never invokes start_pipeline.");
+    await clickButton("自动化项目 A");
     await waitFor("[...document.querySelectorAll('h1')].some((node) => node.textContent?.trim() === '自动化项目 A')", 10_000, "未返回活动项目 A。");
+    await waitFor("Boolean(document.querySelector('.preview-panel'))", 10_000, "项目工作区未完成加载。");
 
     const workspaceLayout = await evaluate(`(() => {
       const rect = (selector) => {
@@ -577,7 +590,8 @@ async function run() {
         feedback: rect('.project-resource-feedback'),
         timeline: rect('.timeline-panel'),
         inspector: rect('.inspector-column'),
-        activity: rect('.activity-panel'),
+        preview: rect('.preview-panel'),
+        monitor: rect('.workspace-inspector-stack'),
       };
     })()`);
     const workspaceLayoutValid = Boolean(
@@ -586,16 +600,19 @@ async function run() {
       && workspaceLayout.feedback
       && workspaceLayout.timeline
       && workspaceLayout.inspector
-      && workspaceLayout.activity
-      && workspaceLayout.feedback.bottom <= workspaceLayout.timeline.top + 1
-      && Math.abs(workspaceLayout.timeline.top - workspaceLayout.inspector.top) <= 1
-      && workspaceLayout.timeline.height >= 300
-      && workspaceLayout.activity.top >= workspaceLayout.timeline.bottom - 1
-      && workspaceLayout.activity.bottom <= workspaceLayout.content.bottom + 1
+      && workspaceLayout.preview
+      && workspaceLayout.monitor
+      && (workspaceLayout.feedback.height === 0 || workspaceLayout.feedback.bottom <= workspaceLayout.timeline.top + 1)
+      && workspaceLayout.timeline.height > 0
+      && workspaceLayout.timeline.bottom <= workspaceLayout.inspector.top + 1
+      && Math.abs(workspaceLayout.preview.top - workspaceLayout.monitor.top) <= 1
+      && workspaceLayout.preview.right <= workspaceLayout.monitor.left + 1
+      && workspaceLayout.preview.height >= 288
+      && workspaceLayout.inspector.bottom <= workspaceLayout.content.bottom + 1
     );
     check("project-workspace-grid-placement", workspaceLayoutValid,
       workspaceLayoutValid
-        ? "Resource feedback remains compact while timeline, inspector, and activity panels stay in their intended visible tracks."
+        ? "Stage milestones sit above the side-by-side preview and monitoring panels within the visible workspace."
         : `Workspace children escaped their intended tracks: ${JSON.stringify(workspaceLayout)}`);
     await capture("project-workspace-layout-1440x1024-100pct");
 
@@ -607,7 +624,7 @@ async function run() {
     const feedbackSamples = [];
     for (let index = 0; index < 20; index += 1) {
       await evaluate(`(() => {
-        const button = [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === '暂停');
+        const button = document.querySelector('button[aria-label="暂停"]');
         if (!button) return false;
         window.__E2E_TIMING_START__ = performance.now();
         button.click();
@@ -652,6 +669,7 @@ async function run() {
     check("SC-009-p95", report.timings.SC009.status === "PASS", `p95=${report.timings.SC009.p95_ms}ms; threshold=2000ms.`);
 
     progress("collecting SC-010 thousand-event search timing samples");
+    await clickButton("查看日志与活动");
     await waitFor("Boolean(document.querySelector('input[aria-label=\"搜索活动记录\"]'))", 10_000, "活动搜索框未出现。");
     await evaluate(`(() => {
       const input = document.querySelector('input[aria-label="搜索活动记录"]');
@@ -688,6 +706,8 @@ async function run() {
     check("SC-010-p95", report.timings.SC010.status === "PASS", `p95=${report.timings.SC010.p95_ms}ms; threshold=2000ms.`);
 
     progress("validating keyboard contracts");
+    await clickButton("关闭日志");
+    await waitFor("!document.querySelector('.workspace-activity-drawer')", 2_000, "日志抽屉未关闭。");
     await evaluate(`(() => {
       const trigger = [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === '操作');
       trigger.focus();
@@ -700,6 +720,8 @@ async function run() {
       "Escape 关闭菜单后未恢复触发器焦点。");
     check("keyboard-menu-contract", true, "ArrowDown opens and Escape closes the menu with focus restored.");
 
+    await clickButton("查看日志与活动");
+    await waitFor("Boolean(document.querySelector('[role=tab]'))", 2_000, "日志标签页未出现。");
     await evaluate(`(() => {
       const tab = [...document.querySelectorAll('[role=tab]')].find((item) => item.textContent?.trim() === '活动日志');
       tab.focus();
@@ -730,6 +752,8 @@ async function run() {
     });
     await waitFor("!matchMedia('(forced-colors: active)').matches && matchMedia('(prefers-reduced-motion: reduce)').matches", 2_000,
       "无法恢复常规颜色并保留 reduced-motion 仿真。");
+    await clickButton("关闭日志");
+    await waitFor("!document.querySelector('.workspace-activity-drawer')", 2_000, "日志抽屉未关闭。");
 
     progress("capturing conservative 1024x768 scale-emulation screenshots");
     for (const scale of [1, 1.25, 1.5]) {
