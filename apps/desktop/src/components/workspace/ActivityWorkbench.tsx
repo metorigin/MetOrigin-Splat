@@ -1,3 +1,4 @@
+import { localizeMessage, t, getLocale } from "../../i18n";
 import {
   ArrowDown,
   ArrowUp,
@@ -114,9 +115,9 @@ export function ActivityWorkbench({
     const before = previousStatus.current;
     const current = activity.resource.status;
     if (current === "stale" && before !== "stale") {
-      setAnnouncement("活动记录刷新失败，正在显示上次结果。");
+      setAnnouncement(t("活动记录刷新失败，正在显示上次结果。"));
     } else if (before === "stale" && current === "success") {
-      setAnnouncement("活动记录已恢复更新。");
+      setAnnouncement(t("活动记录已恢复更新。"));
     }
     previousStatus.current = current;
   }, [activity.resource.status]);
@@ -129,12 +130,12 @@ export function ActivityWorkbench({
     if (autoFollow && listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [autoFollow, events]);
 
-  const tabs = useMemo(() => ([
-    ["log", "活动日志"],
-    ["event", "事件"],
-    ["warning", `警告 (${warningCount})`],
-    ["error", `错误 (${errorCount})`],
-  ] as const), [errorCount, warningCount]);
+  const tabs = [
+    ["log", t("活动日志")],
+    ["event", t("事件")],
+    ["warning", t("警告 ({0})", warningCount)],
+    ["error", t("错误 ({0})", errorCount)],
+  ] as const;
   const tabRoving = useRovingFocus({
     itemCount: tabs.length,
     orientation: "horizontal",
@@ -144,8 +145,8 @@ export function ActivityWorkbench({
   });
 
   return (
-    <section className="activity-panel panel" aria-label="Pipeline 活动" aria-busy={["loading", "refreshing"].includes(activity.resource.status)}>
-      <div ref={tabRoving.containerRef as React.RefObject<HTMLDivElement>} className="activity-tabs" role="tablist" aria-label="Pipeline 活动筛选">
+    <section className="activity-panel panel" aria-label={t("Pipeline 活动")} aria-busy={["loading", "refreshing"].includes(activity.resource.status)}>
+      <div ref={tabRoving.containerRef as React.RefObject<HTMLDivElement>} className="activity-tabs" role="tablist" aria-label={t("Pipeline 活动筛选")}>
         {tabs.map(([value, label], index) => (
           <button
             id={`activity-tab-${value}`}
@@ -163,15 +164,14 @@ export function ActivityWorkbench({
         ))}
         <label className="activity-search">
           <MagnifyingGlass size={14} />
-          <input aria-label="搜索活动记录" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索日志" />
+          <input aria-label={t("搜索活动记录")} value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("搜索日志")} />
         </label>
       </div>
-      <AsyncStatus resource={activity.resource} label="活动记录" empty={events.length === 0} />
+      <AsyncStatus resource={activity.resource} label={t("活动记录")} empty={events.length === 0} />
       {activity.resource.error && activity.resource.data !== null ? (
         <div className="activity-load-warning" role="status">
           <Warning size={15} weight="fill" />
-          活动记录更新失败，正在显示最后一次成功获取的数据。
-          <button type="button" onClick={() => void load("refresh")}>重试刷新</button>
+          {t("活动记录更新失败，正在显示最后一次成功获取的数据。")}<button type="button" onClick={() => void load("refresh")}>{t("重试刷新")}</button>
         </div>
       ) : null}
       <div id="activity-event-panel" className="activity-workbench-body" role="tabpanel" aria-labelledby={`activity-tab-${tab}`}>
@@ -179,12 +179,12 @@ export function ActivityWorkbench({
           const target = event.currentTarget;
           setAutoFollow(target.scrollHeight - target.scrollTop - target.clientHeight < 32);
         }}>
-          <div className="activity-table-header"><span>时间</span><span>级别</span><span>阶段</span><span>消息</span></div>
+          <div className="activity-table-header"><span>{t("时间")}</span><span>{t("级别")}</span><span>{t("阶段")}</span><span>{t("消息")}</span></div>
           {events.length === 0 ? (
             <div className="activity-empty-row">
               <CheckCircle size={17} weight="fill" />
-              <span>{activity.resource.status === "loading" ? "正在加载活动日志…" : "暂无符合条件的真实事件"}</span>
-              <span>{activity.resource.status === "loading" ? "请稍候" : "Pipeline 运行后将在此持续记录"}</span>
+              <span>{activity.resource.status === "loading" ? t("正在加载活动日志…") : t("暂无符合条件的真实事件")}</span>
+              <span>{activity.resource.status === "loading" ? t("请稍候") : t("Pipeline 运行后将在此持续记录")}</span>
             </div>
           ) : events.map((event) => (
             <button
@@ -197,32 +197,31 @@ export function ActivityWorkbench({
                 if (event.stage_id) onSelectStage?.(event.stage_id);
               }}
             >
-              <span>{new Date(event.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}</span>
+              <span>{new Date(event.timestamp).toLocaleTimeString(getLocale(), { hour12: false })}</span>
               <span>{event.severity === "error" ? <XCircle size={14} weight="fill" /> : event.severity === "warning" ? <Warning size={14} weight="fill" /> : <CheckCircle size={14} weight="fill" />}{event.severity.toUpperCase()}</span>
               <span>{event.stage_id ? getStageLabel(event.stage_id) : "Pipeline"}</span>
-              <span>{redactSensitiveText(event.user_message)}</span>
+              <span>{localizeMessage(redactSensitiveText(event.user_message))}</span>
             </button>
           ))}
           {nextCursor != null ? (
             <button className="button button-secondary activity-load-more" type="button" onClick={() => void load("older")}>
-              <ArrowUp size={14} /> 加载更早记录
-            </button>
+              <ArrowUp size={14} /> {t("加载更早记录")}</button>
           ) : null}
         </div>
-        <aside className="event-detail" aria-label="事件详情">
+        <aside className="event-detail" aria-label={t("事件详情")}>
           {selected ? <>
-            <strong>{redactSensitiveText(selected.user_message)}</strong>
-            <span>{selected.stage_id ? getStageLabel(selected.stage_id) : "Pipeline"} · {new Date(selected.timestamp).toLocaleString("zh-CN")}</span>
+            <strong>{localizeMessage(redactSensitiveText(selected.user_message))}</strong>
+            <span>{selected.stage_id ? getStageLabel(selected.stage_id) : "Pipeline"} · {new Date(selected.timestamp).toLocaleString(getLocale())}</span>
             <p>{selected.technical_message
-              ? "原始引擎输出已隐藏；需要排查时请导出脱敏诊断。"
-              : "没有额外技术详情。"}</p>
+              ? t("原始引擎输出已隐藏；需要排查时请导出脱敏诊断。")
+              : t("没有额外技术详情。")}</p>
             {safeMetricSummary(selected.metrics) ? (
               <code>{safeMetricSummary(selected.metrics)}</code>
             ) : null}
-          </> : <><strong>事件详情</strong><p>选择一条日志查看完整上下文。</p></>}
+          </> : <><strong>{t("事件详情")}</strong><p>{t("选择一条日志查看完整上下文。")}</p></>}
         </aside>
       </div>
-      {!autoFollow && <button className="back-to-latest" type="button" onClick={() => setAutoFollow(true)}><ArrowDown size={14} />回到最新</button>}
+      {!autoFollow && <button className="back-to-latest" type="button" onClick={() => setAutoFollow(true)}><ArrowDown size={14} />{t("回到最新")}</button>}
       <StatusAnnouncer message={announcement} />
     </section>
   );

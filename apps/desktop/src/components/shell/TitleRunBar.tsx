@@ -1,3 +1,4 @@
+import { t, getLocale } from "../../i18n";
 import {
   ArrowClockwise,
   CaretDown,
@@ -67,7 +68,7 @@ export function TitleRunBar({
   const canResume = status === "paused" || status === "cancelled";
   const isFailed = status === "failed";
   const isComplete = status === "completed";
-  const statusLabel = status === "running" ? "处理中" : status === "failed" ? "已阻塞" : status === "ready" ? "等待中" : getProjectStatusLabel(status);
+  const statusLabel = status === "running" ? t("处理中") : status === "failed" ? t("已阻塞") : status === "ready" ? t("等待中") : getProjectStatusLabel(status);
   const menu = useMenuFocus({
     open: menuOpen,
     onOpenChange: setMenuOpen,
@@ -78,18 +79,18 @@ export function TitleRunBar({
   const progress = isComplete ? 100 : pipelineSnapshot && Number.isFinite(pipelineSnapshot.state.overall_progress)
     ? Math.round(pipelineSnapshot.state.overall_progress * 100)
     : null;
-  const stageLabel = isComplete ? "重建完成" : pipelineSnapshot?.state.current_stage
+  const stageLabel = isComplete ? t("重建完成") : pipelineSnapshot?.state.current_stage
     ? getStageLabel(pipelineSnapshot.state.current_stage)
     : project.stage_label
       ? getStageLabel(project.stage_label)
-      : "正在准备";
+      : t("正在准备");
   const workUnit = taskProgress && taskProgress.total_items > 0
-    ? `${Math.max(0, taskProgress.current_item).toLocaleString()} / ${taskProgress.total_items.toLocaleString()} 项`
+    ? t("{0} / {1} 项", Math.max(0, taskProgress.current_item).toLocaleString(getLocale()), taskProgress.total_items.toLocaleString(getLocale()))
     : null;
   const progressText = [
     stageLabel,
     workUnit,
-    progress == null ? "整体进度正在估算" : `整体进度 ${progress}%`,
+    progress == null ? t("整体进度正在估算") : t("整体进度 {0}%", progress),
   ].filter(Boolean).join("，");
   const handleRunAction = () => {
     if (pipelineConflict) {
@@ -105,7 +106,7 @@ export function TitleRunBar({
   return (
     <header className="title-run-bar">
       <div className="title-row">
-        <button type="button" className="workspace-brand-button" onClick={onHome} title="返回项目中心">
+        <button type="button" className="workspace-brand-button" onClick={onHome} title={t("返回项目中心")}>
           <img src={appIconUrl} alt="" />
           <span>MetOrigin Splat</span>
         </button>
@@ -117,7 +118,7 @@ export function TitleRunBar({
         <div className="run-actions">
           <span className={`status-pill status-${status}`}><i />{statusLabel}</span>
           {isComplete && onEdit && (
-            <button type="button" className="button button-secondary workspace-compact-action" onClick={onEdit} disabled={openingEditor} aria-label={openingEditor ? "正在打开编辑器" : "编辑"} title="在操作台内使用 SuperSplat 编辑模型">{openingEditor ? <SpinnerGap size={17} className="spin" /> : <Pencil size={17} />}编辑</button>
+            <button type="button" className="button button-secondary workspace-compact-action" onClick={onEdit} disabled={openingEditor} aria-label={openingEditor ? t("正在打开编辑器") : t("编辑")} title={t("在操作台内使用 SuperSplat 编辑模型")}>{openingEditor ? <SpinnerGap size={17} className="spin" /> : <Pencil size={17} />}{t("编辑")}</button>
           )}
           {(status === "running" || status === "cancelling") && (
             <button
@@ -127,10 +128,10 @@ export function TitleRunBar({
               disabled={isControlling}
             >
               <StopCircle size={17} />
-              {status === "cancelling" ? "正在取消…" : "取消任务"}
+              {status === "cancelling" ? t("正在取消…") : t("取消任务")}
             </button>
           )}
-          {isFailed ? <button type="button" className="button button-secondary" onClick={onViewActivity}>查看日志</button> : null}
+          {isFailed ? <button type="button" className="button button-secondary" onClick={onViewActivity}>{t("查看日志")}</button> : null}
           <button
             type="button"
             className={`button ${isFailed || canResume ? "button-primary" : "button-secondary"}`}
@@ -138,11 +139,11 @@ export function TitleRunBar({
             disabled={isControlling}
             aria-disabled={pipelineConflict && !isComplete ? true : undefined}
             aria-describedby={pipelineConflict && !isComplete ? conflictDescriptionId : undefined}
-            title={isComplete ? "打开项目文件目录" : isFailed ? "重新启动任务并校验现有产物" : isRunning ? "安全暂停并保留有效产物" : canResume ? "校验产物后继续重建" : "开始重建"}
-            aria-label={isRunning ? "暂停" : undefined}
+            title={isComplete ? t("打开项目文件目录") : isFailed ? t("重新启动任务并校验现有产物") : isRunning ? t("安全暂停并保留有效产物") : canResume ? t("校验产物后继续重建") : t("开始重建")}
+            aria-label={isRunning ? t("暂停") : undefined}
           >
             {isComplete ? <Export size={17} /> : isFailed ? <ArrowClockwise size={17} /> : isRunning ? <Pause size={17} weight="fill" /> : <Play size={17} weight="fill" />}
-            {isControlling ? "正在处理…" : isComplete ? "查看项目文件" : isFailed ? "重试任务" : isRunning ? "暂停任务" : canResume ? "继续" : "开始重建"}
+            {isControlling ? t("正在处理…") : isComplete ? t("查看项目文件") : isFailed ? t("重试任务") : isRunning ? t("暂停任务") : canResume ? t("继续") : t("开始重建")}
           </button>
           <div className="project-action-menu">
             <button
@@ -156,21 +157,17 @@ export function TitleRunBar({
               aria-haspopup="menu"
               aria-controls={menuOpen ? menuId : undefined}
             >
-              操作
-              <CaretDown size={14} />
+              {t("操作")}<CaretDown size={14} />
             </button>
             {menuOpen && project && (
               <div ref={menu.menuRef} id={menuId} className="action-menu-popover" role="menu" data-keyboard-overlay="true" onKeyDown={menu.onMenuKeyDown}>
                 <button type="button" {...menu.getItemProps(0)} onClick={() => { setMenuOpen(false); onRevealProject(); }}>
-                  <FolderOpen size={15} /> 在资源管理器中显示
-                </button>
+                  <FolderOpen size={15} /> {t("在资源管理器中显示")}</button>
                 <span className="action-menu-separator" />
-                <button type="button" {...menu.getItemProps(1)} disabled={isRunning} title={isRunning ? "请先安全取消重建" : undefined} onClick={() => { setMenuOpen(false); onRemoveProject(); }}>
-                  <XCircle size={15} /> 从最近项目移除
-                </button>
-                <button type="button" {...menu.getItemProps(2)} className="is-danger" disabled={isRunning} title={isRunning ? "请先安全取消重建" : undefined} onClick={() => { setMenuOpen(false); onDeleteProject(); }}>
-                  <Trash size={15} /> 永久删除项目
-                </button>
+                <button type="button" {...menu.getItemProps(1)} disabled={isRunning} title={isRunning ? t("请先安全取消重建") : undefined} onClick={() => { setMenuOpen(false); onRemoveProject(); }}>
+                  <XCircle size={15} /> {t("从最近项目移除")}</button>
+                <button type="button" {...menu.getItemProps(2)} className="is-danger" disabled={isRunning} title={isRunning ? t("请先安全取消重建") : undefined} onClick={() => { setMenuOpen(false); onDeleteProject(); }}>
+                  <Trash size={15} /> {t("永久删除项目")}</button>
               </div>
             )}
           </div>
@@ -181,34 +178,33 @@ export function TitleRunBar({
         <div
           className="progress-summary"
           role="progressbar"
-          aria-label="整体进度"
+          aria-label={t("整体进度")}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={progress ?? undefined}
           aria-valuetext={progressText}
         >
           <span className="progress-copy">
-            <span>整体进度</span>
-            <strong>{progress == null ? "正在估算" : `${progress}%`}</strong>
+            <span>{t("整体进度")}</span>
+            <strong>{progress == null ? t("正在估算") : `${progress}%`}</strong>
           </span>
           <span className="progress-track" aria-hidden="true">
             <span style={{ width: `${progress ?? 0}%` }} />
           </span>
         </div>
         <div className="run-time-copy">
-          <span>状态</span>
+          <span>{t("状态")}</span>
           <strong>{getProjectStatusLabel(status)}</strong>
-          <span>当前阶段</span>
+          <span>{t("当前阶段")}</span>
           <strong>{stageLabel}</strong>
-          {(!isComplete || workUnit) && <><span>实际工作量</span><strong>{workUnit ?? "正在统计"}</strong></>}
-          <span>最近更新</span>
-          <strong>{updatedAt ? new Date(updatedAt).toLocaleTimeString("zh-CN", { hour12: false }) : "等待活动"}</strong>
+          {(!isComplete || workUnit) && <><span>{t("实际工作量")}</span><strong>{workUnit ?? t("正在统计")}</strong></>}
+          <span>{t("最近更新")}</span>
+          <strong>{updatedAt ? new Date(updatedAt).toLocaleTimeString(getLocale(), { hour12: false }) : t("等待活动")}</strong>
         </div>
       </div>
       {pipelineConflict && !isComplete && (
         <p id={conflictDescriptionId} className={conflictAssertive ? "run-conflict-feedback" : "sr-only"} role={conflictAssertive ? "alert" : undefined}>
-          当前有重建任务尚未结束，请先暂停或结束任务后再开始新的重建。
-        </p>
+          {t("当前有重建任务尚未结束，请先暂停或结束任务后再开始新的重建。")}</p>
       )}
     </header>
   );

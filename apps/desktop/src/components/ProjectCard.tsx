@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { ProjectInfo } from "../types";
 import { formatRelativeTime, getProjectStatusLabel, getStageLabel } from "../localization";
 
@@ -36,7 +37,7 @@ export function ProjectCard({ project, onClick }: ProjectCardProps) {
       <div className="project-meta">
         <span className="project-time">{timeAgo}</span>
         <button className="text-button" onClick={(e) => { e.stopPropagation(); onClick(); }}>
-          {project.status === "completed" ? "查看结果 →" : "继续 →"}
+          {project.status === "completed" ? t("查看结果 →") : t("继续 →")}
         </button>
       </div>
     </div>

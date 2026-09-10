@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type { StageState } from "../types";
 import { CheckCircle, Circle, SpinnerGap, WarningCircle, XCircle } from "./primitives/icons";
 import {
@@ -44,8 +45,7 @@ export function StageProgress({
         )}
         {stage.status === "failed" && (
           <button className="retry-button" onClick={onRetry}>
-            重试
-          </button>
+            {t("重试")}</button>
         )}
       </div>
       {stage.status === "running" && (

@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 export const EDITOR_CHANNEL = "metorigin-supersplat-v1";
 
 /** Only accept replies from the local editor frame, never other windows. */
@@ -19,7 +20,7 @@ export function createEditorBridge(target: Window, origin: string) {
       const result = new Promise<T>((resolve, reject) => {
         const timer = window.setTimeout(() => {
           pending.delete(id);
-          reject(new Error("编辑器响应超时，请检查模型大小或重新打开编辑器。"));
+          reject(new Error(t("编辑器响应超时，请检查模型大小或重新打开编辑器。")));
         }, timeout);
         pending.set(id, { resolve: (value) => resolve(value as T), reject, timer });
         target.postMessage({ channel: EDITOR_CHANNEL, id, command, data }, origin, transfer);
@@ -30,7 +31,7 @@ export function createEditorBridge(target: Window, origin: string) {
       window.removeEventListener("message", receive);
       for (const request of pending.values()) {
         window.clearTimeout(request.timer);
-        request.reject(new Error("编辑窗口已关闭。"));
+        request.reject(new Error(t("编辑窗口已关闭。")));
       }
       pending.clear();
     },

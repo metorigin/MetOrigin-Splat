@@ -1,3 +1,4 @@
+import { localizeMessage, t, getLocale } from "../../i18n";
 import { useEffect, useRef, useState } from "react";
 import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import * as THREE from "three";
@@ -73,7 +74,7 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
       // Brush sorts projected splats by depth. Keep full SH and full model resolution.
       spark = new SparkRenderer({ renderer, sortRadial: false, enableLod: false, accumExtSplats: true, maxStdDev: 3, preBlurAmount: 0.3, blurAmount: 0 });
     } catch (cause) {
-      setError(`无法启动高斯渲染：${String(cause)}`);
+      setError(t("无法启动高斯渲染：{0}", String(cause)));
       setLoading(false);
       return;
     }
@@ -140,7 +141,7 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
     };
     const onContextLost = (event: Event) => {
       event.preventDefault();
-      setError("GPU 渲染上下文已丢失，请重新打开项目恢复预览。");
+      setError(t("GPU 渲染上下文已丢失，请重新打开项目恢复预览。"));
     };
     host.addEventListener("keydown", onKeyDown);
     renderer.domElement.addEventListener("webglcontextlost", onContextLost);
@@ -195,7 +196,7 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
       try {
         await mesh.initialized;
         if (disposed || viewerRef.current !== viewer) { mesh.dispose(); return; }
-        if (mesh.numSplats !== source.vertex_count) throw new Error("高斯模型读取不完整。");
+        if (mesh.numSplats !== source.vertex_count) throw new Error(t("高斯模型读取不完整。"));
         const previous = viewer.mesh;
         viewer.initialCamera = initialCamera;
         viewer.scene.add(mesh);
@@ -259,29 +260,29 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
     };
   }, [ready, projectId, projectPath, relativePath, live, running, mode, retry]);
 
-  const statusText = !live ? "高斯渲染"
-    : !running ? "训练未运行 · 保留最近画面"
-      : mode === "off" ? "预览已暂停 · 训练继续"
-        : !liveSessionKnown ? "等待训练预览"
-          : liveAvailable === false ? "当前为检查点预览"
-            : !liveStreamRunning ? "最近一次训练画面"
-              : hasCurrentLiveFrame ? "训练实时预览" : "等待首帧";
+  const statusText = !live ? t("高斯渲染")
+    : !running ? t("训练未运行 · 保留最近画面")
+      : mode === "off" ? t("预览已暂停 · 训练继续")
+        : !liveSessionKnown ? t("等待训练预览")
+          : liveAvailable === false ? t("当前为检查点预览")
+            : !liveStreamRunning ? t("最近一次训练画面")
+              : hasCurrentLiveFrame ? t("训练实时预览") : t("等待首帧");
 
   return <div className="point-cloud-viewer gaussian-viewer" aria-busy={loading}>
     <div className="preview-toolbar gaussian-toolbar">
-      <span className="gaussian-preview-label"><Eye size={15} />{displayed ? `${displayed.vertex_count.toLocaleString()} 高斯` : "高斯模型"}<small>{statusText}</small></span>
-      {displayed?.iteration != null && <span className="gaussian-iteration">{displayed.iteration.toLocaleString()} step</span>}
-      {live && <select aria-label="训练预览刷新" value={mode} onChange={(event) => setMode(event.target.value as LivePreviewMode)}><option value="live">实时</option><option value="low">低频</option><option value="off">暂停预览</option></select>}
-      <button className="icon-button" type="button" onClick={() => viewerRef.current?.fit()} aria-label="重置高斯视角" title="重置视角"><ArrowsOut size={16} /></button>
-      <button className="icon-button" type="button" onClick={() => viewerRef.current?.fit(true)} aria-label="查看模型整体" title="查看模型整体"><Eye size={16} /></button>
-      <button className={`icon-button ${gridVisible ? "is-active" : ""}`} type="button" onClick={() => setGridVisible((value) => !value)} aria-label="切换高斯地面网格" title="切换地面网格"><GridFour size={16} /></button>
+      <span className="gaussian-preview-label"><Eye size={15} />{displayed ? t("{0} 高斯", displayed.vertex_count.toLocaleString(getLocale())) : t("高斯模型")}<small>{statusText}</small></span>
+      {displayed?.iteration != null && <span className="gaussian-iteration">{displayed.iteration.toLocaleString(getLocale())} step</span>}
+      {live && <select aria-label={t("训练预览刷新")} value={mode} onChange={(event) => setMode(event.target.value as LivePreviewMode)}><option value="live">{t("实时")}</option><option value="low">{t("低频")}</option><option value="off">{t("暂停预览")}</option></select>}
+      <button className="icon-button" type="button" onClick={() => viewerRef.current?.fit()} aria-label={t("重置高斯视角")} title={t("重置视角")}><ArrowsOut size={16} /></button>
+      <button className="icon-button" type="button" onClick={() => viewerRef.current?.fit(true)} aria-label={t("查看模型整体")} title={t("查看模型整体")}><Eye size={16} /></button>
+      <button className={`icon-button ${gridVisible ? "is-active" : ""}`} type="button" onClick={() => setGridVisible((value) => !value)} aria-label={t("切换高斯地面网格")} title={t("切换地面网格")}><GridFour size={16} /></button>
     </div>
     <div className="gaussian-canvas-wrapper">
-      <div className="point-cloud-canvas" ref={hostRef} tabIndex={0} role="application" aria-label="三维高斯预览。拖动旋转，滚轮缩放，右键平移，R 重置视角。" />
-      {!displayed && <div className="gaussian-empty"><SpinnerGap size={30} className={loading || (live && running) ? "spin" : ""} /><strong>{loading ? "正在加载高斯模型" : live ? "等待训练模型" : "暂无可显示模型"}</strong><span>{live ? "模型准备好后会自动显示，可在训练过程中旋转和缩放。" : "读取完整高斯参数后显示重建场景。"}</span></div>}
-      {error && <div className="gaussian-error" role="alert"><span>{error}{displayed ? " 已保留上一帧。" : ""}</span><button type="button" className="button button-secondary" onClick={() => setRetry((value) => value + 1)}><ArrowClockwise size={15} />重试</button></div>}
-      {loading && displayed && <div className="gaussian-updating"><SpinnerGap size={13} className="spin" />更新模型</div>}
-      {lastUpdated && displayed && <span className="gaussian-updated">{new Date(lastUpdated).toLocaleTimeString("zh-CN")} 更新</span>}
+      <div className="point-cloud-canvas" ref={hostRef} tabIndex={0} role="application" aria-label={t("三维高斯预览。拖动旋转，滚轮缩放，右键平移，R 重置视角。")} />
+      {!displayed && <div className="gaussian-empty"><SpinnerGap size={30} className={loading || (live && running) ? "spin" : ""} /><strong>{loading ? t("正在加载高斯模型") : live ? t("等待训练模型") : t("暂无可显示模型")}</strong><span>{live ? t("模型准备好后会自动显示，可在训练过程中旋转和缩放。") : t("读取完整高斯参数后显示重建场景。")}</span></div>}
+      {error && <div className="gaussian-error" role="alert"><span>{localizeMessage(error)}{displayed ? t(" 已保留上一帧。") : ""}</span><button type="button" className="button button-secondary" onClick={() => setRetry((value) => value + 1)}><ArrowClockwise size={15} />{t("重试")}</button></div>}
+      {loading && displayed && <div className="gaussian-updating"><SpinnerGap size={13} className="spin" />{t("更新模型")}</div>}
+      {lastUpdated && displayed && <span className="gaussian-updated">{new Date(lastUpdated).toLocaleTimeString(getLocale())} {t("更新")}</span>}
     </div>
   </div>;
 }

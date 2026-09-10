@@ -15,6 +15,7 @@ A Windows desktop application that turns a video or a folder of photos into a 3D
 - Open recent projects, inspect quality metrics and resource usage, and export PLY results.
 - Edit completed models in the bundled SuperSplat workspace and save directly to the project's model file.
 - Configure engines, storage, performance and light/dark/system appearance in one settings drawer.
+- Use the app in English or Simplified Chinese, follow the system language, or switch instantly in Settings & Engines.
 
 Media processing runs on your computer. Engine preparation and dependency installation may download software; they do not upload your project media.
 
@@ -39,7 +40,7 @@ pnpm tauri dev
 
 ### Prepare the reconstruction engines
 
-A source checkout does not contain engine executables. Configure existing installations through **设置与引擎** (Settings & Engines), or prepare the pinned local engine pack:
+A source checkout does not contain engine executables. Configure existing installations through **Settings & Engines**, or prepare the pinned local engine pack:
 
 ```powershell
 pnpm prepare:windows:engines
@@ -66,10 +67,10 @@ Open `http://localhost:1420/?ui-preview` for the development-only sample-data vi
 
 ## Typical workflow
 
-1. Select **新建项目**, choose a video or browse an image in the folder to import. Image import includes the selected image's entire parent folder, including subfolders.
+1. Select **New project**, choose a video or browse an image in the folder to import. Image import includes the selected image's entire parent folder, including subfolders.
 2. Review media analysis and preflight checks, then select a reconstruction preset.
 3. Confirm the project name and location, then choose to create only or create and start reconstruction.
-4. Follow **预处理 → 特征提取 → 训练重建 → 质量评估**. Expand a phase to inspect individual stages and their outputs.
+4. Follow **Preprocessing → Feature extraction → Training → Quality assessment**. Expand a phase to inspect individual stages and their outputs.
 5. Inspect the Gaussian model, quality report and checkpoints; open the output directory to use `output/scene.ply`.
 
 One reconstruction task can run at a time. You can browse other projects while it runs. A PLY checkpoint restores model geometry, not the complete optimizer state. Live preview uses model snapshots between processes, so its update rate depends on training speed and model size.
@@ -100,7 +101,7 @@ Real-engine tests require explicit opt-in, local media and suitable hardware. Se
 | `docs/` | Current usage, implementation and release guides |
 | `specs/` | Historical design contracts and acceptance protocols |
 
-Start with the [documentation index](docs/README.md), [user guide (中文)](docs/user-operation-flow.zh-CN.md), [architecture](docs/architecture.md), or [troubleshooting](docs/troubleshooting.md). Contribution and vulnerability reporting instructions are in [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+Start with the [documentation index](docs/README.md), [English user guide](docs/user-guide.md), [中文使用指南](docs/user-operation-flow.zh-CN.md), [architecture](docs/architecture.md), or [troubleshooting](docs/troubleshooting.md). Contribution and vulnerability reporting instructions are in [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 ## License and distribution
 

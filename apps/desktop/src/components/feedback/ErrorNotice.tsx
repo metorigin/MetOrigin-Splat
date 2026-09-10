@@ -1,3 +1,4 @@
+import { localizeMessage, t } from "../../i18n";
 import { useState } from "react";
 
 import { redactSensitiveText } from "../../services/errors";
@@ -26,19 +27,19 @@ export function ErrorNotice({ error, onAction, blocking = false }: ErrorNoticePr
   return (
     <section className="error-notice" role={blocking ? "alert" : "status"}>
       <div>
-        <strong>{error.title}</strong>
+        <strong>{localizeMessage(error.title)}</strong>
         <span className="error-code">{error.code}</span>
       </div>
-      <p>{error.message}</p>
-      <p className="error-impact">影响：{error.impact}</p>
+      <p>{localizeMessage(error.message)}</p>
+      <p className="error-impact">{t("影响：")}{localizeMessage(error.impact)}</p>
       <ul>
         {error.suggestions.map((suggestion) => (
-          <li key={suggestion}>{suggestion}</li>
+          <li key={suggestion}>{localizeMessage(suggestion)}</li>
         ))}
       </ul>
       {error.technicalDetails ? (
         <details>
-          <summary>技术详情</summary>
+          <summary>{t("技术详情")}</summary>
           <pre>{redactSensitiveText(error.technicalDetails)}</pre>
         </details>
       ) : null}
@@ -52,10 +53,10 @@ export function ErrorNotice({ error, onAction, blocking = false }: ErrorNoticePr
               type="button"
               disabled={!action.enabled || pendingAction === actionKey}
               aria-busy={pendingAction === actionKey || undefined}
-              title={action.disabledReason}
+              title={localizeMessage(action.disabledReason)}
               onClick={() => runAction(action)}
             >
-              {pendingAction === actionKey ? `${action.label}中…` : action.label}
+              {pendingAction === actionKey ? t("{0}中…", localizeMessage(action.label)) : localizeMessage(action.label)}
             </button>
           );})}
         </div>

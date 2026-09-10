@@ -1,3 +1,4 @@
+import { t, localizeMessage } from "../i18n";
 import type { ArtifactItem, PipelineStageId, Project, StageStatus } from "../types";
 
 export interface PhaseDefinition {
@@ -8,10 +9,10 @@ export interface PhaseDefinition {
 }
 
 export const PHASES: PhaseDefinition[] = [
-  { id: "media", label: "预处理", description: "素材标准化与有效帧筛选", stages: ["MediaValidation", "FrameExtraction", "ImagePreprocessing"] },
-  { id: "camera", label: "特征提取", description: "相机轨迹与稀疏点云", stages: ["ColmapFeatureExtraction", "ColmapMatching", "ColmapMapping", "ColmapValidation"] },
-  { id: "training", label: "训练重建", description: "Gaussian Splat 优化", stages: ["TrainingPreparation", "BrushTraining", "ModelValidation"] },
-  { id: "export", label: "质量评估", description: "验证模型并生成结果", stages: ["Export", "PreviewGeneration"] },
+  { id: "media", get label() { return t("预处理"); }, get description() { return t("素材标准化与有效帧筛选"); }, stages: ["MediaValidation", "FrameExtraction", "ImagePreprocessing"] },
+  { id: "camera", get label() { return t("特征提取"); }, get description() { return t("相机轨迹与稀疏点云"); }, stages: ["ColmapFeatureExtraction", "ColmapMatching", "ColmapMapping", "ColmapValidation"] },
+  { id: "training", get label() { return t("训练重建"); }, get description() { return t("Gaussian Splat 优化"); }, stages: ["TrainingPreparation", "BrushTraining", "ModelValidation"] },
+  { id: "export", get label() { return t("质量评估"); }, get description() { return t("验证模型并生成结果"); }, stages: ["Export", "PreviewGeneration"] },
 ];
 
 export function phaseStatus(pipelineState: Project["pipeline_state"], phase: PhaseDefinition): StageStatus {
@@ -28,16 +29,16 @@ export function phaseStatus(pipelineState: Project["pipeline_state"], phase: Pha
 
 export function stageStatusLabel(status: StageStatus, progress: number): string {
   switch (status) {
-    case "preparing": return "准备中";
-    case "running": return progress > 0 ? `运行中 · ${Math.round(progress * 100)}%` : "运行中";
-    case "pausing": return "正在暂停";
-    case "paused": return "已暂停";
-    case "cancelling": return "正在取消";
-    case "cancelled": return "已取消";
-    case "completed": return "已完成";
-    case "failed": return "失败";
-    case "skipped": return "已跳过（缓存）";
-    default: return "等待中";
+    case "preparing": return t("准备中");
+    case "running": return progress > 0 ? t("运行中 · {0}%", Math.round(progress * 100)) : t("运行中");
+    case "pausing": return t("正在暂停");
+    case "paused": return t("已暂停");
+    case "cancelling": return t("正在取消");
+    case "cancelled": return t("已取消");
+    case "completed": return t("已完成");
+    case "failed": return t("失败");
+    case "skipped": return t("已跳过（缓存）");
+    default: return t("等待中");
   }
 }
 
@@ -46,9 +47,9 @@ export function phaseStatusLabel(status: StageStatus): string {
 }
 
 export function plyActionState(artifact: ArtifactItem | null | undefined): { ready: boolean; message: string } {
-  if (!artifact?.exists) return { ready: false, message: "PLY 尚未生成，结果导出完成后即可打开。" };
-  if (!artifact.validated) return { ready: false, message: artifact.error ?? "PLY 未通过完整性校验，请查看结果导出日志。" };
-  return { ready: true, message: "在应用内预览最终 PLY" };
+  if (!artifact?.exists) return { ready: false, message: t("PLY 尚未生成，结果导出完成后即可打开。") };
+  if (!artifact.validated) return { ready: false, message: localizeMessage(artifact.error) ?? t("PLY 未通过完整性校验，请查看结果导出日志。") };
+  return { ready: true, message: t("在应用内预览最终 PLY") };
 }
 
 export function phaseProgressPercent(pipelineState: Project["pipeline_state"], phase: PhaseDefinition): number {

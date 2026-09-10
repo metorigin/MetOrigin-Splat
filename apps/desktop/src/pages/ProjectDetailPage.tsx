@@ -1,3 +1,4 @@
+import { localizeMessage, t, getLocale } from "../i18n";
 import {
   CaretDown,
   CaretUp,
@@ -86,7 +87,7 @@ function ResponsiveInspectorSurface({
   return (
     <ModalSurface
       id="mobile-project-inspector"
-      title="预览与质量"
+      title={t("预览与质量")}
       titleHidden
       className="mobile-inspector-surface"
       onClose={onClose}
@@ -189,10 +190,10 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
         async () => {
           const data = await desktopApi.getProjectArtifacts(projectPath);
           const artifactItems = [
-            ["帧清单", data.frames_manifest],
-            ["相机重建", data.colmap_result],
-            ["最终 Splat", data.scene_ply],
-            ["导出清单", data.output_manifest],
+            [t("帧清单"), data.frames_manifest],
+            [t("相机重建"), data.colmap_result],
+            [t("最终 Splat"), data.scene_ply],
+            [t("导出清单"), data.output_manifest],
           ] as const;
           const partialIssues = artifactItems.flatMap(([scope, item]) => item.error ? [{
             scope,
@@ -289,7 +290,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
           if (["ColmapFeatureExtraction", "ColmapMatching", "ColmapMapping", "ColmapValidation"].includes(stageId)) {
             return { stageId, kind: "sparse", value: await desktopApi.getSparsePreviewPack(projectPath) };
           }
-          throw new Error("该阶段没有可显示的产物。");
+          throw new Error(t("该阶段没有可显示的产物。"));
         },
         (error) => normalizeCommandError(error, previewCommand),
       );
@@ -317,9 +318,9 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
         projectPath,
         targetType: "output_directory",
       });
-      if (result.missing) throw new Error(result.message ?? "项目目录已移动或删除。");
+      if (result.missing) throw new Error(result.message ?? t("项目目录已移动或删除。"));
     } catch (error) {
-      dispatch({ type: "SET_ERROR", error: `无法打开输出目录：${String(error)}` });
+      dispatch({ type: "SET_ERROR", error: t("无法打开输出目录：{0}", String(error)) });
     } finally {
       setQualityAction(null);
     }
@@ -352,12 +353,12 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
         targetType: "artifact",
         relativePath: checkpoint.relative_path,
       });
-      if (result.missing) throw new Error(result.message ?? "项目目录已移动或删除。");
+      if (result.missing) throw new Error(result.message ?? t("项目目录已移动或删除。"));
     } catch (error) {
-      dispatch({ type: "SET_ERROR", error: `无法定位 Checkpoint：${String(error)}` });
+      dispatch({ type: "SET_ERROR", error: t("无法定位 Checkpoint：{0}", String(error)) });
     }
   };
-  const currentStageLabel = (liveSnapshot?.status ?? project?.status) === "completed" ? "全部阶段已完成" : currentStage ? getStageLabel(currentStage) : "尚未开始";
+  const currentStageLabel = (liveSnapshot?.status ?? project?.status) === "completed" ? t("全部阶段已完成") : currentStage ? getStageLabel(currentStage) : t("尚未开始");
   const moveStageFocus = (
     event: ReactKeyboardEvent<HTMLButtonElement>,
     stages: readonly PipelineStageId[],
@@ -403,7 +404,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
     });
     dispatch({
       type: "SET_ERROR",
-      error: "当前有重建任务尚未结束，请先暂停或结束任务后再开始新的重建。当前项目未启动，也未进入队列。",
+      error: t("当前有重建任务尚未结束，请先暂停或结束任务后再开始新的重建。当前项目未启动，也未进入队列。"),
     });
     return true;
   };
@@ -420,7 +421,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
     }
     dispatch({
       type: "SET_ERROR",
-      error: "活动任务在操作前发生变化；当前项目未启动，也未进入队列。",
+      error: t("活动任务在操作前发生变化；当前项目未启动，也未进入队列。"),
     });
     return true;
   };
@@ -501,7 +502,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
       } : current);
     } catch (error) {
       if (await captureRaceConflict(error)) return;
-      dispatch({ type: "SET_ERROR", error: `无法从“${getStageLabel(stage)}”重新运行：${String(error)}` });
+      dispatch({ type: "SET_ERROR", error: t("无法从“{0}”重新运行：{1}", getStageLabel(stage), String(error)) });
     } finally {
       setRecoveringStage(null);
     }
@@ -524,7 +525,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
       } : current);
     } catch (error) {
       if (await captureRaceConflict(error)) return;
-      dispatch({ type: "SET_ERROR", error: `无法确认 COLMAP 质量风险：${String(error)}` });
+      dispatch({ type: "SET_ERROR", error: t("无法确认 COLMAP 质量风险：{0}", String(error)) });
     } finally {
       setQualityAccepting(false);
     }
@@ -532,8 +533,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
   if (openCmd.loading && !project) {
     return (
       <div className="workspace-loading">
-        <SpinnerGap size={24} className="spin" /> 正在加载项目…
-      </div>
+        <SpinnerGap size={24} className="spin" /> {t("正在加载项目…")}</div>
     );
   }
 
@@ -541,8 +541,8 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
     return (
       <div className="workspace-empty-state">
         <Info size={28} />
-        <h2>无法打开项目</h2>
-        <p>{openCmd.error ?? "项目数据不可用。"}</p>
+        <h2>{t("无法打开项目")}</h2>
+        <p>{localizeMessage(openCmd.error ?? t("项目数据不可用。"))}</p>
       </div>
     );
   }
@@ -551,8 +551,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
     <div className={`project-workspace-grid workspace-state-${workspaceStatus}`}>
       <div className="mobile-workspace-actions">
         <button type="button" className="button button-secondary" onClick={() => setInspectorOpen(true)}>
-          <Eye size={16} /> 预览与质量
-        </button>
+          <Eye size={16} /> {t("预览与质量")}</button>
         <button type="button" className="button button-secondary" onClick={() => setCheckpointOpen(true)}>
           <Database size={16} /> Checkpoint ({checkpoints.length})
         </button>
@@ -560,12 +559,12 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
       <div className="project-resource-feedback">
         <AsyncStatus
           resource={artifactResource.resource}
-          label="项目产物"
+          label={t("项目产物")}
           onRetry={() => void refreshWorkspaceResources()}
         />
         <AsyncStatus
           resource={checkpointResource.resource}
-          label="恢复点"
+          label={t("恢复点")}
           empty={checkpoints.length === 0}
           onRetry={() => void refreshWorkspaceResources()}
         />
@@ -574,12 +573,12 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
         {state.pipelineError && (
           <div className="pipeline-stale-warning" role="status">
             <Warning size={16} weight="fill" />
-            <span>Pipeline 状态更新失败，正在显示最后一次成功获取的数据{state.pipelineUpdatedAt ? `（${new Date(state.pipelineUpdatedAt).toLocaleTimeString("zh-CN", { hour12: false })}）` : ""}。</span>
+            <span>{t("Pipeline 状态更新失败，正在显示最后一次成功获取的数据")}{state.pipelineUpdatedAt ? `（${new Date(state.pipelineUpdatedAt).toLocaleTimeString(getLocale(), { hour12: false })}）` : ""}。</span>
           </div>
         )}
         <div className="panel-heading-row">
-          <span>里程碑 / 阶段</span>
-          <span>状态 / 进度</span>
+          <span>{t("里程碑 / 阶段")}</span>
+          <span>{t("状态 / 进度")}</span>
         </div>
         <div className="pipeline-timeline">
           {PHASES.map((phase, index) => {
@@ -595,7 +594,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
                   id={`phase-summary-${phase.id}`}
                   type="button"
                   className="phase-summary"
-                  aria-label={`${index + 1}. ${["素材准备", "相机重建", "模型训练", "结果导出"][index]} · ${phase.label} · ${phaseStatusLabel(status)}`}
+                  aria-label={`${index + 1}. ${[t("素材准备"), t("相机重建"), t("模型训练"), t("结果导出")][index]} · ${phase.label} · ${phaseStatusLabel(status)}`}
                   aria-expanded={expanded}
                   aria-controls={`phase-stage-list-${phase.id}`}
                   onClick={() => {
@@ -661,7 +660,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
                           </button>
                           {selectedStage === stage && canRecover && (
                             <div className="stage-recovery-panel">
-                              {stageState?.error && <p role="alert">{stageState.error}</p>}
+                              {stageState?.error && <p role="alert">{localizeMessage(stageState.error)}</p>}
                               <button
                                 type="button"
                                 className="button button-secondary"
@@ -671,12 +670,12 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
                                 {recoveringStage === stage ? <SpinnerGap size={15} className="spin" />
                                   : ["failed", "cancelled"].includes(stageStatus) ? <ArrowClockwise size={15} /> : <Play size={15} />}
                                 {recoveringStage === stage
-                                  ? "正在重置并启动…"
+                                  ? t("正在重置并启动…")
                                   : ["failed", "cancelled"].includes(stageStatus)
-                                    ? "重试并开始"
-                                    : "从此阶段重新运行"}
+                                    ? t("重试并开始")
+                                    : t("从此阶段重新运行")}
                               </button>
-                              {pipelineBusy && <span>Pipeline 运行期间不可重置阶段</span>}
+                              {pipelineBusy && <span>{t("Pipeline 运行期间不可重置阶段")}</span>}
                             </div>
                           )}
                         </div>
@@ -693,15 +692,15 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
       <ResponsiveInspectorSurface open={inspectorOpen} onClose={() => setInspectorOpen(false)} closeRef={inspectorCloseRef}>
       <aside className={`inspector-column ${inspectorOpen ? "is-mobile-open" : ""}`}>
         <div className="mobile-inspector-heading">
-          <strong>预览与质量</strong>
-          <button ref={inspectorCloseRef} type="button" className="icon-button" aria-label="关闭预览与质量" onClick={() => setInspectorOpen(false)}><X size={18} /></button>
+          <strong>{t("预览与质量")}</strong>
+          <button ref={inspectorCloseRef} type="button" className="icon-button" aria-label={t("关闭预览与质量")} onClick={() => setInspectorOpen(false)}><X size={18} /></button>
         </div>
         <section className="preview-panel panel" tabIndex={-1}>
           {!workspaceComplete && <div className="panel-title">
             <span className="panel-subtitle">{selectedStage ? getStageLabel(selectedStage) : currentStageLabel}</span>
-            <button type="button" className="preview-reset-button" onClick={() => { setFollowStage(true); setPreviewRelativePath(null); setSelectedStage((currentStage ?? (artifacts?.scene_ply.validated ? "Export" : selectedStage)) as PipelineStageId | null); }}>跟随当前阶段</button>
+            <button type="button" className="preview-reset-button" onClick={() => { setFollowStage(true); setPreviewRelativePath(null); setSelectedStage((currentStage ?? (artifacts?.scene_ply.validated ? "Export" : selectedStage)) as PipelineStageId | null); }}>{t("跟随当前阶段")}</button>
           </div>}
-          {selectedStage && GAUSSIAN_STAGES.includes(selectedStage) ? previewMode ? <div className="preview-empty"><Cube size={40} /><strong>高斯场景预览</strong><p>当前为界面设计示例。请在桌面应用中打开项目查看真实模型与训练预览。</p></div> : <Suspense fallback={<div className="preview-empty">正在启动高斯渲染器…</div>}><GaussianSplatPreview
+          {selectedStage && GAUSSIAN_STAGES.includes(selectedStage) ? previewMode ? <div className="preview-empty"><Cube size={40} /><strong>{t("高斯场景预览")}</strong><p>{t("当前为界面设计示例。请在桌面应用中打开项目查看真实模型与训练预览。")}</p></div> : <Suspense fallback={<div className="preview-empty">{t("正在启动高斯渲染器…")}</div>}><GaussianSplatPreview
             key={projectId}
             projectId={projectId}
             projectPath={projectPath}
@@ -710,58 +709,58 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
             running={pipelineBusy}
           /></Suspense> : <>{previewResource.resource.status !== "stale" && <AsyncStatus
             resource={previewResource.resource}
-            label="真实产物预览"
+            label={t("真实产物预览")}
             empty={selectedPreview?.kind === "frame" && selectedPreview.value.items.length === 0}
             onRetry={() => void loadSelectedPreview()}
           />}
-          {previewResource.resource.status === "loading" ? <div className="preview-empty"><SpinnerGap size={35} className="spin" /><strong>正在读取真实产物</strong><span>解析完成后将上传到 GPU。</span></div>
-            : selectedPreview?.kind === "sparse" && selectedPreview.value.points.length > 0 ? <PointCloudPreview points={selectedPreview.value.points} cameras={selectedPreview.value.cameras} label={`${selectedPreview.value.point_count.toLocaleString()} 稀疏点 · ${selectedPreview.value.registered_images} 相机`} />
-              : selectedPreview?.kind === "frame" && selectedPreview.value.items.length > 0 ? <div className="frame-contact-sheet">{selectedPreview.value.items.map((path) => <img key={path} src={convertFileSrc(path)} alt="抽取帧缩略图" />)}<span>从 {selectedPreview.value.total_frames} 帧中均匀显示 {selectedPreview.value.items.length} 帧</span></div>
-                : <div className="preview-empty preview-scene-placeholder"><span className="empty-scene-icon"><Cube size={36} /></span><strong>预览尚未生成</strong><span>选择已完成阶段后，将在此读取真实产物。</span></div>}</>}
+          {previewResource.resource.status === "loading" ? <div className="preview-empty"><SpinnerGap size={35} className="spin" /><strong>{t("正在读取真实产物")}</strong><span>{t("解析完成后将上传到 GPU。")}</span></div>
+            : selectedPreview?.kind === "sparse" && selectedPreview.value.points.length > 0 ? <PointCloudPreview points={selectedPreview.value.points} cameras={selectedPreview.value.cameras} label={t("{0} 稀疏点 · {1} 相机", selectedPreview.value.point_count.toLocaleString(getLocale()), selectedPreview.value.registered_images)} />
+              : selectedPreview?.kind === "frame" && selectedPreview.value.items.length > 0 ? <div className="frame-contact-sheet">{selectedPreview.value.items.map((path) => <img key={path} src={convertFileSrc(path)} alt={t("抽取帧缩略图")} />)}<span>{t("从")}{selectedPreview.value.total_frames} {t("帧中均匀显示")}{selectedPreview.value.items.length} {t("帧")}</span></div>
+                : <div className="preview-empty preview-scene-placeholder"><span className="empty-scene-icon"><Cube size={36} /></span><strong>{t("预览尚未生成")}</strong><span>{t("选择已完成阶段后，将在此读取真实产物。")}</span></div>}</>}
         </section>
 
         <div className="workspace-inspector-stack">
         <section className="task-status-card panel" aria-labelledby="task-status-heading">
           <div className="task-status-heading">
-            <div><h2 id="task-status-heading">{workspaceFailed ? "错误与恢复" : workspaceComplete ? "重建完成" : "任务监控"}</h2><p>{currentStageLabel}</p></div>
-            <span className={`status-pill status-${workspaceStatus}`}><i />{workspaceFailed ? "已阻塞" : workspaceComplete ? "已完成" : workspacePaused ? "已暂停" : pipelineBusy ? "处理中" : "等待中"}</span>
+            <div><h2 id="task-status-heading">{workspaceFailed ? t("错误与恢复") : workspaceComplete ? t("重建完成") : t("任务监控")}</h2><p>{currentStageLabel}</p></div>
+            <span className={`status-pill status-${workspaceStatus}`}><i />{workspaceFailed ? t("已阻塞") : workspaceComplete ? t("已完成") : workspacePaused ? t("已暂停") : pipelineBusy ? t("处理中") : t("等待中")}</span>
           </div>
           {workspaceFailed ? (
             <div className="task-error-card" role="alert">
               <div className="task-error-message">
-                <strong>{failureMessage ?? "任务执行失败，请查看日志了解详情。"}</strong>
-                <p>{failedStage ? `${getStageLabel(failedStage)}阶段中断。修复问题后可从此阶段重试。` : "未收到失败阶段信息，请先查看活动记录。"}</p>
-                <span>{`失败阶段 · ${failedStage ?? "未知"}`}</span>
+                <strong>{localizeMessage(failureMessage ?? t("任务执行失败，请查看日志了解详情。"))}</strong>
+                <p>{failedStage ? t("{0}阶段中断。修复问题后可从此阶段重试。", getStageLabel(failedStage)) : t("未收到失败阶段信息，请先查看活动记录。")}</p>
+                <span>{t("失败阶段 · {0}", failedStage ?? t("未知"))}</span>
               </div>
               <div className="task-error-actions">
-                <button type="button" className="button button-primary" onClick={() => failedStage && void recoverFromStage(failedStage, "failed")} disabled={!failedStage || pipelineBusy || recoveringStage !== null}>重试失败阶段</button>
-                <button type="button" className="button button-secondary" onClick={() => setCheckpointOpen(true)} disabled={checkpoints.length === 0}>查看可用检查点</button>
+                <button type="button" className="button button-primary" onClick={() => failedStage && void recoverFromStage(failedStage, "failed")} disabled={!failedStage || pipelineBusy || recoveringStage !== null}>{t("重试失败阶段")}</button>
+                <button type="button" className="button button-secondary" onClick={() => setCheckpointOpen(true)} disabled={checkpoints.length === 0}>{t("查看可用检查点")}</button>
               </div>
             </div>
           ) : (
             <div className="task-progress-card">
-              <strong>{workspaceComplete ? "重建已完成" : workspacePaused ? "任务已暂停" : currentStageLabel}</strong>
+              <strong>{workspaceComplete ? t("重建已完成") : workspacePaused ? t("任务已暂停") : currentStageLabel}</strong>
               <b>{overallPercent == null ? "—" : `${overallPercent}%`}</b>
               <span className="progress-track" aria-hidden="true"><span style={{ width: `${overallPercent ?? 0}%` }} /></span>
-              <p>{workspaceComplete ? "处理阶段已完成，可查看产物与质量报告。" : workspacePaused ? `已保留 ${checkpoints.length} 个检查点，继续前将重新校验产物。` : `${currentStageLabel} · ${overallPercent == null ? "等待进度更新" : `已完成 ${overallPercent}%`}`}</p>
+              <p>{workspaceComplete ? t("处理阶段已完成，可查看产物与质量报告。") : workspacePaused ? t("已保留 {0} 个检查点，继续前将重新校验产物。", checkpoints.length) : `${currentStageLabel} · ${overallPercent == null ? t("等待进度更新") : t("已完成 {0}%", overallPercent)}`}</p>
             </div>
           )}
         </section>
 
         <section className="quality-panel panel">
-          <div className="panel-title">当前质量</div>
+          <div className="panel-title">{t("当前质量")}</div>
           {artifacts?.colmap_validation && (
             <div className={`colmap-quality-decision decision-${artifacts.colmap_validation.decision}`} role="status">
               <div>
                 <strong>
-                  {artifacts.colmap_validation.decision === "pass" && "COLMAP 质量通过"}
-                  {artifacts.colmap_validation.decision === "accepted_with_warning" && "已接受 COLMAP 质量风险"}
-                  {artifacts.colmap_validation.decision === "requires_confirmation" && "模型可训练，但需要确认风险"}
-                  {artifacts.colmap_validation.decision === "blocked" && "模型不满足训练硬条件"}
+                  {artifacts.colmap_validation.decision === "pass" && t("COLMAP 质量通过")}
+                  {artifacts.colmap_validation.decision === "accepted_with_warning" && t("已接受 COLMAP 质量风险")}
+                  {artifacts.colmap_validation.decision === "requires_confirmation" && t("模型可训练，但需要确认风险")}
+                  {artifacts.colmap_validation.decision === "blocked" && t("模型不满足训练硬条件")}
                 </strong>
                 <span>
-                  最大匹配连通分量 {(artifacts.colmap_validation.largest_component_coverage * 100).toFixed(1)}%
-                  {artifacts.colmap_validation.automatic_fallbacks_exhausted ? " · 自动回退已用尽" : ""}
+                  {t("最大匹配连通分量")}{(artifacts.colmap_validation.largest_component_coverage * 100).toFixed(1)}%
+                  {artifacts.colmap_validation.automatic_fallbacks_exhausted ? t(" · 自动回退已用尽") : ""}
                 </span>
               </div>
               {artifacts.colmap_validation.decision === "requires_confirmation" && (
@@ -771,8 +770,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
                   disabled={pipelineBusy || qualityAccepting}
                   onClick={() => setQualityDialogOpen(true)}
                 >
-                  <Warning size={16} weight="fill" /> 仍然开始训练
-                </button>
+                  <Warning size={16} weight="fill" /> {t("仍然开始训练")}</button>
               )}
               {artifacts.colmap_validation.decision === "blocked" && (
                 <button
@@ -784,14 +782,13 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
                     pipelineState?.stages.FrameExtraction?.status ?? "completed",
                   )}
                 >
-                  <ArrowClockwise size={16} /> 重新准备素材并重建
-                </button>
+                  <ArrowClockwise size={16} /> {t("重新准备素材并重建")}</button>
               )}
             </div>
           )}
           {artifacts?.colmap_attempts && artifacts.colmap_attempts.length > 0 && (
             <details className="colmap-attempts">
-              <summary>自动重建尝试（{artifacts.colmap_attempts.length}）</summary>
+              <summary>{t("自动重建尝试（")}{artifacts.colmap_attempts.length}）</summary>
               <ol>
                 {artifacts.colmap_attempts.map((attempt) => (
                   <li key={attempt.id} className={`attempt-${attempt.status}`}>
@@ -799,8 +796,8 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
                     <span>{attempt.matching_strategy} · {attempt.mapper}</span>
                     <span>
                       {attempt.model_info
-                        ? `${attempt.model_info.registered_images} 张注册 · ${attempt.model_info.point_count.toLocaleString()} 点 · ${attempt.model_info.mean_reprojection_error.toFixed(3)} px`
-                        : attempt.error ?? "未生成可分析模型"}
+                        ? t("{0} 张注册 · {1} 点 · {2} px", attempt.model_info.registered_images, attempt.model_info.point_count.toLocaleString(getLocale()), attempt.model_info.mean_reprojection_error.toFixed(3))
+                        : localizeMessage(attempt.error) ?? t("未生成可分析模型")}
                     </span>
                   </li>
                 ))}
@@ -808,9 +805,9 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
             </details>
           )}
           <div className="quality-metric-grid">
-            <div><strong>{artifacts?.registered_images != null && artifacts.total_images ? `${(artifacts.registered_images / artifacts.total_images * 100).toFixed(1)}%` : "—"}</strong><span>图像注册率</span></div>
-            <div><strong>{(artifacts?.splat_count ?? artifacts?.sparse_points)?.toLocaleString() ?? "—"}</strong><span>场景点数</span></div>
-            <div><strong>{artifacts?.mean_reprojection_error != null ? `${artifacts.mean_reprojection_error.toFixed(3)} px` : "—"}</strong><span>重投影误差</span></div>
+            <div><strong>{artifacts?.registered_images != null && artifacts.total_images ? `${(artifacts.registered_images / artifacts.total_images * 100).toFixed(1)}%` : "—"}</strong><span>{t("图像注册率")}</span></div>
+            <div><strong>{(artifacts?.splat_count ?? artifacts?.sparse_points)?.toLocaleString(getLocale()) ?? "—"}</strong><span>{t("场景点数")}</span></div>
+            <div><strong>{artifacts?.mean_reprojection_error != null ? `${artifacts.mean_reprojection_error.toFixed(3)} px` : "—"}</strong><span>{t("重投影误差")}</span></div>
           </div>
           <div className="quality-actions">
             <button
@@ -818,10 +815,9 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
               className="button button-secondary"
               onClick={() => void openOutputDirectory()}
               disabled={qualityAction !== null}
-              title="打开项目的输出目录"
+              title={t("打开项目的输出目录")}
             >
-              {qualityAction === "output" ? <SpinnerGap size={17} className="spin" /> : <FolderOpen size={17} />} 打开输出目录
-            </button>
+              {qualityAction === "output" ? <SpinnerGap size={17} className="spin" /> : <FolderOpen size={17} />} {t("打开输出目录")}</button>
             <button
               type="button"
               className="button button-secondary"
@@ -830,25 +826,24 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
               title={plyActionState(artifacts?.scene_ply).message}
               onClick={() => void openScenePly()}
             >
-              {qualityAction === "ply" ? <SpinnerGap size={17} className="spin" /> : <ImageSquare size={17} />} 打开 PLY
-            </button>
-            <button type="button" className="button button-secondary" title={checkpoints.length === 0 ? "Brush 训练开始后将在这里生成恢复点" : `查看 ${checkpoints.length} 个 Checkpoint`} onClick={() => setCheckpointOpen(true)}><Database size={17} /> Checkpoint ({checkpoints.length})</button>
+              {qualityAction === "ply" ? <SpinnerGap size={17} className="spin" /> : <ImageSquare size={17} />} {t("打开 PLY")}</button>
+            <button type="button" className="button button-secondary" title={checkpoints.length === 0 ? t("Brush 训练开始后将在这里生成恢复点") : t("查看 {0} 个 Checkpoint", checkpoints.length)} onClick={() => setCheckpointOpen(true)}><Database size={17} /> Checkpoint ({checkpoints.length})</button>
           </div>
         </section>
         <section className="resource-monitor-card panel" aria-labelledby="resource-monitor-heading">
-          <div className="task-status-heading"><h3 id="resource-monitor-heading">资源占用</h3></div>
+          <div className="task-status-heading"><h3 id="resource-monitor-heading">{t("资源占用")}</h3></div>
           <div className="resource-meter"><span>GPU { `${metrics?.gpu?.utilization_percent?.toFixed(0) ?? "—"}%${metrics?.gpu?.temperature_celsius != null ? ` · ${metrics.gpu.temperature_celsius.toFixed(0)}°C` : ""}`}</span><span className="progress-track"><span style={{ width: `${gpuPercent}%` }} /></span></div>
-          <div className="resource-meter"><span>VRAM { metrics?.gpu ? `${(metrics.gpu.memory_used_bytes / 1024 / 1024 / 1024).toFixed(1)} / ${(metrics.gpu.memory_total_bytes / 1024 / 1024 / 1024).toFixed(0)} GB` : "尚未测量"}</span><span className="progress-track is-vram"><span style={{ width: `${vramPercent}%` }} /></span></div>
-          <div className="resource-meter"><span>CPU { metrics ? `${metrics.cpu_usage_percent.toFixed(0)}%` : "尚未测量"}</span><span className="progress-track is-cpu"><span style={{ width: `${cpuPercent}%` }} /></span></div>
+          <div className="resource-meter"><span>VRAM { metrics?.gpu ? `${(metrics.gpu.memory_used_bytes / 1024 / 1024 / 1024).toFixed(1)} / ${(metrics.gpu.memory_total_bytes / 1024 / 1024 / 1024).toFixed(0)} GB` : t("尚未测量")}</span><span className="progress-track is-vram"><span style={{ width: `${vramPercent}%` }} /></span></div>
+          <div className="resource-meter"><span>CPU { metrics ? `${metrics.cpu_usage_percent.toFixed(0)}%` : t("尚未测量")}</span><span className="progress-track is-cpu"><span style={{ width: `${cpuPercent}%` }} /></span></div>
         </section>
-        {artifacts?.latest_checkpoint ? <div className="recent-checkpoint-card"><span>最近检查点</span><strong>{artifacts.latest_checkpoint.iteration.toLocaleString()} step</strong><small>{new Date(artifacts.latest_checkpoint.created_at).toLocaleString("zh-CN")}</small></div> : null}
-        <div className="workspace-background-note">{!workspaceComplete && <p>任务可在应用内后台运行。关闭应用前，请先暂停并确认恢复点。</p>}<button type="button" className="button button-secondary" onClick={() => setActivityOpen(true)}>查看日志与活动</button><button type="button" className="button button-subtle" onClick={() => setQualityDialogOpen(true)}>质量检查详情</button></div>
+        {artifacts?.latest_checkpoint ? <div className="recent-checkpoint-card"><span>{t("最近检查点")}</span><strong>{artifacts.latest_checkpoint.iteration.toLocaleString(getLocale())} step</strong><small>{new Date(artifacts.latest_checkpoint.created_at).toLocaleString(getLocale())}</small></div> : null}
+        <div className="workspace-background-note">{!workspaceComplete && <p>{t("任务可在应用内后台运行。关闭应用前，请先暂停并确认恢复点。")}</p>}<button type="button" className="button button-secondary" onClick={() => setActivityOpen(true)}>{t("查看日志与活动")}</button><button type="button" className="button button-subtle" onClick={() => setQualityDialogOpen(true)}>{t("质量检查详情")}</button></div>
         </div>
       </aside>
       </ResponsiveInspectorSurface>
 
-      {activityOpen && <ModalSurface id="workspace-activity" title="训练日志与活动" titleHidden className="workspace-activity-drawer" onClose={() => setActivityOpen(false)}>
-        <header><div><strong>训练日志与活动</strong><span>保留当前项目的真实事件、诊断与错误上下文</span></div><button type="button" className="icon-button" onClick={() => setActivityOpen(false)} aria-label="关闭日志"><X size={18} /></button></header>
+      {activityOpen && <ModalSurface id="workspace-activity" title={t("训练日志与活动")} titleHidden className="workspace-activity-drawer" onClose={() => setActivityOpen(false)}>
+        <header><div><strong>{t("训练日志与活动")}</strong><span>{t("保留当前项目的真实事件、诊断与错误上下文")}</span></div><button type="button" className="icon-button" onClick={() => setActivityOpen(false)} aria-label={t("关闭日志")}><X size={18} /></button></header>
         <ActivityWorkbench
           projectPath={projectPath}
           selectedStage={selectedStage}
@@ -859,7 +854,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
       {qualityDialogOpen && (
         <ModalSurface
           id="quality-risk-dialog"
-          title="质量评估结果"
+          title={t("质量评估结果")}
           titleHidden
           className="quality-risk-dialog"
           ariaDescribedBy="quality-risk-description"
@@ -867,18 +862,17 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
           onClose={() => setQualityDialogOpen(false)}
           initialFocusRef={qualityCancelRef}
         >
-            <h2 aria-hidden="true">质量评估结果</h2>
+            <h2 aria-hidden="true">{t("质量评估结果")}</h2>
             <p id="quality-risk-description" className="sr-only">
-              查看当前模型的已测量指标、检查结果与继续训练前的风险。
-            </p>
-            <section className="quality-result-metrics" aria-label="质量指标">
-              <div><span>已注册图像</span><strong>{artifacts?.registered_images ?? "—"} / {artifacts?.total_images ?? "—"}</strong></div>
-              <div><span>场景点数</span><strong>{(artifacts?.splat_count ?? artifacts?.sparse_points)?.toLocaleString() ?? "—"}</strong></div>
-              <div><span>重投影误差</span><strong>{artifacts?.mean_reprojection_error != null ? `${artifacts.mean_reprojection_error.toFixed(3)} px` : "—"}</strong></div>
+              {t("查看当前模型的已测量指标、检查结果与继续训练前的风险。")}</p>
+            <section className="quality-result-metrics" aria-label={t("质量指标")}>
+              <div><span>{t("已注册图像")}</span><strong>{artifacts?.registered_images ?? "—"} / {artifacts?.total_images ?? "—"}</strong></div>
+              <div><span>{t("场景点数")}</span><strong>{(artifacts?.splat_count ?? artifacts?.sparse_points)?.toLocaleString(getLocale()) ?? "—"}</strong></div>
+              <div><span>{t("重投影误差")}</span><strong>{artifacts?.mean_reprojection_error != null ? `${artifacts.mean_reprojection_error.toFixed(3)} px` : "—"}</strong></div>
             </section>
             <section className="quality-recommendations">
-              <h3>模型检查</h3>
-              {artifacts?.colmap_validation?.checks.length ? artifacts.colmap_validation.checks.map((check) => <article key={check.name}><div><strong>{check.name}</strong><span>{check.detail}</span></div><span className={`status-pill ${check.passed ? "status-completed" : "status-failed"}`}><i />{check.passed ? "通过" : "需处理"}</span></article>) : <p>质量报告尚未生成。完成相机重建后会在这里显示实际检查结果。</p>}
+              <h3>{t("模型检查")}</h3>
+              {artifacts?.colmap_validation?.checks.length ? artifacts.colmap_validation.checks.map((check) => <article key={check.name}><div><strong>{localizeMessage(check.name)}</strong><span>{localizeMessage(check.detail)}</span></div><span className={`status-pill ${check.passed ? "status-completed" : "status-failed"}`}><i />{check.passed ? t("通过") : t("需处理")}</span></article>) : <p>{t("质量报告尚未生成。完成相机重建后会在这里显示实际检查结果。")}</p>}
             </section>
             <div className="dialog-actions">
               <button
@@ -888,8 +882,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
                 disabled={qualityAccepting}
                 onClick={() => setQualityDialogOpen(false)}
               >
-                关闭
-              </button>
+                {t("关闭")}</button>
               {artifacts?.colmap_validation?.decision === "requires_confirmation" ? <button
                 type="button"
                 className="button button-primary"
@@ -897,8 +890,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
                 onClick={() => void acceptQualityRisk()}
               >
                 {qualityAccepting ? <SpinnerGap size={16} className="spin" /> : <Warning size={16} />}
-                确认风险并继续
-              </button> : null}
+                {t("确认风险并继续")}</button> : null}
             </div>
         </ModalSurface>
       )}

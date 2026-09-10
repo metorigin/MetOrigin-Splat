@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { desktopApi, isDesktopRuntime } from "../services/desktop";
@@ -21,7 +22,7 @@ export function useModelEditor(onError: (message: string) => void) {
       const result = await desktopApi.openModelEditor(project.id, project.path);
       sessionRef.current = result;
       setSession(result);
-    } catch (error) { reportError.current(`无法打开编辑器：${String(error)}`); }
+    } catch (error) { reportError.current(t("无法打开编辑器：{0}", String(error))); }
     finally { operation.current = false; setOpening(false); }
   }, []);
 
@@ -38,7 +39,7 @@ export function useModelEditor(onError: (message: string) => void) {
       return true;
     } catch (error) {
       editorRef.current?.cancelLeave();
-      reportError.current(`无法离开编辑器：${String(error)}`);
+      reportError.current(t("无法离开编辑器：{0}", String(error)));
       return false;
     }
     finally { operation.current = false; }
@@ -54,7 +55,7 @@ export function useModelEditor(onError: (message: string) => void) {
       event.preventDefault();
       void leave();
     }).then((dispose) => { if (disposed) dispose(); else unlisten = dispose; })
-      .catch((error) => reportError.current(`无法注册编辑退出保护：${String(error)}`));
+      .catch((error) => reportError.current(t("无法注册编辑退出保护：{0}", String(error))));
     return () => { disposed = true; unlisten?.(); };
   }, [leave, session]);
 

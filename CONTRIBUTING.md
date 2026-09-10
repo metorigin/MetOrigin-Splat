@@ -64,6 +64,8 @@ Draft pull requests are welcome for early feedback. A pull request should be mar
 
 ## Coding expectations
 
+For translation corrections or new UI text, follow [the localization guide](docs/localization.md). Keep both language catalogs and interpolation placeholders in sync, and verify English and Chinese layouts.
+
 - Preserve the adapter boundary around FFmpeg, COLMAP, and Brush.
 - Launch external programs through `splat-process` rather than directly from UI code.
 - Preserve cancellation, project locking, atomic persistence, recovery, and diagnostic redaction behavior.

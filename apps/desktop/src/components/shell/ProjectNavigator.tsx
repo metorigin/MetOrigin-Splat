@@ -1,3 +1,4 @@
+import { localizeMessage, t, getLocale } from "../../i18n";
 import {
   ArrowClockwise,
   CheckCircle,
@@ -40,29 +41,29 @@ export interface ProjectNavigatorProps {
 }
 
 function compactProjectStatus(project: ProjectInfo): string {
-  if (["starting", "running", "pausing", "cancelling", "recovering"].includes(project.status)) return "运行中";
-  if (project.status === "completed") return "已完成";
-  if (project.status === "failed") return "失败";
-  if (project.status === "paused") return "已暂停";
-  if (project.status === "cancelled") return "已取消";
-  if (project.status === "creating") return "创建中";
-  return "就绪";
+  if (["starting", "running", "pausing", "cancelling", "recovering"].includes(project.status)) return t("运行中");
+  if (project.status === "completed") return t("已完成");
+  if (project.status === "failed") return t("失败");
+  if (project.status === "paused") return t("已暂停");
+  if (project.status === "cancelled") return t("已取消");
+  if (project.status === "creating") return t("创建中");
+  return t("就绪");
 }
 
 function availabilityCopy(value: RecentProjectAvailability | undefined) {
   switch (value?.status ?? "unknown") {
     case "checking":
-      return { label: "正在检查路径", className: "is-checking", icon: <ArrowClockwise className="spin" size={13} /> };
+      return { label: t("正在检查路径"), className: "is-checking", icon: <ArrowClockwise className="spin" size={13} /> };
     case "available":
-      return { label: "路径可用", className: "is-available", icon: <CheckCircle size={13} weight="fill" /> };
+      return { label: t("路径可用"), className: "is-available", icon: <CheckCircle size={13} weight="fill" /> };
     case "missing":
-      return { label: "路径已丢失", className: "is-missing", icon: <WarningCircle size={13} weight="fill" /> };
+      return { label: t("路径已丢失"), className: "is-missing", icon: <WarningCircle size={13} weight="fill" /> };
     case "unreadable":
-      return { label: "项目数据无法读取", className: "is-unreadable", icon: <WarningCircle size={13} weight="fill" /> };
+      return { label: t("项目数据无法读取"), className: "is-unreadable", icon: <WarningCircle size={13} weight="fill" /> };
     case "check_failed":
-      return { label: "暂时无法检查", className: "is-check-failed", icon: <Question size={13} weight="fill" /> };
+      return { label: t("暂时无法检查"), className: "is-check-failed", icon: <Question size={13} weight="fill" /> };
     default:
-      return { label: "等待检查路径", className: "is-unknown", icon: <Question size={13} /> };
+      return { label: t("等待检查路径"), className: "is-unknown", icon: <Question size={13} /> };
   }
 }
 
@@ -150,14 +151,14 @@ export function ProjectNavigator({
   };
 
   const filteredProjects = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase("zh-CN");
+    const normalized = query.trim().toLocaleLowerCase(getLocale());
     if (!normalized) return projects.slice(0, 50);
     return projects.filter((project) => [
       project.name,
       project.path,
       project.status,
       project.stage_label ?? "",
-    ].some((value) => value.toLocaleLowerCase("zh-CN").includes(normalized))).slice(0, 50);
+    ].some((value) => value.toLocaleLowerCase(getLocale()).includes(normalized))).slice(0, 50);
   }, [projects, query]);
 
   const relink = async (project: ProjectInfo) => {
@@ -185,16 +186,15 @@ export function ProjectNavigator({
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }}
-          placeholder="按名称或路径搜索…"
-          aria-label="按项目名称或路径搜索"
+          placeholder={t("按名称或路径搜索…")}
+          aria-label={t("按项目名称或路径搜索")}
         />
       </label>
 
       <div className="sidebar-project-list">
         {loadError ? (
           <button type="button" className="sidebar-load-error" title={loadError} onClick={onRetryLoad}>
-            <WarningCircle size={15} weight="fill" /> 项目列表加载失败，重试
-          </button>
+            <WarningCircle size={15} weight="fill" /> {t("项目列表加载失败，重试")}</button>
         ) : null}
         {filteredProjects.map((project) => {
           const availabilityState = availability[project.id];
@@ -225,7 +225,7 @@ export function ProjectNavigator({
                 <button
                   type="button"
                   className="sidebar-project-menu-button"
-                  aria-label={`${project.name} 项目操作`}
+                  aria-label={t("{0} 项目操作", project.name)}
                   aria-haspopup="menu"
                   aria-expanded={menuProjectId === project.id}
                   aria-controls={menuProjectId === project.id ? `project-menu-${project.id}` : undefined}
@@ -264,14 +264,14 @@ export function ProjectNavigator({
                       });
                     }}
                   >
-                    {availabilityState?.status === "check_failed" ? "重试检查" : availabilityView.label}
+                    {availabilityState?.status === "check_failed" ? t("重试检查") : availabilityView.label}
                   </button>
                 ) : null}
-                {availabilityState?.status === "check_failed" ? <small>记录已保留</small> : null}
-                {availabilityState?.status === "unreadable" ? <small>请检查项目数据，或选择正确的项目位置。</small> : null}
+                {availabilityState?.status === "check_failed" ? <small>{t("记录已保留")}</small> : null}
+                {availabilityState?.status === "unreadable" ? <small>{t("请检查项目数据，或选择正确的项目位置。")}</small> : null}
                 {["missing", "unreadable"].includes(availabilityState?.status ?? "") ? (
                   <button type="button" disabled={relinkBusyId === project.id} onClick={() => void relink(project)}>
-                    <LinkSimple size={13} />{relinkBusyId === project.id ? "正在验证…" : "重新定位"}
+                    <LinkSimple size={13} />{relinkBusyId === project.id ? t("正在验证…") : t("重新定位")}
                   </button>
                 ) : null}
               </div>
@@ -283,30 +283,30 @@ export function ProjectNavigator({
                   role="alert"
                   tabIndex={-1}
                 >
-                  <strong>所选目录属于另一个项目</strong>
-                  <span>原记录未更改（{rowRelink.code}）。</span>
+                  <strong>{t("所选目录属于另一个项目")}</strong>
+                  <span>{t("原记录未更改（")}{rowRelink.code}）。</span>
                   <div>
-                    <button type="button" onClick={() => void relink(project)}>选择其他位置</button>
-                    <button type="button" onClick={() => { void onOpenIndependent(rowRelink.candidatePath); onNavigate(); }}>作为独立项目打开</button>
+                    <button type="button" onClick={() => void relink(project)}>{t("选择其他位置")}</button>
+                    <button type="button" onClick={() => { void onOpenIndependent(rowRelink.candidatePath); onNavigate(); }}>{t("作为独立项目打开")}</button>
                   </div>
                 </div>
               ) : rowRelink?.kind === "error" ? (
-                <div className="project-relink-error" role="alert"><strong>无法重新定位</strong><span>{rowRelink.message}（{rowRelink.code}）</span></div>
+                <div className="project-relink-error" role="alert"><strong>{t("无法重新定位")}</strong><span>{localizeMessage(rowRelink.message)}（{rowRelink.code}）</span></div>
               ) : null}
 
               {menuProjectId === project.id ? (
                 <div ref={menuRef} id={`project-menu-${project.id}`} className="sidebar-project-menu action-menu-popover" role="menu" data-keyboard-overlay="true" onKeyDown={handleProjectMenuKeyDown}>
-                  <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setMenuProjectId(null); onRevealProject(project); }}><FolderOpen size={15} />在资源管理器中显示</button>
-                  {["missing", "unreadable"].includes(availabilityState?.status ?? "") ? <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setMenuProjectId(null); void relink(project); }}><LinkSimple size={15} />重新定位</button> : null}
-                  <button type="button" role="menuitem" tabIndex={-1} disabled={active} title={active ? "请先安全取消重建" : undefined} onClick={() => { setMenuProjectId(null); onRemoveProject(project); }}><XCircle size={15} />从最近项目移除</button>
-                  <button type="button" role="menuitem" tabIndex={-1} className="is-danger" disabled={active} title={active ? "请先安全取消重建" : undefined} onClick={() => { setMenuProjectId(null); onDeleteProject(project); }}><Trash size={15} />永久删除项目</button>
+                  <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setMenuProjectId(null); onRevealProject(project); }}><FolderOpen size={15} />{t("在资源管理器中显示")}</button>
+                  {["missing", "unreadable"].includes(availabilityState?.status ?? "") ? <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setMenuProjectId(null); void relink(project); }}><LinkSimple size={15} />{t("重新定位")}</button> : null}
+                  <button type="button" role="menuitem" tabIndex={-1} disabled={active} title={active ? t("请先安全取消重建") : undefined} onClick={() => { setMenuProjectId(null); onRemoveProject(project); }}><XCircle size={15} />{t("从最近项目移除")}</button>
+                  <button type="button" role="menuitem" tabIndex={-1} className="is-danger" disabled={active} title={active ? t("请先安全取消重建") : undefined} onClick={() => { setMenuProjectId(null); onDeleteProject(project); }}><Trash size={15} />{t("永久删除项目")}</button>
                 </div>
               ) : null}
             </div>
           );
         })}
         {filteredProjects.length === 0 ? (
-          <div className="sidebar-empty">{loading ? "正在加载最近项目…" : loadError ? "无法读取最近项目" : query ? "没有匹配项目" : "还没有最近项目"}</div>
+          <div className="sidebar-empty">{loading ? t("正在加载最近项目…") : loadError ? t("无法读取最近项目") : query ? t("没有匹配项目") : t("还没有最近项目")}</div>
         ) : null}
       </div>
     </div>

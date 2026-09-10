@@ -2,6 +2,7 @@
 import { MemoryFileSystem } from '@playcanvas/splat-transform';
 import { Events } from './events';
 import { writeSplatFile } from './splat-serialize';
+import { i18n } from './ui/localization';
 
 const CHANNEL = 'metorigin-supersplat-v1';
 
@@ -20,6 +21,13 @@ export const registerMetOriginBridge = (events: Events) => {
         let acquired = false;
         try {
             if (command === 'ping') { send(id, true); return; }
+            if (command === 'language') {
+                if (data?.locale !== 'en' && data?.locale !== 'zh-CN') throw new Error('Unsupported language.');
+                await i18n.setLanguage(data.locale);
+                document.documentElement.lang = data.locale;
+                send(id, true);
+                return;
+            }
             if (command === 'dirty') { send(id, busy || pendingSave !== null || events.invoke('scene.dirty')); return; }
             if (command === 'saved' || command === 'save-failed') {
                 if (pendingSave !== data?.saveId) throw new Error('保存会话不匹配。');

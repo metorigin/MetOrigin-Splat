@@ -1,3 +1,4 @@
+import { localizeMessage } from "../../i18n";
 import { useEffect, useRef, useState } from "react";
 
 export function StatusAnnouncer({
@@ -25,7 +26,7 @@ export function StatusAnnouncer({
       aria-live={assertive ? "assertive" : "polite"}
       aria-atomic="true"
     >
-      {announcedMessage}
+      {localizeMessage(announcedMessage)}
     </div>
   );
 }

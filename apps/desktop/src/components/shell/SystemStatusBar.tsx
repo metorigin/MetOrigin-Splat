@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import {
   CheckCircle,
   Cpu,
@@ -28,23 +29,21 @@ export function SystemStatusBar({ engines, enginesLoading, enginesError, version
   return (
     <footer className="system-status-bar">
       <div className="status-bar-group engine-status-group">
-        <span className="status-bar-label">引擎版本</span>
+        <span className="status-bar-label">{t("引擎版本")}</span>
         {enginesLoading && engines.length === 0 && (
           <span className="status-item is-warning">
-            <WarningCircle size={14} weight="fill" /> 正在检测
-          </span>
+            <WarningCircle size={14} weight="fill" /> {t("正在检测")}</span>
         )}
         {enginesError && (
-          <button type="button" className="status-item is-warning" title={`引擎检测失败：${enginesError}`} onClick={onRetryEngines}>
-            <WarningCircle size={14} weight="fill" /> 检测失败，重试
-          </button>
+          <button type="button" className="status-item is-warning" title={t("引擎检测失败：{0}", enginesError)} onClick={onRetryEngines}>
+            <WarningCircle size={14} weight="fill" /> {t("检测失败，重试")}</button>
         )}
         {engines.map((engine) => (
           <button
             type="button"
             className={`status-item ${engine.available ? "is-success" : "is-warning"}`}
             key={engine.name}
-            title={engine.path ?? `${engine.name} 未定位`}
+            title={engine.path ?? t("{0} 未定位", engine.name)}
             onClick={onOpenSettings}
           >
             {engine.available ? (
@@ -52,24 +51,24 @@ export function SystemStatusBar({ engines, enginesLoading, enginesError, version
             ) : (
               <WarningCircle size={14} weight="fill" />
             )}
-            {engine.name} {engine.version ?? "未定位"}
+            {engine.name} {engine.version ?? t("未定位")}
           </button>
         ))}
       </div>
       <button type="button" className="status-bar-group" onClick={onOpenSettings}>
         <Cpu size={15} />
         <span className="status-bar-label">GPU</span>
-        <span>{metrics?.gpu ? `${metrics.gpu.name} · ${metrics.gpu.utilization_percent?.toFixed(0) ?? "—"}%` : "指标不可用"}</span>
+        <span>{metrics?.gpu ? `${metrics.gpu.name} · ${metrics.gpu.utilization_percent?.toFixed(0) ?? "—"}%` : t("指标不可用")}</span>
       </button>
       <button type="button" className="status-bar-group" onClick={onOpenSettings}>
         <HardDrives size={15} />
         <span className="status-bar-label">VRAM</span>
-        <span>{metrics?.gpu ? `${gib(metrics.gpu.memory_used_bytes)} / ${gib(metrics.gpu.memory_total_bytes)} GB` : "尚未测量"}</span>
+        <span>{metrics?.gpu ? `${gib(metrics.gpu.memory_used_bytes)} / ${gib(metrics.gpu.memory_total_bytes)} GB` : t("尚未测量")}</span>
       </button>
       <button type="button" className="status-bar-group status-system-group" onClick={onOpenSettings}>
         <Monitor size={15} />
         <span>{metrics?.operating_system ?? "Windows"}</span>
-        {version && <span>应用 v{version}</span>}
+        {version && <span>{t("应用 v")}{version}</span>}
       </button>
     </footer>
   );

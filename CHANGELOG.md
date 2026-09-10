@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.0-alpha.3] - 2026-09-10
+
+### Added
+
+- English and Simplified Chinese UI, persisted language selection and automatic system-language detection with English fallback.
+- Localized user-facing diagnostics, native dialogs and live SuperSplat language switching without discarding editor state.
+- English user guide and translation contribution documentation.
+
+## Earlier Alpha development
+
 ### Added
 
 - Public contribution and security guidance.
@@ -35,4 +45,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Redacted credentials and private paths at error, activity-detail, receipt, and diagnostic-facing boundaries; raw engine output and unrelated source logs are not rendered as normal frontend details.
 - Added the Windows `tauri build --debug --no-bundle` gate to release validation.
 
-[Unreleased]: https://github.com/metorigin/MetOrigin-Splat/compare/main...HEAD
+[Unreleased]: https://github.com/metorigin/MetOrigin-Splat/compare/v0.1.0-alpha.3...HEAD
+[0.1.0-alpha.3]: https://github.com/metorigin/MetOrigin-Splat/compare/v0.1.0-alpha.2...v0.1.0-alpha.3

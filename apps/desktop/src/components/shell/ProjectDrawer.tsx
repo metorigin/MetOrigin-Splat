@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { X } from "../primitives/icons";
 import { useRef } from "react";
 
@@ -10,14 +11,14 @@ export function ProjectDrawer({ onClose, ...navigatorProps }: ProjectNavigatorPr
   return (
     <ModalSurface
       id="project-drawer"
-      title="全部项目"
+      title={t("全部项目")}
       className="project-drawer"
       onClose={onClose}
       initialFocusRef={closeRef}
     >
       <div className="project-drawer-toolbar">
-        <p>搜索、打开或管理最近项目；路径状态会在后台逐项更新。</p>
-        <button ref={closeRef} type="button" className="icon-button" aria-label="关闭项目抽屉" onClick={onClose}>
+        <p>{t("搜索、打开或管理最近项目；路径状态会在后台逐项更新。")}</p>
+        <button ref={closeRef} type="button" className="icon-button" aria-label={t("关闭项目抽屉")} onClick={onClose}>
           <X size={18} />
         </button>
       </div>

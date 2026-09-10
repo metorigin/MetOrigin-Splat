@@ -1,3 +1,4 @@
+import { localizeMessage, t } from "../../i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { desktopApi, DesktopCommandError } from "../../services/desktop";
@@ -45,14 +46,14 @@ export function WorkspaceActionDialog({
     setLoading(true);
     setPreviewUsable(false);
     setError(null);
-    if (reason !== "initial") setConflictMessage("项目状态已变化，尚未执行任何操作，正在刷新影响说明。");
+    if (reason !== "initial") setConflictMessage(t("项目状态已变化，尚未执行任何操作，正在刷新影响说明。"));
     try {
       const next = await desktopApi.previewWorkspaceAction(request);
       if (generation.current !== currentGeneration) return;
       setPreview(next);
       setPreviewUsable(true);
       if (reason !== "initial") {
-        setConflictMessage("影响说明已更新。请重新检查以下变化并再次确认；尚未执行任何操作。");
+        setConflictMessage(t("影响说明已更新。请重新检查以下变化并再次确认；尚未执行任何操作。"));
         window.requestAnimationFrame(() => updatedHeadingRef.current?.focus());
       }
     } catch (cause) {
@@ -82,7 +83,7 @@ export function WorkspaceActionDialog({
           generation.current += 1;
           setPreview(result.preview);
           setPreviewUsable(true);
-          setConflictMessage(`${result.message} 影响说明已更新，请重新确认。`);
+          setConflictMessage(t("{0} 影响说明已更新，请重新确认。", result.message));
           window.requestAnimationFrame(() => updatedHeadingRef.current?.focus());
           return;
         }
@@ -93,7 +94,7 @@ export function WorkspaceActionDialog({
           ? cause.uiError
           : normalizeCommandError(cause, "execute_workspace_action");
         if (["UI-ACTION-PREVIEW-EXPIRED", "UI-ACTION-PREVIEW-INVALID"].includes(normalized.code)) {
-          setConflictMessage("操作确认已过期或失效，尚未执行任何操作，正在刷新影响说明。");
+          setConflictMessage(t("操作确认已过期或失效，尚未执行任何操作，正在刷新影响说明。"));
           await loadPreview("stale");
         } else {
           setError(normalized);
@@ -109,7 +110,7 @@ export function WorkspaceActionDialog({
   return (
     <ModalSurface
       id="workspace-action-dialog"
-      title="确认操作影响"
+      title={t("确认操作影响")}
       role="alertdialog"
       busy={busy}
       onClose={onClose}
@@ -118,10 +119,10 @@ export function WorkspaceActionDialog({
     >
       {conflictMessage ? (
         <h3 ref={updatedHeadingRef} tabIndex={-1} role="alert" className="impact-refresh-message">
-          {conflictMessage}
+          {localizeMessage(conflictMessage)}
         </h3>
       ) : null}
-      {loading ? <p role="status">正在读取当前项目状态并计算影响…</p> : null}
+      {loading ? <p role="status">{t("正在读取当前项目状态并计算影响…")}</p> : null}
       {error ? (
         <>
           <ErrorNotice error={error} blocking />
@@ -131,34 +132,33 @@ export function WorkspaceActionDialog({
             disabled={loading || busy}
             onClick={() => void loadPreview("retry")}
           >
-            重新读取影响说明
-          </button>
+            {t("重新读取影响说明")}</button>
         </>
       ) : null}
       {preview ? (
         <div className={conflictMessage ? "impact-preview is-refreshed" : "impact-preview"}>
           <div className="impact-target">
-            <strong>{preview.targetLabel}</strong>
-            {formatBytes(preview.sizeBytes) ? <span>涉及约 {formatBytes(preview.sizeBytes)}</span> : null}
+            <strong>{localizeMessage(preview.targetLabel)}</strong>
+            {formatBytes(preview.sizeBytes) ? <span>{t("涉及约")}{formatBytes(preview.sizeBytes)}</span> : null}
           </div>
-          {!preview.allowed ? <p role="alert">{preview.blockedReason}</p> : null}
+          {!preview.allowed ? <p role="alert">{localizeMessage(preview.blockedReason)}</p> : null}
           <div className="impact-columns">
-            <section><h3>会保留</h3><ul>{preview.preserved.map((item) => <li key={item}>{item}</li>)}</ul></section>
-            <section><h3>会失效或删除</h3><ul>{preview.invalidated.map((item) => <li key={item}>{item}</li>)}</ul></section>
-            <section><h3>需要重新生成</h3><ul>{preview.regenerated.map((item) => <li key={item}>{item}</li>)}</ul></section>
+            <section><h3>{t("会保留")}</h3><ul>{preview.preserved.map((item) => <li key={item}>{localizeMessage(item)}</li>)}</ul></section>
+            <section><h3>{t("会失效或删除")}</h3><ul>{preview.invalidated.map((item) => <li key={item}>{localizeMessage(item)}</li>)}</ul></section>
+            <section><h3>{t("需要重新生成")}</h3><ul>{preview.regenerated.map((item) => <li key={item}>{localizeMessage(item)}</li>)}</ul></section>
           </div>
-          {preview.warnings.length ? <ul className="impact-warnings">{preview.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
-          {preview.irreversible ? <p className="impact-irreversible">此操作不可撤销。</p> : null}
+          {preview.warnings.length ? <ul className="impact-warnings">{preview.warnings.map((warning) => <li key={warning}>{localizeMessage(warning)}</li>)}</ul> : null}
+          {preview.irreversible ? <p className="impact-irreversible">{t("此操作不可撤销。")}</p> : null}
         </div>
       ) : null}
       {receipt ? <ActionReceipt receipt={receipt} /> : null}
       <div className="dialog-actions">
         <button ref={cancelRef} type="button" className="button button-secondary" disabled={busy} onClick={onClose}>
-          {receipt ? "关闭" : "取消"}
+          {receipt ? t("关闭") : t("取消")}
         </button>
         {!receipt && preview?.allowed ? (
           <button type="button" className={preview.irreversible ? "button button-danger" : "button button-warning"} disabled={busy || loading || !previewUsable} onClick={confirm}>
-            {busy ? "正在执行…" : "确认并执行"}
+            {busy ? t("正在执行…") : t("确认并执行")}
           </button>
         ) : null}
       </div>

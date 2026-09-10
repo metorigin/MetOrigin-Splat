@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { PIPELINE_STAGE_IDS } from "../types";
 import type {
   AppSettings,
@@ -224,11 +225,11 @@ const artifact = (relativePath: string, validated = true) => ({
 });
 
 const previewArtifacts: ArtifactSummary = {
-  frames_manifest: artifact("frames/manifest.json"),
-  colmap_result: artifact("colmap/sparse/0"),
+  get frames_manifest() { return artifact("frames/manifest.json"); },
+  get colmap_result() { return artifact("colmap/sparse/0"); },
   latest_checkpoint: previewCheckpoint,
-  scene_ply: artifact("output/scene.ply", false),
-  output_manifest: artifact("output/manifest.json", false),
+  get scene_ply() { return artifact("output/scene.ply", false); },
+  get output_manifest() { return artifact("output/manifest.json", false); },
   registered_images: 281,
   total_images: 286,
   sparse_points: 1_284_600,
@@ -255,12 +256,12 @@ const previewAnalysis: MediaAnalysis = {
   },
   image_set_metadata: null,
   preset_estimates: [
-    { id: "fast", name: "快速", description: "快速检查构图和覆盖", fps: 2, max_frames: 220, target_long_edge: 1440, colmap_long_edge: 1280, iterations: 12_000, sh_degree: 2, checkpoint_interval: 3_000, estimated_frames: 220, estimated_disk_bytes: 1.8 * 1024 ** 3 },
-    { id: "balanced", name: "均衡", description: "推荐用于大多数桌面场景", fps: 7, max_frames: 500, target_long_edge: 1920, colmap_long_edge: 1600, iterations: 30_000, sh_degree: 3, checkpoint_interval: 5_000, estimated_frames: 428, estimated_disk_bytes: 4.6 * 1024 ** 3 },
-    { id: "quality", name: "高质量", description: "保留更多几何纹理细节", fps: 12, max_frames: 800, target_long_edge: 2560, colmap_long_edge: 1920, iterations: 45_000, sh_degree: 3, checkpoint_interval: 5_000, estimated_frames: 738, estimated_disk_bytes: 9.8 * 1024 ** 3 },
+    { id: "fast", get name() { return t("快速"); }, get description() { return t("快速检查构图和覆盖"); }, fps: 2, max_frames: 220, target_long_edge: 1440, colmap_long_edge: 1280, iterations: 12_000, sh_degree: 2, checkpoint_interval: 3_000, estimated_frames: 220, estimated_disk_bytes: 1.8 * 1024 ** 3 },
+    { id: "balanced", get name() { return t("均衡"); }, get description() { return t("推荐用于大多数桌面场景"); }, fps: 7, max_frames: 500, target_long_edge: 1920, colmap_long_edge: 1600, iterations: 30_000, sh_degree: 3, checkpoint_interval: 5_000, estimated_frames: 428, estimated_disk_bytes: 4.6 * 1024 ** 3 },
+    { id: "quality", get name() { return t("高质量"); }, get description() { return t("保留更多几何纹理细节"); }, fps: 12, max_frames: 800, target_long_edge: 2560, colmap_long_edge: 1920, iterations: 45_000, sh_degree: 3, checkpoint_interval: 5_000, estimated_frames: 738, estimated_disk_bytes: 9.8 * 1024 ** 3 },
   ],
   preview_items: [],
-  warnings: ["18 帧存在轻微运动模糊", "3 段亮度变化，可自动校正"],
+  warnings: [t("18 帧存在轻微运动模糊"), t("3 段亮度变化，可自动校正")],
   blockers: [],
 };
 
@@ -295,7 +296,7 @@ const previewPly: PlyPreview = {
 
 const previewEvents: EventPage = {
   items: [
-    { event_id: "evt-42", project_id: previewProject.id, sequence: 42, timestamp: now, kind: "stage_progress", severity: "info", phase_id: "training", stage_id: "BrushTraining", user_message: "训练稳定进行中，当前已完成 20,400 / 30,000 次迭代。", technical_message: null, metrics: { loss: 0.0138 }, source_log: "logs/BrushTraining.log" },
+    { event_id: "evt-42", project_id: previewProject.id, sequence: 42, timestamp: now, kind: "stage_progress", severity: "info", phase_id: "training", stage_id: "BrushTraining", get user_message() { return t("训练稳定进行中，当前已完成 20,400 / 30,000 次迭代。"); }, technical_message: null, metrics: { loss: 0.0138 }, source_log: "logs/BrushTraining.log" },
   ],
   next_cursor: null,
   total: 1,

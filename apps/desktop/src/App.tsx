@@ -1,3 +1,4 @@
+import { localizeMessage, t } from "./i18n";
 import { SpinnerGap, WarningCircle, X } from "./components/primitives/icons";
 import { listen } from "@tauri-apps/api/event";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -42,6 +43,7 @@ import type {
   WorkspaceActionRequest,
 } from "./types";
 import { useTheme } from "./hooks/useTheme";
+import { useLanguage } from "./hooks/useLanguage";
 import "@fontsource-variable/inter";
 import "@fontsource/jetbrains-mono/400.css";
 import "./styles/buzz.css";
@@ -81,6 +83,7 @@ function toProjectInfo(project: Project, path: string): ProjectInfo {
 
 export function AppWorkspace() {
   useTheme();
+  useLanguage();
   const previewNavigated = useRef(false);
   const { state, dispatch } = useAppContext();
   const previewOverlay = isUiPreviewMode()
@@ -130,7 +133,7 @@ export function AppWorkspace() {
     if (!activePipelineSnapshot) return null;
     return state.recentProjects.find((project) => project.id === activePipelineSnapshot.project_id) ?? {
       id: activePipelineSnapshot.project_id,
-      name: "活动项目",
+      get name() { return t("活动项目"); },
       path: activePipelineSnapshot.project_path,
       status: activePipelineSnapshot.status,
       updated_at: activePipelineSnapshot.started_at ?? activePipelineSnapshot.accepted_at ?? new Date().toISOString(),
@@ -274,11 +277,11 @@ export function AppWorkspace() {
     previousPipelineAnnouncement.current = next;
     if (!previous || previous.projectId !== next.projectId) return;
     if (previous.stage !== next.stage && next.stage) {
-      setAnnouncement(`当前阶段已切换为${getStageLabel(next.stage)}。`);
+      setAnnouncement(t("当前阶段已切换为{0}。", getStageLabel(next.stage)));
     } else if (!previous.stale && next.stale) {
-      setAnnouncement("任务状态暂时无法刷新，正在显示最后一次有效状态。");
+      setAnnouncement(t("任务状态暂时无法刷新，正在显示最后一次有效状态。"));
     } else if (previous.stale && !next.stale) {
-      setAnnouncement("任务状态已恢复更新。");
+      setAnnouncement(t("任务状态已恢复更新。"));
     }
   }, [activePipelineFreshness.stale, activePipelineSnapshot]);
 
@@ -348,7 +351,7 @@ export function AppWorkspace() {
     error: unknown,
   ): Promise<boolean> => {
     if (!isActivePipelineConflict(error)) return false;
-    dispatch({ type: "SET_ERROR", error: "当前有重建任务尚未结束，请先暂停或结束任务后再开始新的重建。" });
+    dispatch({ type: "SET_ERROR", error: t("当前有重建任务尚未结束，请先暂停或结束任务后再开始新的重建。") });
     const active = await refreshActivePipeline();
     if (active && active.project_id !== requestedProjectId) {
       dispatch({
@@ -430,7 +433,7 @@ export function AppWorkspace() {
       return {
         kind: "error" as const,
         code: normalized?.code ?? "UI-PROJECT-RELINK-FAILED",
-        message: normalized?.message ?? "无法验证所选项目位置，原记录未更改。",
+        message: normalized?.message ?? t("无法验证所选项目位置，原记录未更改。"),
       };
     }
   }, [activeProjectPath, dispatch, leaveEditor]);
@@ -443,7 +446,7 @@ export function AppWorkspace() {
         targetType: "project_root",
       });
       if (result.missing) {
-        dispatch({ type: "SET_ERROR", error: result.message ?? "项目目录已移动或删除。" });
+        dispatch({ type: "SET_ERROR", error: result.message ?? t("项目目录已移动或删除。") });
       }
     } catch (error) {
       dispatch({ type: "SET_ERROR", error: String(error) });
@@ -485,7 +488,7 @@ export function AppWorkspace() {
         type: "ADD_RECENT_PROJECT",
         project: { ...activeProject, status: "running" },
       });
-      setAnnouncement(`项目“${activeProject.name}”已开始重建。`);
+      setAnnouncement(t("项目“{0}”已开始重建。", activeProject.name));
     } catch (error) {
       if (await captureRaceConflict(activeProject.id, error)) return;
       dispatch({ type: "SET_ERROR", error: String(error) });
@@ -508,7 +511,7 @@ export function AppWorkspace() {
       const snapshot = await desktopApi.resumePipeline(activeProject.path);
       dispatch({ type: "SET_PIPELINE_SNAPSHOT", snapshot });
       dispatch({ type: "ADD_RECENT_PROJECT", project: { ...activeProject, status: snapshot.status } });
-      setAnnouncement(`项目“${activeProject.name}”已继续重建。`);
+      setAnnouncement(t("项目“{0}”已继续重建。", activeProject.name));
     } catch (error) {
       if (await captureRaceConflict(activeProject.id, error)) return;
       dispatch({ type: "SET_ERROR", error: String(error) });
@@ -577,7 +580,7 @@ export function AppWorkspace() {
       case "new-project":
         return <NewProjectPage settings={settings} onOpenSettings={() => setSettingsOpen(true)} />;
       case "project-detail":
-        if (editor.session) return <Suspense fallback={<div className="preview-empty" role="status"><SpinnerGap size={28} className="spin" aria-hidden="true" /><span>正在载入</span></div>}>
+        if (editor.session) return <Suspense fallback={<div className="preview-empty" role="status"><SpinnerGap size={28} className="spin" aria-hidden="true" /><span>{t("正在载入")}</span></div>}>
           <ModelEditorPage ref={editor.editorRef} session={editor.session}
             onBack={() => void leaveEditor()} />
         </Suspense>;
@@ -625,7 +628,7 @@ export function AppWorkspace() {
 
       <section className="workspace-surface">
         <div className="workspace-header-stack">
-          {state.page.type === "home" ? <h1 className="sr-only">项目中心</h1> : null}
+          {state.page.type === "home" ? <h1 className="sr-only">{t("项目中心")}</h1> : null}
           {state.page.type === "project-detail" && !editor.session ? (
             <TitleRunBar
               project={activeProject}
@@ -682,16 +685,16 @@ export function AppWorkspace() {
       )}
       {actionReceipt ? <ActionReceipt receipt={actionReceipt} onDismiss={() => setActionReceipt(null)} /> : null}
 
-      {isUiPreviewMode() ? <div className="preview-mode-label">界面预览 · 示例数据</div> : null}
+      {isUiPreviewMode() ? <div className="preview-mode-label">{t("界面预览 · 示例数据")}</div> : null}
 
       {state.error && (
         <div className="global-error" role="alert">
           <WarningCircle size={19} weight="fill" />
-          <span>{state.error}</span>
+          <span>{localizeMessage(state.error)}</span>
           <button
             type="button"
             onClick={() => dispatch({ type: "SET_ERROR", error: null })}
-            aria-label="关闭错误提示"
+            aria-label={t("关闭错误提示")}
           >
             <X size={17} />
           </button>
@@ -701,7 +704,7 @@ export function AppWorkspace() {
       {state.loading && (
         <div className="loading-overlay" aria-live="polite">
           <div className="loading-spinner" />
-          <p>正在处理…</p>
+          <p>{t("正在处理…")}</p>
         </div>
       )}
       <StatusAnnouncer message={announcement} />

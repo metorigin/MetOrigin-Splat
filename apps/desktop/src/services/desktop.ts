@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 
@@ -97,7 +98,7 @@ export function isDesktopRuntime(): boolean {
 
 function ensureDesktopRuntime(): void {
   if (!isDesktopRuntime()) {
-    throw new Error("此操作需要在 MetOrigin Splat 桌面应用中使用。");
+    throw new Error(t("此操作需要在 MetOrigin Splat 桌面应用中使用。"));
   }
 }
 
@@ -105,12 +106,12 @@ export async function selectVideoFile(): Promise<string | null> {
   if (isUiPreviewMode()) return "D:\\Captures\\courtyard_walkthrough.mp4";
   ensureDesktopRuntime();
   return open({
-    title: "选择重建视频",
+    title: t("选择重建视频"),
     multiple: false,
     directory: false,
     filters: [
       {
-        name: "视频文件",
+        name: t("视频文件"),
         extensions: ["mp4", "mov", "avi", "mkv"],
       },
     ],
@@ -123,14 +124,14 @@ export async function selectImageDirectory(): Promise<string | null> {
   // Windows' folder-only dialog hides files. Browse images, then use the
   // selected image's parent as the existing recursive folder import source.
   const imagePath = await open({
-    title: "选择任意一张图片，导入其所在文件夹",
+    title: t("选择任意一张图片，导入其所在文件夹"),
     multiple: false,
     directory: false,
-    filters: [{ name: "图片文件", extensions: ["jpg", "jpeg", "png"] }],
+    filters: [{ name: t("图片文件"), extensions: ["jpg", "jpeg", "png"] }],
   });
   if (!imagePath) return null;
   const separator = Math.max(imagePath.lastIndexOf("/"), imagePath.lastIndexOf("\\"));
-  if (separator < 0) throw new Error("无法确定图片所在文件夹，请重新选择图片。");
+  if (separator < 0) throw new Error(t("无法确定图片所在文件夹，请重新选择图片。"));
   // Preserve filesystem roots (C:\\, /) and UNC share paths.
   const end = separator === 2 && imagePath[1] === ":" ? 3 : Math.max(separator, 1);
   return imagePath.slice(0, end);
@@ -139,7 +140,7 @@ export async function selectImageDirectory(): Promise<string | null> {
 export async function selectProjectDirectory(): Promise<string | null> {
   ensureDesktopRuntime();
   return open({
-    title: "打开 MetOrigin Splat 项目",
+    title: t("打开 MetOrigin Splat 项目"),
     multiple: false,
     directory: true,
   });
@@ -148,7 +149,7 @@ export async function selectProjectDirectory(): Promise<string | null> {
 export async function selectProjectRoot(): Promise<string | null> {
   ensureDesktopRuntime();
   return open({
-    title: "选择项目保存位置",
+    title: t("选择项目保存位置"),
     multiple: false,
     directory: true,
     recursive: true,
@@ -157,28 +158,28 @@ export async function selectProjectRoot(): Promise<string | null> {
 
 export async function selectEngineDirectory(): Promise<string | null> {
   ensureDesktopRuntime();
-  return open({ title: "选择引擎目录", multiple: false, directory: true, recursive: true });
+  return open({ title: t("选择引擎目录"), multiple: false, directory: true, recursive: true });
 }
 
 export async function selectEngineExecutable(name: string): Promise<string | null> {
   ensureDesktopRuntime();
   return open({
-    title: `选择 ${name} 可执行文件`,
+    title: t("选择 {0} 可执行文件", name),
     multiple: false,
     directory: false,
-    filters: [{ name: "Windows 可执行文件", extensions: ["exe"] }],
+    filters: [{ name: t("Windows 可执行文件"), extensions: ["exe"] }],
   });
 }
 
 export async function confirmSafeCancel(stageLabel: string): Promise<boolean> {
   ensureDesktopRuntime();
   return confirm(
-    `将停止${stageLabel}并保留已验证阶段与合法检查点。当前阶段下次可能需要重新执行。`,
+    t("将停止{0}并保留已验证阶段与合法检查点。当前阶段下次可能需要重新执行。", stageLabel),
     {
-      title: "安全取消重建",
+      title: t("安全取消重建"),
       kind: "warning",
-      okLabel: "安全取消",
-      cancelLabel: "继续运行",
+      okLabel: t("安全取消"),
+      cancelLabel: t("继续运行"),
     },
   );
 }
@@ -186,23 +187,23 @@ export async function confirmSafeCancel(stageLabel: string): Promise<boolean> {
 export async function confirmRerunStage(stageLabel: string): Promise<boolean> {
   ensureDesktopRuntime();
   return confirm(
-    `将从“${stageLabel}”重新运行，并重置该阶段及后续阶段的状态。已验证的更早阶段会保留。`,
+    t("将从“{0}”重新运行，并重置该阶段及后续阶段的状态。已验证的更早阶段会保留。", stageLabel),
     {
-      title: "从指定阶段重新运行",
+      title: t("从指定阶段重新运行"),
       kind: "warning",
-      okLabel: "重置并开始",
-      cancelLabel: "取消",
+      okLabel: t("重置并开始"),
+      cancelLabel: t("取消"),
     },
   );
 }
 
 export async function confirmRemoveRecentProject(projectName: string): Promise<boolean> {
   ensureDesktopRuntime();
-  return confirm(`仅从最近项目列表移除“${projectName}”，磁盘中的项目文件会保留。`, {
-    title: "从最近项目移除",
+  return confirm(t("仅从最近项目列表移除“{0}”，磁盘中的项目文件会保留。", projectName), {
+    title: t("从最近项目移除"),
     kind: "warning",
-    okLabel: "移除记录",
-    cancelLabel: "取消",
+    okLabel: t("移除记录"),
+    cancelLabel: t("取消"),
   });
 }
 

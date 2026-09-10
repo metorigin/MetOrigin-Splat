@@ -29,6 +29,21 @@ function loadedProps(onClose = vi.fn()) {
 }
 
 describe("SettingsDrawer", () => {
+  it("switches language live without saving engine settings or closing the drawer", () => {
+    const props = loadedProps();
+    render(<SettingsDrawer {...props} />);
+    fireEvent.change(screen.getByRole("combobox", { name: /Language/ }), { target: { value: "en" } });
+    expect(screen.getByRole("dialog", { name: "Application settings" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Project defaults" })).toBeVisible();
+    fireEvent.click(screen.getByRole("tab", { name: "Project defaults" }));
+    expect(screen.getByText("Default quality preset")).toBeVisible();
+    fireEvent.change(screen.getByRole("combobox", { name: /Language/ }), { target: { value: "zh-CN" } });
+    expect(screen.getByRole("tab", { name: "项目默认值" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("默认质量预设")).toBeVisible();
+    expect(props.onSettings).not.toHaveBeenCalled();
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
+
   it("shows detected engine versions and live system information inside settings", () => {
     const engine: EngineInfo = {
       name: "ffmpeg", version: "8.1", actual_version: "8.1.2-essentials_build",

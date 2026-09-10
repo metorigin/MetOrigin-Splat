@@ -317,7 +317,11 @@ code, pre { font-family: "JetBrains Mono", monospace; }
 /* Modal surfaces use the same tokens and focus management as the workspace. */
 .modal-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 1.5rem; background: #10182845; backdrop-filter: blur(5px); }
 .modal-surface { max-width: 100%; max-height: calc(100dvh - 3rem); overflow: auto; border: 1px solid var(--border-subtle); border-radius: 1rem; background: var(--bg-panel); box-shadow: var(--shadow-modal); outline: none; }
-.settings-drawer { position: static; width: 44rem; height: min(42rem,calc(100dvh - 3rem)); display: grid; grid-template-rows: auto auto minmax(0,1fr); }
+.settings-drawer { position: static; width: 44rem; height: min(46rem,calc(100dvh - 3rem)); display: flex; flex-direction: column; }
+.settings-drawer > header, .settings-drawer > nav, .settings-drawer > .settings-language { flex-shrink: 0; }
+.settings-drawer > .settings-content { flex: 1; min-height: 0; }
+.settings-language { margin: 1rem 1.5rem 0; grid-template-columns: minmax(0,1fr) minmax(8rem,12rem); align-items: center; }
+.settings-content > .settings-language { margin: 0 0 1rem; }
 .settings-drawer > header, .checkpoint-drawer > header, .workspace-activity-drawer > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-subtle); }
 .settings-drawer > header strong { font-size: 1rem; font-weight: 600; }
 .settings-close-button { border: 1px solid var(--border-subtle); background: var(--bg-panel); color: var(--text-secondary); padding: .375rem .625rem; font-size: .75rem; }

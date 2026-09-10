@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { setLanguagePreference } from "./i18n";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PipelineSnapshot, ProjectInfo } from "./types";
@@ -145,6 +146,23 @@ describe("App workspace contexts", () => {
       path === projectB.path ? readySnapshot : activeSnapshot,
     );
     api.isActivePipelineConflict.mockReturnValue(false);
+  });
+
+  it("changes workspace language without resetting input or restarting the active pipeline", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: "项目中心" });
+    await waitFor(() => expect(api.getActivePipelineSummary).toHaveBeenCalled());
+    const input = screen.getByRole("textbox", { name: "首页输入框" });
+    fireEvent.change(input, { target: { value: "保留中文输入" } });
+    const settingsReads = api.getAppSettings.mock.calls.length;
+    act(() => setLanguagePreference("en"));
+    expect(screen.getByRole("heading", { name: "Project Hub" })).toBeVisible();
+    expect(input).toHaveValue("保留中文输入");
+    expect(screen.getByRole("textbox", { name: "首页输入框" })).toBe(input);
+    expect(api.getAppSettings).toHaveBeenCalledTimes(settingsReads);
+    expect(api.startPipeline).not.toHaveBeenCalled();
+    act(() => setLanguagePreference("zh-CN"));
+    expect(screen.getByRole("heading", { name: "项目中心" })).toBeVisible();
   });
 
   it("renders distinct home, wizard, and workspace contexts without leaking run controls", async () => {

@@ -1,3 +1,4 @@
+import { t, getLocale } from "../i18n";
 import type { PipelineState, PipelineStageId, TaskProgress } from "../types";
 import { PIPELINE_STAGE_IDS } from "../types";
 import { StageProgress } from "./StageProgress";
@@ -24,25 +25,25 @@ export function PipelineProgress({
     ? Math.round(state.overall_progress * 100)
     : null;
   const workUnit = latestProgress && latestProgress.total_items > 0
-    ? `${Math.max(0, latestProgress.current_item).toLocaleString()} / ${latestProgress.total_items.toLocaleString()} 项`
-    : "正在统计实际工作量";
+    ? t("{0} / {1} 项", Math.max(0, latestProgress.current_item).toLocaleString(getLocale()), latestProgress.total_items.toLocaleString(getLocale()))
+    : t("正在统计实际工作量");
 
   return (
     <div className="pipeline-progress">
       <div
         className="pipeline-header"
         role="progressbar"
-        aria-label="总体进度"
+        aria-label={t("总体进度")}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={overallPct ?? undefined}
-        aria-valuetext={`${workUnit}，${overallPct == null ? "总体进度正在估算" : `总体进度 ${overallPct}%`}`}
+        aria-valuetext={`${workUnit}，${overallPct == null ? t("总体进度正在估算") : t("总体进度 {0}%", overallPct)}`}
       >
         <div className="pipeline-overall">
-          <span className="pipeline-pct">{overallPct == null ? "正在估算" : `${overallPct}%`}</span>
-          <span className="pipeline-label">总体进度</span>
+          <span className="pipeline-pct">{overallPct == null ? t("正在估算") : `${overallPct}%`}</span>
+          <span className="pipeline-label">{t("总体进度")}</span>
           <span className="pipeline-label">{workUnit}</span>
-          <span className="pipeline-label">{updatedAt ? `更新于 ${new Date(updatedAt).toLocaleTimeString("zh-CN", { hour12: false })}` : "等待活动"}</span>
+          <span className="pipeline-label">{updatedAt ? t("更新于 {0}", new Date(updatedAt).toLocaleTimeString(getLocale(), { hour12: false })) : t("等待活动")}</span>
         </div>
         <div className="pipeline-bar-track">
           <div

@@ -7,6 +7,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [使用指南（中文）](user-operation-flow.zh-CN.md) | 项目中心、素材导入、预设、重建、预览和设置 |
+| [User guide (English)](user-guide.md) | Language, media import, reconstruction, editing, recovery and settings |
 | [高斯渲染与实时预览（中文）](gaussian-live-preview.zh-CN.md) | 配套 Brush 引擎、交互、更新机制和验证 |
 | [Troubleshooting](troubleshooting.md) | 启动、引擎、预检、恢复与预览问题 |
 
@@ -19,6 +20,7 @@
 | [Engine integration](engine-integration.md) | 版本锁定、路径解析、适配器和恢复边界 |
 | [Project format](project-format.md) | 目录结构、持久化字段和产物 |
 | [Contributing](../CONTRIBUTING.md) | 贡献与审阅约定 |
+| [Localization](localization.md) | 中英文资源、后端消息兼容与翻译贡献 |
 
 ## 发布 / Release
 
