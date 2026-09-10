@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "node ../../integrations/supersplat/prepare.mjs",
+    "prebuild": "node ../../integrations/supersplat/prepare.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",

@@ -13,6 +13,7 @@ A Windows desktop application that turns a video or a folder of photos into a 3D
 - Monitor the four processing phases, inspect stage outputs, pause or cancel a task, and resume from validated recovery data.
 - View sparse COLMAP geometry and full Gaussian models, including updates during training with the companion Brush engine.
 - Open recent projects, inspect quality metrics and resource usage, and export PLY results.
+- Edit completed models in the bundled SuperSplat workspace and save directly to the project's model file.
 - Configure engines, storage, performance and light/dark/system appearance in one settings drawer.
 
 Media processing runs on your computer. Engine preparation and dependency installation may download software; they do not upload your project media.

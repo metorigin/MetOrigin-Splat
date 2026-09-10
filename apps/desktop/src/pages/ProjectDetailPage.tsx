@@ -357,7 +357,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
       dispatch({ type: "SET_ERROR", error: `无法定位 Checkpoint：${String(error)}` });
     }
   };
-  const currentStageLabel = currentStage ? getStageLabel(currentStage) : "尚未开始";
+  const currentStageLabel = (liveSnapshot?.status ?? project?.status) === "completed" ? "全部阶段已完成" : currentStage ? getStageLabel(currentStage) : "尚未开始";
   const moveStageFocus = (
     event: ReactKeyboardEvent<HTMLButtonElement>,
     stages: readonly PipelineStageId[],
@@ -697,10 +697,10 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
           <button ref={inspectorCloseRef} type="button" className="icon-button" aria-label="关闭预览与质量" onClick={() => setInspectorOpen(false)}><X size={18} /></button>
         </div>
         <section className="preview-panel panel" tabIndex={-1}>
-          <div className="panel-title">
-            <span className="preview-heading-copy"><span>产物预览</span><span className="panel-subtitle">{selectedStage ? getStageLabel(selectedStage) : currentStageLabel}</span></span>
+          {!workspaceComplete && <div className="panel-title">
+            <span className="panel-subtitle">{selectedStage ? getStageLabel(selectedStage) : currentStageLabel}</span>
             <button type="button" className="preview-reset-button" onClick={() => { setFollowStage(true); setPreviewRelativePath(null); setSelectedStage((currentStage ?? (artifacts?.scene_ply.validated ? "Export" : selectedStage)) as PipelineStageId | null); }}>跟随当前阶段</button>
-          </div>
+          </div>}
           {selectedStage && GAUSSIAN_STAGES.includes(selectedStage) ? previewMode ? <div className="preview-empty"><Cube size={40} /><strong>高斯场景预览</strong><p>当前为界面设计示例。请在桌面应用中打开项目查看真实模型与训练预览。</p></div> : <Suspense fallback={<div className="preview-empty">正在启动高斯渲染器…</div>}><GaussianSplatPreview
             key={projectId}
             projectId={projectId}
@@ -842,7 +842,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
           <div className="resource-meter"><span>CPU { metrics ? `${metrics.cpu_usage_percent.toFixed(0)}%` : "尚未测量"}</span><span className="progress-track is-cpu"><span style={{ width: `${cpuPercent}%` }} /></span></div>
         </section>
         {artifacts?.latest_checkpoint ? <div className="recent-checkpoint-card"><span>最近检查点</span><strong>{artifacts.latest_checkpoint.iteration.toLocaleString()} step</strong><small>{new Date(artifacts.latest_checkpoint.created_at).toLocaleString("zh-CN")}</small></div> : null}
-        <div className="workspace-background-note"><p>任务可在应用内后台运行。关闭应用前，请先暂停并确认恢复点。</p><button type="button" className="button button-secondary" onClick={() => setActivityOpen(true)}>查看日志与活动</button><button type="button" className="button button-subtle" onClick={() => setQualityDialogOpen(true)}>质量检查详情</button></div>
+        <div className="workspace-background-note">{!workspaceComplete && <p>任务可在应用内后台运行。关闭应用前，请先暂停并确认恢复点。</p>}<button type="button" className="button button-secondary" onClick={() => setActivityOpen(true)}>查看日志与活动</button><button type="button" className="button button-subtle" onClick={() => setQualityDialogOpen(true)}>质量检查详情</button></div>
         </div>
       </aside>
       </ResponsiveInspectorSurface>

@@ -38,6 +38,22 @@ The default output is `.engines/brush-v0.3.0-windows-x64/brush_live.exe`. Use `-
 
 ## Routine checks
 
+### Bundled SuperSplat editor
+
+The desktop `predev` and `prebuild` scripts run `integrations/supersplat/prepare.mjs`. On the first run this fetches the commit in `integrations/supersplat/upstream.json`, installs its exact npm lockfile, adds the local import/export bridge, and builds the editor into ignored `apps/desktop/public/supersplat/`. Source and dependency caches live under `target/supersplat-*`. Later runs reuse assets when the pinned revision and bridge/build script are unchanged. Use `pnpm prepare:supersplat` to prepare them explicitly. Git and npm are required for preparation; installed applications load these bundled assets without a development server or runtime package installation. If Node's installation has no adjacent npm CLI, set `METORIGIN_NPM_CLI` to `npm-cli.js`.
+
+The editor occupies the main workspace in a same-origin iframe and retains the project sidebar. The completed status is followed by an Edit button. While editing, the project title/run bar is hidden; Back and Save share the editor toolbar. Back restores the preview and reports. Navigation checks unsaved changes and is blocked during saving. Binary saves carry an exact session ID so stale requests cannot write into a later project's session. Saves are serialized, validated and synced before replacing `output/scene.ply` by a same-directory rename. The session revision advances after each save; no history is created or listed. The bridge accepts only messages from its parent and exposes a bounded import/export protocol. Upstream license and bundled dependency notices are included under `supersplat/`, together with source maps.
+
+Native verification uses an isolated copy of an existing trained model. Start a test build with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9258`, preferably with an isolated `WEBVIEW2_USER_DATA_FOLDER`, then run:
+
+```powershell
+node scripts/windows/Validate-ModelEditor.mjs <completed-project-path>
+```
+
+This checks WebGPU import, workspace layout and consistent action dimensions, deletion of a subset, cancelled navigation, repeated in-place saves, failure preservation, absence of generated history, preview updates and reopening the saved PLY. It substitutes the folder picker and confirmation responses to avoid unattended OS dialogs. The isolated project is temporarily added to the recent index and removed in cleanup. Evidence and copied models are written under ignored `target/editor-evidence/`. `METORIGIN_TAURI_DEBUG_PORT` overrides the test port.
+
+### Application checks
+
 Run checks relevant to the change:
 
 ```powershell

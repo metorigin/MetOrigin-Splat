@@ -144,6 +144,19 @@ export interface PlyPreview {
 
 export type LivePreviewMode = "live" | "low" | "off";
 
+export interface SavedModel {
+  source: GaussianPreviewSource;
+  saved_at: string;
+}
+
+export interface EditorSession {
+  session_id: string;
+  project_id: string;
+  project_path: string;
+  project_name: string;
+  source: GaussianPreviewSource;
+}
+
 export interface GaussianCamera {
   position: [number, number, number];
   forward: [number, number, number];

@@ -40,6 +40,8 @@ import {
   Pause as PauseIcon,
   CirclePause as PauseCircleIcon,
   Play as PlayIcon,
+  Pencil as PencilIcon,
+  Save as SaveIcon,
   Plus as PlusIcon,
   CircleHelp as QuestionIcon,
   PanelLeft as SidebarSimpleIcon,
@@ -104,6 +106,8 @@ export const Path = adapt(PathIcon);
 export const Pause = adapt(PauseIcon);
 export const PauseCircle = adapt(PauseCircleIcon);
 export const Play = adapt(PlayIcon);
+export const Pencil = adapt(PencilIcon);
+export const Save = adapt(SaveIcon);
 export const Plus = adapt(PlusIcon);
 export const Question = adapt(QuestionIcon);
 export const SidebarSimple = adapt(SidebarSimpleIcon);

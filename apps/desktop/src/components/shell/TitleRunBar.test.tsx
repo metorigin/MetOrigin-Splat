@@ -7,6 +7,21 @@ const project = { id: "p", name: "自行车街景测试", path: "p", status: "ru
 const state = { stages: {}, current_stage: null, overall_progress: 0.58 };
 
 describe("TitleRunBar", () => {
+  it("puts the compact edit action with an icon next to the completed status", () => {
+    const edit = vi.fn();
+    const props = { project: { ...project, status: "completed" as const }, pipelineSnapshot: null, onStart: vi.fn(), onPause: vi.fn(), onResume: vi.fn(), onCancel: vi.fn(), onRevealProject: vi.fn(), onRemoveProject: vi.fn(), onDeleteProject: vi.fn(), onEdit: edit };
+    const { rerender } = render(<TitleRunBar {...props} />);
+    const button = screen.getByRole("button", { name: "编辑" });
+    expect(button.previousElementSibling).toHaveTextContent("已完成");
+    fireEvent.click(button);
+    expect(edit).toHaveBeenCalledOnce();
+    expect(screen.queryByText("正在统计")).not.toBeInTheDocument();
+    expect(screen.queryByText("正在准备")).not.toBeInTheDocument();
+    expect(button.querySelector("svg")).toBeInTheDocument();
+    expect(button).toHaveClass("workspace-compact-action");
+    rerender(<TitleRunBar {...props} project={{ ...project, status: "running" }} />);
+    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
+  });
   it("does not expose project progress or run controls without a project context", () => {
     render(
       <TitleRunBar

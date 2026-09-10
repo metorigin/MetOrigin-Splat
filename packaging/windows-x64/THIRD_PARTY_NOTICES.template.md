@@ -5,6 +5,14 @@ The MetOrigin Splat application remains licensed under `MIT OR Apache-2.0`.
 The programs below are shipped as separate, unmodified executable components
 and retain their own licenses.
 
+## SuperSplat Editor
+
+The application also bundles the SuperSplat Editor (MIT), pinned independently
+in `integrations/supersplat/upstream.json`. Its local build includes the upstream
+`LICENSE`, `THIRD_PARTY_NOTICES.txt` for bundled JavaScript runtime dependencies,
+and source maps under `supersplat/` in the application's web assets. The bridge
+source and reproducible build script are in `integrations/supersplat/`.
+
 ## FFmpeg / FFprobe {{FFMPEG_VERSION}}
 
 - Upstream binary archive (not corresponding source): {{FFMPEG_SOURCE_URL}}

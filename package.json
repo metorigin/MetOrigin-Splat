@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "packageManager": "pnpm@11.12.0",
   "scripts": {
+    "prepare:supersplat": "node integrations/supersplat/prepare.mjs",
     "dev": "pnpm --dir apps/desktop dev",
     "build": "pnpm --dir apps/desktop build",
     "lint": "pnpm --dir apps/desktop lint",

@@ -4,8 +4,10 @@ import {
   Export,
   FolderOpen,
   Pause,
+  Pencil,
   Play,
   StopCircle,
+  SpinnerGap,
   Trash,
   XCircle,
 } from "../primitives/icons";
@@ -32,6 +34,8 @@ interface TitleRunBarProps {
   onBlockedAttempt?: () => void;
   taskProgress?: TaskProgress | null;
   updatedAt?: number | null;
+  onEdit?: () => void;
+  openingEditor?: boolean;
 }
 
 export function TitleRunBar({
@@ -50,6 +54,8 @@ export function TitleRunBar({
   onBlockedAttempt = () => undefined,
   taskProgress = null,
   updatedAt = null,
+  onEdit,
+  openingEditor = false,
 }: TitleRunBarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [conflictAssertive, setConflictAssertive] = useState(false);
@@ -69,10 +75,10 @@ export function TitleRunBar({
     isDisabled: (index) => isRunning && index >= 1,
   });
   if (!project) return null;
-  const progress = pipelineSnapshot && Number.isFinite(pipelineSnapshot.state.overall_progress)
+  const progress = isComplete ? 100 : pipelineSnapshot && Number.isFinite(pipelineSnapshot.state.overall_progress)
     ? Math.round(pipelineSnapshot.state.overall_progress * 100)
     : null;
-  const stageLabel = pipelineSnapshot?.state.current_stage
+  const stageLabel = isComplete ? "重建完成" : pipelineSnapshot?.state.current_stage
     ? getStageLabel(pipelineSnapshot.state.current_stage)
     : project.stage_label
       ? getStageLabel(project.stage_label)
@@ -110,6 +116,9 @@ export function TitleRunBar({
 
         <div className="run-actions">
           <span className={`status-pill status-${status}`}><i />{statusLabel}</span>
+          {isComplete && onEdit && (
+            <button type="button" className="button button-secondary workspace-compact-action" onClick={onEdit} disabled={openingEditor} aria-label={openingEditor ? "正在打开编辑器" : "编辑"} title="在操作台内使用 SuperSplat 编辑模型">{openingEditor ? <SpinnerGap size={17} className="spin" /> : <Pencil size={17} />}编辑</button>
+          )}
           {(status === "running" || status === "cancelling") && (
             <button
               type="button"
@@ -191,8 +200,7 @@ export function TitleRunBar({
           <strong>{getProjectStatusLabel(status)}</strong>
           <span>当前阶段</span>
           <strong>{stageLabel}</strong>
-          <span>实际工作量</span>
-          <strong>{workUnit ?? "正在统计"}</strong>
+          {(!isComplete || workUnit) && <><span>实际工作量</span><strong>{workUnit ?? "正在统计"}</strong></>}
           <span>最近更新</span>
           <strong>{updatedAt ? new Date(updatedAt).toLocaleTimeString("zh-CN", { hour12: false }) : "等待活动"}</strong>
         </div>

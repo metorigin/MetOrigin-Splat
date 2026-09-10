@@ -1,6 +1,6 @@
-import { WarningCircle, X } from "./components/primitives/icons";
+import { SpinnerGap, WarningCircle, X } from "./components/primitives/icons";
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ProjectSidebar } from "./components/shell/ProjectSidebar";
 import { TitleRunBar } from "./components/shell/TitleRunBar";
@@ -15,6 +15,8 @@ import {
   useAppContext,
 } from "./context";
 import { shouldIgnoreShortcut, useProjectAvailability } from "./hooks";
+import { useModelEditor } from "./hooks/useModelEditor";
+import type { Page } from "./context";
 import { getStageLabel } from "./localization";
 import { HomePage, NewProjectPage, ProjectDetailPage } from "./pages";
 import {
@@ -43,6 +45,8 @@ import { useTheme } from "./hooks/useTheme";
 import "@fontsource-variable/inter";
 import "@fontsource/jetbrains-mono/400.css";
 import "./styles/buzz.css";
+
+const ModelEditorPage = lazy(() => import("./pages/ModelEditorPage"));
 
 function normalizeProjectStatus(status: string): ProjectStatus {
   const normalized = status.toLowerCase();
@@ -94,6 +98,11 @@ export function AppWorkspace() {
   const [taskProgressByProject, setTaskProgressByProject] = useState<Record<string, TaskProgress>>({});
   const [announcement, setAnnouncement] = useState("");
   const [workspaceActivitySignal, setWorkspaceActivitySignal] = useState(0);
+  const editor = useModelEditor((error) => dispatch({ type: "SET_ERROR", error }));
+  const leaveEditor = editor.leave;
+  const navigate = useCallback(async (page: Page) => {
+    if (await leaveEditor()) dispatch({ type: "NAVIGATE", page });
+  }, [dispatch, leaveEditor]);
   const { retryProjectAvailability } = useProjectAvailability(
     state.recentProjects,
     state.projectAvailability,
@@ -353,6 +362,8 @@ export function AppWorkspace() {
 
   const openSelectedProject = useCallback(
     async (project: ProjectInfo) => {
+      if (activeProjectPath === project.path) return;
+      if (!await leaveEditor()) return;
       dispatch({
         type: "NAVIGATE",
         page: {
@@ -362,7 +373,7 @@ export function AppWorkspace() {
         },
       });
     },
-    [dispatch],
+    [activeProjectPath, dispatch, leaveEditor],
   );
 
   const handleOpenProject = useCallback(async () => {
@@ -390,6 +401,7 @@ export function AppWorkspace() {
   }, [dispatch, openSelectedProject]);
 
   const handleRelinkProject = useCallback(async (project: ProjectInfo) => {
+    if (activeProjectPath === project.path && !await leaveEditor()) return { kind: "cancelled" as const };
     const candidatePath = await selectProjectDirectory();
     if (!candidatePath) return { kind: "cancelled" as const };
     try {
@@ -421,7 +433,7 @@ export function AppWorkspace() {
         message: normalized?.message ?? "无法验证所选项目位置，原记录未更改。",
       };
     }
-  }, [activeProjectPath, dispatch]);
+  }, [activeProjectPath, dispatch, leaveEditor]);
 
   const handleRevealProject = useCallback(async (project: ProjectInfo) => {
     try {
@@ -440,6 +452,7 @@ export function AppWorkspace() {
 
   const handleRemoveProject = useCallback(async (project: ProjectInfo) => {
     try {
+      if (activeProjectPath === project.path && !await leaveEditor()) return;
       const confirmed = await confirmRemoveRecentProject(project.name);
       if (!confirmed) return;
       await desktopApi.removeRecentProject(project.id, project.path);
@@ -450,16 +463,17 @@ export function AppWorkspace() {
     } catch (error) {
       dispatch({ type: "SET_ERROR", error: String(error) });
     }
-  }, [activeProjectPath, dispatch]);
+  }, [activeProjectPath, dispatch, leaveEditor]);
 
-  const requestProjectDeletion = useCallback((project: ProjectInfo) => {
+  const requestProjectDeletion = useCallback(async (project: ProjectInfo) => {
+    if (activeProjectPath === project.path && !await leaveEditor()) return;
     setDeleteCandidate(project);
     setWorkspaceAction({
       projectId: project.id,
       projectPath: project.path,
       action: "delete_project",
     });
-  }, []);
+  }, [activeProjectPath, leaveEditor]);
 
   const handleStart = useCallback(async () => {
     if (!activeProject) return;
@@ -538,7 +552,7 @@ export function AppWorkspace() {
       if (!event.ctrlKey) return;
       if (event.key.toLowerCase() === "n") {
         event.preventDefault();
-        dispatch({ type: "NAVIGATE", page: { type: "new-project" } });
+        void navigate({ type: "new-project" });
       }
       if (event.key.toLowerCase() === "o") {
         event.preventDefault();
@@ -547,7 +561,7 @@ export function AppWorkspace() {
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [dispatch, handleOpenProject]);
+  }, [navigate, handleOpenProject]);
 
   const page = (() => {
     switch (state.page.type) {
@@ -563,6 +577,10 @@ export function AppWorkspace() {
       case "new-project":
         return <NewProjectPage settings={settings} onOpenSettings={() => setSettingsOpen(true)} />;
       case "project-detail":
+        if (editor.session) return <Suspense fallback={<div className="preview-empty" role="status"><SpinnerGap size={28} className="spin" aria-hidden="true" /><span>正在载入</span></div>}>
+          <ModelEditorPage ref={editor.editorRef} session={editor.session}
+            onBack={() => void leaveEditor()} />
+        </Suspense>;
         return (
           <ProjectDetailPage
             key={state.page.projectId}
@@ -576,7 +594,7 @@ export function AppWorkspace() {
   })();
 
   return (
-    <div className={`workspace-shell page-${state.page.type}`}>
+    <div className={`workspace-shell page-${state.page.type}${editor.session ? " is-model-editing" : ""}`}>
       {state.page.type !== "new-project" ? (
         <ProjectSidebar
           projects={state.recentProjects}
@@ -586,9 +604,9 @@ export function AppWorkspace() {
           activeProjectPath={activeProjectPath}
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed((value) => !value)}
-          onHome={() => dispatch({ type: "NAVIGATE", page: { type: "home" } })}
+          onHome={() => void navigate({ type: "home" })}
           onNewProject={() =>
-            dispatch({ type: "NAVIGATE", page: { type: "new-project" } })
+            void navigate({ type: "new-project" })
           }
           onOpenProject={() => void handleOpenProject()}
           onOpenSettings={() => setSettingsOpen(true)}
@@ -608,14 +626,16 @@ export function AppWorkspace() {
       <section className="workspace-surface">
         <div className="workspace-header-stack">
           {state.page.type === "home" ? <h1 className="sr-only">项目中心</h1> : null}
-          {state.page.type === "project-detail" ? (
+          {state.page.type === "project-detail" && !editor.session ? (
             <TitleRunBar
               project={activeProject}
               pipelineSnapshot={viewedPipelineSnapshot}
               pipelineConflict={pipelineConflict}
               taskProgress={activeProject ? taskProgressByProject[activeProject.id] ?? null : null}
               updatedAt={viewedPipelineFreshness.updatedAt}
-              onHome={() => dispatch({ type: "NAVIGATE", page: { type: "home" } })}
+              onHome={() => void navigate({ type: "home" })}
+              onEdit={isDesktopRuntime() && activeProject ? () => void editor.open(activeProject) : undefined}
+              openingEditor={editor.opening}
               onBlockedAttempt={() => activeProject && blockForActiveProject(activeProject.id)}
               onStart={() => void handleStart()}
               onPause={handlePause}

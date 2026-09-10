@@ -439,9 +439,14 @@ pub fn get_project_artifacts(project_path: String) -> Result<ArtifactSummary, St
             .cloned()
             .unwrap_or_default(),
         colmap_validation,
-        splat_count: output_json
-            .as_ref()
-            .and_then(|value| value["ply"]["vertex_count"].as_u64()),
+        // Editing replaces scene.ply; the training manifest may describe an older model.
+        splat_count: ExportManager::vertex_count(&project_dir.join("output/scene.ply"))
+            .ok()
+            .or_else(|| {
+                output_json
+                    .as_ref()
+                    .and_then(|value| value["ply"]["vertex_count"].as_u64())
+            }),
     })
 }
 

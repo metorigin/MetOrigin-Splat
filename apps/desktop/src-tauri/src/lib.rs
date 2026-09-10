@@ -13,6 +13,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
+        .manage(commands::editor::EditorState::default())
         .invoke_handler(tauri::generate_handler![
             // System
             commands::system::app_version,
@@ -67,6 +68,9 @@ pub fn run() {
             commands::preview::get_gaussian_camera,
             commands::preview::read_gaussian_ply,
             commands::preview::poll_live_preview,
+            commands::editor::open_model_editor,
+            commands::editor::close_model_editor,
+            commands::editor::save_edited_ply,
         ])
         .setup(|_app| {
             #[cfg(debug_assertions)]

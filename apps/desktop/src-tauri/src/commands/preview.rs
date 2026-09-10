@@ -128,10 +128,10 @@ fn read_camera_fov(path: &Path, wanted: u32) -> Option<f64> {
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct GaussianPreviewSource {
-    relative_path: String,
-    revision: String,
-    vertex_count: u64,
-    size_bytes: u64,
+    pub(super) relative_path: String,
+    pub(super) revision: String,
+    pub(super) vertex_count: u64,
+    pub(super) size_bytes: u64,
     iteration: Option<u32>,
 }
 
@@ -144,7 +144,7 @@ pub struct LivePreviewStatus {
     frame: Option<GaussianPreviewSource>,
 }
 
-fn project_root(project_path: &str, project_id: &str) -> Result<PathBuf, String> {
+pub(super) fn project_root(project_path: &str, project_id: &str) -> Result<PathBuf, String> {
     let root = Path::new(project_path)
         .canonicalize()
         .map_err(|_| "项目目录不存在。")?;
@@ -155,7 +155,7 @@ fn project_root(project_path: &str, project_id: &str) -> Result<PathBuf, String>
     Ok(root)
 }
 
-fn safe_path(root: &Path, relative: &str) -> Result<PathBuf, String> {
+pub(super) fn safe_path(root: &Path, relative: &str) -> Result<PathBuf, String> {
     let relative = Path::new(relative);
     if relative.as_os_str().is_empty()
         || relative
@@ -194,7 +194,7 @@ fn revision(metadata: &std::fs::Metadata) -> String {
 
 /// Validate the full vertex payload using its layout, without turning millions
 /// of attributes into a JSON point array or silently sampling the model.
-fn ply_vertex_count(file: &mut File) -> Result<u64, String> {
+pub(super) fn ply_vertex_count(file: &mut File) -> Result<u64, String> {
     let size = file.metadata().map_err(|error| error.to_string())?.len();
     if size > MAX_PLY_BYTES {
         return Err("该 PLY 超过当前预览的 1 GiB 文件上限。".into());
@@ -279,7 +279,7 @@ fn ply_vertex_count(file: &mut File) -> Result<u64, String> {
     Ok(count)
 }
 
-fn source(
+pub(super) fn source(
     root: &Path,
     relative_path: &str,
     iteration: Option<u32>,

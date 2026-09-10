@@ -1,9 +1,9 @@
 import { writeFile } from "node:fs/promises";
 
 /** Small CDP client for exercising the actual Tauri IPC and WebGL surface. */
-export async function connectPreviewTest(port = 9246) {
+export async function connectPreviewTest(port = 9246, match = () => true) {
   const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-  const target = targets.find((item) => item.type === "page" && !item.url.startsWith("devtools:"));
+  const target = targets.find((item) => item.type === "page" && !item.url.startsWith("devtools:") && match(item));
   if (!target) throw new Error("No test application webview found");
   const socket = new WebSocket(target.webSocketDebuggerUrl);
   const pending = new Map();

@@ -1,9 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "./App";
+const Page = React.lazy(() => import("./App"));
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <React.Suspense fallback={<div>正在启动…</div>}><Page /></React.Suspense>
   </React.StrictMode>,
 );

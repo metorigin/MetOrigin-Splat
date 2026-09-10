@@ -1,0 +1,13 @@
+.workspace-shell.is-model-editing .workspace-content { overflow: hidden; }
+.model-editor-page { height: 100%; min-height: 0; display: flex; flex-direction: column; color: var(--text-primary); background: var(--bg-panel); }
+.model-editor-header { display: flex; align-items: center; justify-content: space-between; padding: .75rem 1.25rem; gap: 1rem; border-bottom: 1px solid var(--border-subtle); }
+.model-editor-header > div:first-child { display: flex; align-items: baseline; gap: 14px; min-width: 0; }
+.model-editor-header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-editor-header span { color: var(--text-secondary); font-size: .75rem; }
+.model-editor-actions { display: flex; gap: .5rem; flex-shrink: 0; }
+.model-editor-status { margin-left: auto; font-size: .75rem; color: var(--text-secondary); }
+.model-editor-content { position: relative; flex: 1; min-height: 0; }
+.model-editor-content iframe { width: 100%; height: 100%; display: block; border: 0; }
+.model-editor-busy { position: absolute; inset: 0; display: grid; place-items: center; background: #15191fe6; color: #e6e9ee; font-size: 15px; }
+.model-editor-busy-content { display: flex; flex-direction: column; align-items: center; gap: .75rem; }
+.model-editor-error { background: #45242b; color: #ffd2d2; padding: 10px 20px; font-size: 13px; }

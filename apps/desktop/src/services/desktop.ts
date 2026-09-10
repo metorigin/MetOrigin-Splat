@@ -22,6 +22,8 @@ import type {
   FramePreview,
   PlyPreview,
   GaussianPreviewSource,
+  SavedModel,
+  EditorSession,
   GaussianCamera,
   LivePreviewMode,
   LivePreviewStatus,
@@ -283,6 +285,13 @@ export const desktopApi = {
     invoke<PlyPreview>("inspect_ply", { projectPath, relativePath: relativePath ?? null }),
   getGaussianPreview: (projectId: string, projectPath: string, relativePath?: string | null) =>
     invoke<GaussianPreviewSource>("get_gaussian_preview", { projectId, projectPath, relativePath: relativePath ?? null }),
+  openModelEditor: (projectId: string, projectPath: string) =>
+    invoke<EditorSession>("open_model_editor", { projectId, projectPath }),
+  closeModelEditor: (sessionId: string) => invoke<void>("close_model_editor", { sessionId }),
+  saveEditedPly: async (sessionId: string, bytes: ArrayBuffer): Promise<SavedModel> => {
+    try { return await tauriInvoke<SavedModel>("save_edited_ply", new Uint8Array(bytes), { headers: { "x-editor-session": sessionId } }); }
+    catch (error) { throw new DesktopCommandError("save_edited_ply", error); }
+  },
   getGaussianCamera: (projectId: string, projectPath: string) =>
     invoke<GaussianCamera | null>("get_gaussian_camera", { projectId, projectPath }),
   readGaussianPly: (projectId: string, projectPath: string, source: GaussianPreviewSource) =>
