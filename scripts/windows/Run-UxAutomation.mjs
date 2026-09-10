@@ -136,6 +136,8 @@ async function findExecutable(candidates) {
 }
 
 function mockTauriBootstrap() {
+  // Existing acceptance scenarios use Chinese labels regardless of the CI host locale.
+  localStorage.setItem("metorigin.ui.language", "zh-CN");
   const now = () => new Date().toISOString();
   const projectA = {
     id: "e2e-project-a",
@@ -551,6 +553,33 @@ async function run() {
     const homeHasRunControls = await evaluate("Boolean(document.querySelector('[role=progressbar]'))");
     check("home-context-isolation", !homeHasRunControls, "Home renders its own context without project progress controls.");
     await capture("home-1440x1024-100pct");
+
+    progress("validating language selection in the production build");
+    await clickButton("设置与引擎");
+    await waitFor("Boolean(document.querySelector('.settings-language select'))");
+    const selectLanguage = async (locale) => {
+      await evaluate(`(() => {
+        const select = document.querySelector('.settings-language select');
+        select.value = ${JSON.stringify(locale)};
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await waitFor(`document.documentElement.lang === ${JSON.stringify(locale)}`);
+    };
+    await selectLanguage("en");
+    check("english-language-selection", await evaluate(`
+      localStorage.getItem('metorigin.ui.language') === 'en'
+      && Boolean(document.querySelector('button[aria-label="Close settings"]'))
+      && [...document.querySelectorAll('h1,h2')].some(node => node.textContent.trim() === 'Project Hub')
+      && document.body.textContent.includes('自动化项目 A')
+    `), "English selection updates the open settings and workspace while preserving user project names.");
+    await capture("settings-english-1440x1024");
+    await selectLanguage("zh-CN");
+    check("chinese-language-selection", await evaluate(`
+      localStorage.getItem('metorigin.ui.language') === 'zh-CN'
+      && Boolean(document.querySelector('button[aria-label="关闭设置"]'))
+      && [...document.querySelectorAll('h1,h2')].some(node => node.textContent.trim() === '项目中心')
+    `), "Chinese selection restores localized settings and workspace without closing the drawer.");
+    await clickButton("关闭设置");
 
     await clickButton("自动化项目 B");
     await waitFor("[...document.querySelectorAll('h1')].some((node) => node.textContent?.trim() === '自动化项目 B')", 10_000, "未进入项目 B。");
