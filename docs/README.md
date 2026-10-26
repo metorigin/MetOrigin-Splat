@@ -31,6 +31,9 @@
 
 ## 历史验证与设计记录 / Historical records
 
+- [前端迁移与优化方案](frontend-migration-plan.zh-CN.md)：Proposed，包含 shadcn/ui、Tailwind CSS、Magic UI 的兼容策略、迁移分期和性能验收。
+- [设计系统方案](design-system-proposal.zh-CN.md)：Proposed，定义目标视觉、组件、布局、业务状态和动效规范；尚未作为当前界面实现。
+
 - [真实引擎基线，2026-07-13](validation/engine-baseline.md)：保留测量数据和兼容性发现，不代表当前完整兼容性矩阵。
 - [设计契约与验收协议索引](../specs/README.md)：供追踪状态、安全交互和验收方法；旧界面文案与布局以当前使用指南和代码为准。
 
