@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { localizeMessage, t } from "../../i18n";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { desktopApi, DesktopCommandError } from "../../services/desktop";
 import { normalizeCommandError } from "../../services/errors";
@@ -42,6 +42,14 @@ export function WorkspaceActionDialog({
   const cancelRef = useRef<HTMLButtonElement>(null);
   const updatedHeadingRef = useRef<HTMLHeadingElement>(null);
 
+  useLayoutEffect(() => {
+    // Own focus after the refreshed heading has committed and the busy guard
+    // has settled. A frame queued from the promise may precede that commit.
+    if (conflictMessage && previewUsable && !loading && !busy) {
+      updatedHeadingRef.current?.focus();
+    }
+  }, [conflictMessage, previewUsable, loading, busy]);
+
   const loadPreview = useCallback(async (reason: "initial" | "stale" | "retry" = "initial") => {
     const currentGeneration = ++generation.current;
     setLoading(true);
@@ -55,7 +63,6 @@ export function WorkspaceActionDialog({
       setPreviewUsable(true);
       if (reason !== "initial") {
         setConflictMessage(t("影响说明已更新。请重新检查以下变化并再次确认；尚未执行任何操作。"));
-        window.requestAnimationFrame(() => updatedHeadingRef.current?.focus());
       }
     } catch (cause) {
       if (generation.current !== currentGeneration) return;
@@ -85,7 +92,6 @@ export function WorkspaceActionDialog({
           setPreview(result.preview);
           setPreviewUsable(true);
           setConflictMessage(t("{0} 影响说明已更新，请重新确认。", result.message));
-          window.requestAnimationFrame(() => updatedHeadingRef.current?.focus());
           return;
         }
         setReceipt(result.receipt);

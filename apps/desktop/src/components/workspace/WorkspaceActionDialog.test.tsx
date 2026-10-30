@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DesktopCommandError, desktopApi } from "../../services/desktop";
@@ -76,13 +76,20 @@ describe("WorkspaceActionDialog", () => {
   });
 
   it("keeps the dialog open, focuses the updated alert, and requires explicit reconfirmation after stale", async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const stale = {
+      kind: "stale" as const,
+      code: "UI-ACTION-PREVIEW-STALE" as const,
+      message: "State changed; nothing was executed.",
+      preview: preview("token-2", "updated pipeline"),
+    };
+    const pending = deferred<typeof stale>();
     const execute = vi.spyOn(desktopApi, "executeWorkspaceAction")
-      .mockResolvedValueOnce({
-        kind: "stale",
-        code: "UI-ACTION-PREVIEW-STALE",
-        message: "State changed; nothing was executed.",
-        preview: preview("token-2", "updated pipeline"),
-      })
+      .mockReturnValueOnce(pending.promise)
       .mockResolvedValueOnce({ kind: "completed", receipt: receipt() });
     render(<WorkspaceActionDialog request={request} onClose={vi.fn()} />);
 
@@ -90,6 +97,14 @@ describe("WorkspaceActionDialog", () => {
     await screen.findByText("kept artifact");
     let buttons = within(dialog).getAllByRole("button");
     fireEvent.click(buttons[buttons.length - 1]);
+
+    await act(async () => {
+      pending.resolve(stale);
+      await Promise.resolve();
+      // A frame may run before React commits an async result. Focusing a ref
+      // from that frame must not lose the committed stale-state announcement.
+      for (const callback of frames.splice(0)) callback(performance.now());
+    });
 
     expect(await screen.findByText("updated pipeline")).toBeVisible();
     const alert = within(dialog).getByRole("alert");
