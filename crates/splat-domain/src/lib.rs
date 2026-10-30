@@ -10,9 +10,11 @@ pub mod hardware;
 pub mod pipeline;
 pub mod progress;
 pub mod project;
+pub mod runtime;
 
 pub use error::{AppError, AppErrorData, AppResult, ErrorCategory};
 pub use hardware::{EngineInfo, EnginePaths, GpuDevice, HardwareProfile};
 pub use pipeline::{PipelineStageId, PipelineState, StageState, StageStatus};
 pub use progress::TaskProgress;
 pub use project::{Project, ProjectId, ProjectSettings, ProjectSource, ProjectStatus};
+pub use runtime::ExecutionProfile;

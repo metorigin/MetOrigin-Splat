@@ -1,0 +1,114 @@
+{
+  "repository": "https://github.com/janhq/jan",
+  "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+  "retrieved": "2026-10-29",
+  "transport": "GitHub connector fixed-ref contents API; exact UTF-8 bytes; Git blob SHA verified",
+  "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+  "files": [
+    {
+      "upstreamPath": "web-app/src/index.css",
+      "upstreamBlobSha": "c8242dd520076a3cf9752e1367a1717766878dc2",
+      "upstreamSha256": "d8cb17cac94535a6d710ebf94d1b5ea0c72a0065591da264f95424d3c5de7ac5"
+    },
+    {
+      "upstreamPath": "web-app/src/hooks/useInterfaceSettings.ts",
+      "upstreamBlobSha": "cb02b4ac420d08f1b62dc90928af0e66e258363c",
+      "upstreamSha256": "4c040d8e7e44e951ac8555041e0a74562a29c753fa41ad44089d3fecc78c25ff"
+    },
+    {
+      "upstreamPath": "web-app/src/providers/InterfaceProvider.tsx",
+      "upstreamBlobSha": "657361cfe17a78baf92558e254f8e1f14d5bc880",
+      "upstreamSha256": "f5b7f6719501dd47b466c1144a4a3c169348da31fc3f72466460a00e0f325dcb"
+    },
+    {
+      "upstreamPath": "web-app/src/components/ui/sidebar.tsx",
+      "upstreamBlobSha": "6d686f6c91ddaf53bef721508323a841edabf118",
+      "upstreamSha256": "7533d5843311d2ac698aab6ec06be5439ab250b83df610585e96e12f89175dac"
+    },
+    {
+      "upstreamPath": "web-app/src/hooks/use-sidebar-resize.ts",
+      "upstreamBlobSha": "059c02eb670a611c16660732733e0d6347d5b782",
+      "upstreamSha256": "f9039e617292dae791fe73262114c22735527caae191c2618356533287bd2df0"
+    },
+    {
+      "upstreamPath": "web-app/src/components/left-sidebar/index.tsx",
+      "upstreamBlobSha": "79ebaf11c379753bbd1717ecaa65d5d4d9671848",
+      "upstreamSha256": "4747e8ee3b2b06143dc35e04167f586e23cc7a54bbf264c63d1cf640deafd23b"
+    },
+    {
+      "upstreamPath": "web-app/src/containers/HeaderPage.tsx",
+      "upstreamBlobSha": "a7dbbcaecef74759a68348f264b0c28d5dffc36d",
+      "upstreamSha256": "de17eead12a24c146ced63873ab407e7f98775f17a522852cfd0df8d72134cf5"
+    },
+    {
+      "upstreamPath": "web-app/src/containers/Card.tsx",
+      "upstreamBlobSha": "83ae89f321b014ee26c2a56b4d81aa8c70ba7942",
+      "upstreamSha256": "03e29389b06a6274ec695c6712f1d3a6d1ac5bb559c5db3d4beca8e31f255b3c"
+    },
+    {
+      "upstreamPath": "web-app/src/containers/SettingsMenu.tsx",
+      "upstreamBlobSha": "02fee4c95f800a5e8d5f5e94094bde4ca849b41c",
+      "upstreamSha256": "a86ca002184e6af0f2f25e94ee4e06ca832593e9a5fd4e4b47828a2e48728711"
+    },
+    {
+      "upstreamPath": "web-app/src/routes/settings/interface.tsx",
+      "upstreamBlobSha": "ade5c1d7060678b8335583cbbc864684397cd3c1",
+      "upstreamSha256": "e50332680fe814cbe9bcb653aecc7cd097366f63e09f7600683eab4c614450c9"
+    },
+    {
+      "upstreamPath": "LICENSE",
+      "upstreamBlobSha": "d614b967f4b5b3634dee1e659d9d2f076f458ae8",
+      "upstreamSha256": "240e79d4976dbf1d4c76e0ac1da223df97935a75497eaf8dd045771c3e92de16"
+    },
+    {
+      "upstreamPath": "web-app/src/components/ui/button.tsx",
+      "upstreamBlobSha": "0a4a309865bc158836b943b7d6eedb294925f9c2",
+      "upstreamSha256": "5771109b37686b69bf2086e5a8e43b39be93136644c1d93db1d86665df8feb5e"
+    },
+    {
+      "upstreamPath": "web-app/src/components/ui/input.tsx",
+      "upstreamBlobSha": "146f6ea4a18fb2565c2f89748d1cbdd280eefd2e",
+      "upstreamSha256": "d14cad56f90c5110d7f34212229359ffe404f8adbc72093bb4cd23548d0051ac"
+    },
+    {
+      "upstreamPath": "web-app/src/components/ui/dialog.tsx",
+      "upstreamBlobSha": "1fa5f71a64bb2467ccbd95667ccf1a1aedaaea9e",
+      "upstreamSha256": "8a2e38d27190ad6df1dd1aca7d882b45af735d502227def1a098b9e84b713549"
+    },
+    {
+      "upstreamPath": "web-app/src/components/ui/dropdown-menu.tsx",
+      "upstreamBlobSha": "eaed9baffa5f42d6a253d14e66aee9446ee91d7e",
+      "upstreamSha256": "ba022169876b487c849d046ac577654ab61a4cfba158305c8790c572b704ed9e"
+    },
+    {
+      "upstreamPath": "web-app/src/components/ui/tooltip.tsx",
+      "upstreamBlobSha": "1f022c1da7d15f583a21d8c2aeab02c123ab11a6",
+      "upstreamSha256": "6ce876f55fec08297ab9fa8a22052d39e6a2ceb5c0a42ed49473d2af800064b8"
+    },
+    {
+      "upstreamPath": "web-app/src/components/ui/switch.tsx",
+      "upstreamBlobSha": "41c7e9e91e29387894592843cf8473c9aab1fd84",
+      "upstreamSha256": "07e2bdcb4374274e183c37542aa84de2f07735554ac2096594bde2d19707775b"
+    },
+    {
+      "upstreamPath": "web-app/src/components/ui/separator.tsx",
+      "upstreamBlobSha": "bb3ad74cff11f2d43ae6ee8b36387c6ae4a67400",
+      "upstreamSha256": "18e5bf93682eb91864d9a1b8c0a09e46ad15d6ef1ffe97b3ccf9e4697756b6e2"
+    },
+    {
+      "upstreamPath": "web-app/src/components/ui/sheet.tsx",
+      "upstreamBlobSha": "97f751061178c43d8dbe64f8bc0ad81743dc5e84",
+      "upstreamSha256": "65bf9003a607d9e5f7f6a734fd1f81e22c3cb9da5b5ea59fea9be8684c998acc"
+    },
+    {
+      "upstreamPath": "web-app/src/components/ui/kbd.tsx",
+      "upstreamBlobSha": "a95d6e573c0d815d41297ffb7081b6564364fe67",
+      "upstreamSha256": "699f07432269e43a4ba05af24bdba77ff31d7d64400413b323132e272c74312b"
+    },
+    {
+      "upstreamPath": "web-app/src/components/ui/progress.tsx",
+      "upstreamBlobSha": "9ef4f8cfaf791f59d96aaa12420628e8d18825f1",
+      "upstreamSha256": "ae1f040765bee7e354890aa9fabdf6097177923c7f6c18cd250523698c889889"
+    }
+  ]
+}

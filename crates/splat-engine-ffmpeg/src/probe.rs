@@ -20,7 +20,8 @@ pub struct VideoMetadata {
     pub duration_seconds: f64,
     /// Codec name (e.g. "h264")
     pub codec: String,
-    /// Rotation metadata from the video stream (if present)
+    /// Raw FFprobe display-matrix rotation in counterclockwise degrees.
+    /// Preserve its sign for provenance; extraction normalizes equivalent turns.
     pub rotation: Option<i32>,
 }
 
@@ -262,7 +263,8 @@ fn parse_probe_output(stdout: &[u8], path: &Path) -> AppResult<VideoMetadata> {
         .unwrap_or("unknown")
         .to_string();
 
-    // Rotation metadata
+    // FFprobe reports av_display_rotation_get's counterclockwise angle, often
+    // negative for phone recordings. Preserve the raw value in the manifest.
     let rotation = video_stream
         .side_data_list
         .as_ref()
@@ -432,6 +434,30 @@ mod tests {
     }
 
     // ─── Metadata construction ──────────────────────────────────────────
+
+    #[test]
+    fn display_matrix_rotation_preserves_signed_counterclockwise_degrees() {
+        for rotation in [-90, 90, 270, -180, 450, -450, 360] {
+            let output = serde_json::json!({
+                "streams": [{
+                    "codec_type": "video", "codec_name": "h264",
+                    "width": 1920, "height": 1440,
+                    "avg_frame_rate": "30/1", "nb_frames": "714",
+                    "duration": "23.796667",
+                    "side_data_list": [{
+                        "side_data_type": "Display Matrix", "rotation": rotation
+                    }]
+                }]
+            });
+            let metadata = parse_probe_output(
+                &serde_json::to_vec(&output).unwrap(),
+                Path::new("phone.MOV"),
+            )
+            .unwrap();
+            assert_eq!(metadata.rotation, Some(rotation));
+            assert_eq!((metadata.width, metadata.height), (1920, 1440));
+        }
+    }
 
     #[test]
     fn test_metadata_serialization() {

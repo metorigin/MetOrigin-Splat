@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "spark-2.1.0-resource-ownership-v2",
+  "package": {
+    "name": "@sparkjsdev/spark",
+    "version": "2.1.0",
+    "package_json_sha256": "0b37b0e7482bbd6cb34476a660d5106f5b908a4b0885be056eb2d64b4dca9e8d"
+  },
+  "patch": {
+    "path": "patches/@sparkjsdev__spark@2.1.0.patch",
+    "sha256": "eb4e6b310d3a694ae155b92ed461b1efbbd7797328e200b319af77f478525933"
+  },
+  "files": [
+    {
+      "path": "dist/spark.module.js",
+      "base_sha256": "c0355a962f68a6de9b13df69f05b1aba3614d9aec43a4504975daeb349126a8a",
+      "sha256": "362e5c0f7e9e4aa25544bb71570e04944c486a1b5598dbb22916cf88d3a9b0a1",
+      "size_bytes": 5392550
+    },
+    {
+      "path": "dist/spark.cjs.js",
+      "base_sha256": "40da75bd710cdcf5543adbed8c34edcb1bf24dffbb8bdcfa84bdadfec06b49ca",
+      "sha256": "f6e0551cdbbcaa2edc5f96b6815ff66ceef1f5bde682339474513bf45e69b42a",
+      "size_bytes": 5400943
+    },
+    {
+      "path": "dist/types/SparkRenderer.d.ts",
+      "base_sha256": "f14a830de4eb2221f31b0a50da173a44f899268e094a721d165345f9eb276c6f",
+      "sha256": "1c6206ad8fe7af6a55ba14ee56dcd1ac0d58e78761f95dc8e23d2ddfc1caa8f7",
+      "size_bytes": 18806
+    },
+    {
+      "path": "dist/types/SplatAccumulator.d.ts",
+      "base_sha256": "f2d5ea3d0b980ca20e1d9bc1a18cc852472f601ac8125b06ec2ab6d052773596",
+      "sha256": "8c5d4cfc6af508ab792b17c988faa3012afdd17038cc339155a7eb5ad7844f89",
+      "size_bytes": 3639
+    },
+    {
+      "path": "dist/types/Readback.d.ts",
+      "base_sha256": "cccac6943ca75d86cc59bba510136275deebe101bd06cdf06285464b257179f1",
+      "sha256": "e6275baec0f480cd51c653b200099050a44853aeefb596288b81c8980fb8cba9",
+      "size_bytes": 2095
+    },
+    {
+      "path": "dist/types/PackedSplats.d.ts",
+      "base_sha256": "72ea2a0a5d99c27fdbba5a4142b102d88e7eb5496d9abed3a6e4f721c89084b8",
+      "sha256": "90df7e1ea4171e69a8a18f9933812997e193a1a60a22006a7b5ee2688c94fc50",
+      "size_bytes": 5697
+    }
+  ]
+}

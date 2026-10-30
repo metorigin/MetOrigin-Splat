@@ -4,6 +4,7 @@ use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_process::CommandSpec;
 
 use crate::database::{inspect_database, inspect_database_image_names};
+use crate::execution::ColmapExecutionSettings;
 use crate::runtime;
 use crate::types::{CameraModel, FeatureExtractionResult};
 
@@ -42,12 +43,22 @@ impl Default for FeatureExtractionOptions {
 /// - Converting COLMAP output into structured results
 pub struct FeatureExtractor {
     colmap_path: PathBuf,
+    execution_settings: Option<ColmapExecutionSettings>,
 }
 
 impl FeatureExtractor {
     /// Create a new feature extractor with the path to COLMAP.
     pub fn new(colmap_path: PathBuf) -> Self {
-        Self { colmap_path }
+        Self {
+            colmap_path,
+            execution_settings: None,
+        }
+    }
+
+    /// Select a validated frozen profile. Its backend overrides legacy options.
+    pub fn with_execution_settings(mut self, settings: ColmapExecutionSettings) -> Self {
+        self.execution_settings = Some(settings);
+        self
     }
 
     /// Build a `CommandSpec` for `colmap feature_extractor`.
@@ -69,24 +80,26 @@ impl FeatureExtractor {
         options: &FeatureExtractionOptions,
         log_path: &Path,
     ) -> CommandSpec {
-        let mut args: Vec<std::ffi::OsString> = Vec::new();
-
-        // Command name
-        args.push("feature_extractor".into());
-        args.push("--log_target".into());
-        args.push("stderr".into());
-
-        // Database path
-        args.push("--database_path".into());
-        args.push(database_path.as_os_str().to_owned());
-
-        // Image path
-        args.push("--image_path".into());
-        args.push(image_path.as_os_str().to_owned());
-
-        // GPU acceleration
-        args.push("--FeatureExtraction.use_gpu".into());
-        args.push(if options.use_gpu { "1" } else { "0" }.into());
+        let mut args: Vec<std::ffi::OsString> = vec![
+            "feature_extractor".into(),
+            "--log_target".into(),
+            "stderr".into(),
+            "--database_path".into(),
+            database_path.as_os_str().to_owned(),
+            "--image_path".into(),
+            image_path.as_os_str().to_owned(),
+            "--FeatureExtraction.use_gpu".into(),
+        ];
+        let use_gpu = self
+            .execution_settings
+            .as_ref()
+            .map(ColmapExecutionSettings::feature_uses_gpu)
+            .unwrap_or(options.use_gpu);
+        args.push(if use_gpu { "1" } else { "0" }.into());
+        if let Some(settings) = &self.execution_settings {
+            args.push("--FeatureExtraction.num_threads".into());
+            args.push(settings.threads().to_string().into());
+        }
 
         // Max features per image
         args.push("--SiftExtraction.max_num_features".into());
@@ -100,7 +113,12 @@ impl FeatureExtractor {
         args.push("--ImageReader.camera_model".into());
         args.push(options.camera_model.as_str().into());
 
-        runtime::command_spec(&self.colmap_path, args, log_path)
+        runtime::command_spec_with_settings(
+            &self.colmap_path,
+            args,
+            log_path,
+            self.execution_settings.as_ref(),
+        )
     }
 
     /// Validate the feature extraction results.
@@ -134,15 +152,17 @@ impl FeatureExtractor {
             return Err(AppError::new(
                 "E-3010",
                 ErrorCategory::Engine,
-                "Feature Extraction Failed",
-                "COLMAP did not extract features for any images. \
-                 The images may be invalid, corrupted, or of an unsupported format.",
+                "未提取到可用图片特征",
+                format!(
+                    "输入共 {} 张图片，数据库中有 {} 张图片、{} 个特征点，未获得可用图片特征。\
+                     请检查照片是否可读取、清晰且有足够纹理；必要时补拍后重新提取特征。",
+                    total_images, stats.images, stats.keypoints
+                ),
             )
             .with_suggestions(vec![
-                "Verify that the images are valid JPG/PNG files",
-                "Check that the images have sufficient texture",
-                "Examine the COLMAP log for specific error messages",
-                "Try disabling GPU acceleration if it was enabled",
+                "确认照片是可正常读取的 JPG/PNG 文件",
+                "补拍清晰且有可识别纹理的照片，避免大面积纯色或模糊画面",
+                "查看 COLMAP 日志确认是否存在图片解码错误，再重新提取特征",
             ]));
         }
 
@@ -164,9 +184,10 @@ impl FeatureExtractor {
             return Err(AppError::new(
                 "E-3010",
                 ErrorCategory::Engine,
-                "Incomplete Feature Extraction",
+                "部分图片特征提取失败",
                 format!(
-                    "COLMAP stored features for {} of {} input images. Skipped: {}.",
+                    "COLMAP 为 {} / {} 张输入图片保存了特征。未成功处理：{}。\
+                     请检查这些图片是否可读取及尺寸、相机分组是否兼容，再重试特征提取。",
                     stats.images, total_images, missing_text
                 ),
             )
@@ -230,6 +251,137 @@ fn image_names(dir_path: &Path) -> AppResult<Vec<String>> {
 mod tests {
     use super::*;
     use crate::types::CameraModel;
+
+    fn extraction_fixture(
+        input_names: &[&str],
+        stored_images: &[(&str, usize)],
+    ) -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let images = dir.path().join("images");
+        std::fs::create_dir(&images).unwrap();
+        for name in input_names {
+            // Validation enumerates filenames; image decoding belongs to COLMAP.
+            std::fs::write(images.join(name), []).unwrap();
+        }
+        let database = dir.path().join("database.db");
+        let connection = rusqlite::Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE cameras (camera_id INTEGER PRIMARY KEY);\
+                 CREATE TABLE images (image_id INTEGER PRIMARY KEY, name TEXT NOT NULL);\
+                 CREATE TABLE keypoints (image_id INTEGER PRIMARY KEY, rows INTEGER NOT NULL);\
+                 CREATE TABLE two_view_geometries (pair_id INTEGER PRIMARY KEY, rows INTEGER NOT NULL);",
+            )
+            .unwrap();
+        for (index, (name, keypoints)) in stored_images.iter().enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO images VALUES (?1, ?2)",
+                    rusqlite::params![index + 1, name],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO keypoints VALUES (?1, ?2)",
+                    rusqlite::params![index + 1, keypoints],
+                )
+                .unwrap();
+        }
+        (dir, database, images)
+    }
+
+    fn localized_extraction_error(error: AppError, retryable: bool) -> String {
+        assert_eq!(error.code, "E-3010");
+        assert_eq!(error.category, ErrorCategory::Engine);
+        assert_eq!(error.retryable, retryable);
+        let localized = error.localized_for_ui();
+        assert_eq!(localized.title, error.title);
+        assert_eq!(localized.user_message, error.user_message);
+        assert_eq!(localized.suggestions, error.suggestions);
+        assert!(!localized.suggestions.is_empty());
+        assert_eq!(localized.code, error.code);
+        assert_eq!(localized.category, error.category);
+        assert_eq!(localized.retryable, error.retryable);
+        assert_eq!(localized.technical_message, error.technical_message);
+        assert_eq!(localized.log_path, error.log_path);
+        let displayed = localized.to_string();
+        assert_eq!(
+            displayed,
+            format!("[E-3010] {}: {}", error.title, error.user_message)
+        );
+        displayed
+    }
+
+    #[test]
+    fn test_validate_extraction_empty_database_preserves_readability_guidance() {
+        let (_dir, database, images) = extraction_fixture(&["a.jpg", "b.jpg"], &[]);
+        let error = FeatureExtractor::validate_extraction(&database, &images, false).unwrap_err();
+        let displayed = localized_extraction_error(error, false);
+        assert!(displayed.contains("输入共 2 张图片，数据库中有 0 张图片、0 个特征点"));
+        assert!(displayed.contains("可读取"));
+        assert!(displayed.contains("重新提取特征"));
+        assert!(!displayed.contains("全部图片已读取"));
+    }
+
+    #[test]
+    fn test_validate_extraction_zero_keypoints_preserves_texture_guidance() {
+        let (_dir, database, images) =
+            extraction_fixture(&["a.jpg", "b.jpg"], &[("a.jpg", 0), ("b.jpg", 0)]);
+        let error = FeatureExtractor::validate_extraction(&database, &images, false).unwrap_err();
+        let displayed = localized_extraction_error(error, false);
+        assert!(displayed.contains("输入共 2 张图片，数据库中有 2 张图片、0 个特征点"));
+        assert!(displayed.contains("清晰且有足够纹理"));
+        assert!(displayed.contains("补拍后重新提取特征"));
+        assert!(!displayed.contains("引擎执行失败"));
+    }
+
+    #[test]
+    fn test_validate_extraction_partial_ascii_names_survive_localization() {
+        let (_dir, database, images) =
+            extraction_fixture(&["a.jpg", "b.png", "c.jpg"], &[("a.jpg", 10)]);
+        let error = FeatureExtractor::validate_extraction(&database, &images, false).unwrap_err();
+        let displayed = localized_extraction_error(error, true);
+        assert!(displayed.contains("部分图片特征提取失败"));
+        assert!(displayed.contains("1 / 3 张输入图片"));
+        assert!(displayed.contains("未成功处理：b.png、c.jpg"));
+        assert!(displayed.contains("尺寸、相机分组是否兼容，再重试特征提取"));
+        assert!(!displayed.contains("足够纹理"));
+    }
+
+    #[test]
+    fn test_validate_extraction_partial_missing_names_stay_sorted_and_bounded() {
+        let (_dir, database, images) = extraction_fixture(
+            &[
+                "present.jpg",
+                "i.jpg",
+                "h.jpg",
+                "g.jpg",
+                "f.jpg",
+                "e.jpg",
+                "d.jpg",
+                "c.jpg",
+                "b.jpg",
+                "a-缺失.png",
+            ],
+            &[("present.jpg", 10)],
+        );
+        let error = FeatureExtractor::validate_extraction(&database, &images, false).unwrap_err();
+        let displayed = localized_extraction_error(error, true);
+        assert!(displayed.contains("1 / 10 张输入图片"));
+        assert!(displayed
+            .contains("未成功处理：a-缺失.png、b.jpg、c.jpg、d.jpg、e.jpg、f.jpg、g.jpg、h.jpg。"));
+        assert!(!displayed.contains("i.jpg"));
+    }
+
+    #[test]
+    fn test_validate_extraction_complete_database_keeps_success_metadata() {
+        let (_dir, database, images) =
+            extraction_fixture(&["a.jpg", "b.jpg"], &[("a.jpg", 10), ("b.jpg", 20)]);
+        let result = FeatureExtractor::validate_extraction(&database, &images, true).unwrap();
+        assert_eq!(result.images_processed, 2);
+        assert_eq!(result.database_path, database);
+        assert!(result.gpu_used);
+    }
 
     #[test]
     fn test_build_command_basic_structure() {

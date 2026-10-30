@@ -1,0 +1,45 @@
+{
+  "status": "passed",
+  "scope": "Same fixed static libraries/toolchain, second independent link output directory; not a clean-machine rebuild claim.",
+  "outputs": [
+    {
+      "first": {
+        "path": "outputs/webp.mjs",
+        "size_bytes": 11523,
+        "sha256": "4fb1318061392a7f0c3668add77dc13677d40ff93bc84ad2b8493be7965e20cf"
+      },
+      "repeat": {
+        "path": "repeat-outputs/webp.mjs",
+        "size_bytes": 11523,
+        "sha256": "4fb1318061392a7f0c3668add77dc13677d40ff93bc84ad2b8493be7965e20cf"
+      },
+      "byte_identical": true
+    },
+    {
+      "first": {
+        "path": "outputs/webp.wasm",
+        "size_bytes": 346456,
+        "sha256": "72cd94e42bce159f10ce49bb41a17f725b8a0d165f496548a5775fec267a519c"
+      },
+      "repeat": {
+        "path": "repeat-outputs/webp.wasm",
+        "size_bytes": 346456,
+        "sha256": "72cd94e42bce159f10ce49bb41a17f725b8a0d165f496548a5775fec267a519c"
+      },
+      "byte_identical": true
+    },
+    {
+      "first": {
+        "path": "outputs/webp.mjs.symbols",
+        "size_bytes": 8302,
+        "sha256": "82794e0a679c5aa8249039cd21753112e3637f0af41be2f363a1692be8ec2492"
+      },
+      "repeat": {
+        "path": "repeat-outputs/webp.mjs.symbols",
+        "size_bytes": 8302,
+        "sha256": "82794e0a679c5aa8249039cd21753112e3637f0af41be2f363a1692be8ec2492"
+      },
+      "byte_identical": true
+    }
+  ]
+}

@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
-use splat_domain::error::AppResult;
+use splat_domain::error::{AppError, AppResult, ErrorCategory};
+
+use crate::export::ExportManager;
 
 /// A training checkpoint from Brush.
 ///
@@ -21,7 +23,7 @@ pub struct Checkpoint {
 
 /// Scans training output directories for checkpoint files.
 ///
-/// Brush v0.3.0 checkpoints are exported PLY snapshots named
+/// Brush v0.3.0 and v1.x checkpoints are exported PLY snapshots named
 /// `checkpoint_{iter}.ply`. They contain geometry but not optimizer state.
 pub struct CheckpointScanner;
 
@@ -31,37 +33,34 @@ impl CheckpointScanner {
     /// Returns an empty vector if the directory doesn't exist or no
     /// checkpoints are found.
     pub fn scan(training_dir: &Path) -> AppResult<Vec<Checkpoint>> {
-        if !training_dir.exists() {
-            return Ok(Vec::new());
-        }
-
-        let mut checkpoints = Vec::new();
-
-        let reader = std::fs::read_dir(training_dir).map_err(|e| {
-            splat_domain::error::AppError::new(
-                "E-1201",
-                splat_domain::error::ErrorCategory::Filesystem,
-                "Failed to Read Training Directory",
-                format!(
-                    "Could not read training directory '{}': {}",
-                    training_dir.display(),
-                    e
-                ),
-            )
-        })?;
-
-        for entry in reader.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
+        let mut valid = Vec::new();
+        for checkpoint in Self::candidates(training_dir)? {
+            if Self::is_complete(&checkpoint)? {
+                valid.push(checkpoint);
             }
+        }
+        Ok(valid)
+    }
 
+    fn candidates(training_dir: &Path) -> AppResult<Vec<Checkpoint>> {
+        let mut checkpoints = Vec::new();
+        let reader = match std::fs::read_dir(training_dir) {
+            Ok(reader) => reader,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(checkpoints),
+            Err(error) => return Err(scan_io_error(error)),
+        };
+        for entry in reader {
+            let entry = entry.map_err(scan_io_error)?;
+            let path = entry.path();
             if let Some(iteration) = parse_checkpoint_filename(&path) {
-                let meta = match std::fs::metadata(&path) {
-                    Ok(m) => m,
-                    _ => continue,
+                let meta = match entry.metadata() {
+                    Ok(meta) => meta,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(error) => return Err(scan_io_error(error)),
                 };
-
+                if !meta.is_file() {
+                    continue;
+                }
                 let size = meta.len();
                 let created = meta
                     .created()
@@ -84,26 +83,67 @@ impl CheckpointScanner {
         Ok(checkpoints)
     }
 
-    /// Find the latest (highest iteration) checkpoint.
+    fn is_complete(checkpoint: &Checkpoint) -> AppResult<bool> {
+        match ExportManager::validate_ply(&checkpoint.path) {
+            Ok(()) => Ok(true),
+            Err(error) if error.category == ErrorCategory::Engine => {
+                // Writers may still be publishing a new file. Preserve it and
+                // the last valid older checkpoint; never delete user artifacts.
+                tracing::debug!(iteration = checkpoint.iteration, code = %error.code,
+                    "Ignoring incomplete or invalid Brush checkpoint");
+                Ok(false)
+            }
+            Err(error) => {
+                // A file can disappear between directory enumeration and open.
+                // Other I/O errors (in particular permission denial) must remain
+                // actionable rather than pretending that recovery data is absent.
+                if !checkpoint.path.try_exists().map_err(scan_io_error)? {
+                    Ok(false)
+                } else {
+                    Err(error)
+                }
+            }
+        }
+    }
+
+    /// Find the highest iteration whose complete Gaussian payload is valid.
     pub fn find_latest(training_dir: &Path) -> AppResult<Option<Checkpoint>> {
-        let cps = Self::scan(training_dir)?;
-        Ok(cps.into_iter().last())
+        // Polling during training must not re-read every historical large PLY.
+        for checkpoint in Self::candidates(training_dir)?.into_iter().rev() {
+            if Self::is_complete(&checkpoint)? {
+                return Ok(Some(checkpoint));
+            }
+        }
+        Ok(None)
     }
 
     /// Check whether there are any resumable checkpoints.
     pub fn has_resumable(training_dir: &Path) -> bool {
-        Self::scan(training_dir)
-            .ok()
-            .map(|c| !c.is_empty())
-            .unwrap_or(false)
+        match Self::find_latest(training_dir) {
+            Ok(checkpoint) => checkpoint.is_some(),
+            Err(error) => {
+                tracing::warn!(code = %error.code, "Could not inspect Brush recovery checkpoints");
+                false
+            }
+        }
     }
 
-    /// Get the iteration number to resume from (latest + 1).
+    /// Get the latest complete iteration; Brush itself handles the next step.
     /// Returns 0 if no checkpoint exists (start from scratch).
     pub fn resume_iteration(training_dir: &Path) -> AppResult<u32> {
         let latest = Self::find_latest(training_dir)?;
         Ok(latest.map(|c| c.iteration).unwrap_or(0))
     }
+}
+
+fn scan_io_error(error: std::io::Error) -> AppError {
+    AppError::new(
+        "E-1201",
+        ErrorCategory::Filesystem,
+        "Failed to Read Training Checkpoints",
+        "The checkpoint directory could not be inspected. Check its availability and permissions.",
+    )
+    .with_technical(error.to_string())
 }
 
 /// Parse the iteration number from a checkpoint file name.
@@ -124,7 +164,14 @@ mod tests {
 
     fn create_checkpoint(dir: &Path, name: &str) -> PathBuf {
         let path = dir.join(name);
-        std::fs::write(&path, b"fake checkpoint data").unwrap();
+        std::fs::write(
+            &path,
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../test-fixtures/gaussian/minimal-sh0-ascii.ply"
+            )),
+        )
+        .unwrap();
         path
     }
 
@@ -221,5 +268,78 @@ mod tests {
         assert_eq!(CheckpointScanner::resume_iteration(&dir).unwrap(), 5000);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn invalid_newest_checkpoint_falls_back_without_deleting_either_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let old = create_checkpoint(directory.path(), "checkpoint_000100.ply");
+        let new = directory.path().join("checkpoint_000200.ply");
+        std::fs::write(
+            &new,
+            b"ply\nformat binary_little_endian 1.0\nelement vertex 20\n",
+        )
+        .unwrap();
+        let selected = CheckpointScanner::find_latest(directory.path())
+            .unwrap()
+            .unwrap();
+        assert_eq!(selected.iteration, 100);
+        assert_eq!(CheckpointScanner::scan(directory.path()).unwrap().len(), 1);
+        assert!(old.exists() && new.exists());
+        assert_eq!(
+            std::fs::read(&new).unwrap(),
+            b"ply\nformat binary_little_endian 1.0\nelement vertex 20\n"
+        );
+        create_checkpoint(directory.path(), "checkpoint_000200.ply");
+        assert_eq!(
+            CheckpointScanner::resume_iteration(directory.path()).unwrap(),
+            200
+        );
+    }
+
+    #[test]
+    fn a_directory_full_of_corrupt_files_is_not_resumable() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("checkpoint_000300.ply"),
+            b"not a model",
+        )
+        .unwrap();
+        assert!(!CheckpointScanner::has_resumable(directory.path()));
+        assert!(CheckpointScanner::find_latest(directory.path())
+            .unwrap()
+            .is_none());
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn directory_io_errors_are_not_hidden_as_missing_checkpoints() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("not-a-directory");
+        std::fs::write(&file, b"keep").unwrap();
+        let error = CheckpointScanner::scan(&file).unwrap_err();
+        assert_eq!(error.category, ErrorCategory::Filesystem);
+        assert_eq!(error.code, "E-1201");
+        assert_eq!(std::fs::read(file).unwrap(), b"keep");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_checkpoint_is_actionable_instead_of_silent_fallback() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        create_checkpoint(directory.path(), "checkpoint_000100.ply");
+        let new = create_checkpoint(directory.path(), "checkpoint_000200.ply");
+        std::fs::set_permissions(&new, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::File::open(&new).is_err() {
+            assert_eq!(
+                CheckpointScanner::find_latest(directory.path())
+                    .unwrap_err()
+                    .category,
+                ErrorCategory::Filesystem
+            );
+        }
+        std::fs::set_permissions(&new, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(new.exists());
     }
 }

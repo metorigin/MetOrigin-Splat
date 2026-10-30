@@ -1,0 +1,1940 @@
+diff --git a/dist/spark.cjs.js b/dist/spark.cjs.js
+index 9f85cfa400493f0c0bd6cb256026be1caf2a9476..ae75cc294caf734bbe6a7904f2ea99269aa62a6b 100644
+--- a/dist/spark.cjs.js
++++ b/dist/spark.cjs.js
+@@ -4188,6 +4188,196 @@ class DynoProgramTemplate {
+     return this.before + Array.from(globals).join("\n\n") + this.between + statements.map((s) => this.indent + s).join("\n") + this.after;
+   }
+ }
++
++// MetOrigin: GPU wrappers belong to one underlying renderer, never a module
++// singleton. Weak registry keys do not keep a retired renderer alive.
++const sparkRendererResources = new WeakMap();
++const sparkPlaceholderOrigins = new WeakMap();
++function initSparkResourceConsumer(consumer) {
++  consumer._resourceOwner = null;
++  consumer._resourceToken = {};
++  consumer._resourceGeneration = 0;
++}
++function isSparkPlaceholder(texture) {
++  return texture === _SparkRenderer.emptyOrdering ||
++    texture === _SplatAccumulator.emptyTexture || texture === emptyLodIndices ||
++    texture === _ExtSplats.emptyTexture || texture === _ExtSplats.emptyArray ||
++    texture === _ExtSplats.emptyUint32x4 || texture === _PackedSplats.getEmptyArray ||
++    texture === _PackedSplats.emptyUint32x4 || texture === _PackedSplats.emptyUint32x2 ||
++    texture === _RgbaArray.emptySource;
++}
++function copySparkUniformValue(value, owner) {
++  if (value && value.isTexture) return owner.resolveTexture(value);
++  if (value && (value.isVector2 || value.isVector3 || value.isVector4 || value.isMatrix3 || value.isMatrix4 || value.isQuaternion || value.isColor)) return value.clone();
++  if (value instanceof DataView) return new DataView(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
++  if (ArrayBuffer.isView(value)) return new value.constructor(value);
++  if (value instanceof ArrayBuffer) return value.slice(0);
++  if (Array.isArray(value)) return value.map((item) => copySparkUniformValue(item, owner));
++  if (value && Object.getPrototypeOf(value) === Object.prototype) {
++    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, copySparkUniformValue(item, owner)]));
++  }
++  // Mutable uniform values above are draw-local snapshots for nested rendering.
++  return value;
++}
++class SparkRendererResources {
++  constructor(renderer) {
++    this.renderer = renderer;
++    this.users = new Set();
++    this.placeholderTextures = new Map();
++    this.programMaterials = new Map();
++    this.activeMaterials = new Set();
++    this.retiredMaterials = new Set();
++    this.drawDepth = 0;
++    this.closing = false;
++    this.disposed = false;
++    this.quad = new Pass_js.FullScreenQuad(null);
++    // FullScreenQuad's constructor uses Pass.js module geometry; clone it.
++    this.quad._mesh.geometry = this.quad._mesh.geometry.clone();
++  }
++  resolveTexture(texture) {
++    if (!texture || !texture.isTexture) return texture;
++    const template = sparkPlaceholderOrigins.get(texture) ?? texture;
++    if (!isSparkPlaceholder(template)) return texture;
++    if (this.closing || this.disposed) throw new Error("Spark renderer resources released");
++    let local = this.placeholderTextures.get(template);
++    if (!local) {
++      local = template.clone();
++      // clone() shares immutable CPU Source data. Never clear source.data here.
++      local.needsUpdate = true;
++      this.placeholderTextures.set(template, local);
++      sparkPlaceholderOrigins.set(local, template);
++    }
++    return local;
++  }
++  syncUniforms(program, material) {
++    const uniforms = material.uniforms;
++    for (const key of Object.keys(uniforms)) {
++      if (!(key in program.uniforms)) delete uniforms[key];
++    }
++    for (const [key, uniform] of Object.entries(program.uniforms)) {
++      uniforms[key] = { ...uniform, value: copySparkUniformValue(uniform.value, this) };
++    }
++    material.uniformsNeedUpdate = true;
++  }
++  newMaterial(program) {
++    return new THREE__namespace.RawShaderMaterial({
++      glslVersion: THREE__namespace.GLSL3,
++      vertexShader: IDENT_VERTEX_SHADER,
++      fragmentShader: program.shader,
++      uniforms: {}
++    });
++  }
++  prepareMaterial(program, token) {
++    if (this.closing || this.disposed || !this.users.has(token)) throw new Error("Spark renderer resources released");
++    let record = this.programMaterials.get(program);
++    if (!record) {
++      record = { materials: new Map(), users: new Set() };
++      this.programMaterials.set(program, record);
++    }
++    let material = record.materials.get(token);
++    if (!material) {
++      material = this.newMaterial(program);
++      record.materials.set(token, material);
++      record.users.add(token);
++    }
++    return material;
++  }
++  retireMaterial(material) {
++    if (this.drawDepth > 0) {
++      this.retiredMaterials.add(material);
++    } else {
++      material.dispose();
++      material.uniforms = {};
++    }
++  }
++  retainPrograms(token, programs) {
++    for (const [program, record] of this.programMaterials) {
++      if (!programs.has(program)) {
++        const material = record.materials.get(token);
++        if (material) {
++          record.materials.delete(token);
++          record.users.delete(token);
++          this.retireMaterial(material);
++        }
++        if (record.materials.size === 0) this.programMaterials.delete(program);
++      }
++    }
++  }
++  withProgram(program, token, callback) {
++    const base = this.prepareMaterial(program, token);
++    // A recursive render of the same consumer must not overwrite its outer
++    // material/uniforms. Other consumers already have separate materials.
++    const transient = this.activeMaterials.has(base);
++    const material = transient ? this.newMaterial(program) : base;
++    const previous = this.quad.material;
++    this.drawDepth += 1;
++    this.activeMaterials.add(material);
++    try {
++      program.update();
++      if (this.closing || this.disposed || !this.users.has(token)) throw new Error("Spark renderer resources released");
++      this.syncUniforms(program, material);
++      this.quad.material = material;
++      return callback(material);
++    } finally {
++      this.quad.material = previous;
++      this.activeMaterials.delete(material);
++      if (transient) this.retiredMaterials.add(material);
++      this.drawDepth -= 1;
++      if (this.drawDepth === 0) {
++        for (const retired of this.retiredMaterials) {
++          retired.dispose();
++          retired.uniforms = {};
++        }
++        this.retiredMaterials.clear();
++        if (this.closing) this.destroy();
++      }
++    }
++  }
++  release(token) {
++    if (!this.users.delete(token)) return;
++    this.retainPrograms(token, new Set());
++    if (this.users.size === 0) {
++      this.closing = true;
++      if (this.drawDepth === 0) this.destroy();
++    }
++  }
++  destroy() {
++    if (this.disposed) return;
++    this.disposed = true;
++    this.quad.material = null;
++    this.quad.dispose();
++    for (const texture of this.placeholderTextures.values()) texture.dispose();
++    this.placeholderTextures.clear();
++    this.programMaterials.clear();
++    if (sparkRendererResources.get(this.renderer) === this) sparkRendererResources.delete(this.renderer);
++  }
++}
++function bindSparkResourceConsumer(consumer, renderer) {
++  if (!renderer) throw new Error("No renderer");
++  if (consumer._resourceOwner) {
++    if (consumer._resourceOwner.renderer !== renderer) throw new Error("Dispose Spark helper before switching renderer");
++    if (consumer._resourceOwner.closing || consumer._resourceOwner.disposed) throw new Error("Spark renderer resources released");
++    return consumer._resourceOwner;
++  }
++  let owner = sparkRendererResources.get(renderer);
++  if (!owner || owner.closing || owner.disposed) {
++    owner = new SparkRendererResources(renderer);
++    sparkRendererResources.set(renderer, owner);
++  }
++  owner.users.add(consumer._resourceToken);
++  consumer._resourceOwner = owner;
++  return owner;
++}
++function releaseSparkResourceConsumer(consumer) {
++  consumer._resourceGeneration += 1;
++  const owner = consumer._resourceOwner;
++  consumer._resourceOwner = null;
++  if (owner) owner.release(consumer._resourceToken);
++}
++function checkSparkResourceGeneration(consumer, generation) {
++  if (consumer._resourceGeneration !== generation) throw new Error("Spark helper work invalidated by disposal");
++}
++
+ const programMaterial = /* @__PURE__ */ new WeakMap();
+ function getMaterial(program) {
+   let material = programMaterial.get(program);
+@@ -8004,11 +8194,17 @@ function getShaders() {
+ }
+ const _Readback = class _Readback {
+   constructor({ renderer } = {}) {
++    initSparkResourceConsumer(this);
+     this.renderer = renderer;
+     this.capacity = 0;
+     this.count = 0;
+   }
+   dispose() {
++    this.disposeTarget();
++    this.renderer = void 0;
++    releaseSparkResourceConsumer(this);
++  }
++  disposeTarget() {
+     if (this.target) {
+       this.target.dispose();
+       this.target = void 0;
+@@ -8036,7 +8232,7 @@ const _Readback = class _Readback {
+   ensureCapacity(capacity) {
+     const { width, height, depth, maxSplats } = getTextureSize(capacity);
+     if (!this.target || maxSplats > this.capacity) {
+-      this.dispose();
++      this.disposeTarget();
+       this.capacity = maxSplats;
+       this.target = new THREE__namespace.WebGLArrayRenderTarget(width, height, depth, {
+         depthBuffer: false,
+@@ -8053,7 +8249,7 @@ const _Readback = class _Readback {
+   }
+   // Get a program and THREE.RawShaderMaterial for a given Rgba8Readback,
+   // generating it if necessary and caching the result.
+-  prepareProgramMaterial(reader) {
++  prepareProgramMaterial(reader, renderer) {
+     let program = _Readback.readbackProgram.get(reader);
+     if (!program) {
+       const graph = dynoBlock(
+@@ -8083,8 +8279,16 @@ const _Readback = class _Readback {
+       });
+       _Readback.readbackProgram.set(reader, program);
+     }
+-    const material = program.prepareMaterial();
+-    _Readback.fullScreenQuad.material = material;
++    let material;
++    if (renderer) {
++      const owner = bindSparkResourceConsumer(this, renderer);
++      owner.retainPrograms(this._resourceToken, new Set([program]));
++      material = owner.prepareMaterial(program, this._resourceToken);
++    } else {
++      // Public legacy preparation remains caller-owned.
++      material = program.prepareMaterial();
++      _Readback.fullScreenQuad.material = material;
++    }
+     return { program, material };
+   }
+   saveRenderState(renderer) {
+@@ -8101,9 +8305,11 @@ const _Readback = class _Readback {
+   }
+   process({
+     count,
+-    material
++    material,
++    renderer,
++    owner,
++    generation
+   }) {
+-    const renderer = this.renderer;
+     if (!renderer) {
+       throw new Error("No renderer");
+     }
+@@ -8115,6 +8321,7 @@ const _Readback = class _Readback {
+     material.uniforms.targetCount.value = count;
+     let baseIndex = 0;
+     while (baseIndex < count) {
++      checkSparkResourceGeneration(this, generation);
+       const layer = Math.floor(baseIndex / layerSize);
+       const layerBase = layer * layerSize;
+       const layerYEnd = Math.min(
+@@ -8126,7 +8333,7 @@ const _Readback = class _Readback {
+       renderer.setRenderTarget(this.target, layer);
+       renderer.xr.enabled = false;
+       renderer.autoClear = false;
+-      _Readback.fullScreenQuad.render(renderer);
++      owner.quad.render(renderer);
+       baseIndex += SPLAT_TEX_WIDTH * layerYEnd;
+     }
+     this.count = count;
+@@ -8186,16 +8393,22 @@ const _Readback = class _Readback {
+     count,
+     renderer
+   }) {
+-    this.renderer = renderer || this.renderer;
++    const useRenderer = renderer || this.renderer;
++    bindSparkResourceConsumer(this, useRenderer);
++    this.renderer = useRenderer;
+     if (!this.renderer) {
+       throw new Error("No renderer");
+     }
+     this.ensureCapacity(count);
+-    const { program, material } = this.prepareProgramMaterial(reader);
+-    program.update();
+-    const renderState = this.saveRenderState(this.renderer);
+-    this.process({ count, material });
+-    this.resetRenderState(this.renderer, renderState);
++    const { program } = this.prepareProgramMaterial(reader, this.renderer);
++    const owner = this._resourceOwner;
++    const generation = this._resourceGeneration;
++    const renderState = this.saveRenderState(useRenderer);
++    try {
++      owner.withProgram(program, this._resourceToken, (material) => this.process({ count, material, renderer: useRenderer, owner, generation }));
++    } finally {
++      this.resetRenderState(useRenderer, renderState);
++    }
+   }
+   // Perform a readback of the render target, returning a buffer of the
+   // given type.
+@@ -8205,10 +8418,13 @@ const _Readback = class _Readback {
+     if (!this.renderer) {
+       throw new Error("No renderer");
+     }
+-    const renderState = this.saveRenderState(this.renderer);
+-    const promise = this.read({ readback });
+-    this.resetRenderState(this.renderer, renderState);
+-    return promise;
++    const renderer = this.renderer;
++    const renderState = this.saveRenderState(renderer);
++    try {
++      return this.read({ readback });
++    } finally {
++      this.resetRenderState(renderer, renderState);
++    }
+   }
+   // Perform a render and readback operation for the given Rgba8Readback,
+   // and readback buffer (call ensureBuffer first).
+@@ -8218,18 +8434,24 @@ const _Readback = class _Readback {
+     renderer,
+     readback
+   }) {
+-    this.renderer = renderer || this.renderer;
++    const useRenderer = renderer || this.renderer;
++    bindSparkResourceConsumer(this, useRenderer);
++    this.renderer = useRenderer;
+     if (!this.renderer) {
+       throw new Error("No renderer");
+     }
+     this.ensureCapacity(count);
+-    const { program, material } = this.prepareProgramMaterial(reader);
+-    program.update();
+-    const renderState = this.saveRenderState(this.renderer);
+-    this.process({ count, material });
+-    const promise = this.read({ readback });
+-    this.resetRenderState(this.renderer, renderState);
+-    return promise;
++    const { program } = this.prepareProgramMaterial(reader, this.renderer);
++    const owner = this._resourceOwner;
++    const generation = this._resourceGeneration;
++    const renderState = this.saveRenderState(useRenderer);
++    try {
++      owner.withProgram(program, this._resourceToken, (material) => this.process({ count, material, renderer: useRenderer, owner, generation }));
++    } finally {
++      this.resetRenderState(useRenderer, renderState);
++    }
++    checkSparkResourceGeneration(this, generation);
++    return this.readback({ readback });
+   }
+   getTexture() {
+     var _a2;
+@@ -9268,6 +9490,7 @@ const _SplatAccumulator = class _SplatAccumulator {
+     extSplats,
+     covSplats
+   } = {}) {
++    initSparkResourceConsumer(this);
+     this.time = 0;
+     this.deltaTime = 0;
+     this.viewToWorld = new THREE__namespace.Matrix4();
+@@ -9288,6 +9511,16 @@ const _SplatAccumulator = class _SplatAccumulator {
+     this.covSplats = covSplats ?? false;
+   }
+   dispose() {
++    this.disposeTarget();
++    if (this.readback) this.readback.dispose();
++    this.readback = null;
++    this.readbackSplats = [];
++    this.mapping = [];
++    this.numSplats = 0;
++    this.maxSplats = 0;
++    releaseSparkResourceConsumer(this);
++  }
++  disposeTarget() {
+     if (this.target) {
+       this.target.dispose();
+       this.target = null;
+@@ -9320,7 +9553,7 @@ const _SplatAccumulator = class _SplatAccumulator {
+     if (this.target && (maxSplats ?? 1) <= this.maxSplats) {
+       return false;
+     }
+-    this.dispose();
++    this.disposeTarget();
+     const textureSize2 = getTextureSize(maxSplats ?? 1);
+     const { width, height, depth } = textureSize2;
+     this.maxSplats = textureSize2.maxSplats;
+@@ -9364,7 +9597,7 @@ const _SplatAccumulator = class _SplatAccumulator {
+   }
+   // Get a program and THREE.RawShaderMaterial for a given GsplatGenerator,
+   // generating it if necessary and caching the result.
+-  prepareProgramMaterial(generator, covGenerator) {
++  prepareProgramMaterial(generator, covGenerator, renderer) {
+     const theGenerator = generator ?? covGenerator;
+     if (!theGenerator) {
+       throw new Error("Either generator or covGenerator must be provided");
+@@ -9492,8 +9725,13 @@ const _SplatAccumulator = class _SplatAccumulator {
+       targetBase: { value: 0 },
+       targetCount: { value: 0 }
+     });
+-    const material = program.prepareMaterial();
+-    _SplatAccumulator.fullScreenQuad.material = material;
++    let material;
++    if (renderer) {
++      material = bindSparkResourceConsumer(this, renderer).prepareMaterial(program, this._resourceToken);
++    } else {
++      material = program.prepareMaterial();
++      _SplatAccumulator.fullScreenQuad.material = material;
++    }
+     return { program, material };
+   }
+   generate({
+@@ -9509,17 +9747,21 @@ const _SplatAccumulator = class _SplatAccumulator {
+     if (base + count > this.maxSplats) {
+       throw new Error("Base + count exceeds maxSplats");
+     }
+-    const { program, material } = this.prepareProgramMaterial(
+-      generator,
+-      covGenerator
+-    );
+-    program.update();
++    const { program } = this.prepareProgramMaterial(generator, covGenerator, renderer);
++    const owner = this._resourceOwner;
++    const programs = new Set(this.mapping.map(({ generator, covGenerator }) => _SplatAccumulator.generatorProgram.get(generator ?? covGenerator)).filter(Boolean));
++    programs.add(program);
++    owner.retainPrograms(this._resourceToken, programs);
++    const generation = this._resourceGeneration;
+     const renderState = this.saveRenderState(renderer);
+     const nextBase = Math.ceil((base + count) / SPLAT_TEX_WIDTH) * SPLAT_TEX_WIDTH;
+     const layerSize = SPLAT_TEX_WIDTH * SPLAT_TEX_HEIGHT;
++    return owner.withProgram(program, this._resourceToken, (material) => {
++    try {
+     material.uniforms.targetBase.value = base;
+     material.uniforms.targetCount.value = count;
+     while (base < nextBase) {
++      checkSparkResourceGeneration(this, generation);
+       const layer = Math.floor(base / layerSize);
+       material.uniforms.targetLayer.value = layer;
+       const layerBase = layer * layerSize;
+@@ -9537,11 +9779,14 @@ const _SplatAccumulator = class _SplatAccumulator {
+       renderer.setRenderTarget(this.target, layer);
+       renderer.xr.enabled = false;
+       renderer.autoClear = false;
+-      _SplatAccumulator.fullScreenQuad.render(renderer);
++      owner.quad.render(renderer);
+       base += SPLAT_TEX_WIDTH * (layerYEnd - layerYStart);
+     }
+-    this.resetRenderState(renderer, renderState);
+     return { nextBase };
++    } finally {
++      this.resetRenderState(renderer, renderState);
++    }
++    });
+   }
+   prepareGenerate({
+     renderer,
+@@ -9554,6 +9799,8 @@ const _SplatAccumulator = class _SplatAccumulator {
+     lodInstances
+   }) {
+     var _a2;
++    const owner = bindSparkResourceConsumer(this, renderer);
++    const generation = this._resourceGeneration;
+     this.viewToWorld.copy(camera.matrixWorld);
+     camera.getWorldPosition(this.viewOrigin);
+     camera.getWorldDirection(this.viewDirection);
+@@ -9645,6 +9892,8 @@ const _SplatAccumulator = class _SplatAccumulator {
+     const { splatsUpdated, mappingUpdated } = previous.checkVersions(
+       this.mapping
+     );
++    const programs = new Set(this.mapping.map(({ generator, covGenerator }) => _SplatAccumulator.generatorProgram.get(generator ?? covGenerator)).filter(Boolean));
++    owner.retainPrograms(this._resourceToken, programs);
+     this.version = previous.version + (splatsUpdated ? 1 : 0);
+     this.mappingVersion = previous.mappingVersion + (mappingUpdated ? 1 : 0);
+     return {
+@@ -9653,6 +9902,7 @@ const _SplatAccumulator = class _SplatAccumulator {
+       mappingVersion: this.mappingVersion,
+       visibleGenerators,
+       generate: () => {
++        checkSparkResourceGeneration(this, generation);
+         this.ensureGenerate({ maxSplats });
+         for (const { node, base, count } of this.mapping) {
+           const { generator, covGenerator } = node;
+@@ -9662,6 +9912,7 @@ const _SplatAccumulator = class _SplatAccumulator {
+         }
+       },
+       readback: async () => {
++        checkSparkResourceGeneration(this, generation);
+         const textures = this.getTextures();
+         if (this.readbackSplats.length === 0) {
+           this.readbackSplats = [
+@@ -9841,6 +10092,9 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
+       allowOverride: false
+     });
+     super(geometry, material);
++    initSparkResourceConsumer(this);
++    this._createdDisplayGeometry = geometry;
++    this._createdDisplayMaterial = material;
+     this.renderSize = new THREE__namespace.Vector2();
+     this.lastFrame = -1;
+     this.updateTimeoutId = -1;
+@@ -9849,6 +10103,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
+     this.activeSplats = 0;
+     this.accumulators = [];
+     this.sorting = false;
++    this.disposed = false;
+     this.sortDirty = false;
+     this.lastSortTime = 0;
+     this.sortWorker = null;
+@@ -9874,10 +10129,17 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
+     this.sortPause = 0;
+     this.sortDelay = 0;
+     this.pageSizeWarning = false;
++    try {
+     this.material = material;
+     this.uniforms = uniforms;
+     this.frustumCulled = false;
+     this.renderer = options.renderer;
++    const owner = bindSparkResourceConsumer(this, this.renderer);
++    for (const key of ["ordering", "extSplats", "extSplats2"]) {
++      const uniform = this.uniforms[key];
++      const value = owner.resolveTexture(uniform.value);
++      if (value !== uniform.value) this.uniforms[key] = { ...uniform, value };
++    }
+     this.onDirty = options.onDirty;
+     this.dirty = true;
+     this.autoUpdate = options.autoUpdate ?? true;
+@@ -9960,6 +10222,10 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
+       }
+       this.encodeLinear = options.encodeLinear ?? true;
+     }
++    } catch (error) {
++      this.dispose();
++      throw error;
++    }
+   }
+   static makeUniforms() {
+     const uniforms = {
+@@ -10024,6 +10290,20 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
+     return uniforms;
+   }
+   dispose() {
++    if (this.disposed) return;
++    // MetOrigin: async sort completions must not revive a released renderer.
++    this.disposed = true;
++    this.autoUpdate = false;
++    this.sortDirty = false;
++    if (this.updateTimeoutId !== -1) {
++      clearTimeout(this.updateTimeoutId);
++      this.updateTimeoutId = -1;
++    }
++    if (this.sortTimeoutId !== -1) {
++      clearTimeout(this.sortTimeoutId);
++      this.sortTimeoutId = -1;
++    }
++    this.readback32 = new Uint32Array(0);
+     if (this.target) {
+       this.target.dispose();
+       this.target = void 0;
+@@ -10037,15 +10317,15 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
+       this.orderingTexture = null;
+     }
+     const accumulators = /* @__PURE__ */ new Set();
+-    accumulators.add(this.display);
+-    accumulators.add(this.current);
++    if (this.display) accumulators.add(this.display);
++    if (this.current) accumulators.add(this.current);
+     for (const accumulator of this.accumulators) {
+       accumulators.add(accumulator);
+     }
+     for (const accumulator of accumulators) {
+       accumulator.dispose();
+     }
+-    const instances = this.lodInstances.values();
++    const instances = Array.from(this.lodInstances.values());
+     this.lodInstances.clear();
+     for (const instance of instances) {
+       instance.texture.dispose();
+@@ -10062,8 +10342,14 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
+       this.pager.dispose();
+       this.pager = void 0;
+     }
++    this._createdDisplayGeometry.dispose();
++    this._createdDisplayMaterial.dispose();
++    this._createdDisplayMaterial.uniforms = {};
++    this.uniforms = {};
++    releaseSparkResourceConsumer(this);
+   }
+   setDirty() {
++    if (this.disposed) return;
+     var _a2;
+     if (!this.dirty) {
+       this.dirty = true;
+@@ -10071,7 +10357,9 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
+     }
+   }
+   onBeforeRender(renderer, scene, camera) {
++    if (this.disposed) return;
+     var _a2;
++    const owner = bindSparkResourceConsumer(this, renderer);
+     const spark = _SparkRenderer.sparkOverride ?? this;
+     const frame = renderer.info.render.frame;
+     const isNewFrame = frame !== spark.lastFrame;
+@@ -10123,17 +10411,17 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
+     this.uniforms.clipXY.value = spark.clipXY;
+     this.uniforms.focalAdjustment.value = spark.focalAdjustment;
+     this.uniforms.encodeLinear.value = spark.encodeLinear;
+-    this.uniforms.ordering.value = spark.orderingTexture ?? _SparkRenderer.emptyOrdering;
++    this.uniforms.ordering.value = owner.resolveTexture(spark.orderingTexture ?? _SparkRenderer.emptyOrdering);
+     this.uniforms.enableExtSplats.value = this.display.extSplats;
+     this.uniforms.enableCovSplats.value = this.display.covSplats;
+     if (this.display.extSplats) {
+       const extSplats = spark.display.getTextures();
+-      this.uniforms.extSplats.value = extSplats[0];
+-      this.uniforms.extSplats2.value = extSplats[1];
++      this.uniforms.extSplats.value = owner.resolveTexture(extSplats[0]);
++      this.uniforms.extSplats2.value = owner.resolveTexture(extSplats[1]);
+     } else {
+       const packedSplats = spark.display.getTextures();
+-      this.uniforms.extSplats.value = packedSplats[0];
+-      this.uniforms.extSplats2.value = packedSplats[0];
++      this.uniforms.extSplats.value = owner.resolveTexture(packedSplats[0]);
++      this.uniforms.extSplats2.value = owner.resolveTexture(packedSplats[0]);
+     }
+     this.uniforms.time.value = spark.display.time;
+     this.uniforms.deltaTime.value = spark.display.deltaTime;
+@@ -10201,6 +10489,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
+     camera,
+     autoUpdate
+   }) {
++    if (this.disposed) return;
+     const renderer = this.renderer;
+     const time = this.time ?? this.clock.getElapsedTime();
+     const center = camera.getWorldPosition(new THREE__namespace.Vector3());
+@@ -10260,7 +10549,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
+     await this.driveSort();
+   }
+   async driveSort() {
+-    if (this.sorting || !this.sortDirty) {
++    if (this.disposed || this.sorting || !this.sortDirty) {
+       return;
+     }
+     if (this.sortTimeoutId !== -1) {
+@@ -10279,97 +10568,110 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
+     this.sorting = true;
+     this.sortDirty = false;
+     this.lastSortTime = now;
+-    if (this.readPause > 0) {
+-      await new Promise((resolve) => setTimeout(resolve, this.readPause));
+-    }
+-    const current = this.current;
+-    this.sortedCenter.copy(current.viewOrigin);
+-    this.sortedDir.copy(current.viewDirection);
+-    const { numSplats, maxSplats } = current;
+-    const rows = Math.max(1, Math.ceil(maxSplats / 16384));
+-    const orderingMaxSplats = rows * 16384;
+-    this.maxSplats = Math.max(this.maxSplats, orderingMaxSplats);
+-    const ordering = new Uint32Array(this.maxSplats);
+-    const readback = Readback.ensureBuffer(maxSplats, this.readback32);
+-    this.readback32 = readback;
+-    await this.readbackDepth({
+-      current,
+-      renderer: this.renderer,
+-      numSplats,
+-      readback
+-    });
+-    if (this.sortPause > 0) {
+-      await new Promise((resolve) => setTimeout(resolve, this.sortPause));
+-    }
+-    if (!this.sortWorker) {
+-      this.sortWorker = new SplatWorker();
+-    }
+-    const result = await this.sortWorker.call("sortSplats32", {
+-      numSplats,
+-      readback,
+-      ordering
+-    });
+-    if (this.sortDelay > 0) {
+-      await new Promise((resolve) => setTimeout(resolve, this.sortDelay));
+-    }
+-    this.readback32 = result.readback;
+-    this.activeSplats = result.activeSplats;
+-    if (this.orderingTexture) {
+-      if (rows > this.orderingTexture.image.height) {
+-        this.orderingTexture.dispose();
+-        this.orderingTexture = null;
++    try {
++      if (this.readPause > 0) {
++        await new Promise((resolve) => setTimeout(resolve, this.readPause));
++      }
++      if (this.disposed) return;
++      const current = this.current;
++      this.sortedCenter.copy(current.viewOrigin);
++      this.sortedDir.copy(current.viewDirection);
++      const { numSplats, maxSplats } = current;
++      const rows = Math.max(1, Math.ceil(maxSplats / 16384));
++      const orderingMaxSplats = rows * 16384;
++      this.maxSplats = Math.max(this.maxSplats, orderingMaxSplats);
++      const ordering = new Uint32Array(this.maxSplats);
++      const readback = Readback.ensureBuffer(maxSplats, this.readback32);
++      this.readback32 = readback;
++      await this.readbackDepth({
++        current,
++        renderer: this.renderer,
++        numSplats,
++        readback
++      });
++      if (this.disposed) return;
++      if (this.sortPause > 0) {
++        await new Promise((resolve) => setTimeout(resolve, this.sortPause));
+       }
+-    }
+-    if (!this.orderingTexture) {
+-      const orderingTexture = new THREE__namespace.DataTexture(
+-        result.ordering,
+-        4096,
+-        rows,
+-        THREE__namespace.RGBAIntegerFormat,
+-        THREE__namespace.UnsignedIntType
+-      );
+-      orderingTexture.internalFormat = "RGBA32UI";
+-      orderingTexture.needsUpdate = true;
+-      this.orderingTexture = orderingTexture;
+-    } else {
+-      const renderer = this.renderer;
+-      const gl = renderer.getContext();
+-      if (!renderer.properties.has(this.orderingTexture)) {
+-        this.orderingTexture.needsUpdate = true;
+-      } else {
+-        const props = renderer.properties.get(this.orderingTexture);
+-        const glTexture = props.__webglTexture;
+-        if (!glTexture) {
+-          throw new Error("ordering texture not found");
++      if (this.disposed) return;
++      if (!this.sortWorker) {
++        this.sortWorker = new SplatWorker();
++      }
++      const result = await this.sortWorker.call("sortSplats32", {
++        numSplats,
++        readback,
++        ordering
++      });
++      if (this.disposed) return;
++      if (this.sortDelay > 0) {
++        await new Promise((resolve) => setTimeout(resolve, this.sortDelay));
++      }
++      if (this.disposed) return;
++      this.readback32 = result.readback;
++      this.activeSplats = result.activeSplats;
++      if (this.orderingTexture) {
++        if (rows > this.orderingTexture.image.height) {
++          this.orderingTexture.dispose();
++          this.orderingTexture = null;
+         }
+-        renderer.state.activeTexture(gl.TEXTURE0);
+-        renderer.state.bindTexture(gl.TEXTURE_2D, glTexture);
+-        gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null);
+-        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+-        gl.texSubImage2D(
+-          gl.TEXTURE_2D,
+-          0,
+-          0,
+-          0,
++      }
++      if (!this.orderingTexture) {
++        const orderingTexture = new THREE__namespace.DataTexture(
++          result.ordering,
+           4096,
+           rows,
+-          gl.RGBA_INTEGER,
+-          gl.UNSIGNED_INT,
+-          // data,
+-          result.ordering
++          THREE__namespace.RGBAIntegerFormat,
++          THREE__namespace.UnsignedIntType
+         );
+-        renderer.state.bindTexture(gl.TEXTURE_2D, null);
++        orderingTexture.internalFormat = "RGBA32UI";
++        orderingTexture.needsUpdate = true;
++        this.orderingTexture = orderingTexture;
++      } else {
++        const renderer = this.renderer;
++        const gl = renderer.getContext();
++        if (!renderer.properties.has(this.orderingTexture)) {
++          this.orderingTexture.needsUpdate = true;
++        } else {
++          const props = renderer.properties.get(this.orderingTexture);
++          const glTexture = props.__webglTexture;
++          if (!glTexture) {
++            throw new Error("ordering texture not found");
++          }
++          renderer.state.activeTexture(gl.TEXTURE0);
++          renderer.state.bindTexture(gl.TEXTURE_2D, glTexture);
++          gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null);
++          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
++          gl.texSubImage2D(
++            gl.TEXTURE_2D,
++            0,
++            0,
++            0,
++            4096,
++            rows,
++            gl.RGBA_INTEGER,
++            gl.UNSIGNED_INT,
++            // data,
++            result.ordering
++          );
++          renderer.state.bindTexture(gl.TEXTURE_2D, null);
++        }
+       }
+-    }
+-    if (this.current.mappingVersion === current.mappingVersion) {
+-      if (this.current.mappingVersion !== this.display.mappingVersion) {
+-        this.accumulators.push(this.display);
+-        this.display = this.current;
++      if (this.current.mappingVersion === current.mappingVersion) {
++        if (this.current.mappingVersion !== this.display.mappingVersion) {
++          this.accumulators.push(this.display);
++          this.display = this.current;
++        }
+       }
++    } catch (error) {
++      // Disposal invalidates this work; active-renderer failures still propagate.
++      if (!this.disposed) throw error;
++    } finally {
++      this.sorting = false;
++    }
++    if (!this.disposed) {
++      this.setDirty();
++      this.driveSort();
+     }
+-    this.sorting = false;
+-    this.setDirty();
+-    this.driveSort();
+   }
+   ensureLodWorker() {
+     if (!this.lodWorker) {
+@@ -14212,6 +14514,7 @@ class SplatData {
+ }
+ const _PackedSplats = class _PackedSplats {
+   constructor(options = {}) {
++    initSparkResourceConsumer(this);
+     this.maxSplats = 0;
+     this.numSplats = 0;
+     this.packedArray = null;
+@@ -14357,6 +14660,7 @@ const _PackedSplats = class _PackedSplats {
+     }
+     this.extra = {};
+     this.disposeLodSplats();
++    releaseSparkResourceConsumer(this);
+   }
+   prepareFetchSplat() {
+   }
+@@ -14690,7 +14994,7 @@ const _PackedSplats = class _PackedSplats {
+   }
+   // Get a program and THREE.RawShaderMaterial for a given GsplatGenerator,
+   // generating it if necessary and caching the result.
+-  prepareProgramMaterial(generator) {
++  prepareProgramMaterial(generator, renderer) {
+     let program = _PackedSplats.generatorProgram.get(generator);
+     if (!program) {
+       const graph = dynoBlock(
+@@ -14725,8 +15029,15 @@ const _PackedSplats = class _PackedSplats {
+       });
+       _PackedSplats.generatorProgram.set(generator, program);
+     }
+-    const material = program.prepareMaterial();
+-    _PackedSplats.fullScreenQuad.material = material;
++    let material;
++    if (renderer) {
++      const owner = bindSparkResourceConsumer(this, renderer);
++      owner.retainPrograms(this._resourceToken, new Set([program]));
++      material = owner.prepareMaterial(program, this._resourceToken);
++    } else {
++      material = program.prepareMaterial();
++      _PackedSplats.fullScreenQuad.material = material;
++    }
+     return { program, material };
+   }
+   saveRenderState(renderer) {
+@@ -14758,14 +15069,18 @@ const _PackedSplats = class _PackedSplats {
+     if (base + count > this.maxSplats) {
+       throw new Error("Base + count exceeds maxSplats");
+     }
+-    const { program, material } = this.prepareProgramMaterial(generator);
+-    program.update();
++    const { program } = this.prepareProgramMaterial(generator, renderer);
++    const owner = this._resourceOwner;
++    const generation = this._resourceGeneration;
+     const renderState = this.saveRenderState(renderer);
+     const nextBase = Math.ceil((base + count) / SPLAT_TEX_WIDTH) * SPLAT_TEX_WIDTH;
+     const layerSize = SPLAT_TEX_WIDTH * SPLAT_TEX_HEIGHT;
++    return owner.withProgram(program, this._resourceToken, (material) => {
++    try {
+     material.uniforms.targetBase.value = base;
+     material.uniforms.targetCount.value = count;
+     while (base < nextBase) {
++      checkSparkResourceGeneration(this, generation);
+       const layer = Math.floor(base / layerSize);
+       material.uniforms.targetLayer.value = layer;
+       const layerBase = layer * layerSize;
+@@ -14783,11 +15098,14 @@ const _PackedSplats = class _PackedSplats {
+       renderer.setRenderTarget(this.target, layer);
+       renderer.xr.enabled = false;
+       renderer.autoClear = false;
+-      _PackedSplats.fullScreenQuad.render(renderer);
++      owner.quad.render(renderer);
+       base += SPLAT_TEX_WIDTH * (layerYEnd - layerYStart);
+     }
+-    this.resetRenderState(renderer, renderState);
+     return { nextBase };
++    } finally {
++      this.resetRenderState(renderer, renderState);
++    }
++    });
+   }
+   disposeLodSplats() {
+     if (this.lodSplats) {
+@@ -20693,4 +21011,4 @@ exports.transcodeSpz = transcodeSpz;
+ exports.unpackSplat = unpackSplat;
+ exports.unpackSplats = unpackSplats;
+ exports.utils = utils;
+-//# sourceMappingURL=spark.cjs.js.map
++// Source map omitted: see the tracked MetOrigin lifecycle patch.
+diff --git a/dist/spark.module.js b/dist/spark.module.js
+index aec3d5590a50f27b56a39169c08b4557afe5748c..4b9c641c60433230e52d2fb6c9e32578200115db 100644
+--- a/dist/spark.module.js
++++ b/dist/spark.module.js
+@@ -4169,6 +4169,196 @@ class DynoProgramTemplate {
+     return this.before + Array.from(globals).join("\n\n") + this.between + statements.map((s) => this.indent + s).join("\n") + this.after;
+   }
+ }
++
++// MetOrigin: GPU wrappers belong to one underlying renderer, never a module
++// singleton. Weak registry keys do not keep a retired renderer alive.
++const sparkRendererResources = new WeakMap();
++const sparkPlaceholderOrigins = new WeakMap();
++function initSparkResourceConsumer(consumer) {
++  consumer._resourceOwner = null;
++  consumer._resourceToken = {};
++  consumer._resourceGeneration = 0;
++}
++function isSparkPlaceholder(texture) {
++  return texture === _SparkRenderer.emptyOrdering ||
++    texture === _SplatAccumulator.emptyTexture || texture === emptyLodIndices ||
++    texture === _ExtSplats.emptyTexture || texture === _ExtSplats.emptyArray ||
++    texture === _ExtSplats.emptyUint32x4 || texture === _PackedSplats.getEmptyArray ||
++    texture === _PackedSplats.emptyUint32x4 || texture === _PackedSplats.emptyUint32x2 ||
++    texture === _RgbaArray.emptySource;
++}
++function copySparkUniformValue(value, owner) {
++  if (value && value.isTexture) return owner.resolveTexture(value);
++  if (value && (value.isVector2 || value.isVector3 || value.isVector4 || value.isMatrix3 || value.isMatrix4 || value.isQuaternion || value.isColor)) return value.clone();
++  if (value instanceof DataView) return new DataView(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
++  if (ArrayBuffer.isView(value)) return new value.constructor(value);
++  if (value instanceof ArrayBuffer) return value.slice(0);
++  if (Array.isArray(value)) return value.map((item) => copySparkUniformValue(item, owner));
++  if (value && Object.getPrototypeOf(value) === Object.prototype) {
++    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, copySparkUniformValue(item, owner)]));
++  }
++  // Mutable uniform values above are draw-local snapshots for nested rendering.
++  return value;
++}
++class SparkRendererResources {
++  constructor(renderer) {
++    this.renderer = renderer;
++    this.users = new Set();
++    this.placeholderTextures = new Map();
++    this.programMaterials = new Map();
++    this.activeMaterials = new Set();
++    this.retiredMaterials = new Set();
++    this.drawDepth = 0;
++    this.closing = false;
++    this.disposed = false;
++    this.quad = new FullScreenQuad(null);
++    // FullScreenQuad's constructor uses Pass.js module geometry; clone it.
++    this.quad._mesh.geometry = this.quad._mesh.geometry.clone();
++  }
++  resolveTexture(texture) {
++    if (!texture || !texture.isTexture) return texture;
++    const template = sparkPlaceholderOrigins.get(texture) ?? texture;
++    if (!isSparkPlaceholder(template)) return texture;
++    if (this.closing || this.disposed) throw new Error("Spark renderer resources released");
++    let local = this.placeholderTextures.get(template);
++    if (!local) {
++      local = template.clone();
++      // clone() shares immutable CPU Source data. Never clear source.data here.
++      local.needsUpdate = true;
++      this.placeholderTextures.set(template, local);
++      sparkPlaceholderOrigins.set(local, template);
++    }
++    return local;
++  }
++  syncUniforms(program, material) {
++    const uniforms = material.uniforms;
++    for (const key of Object.keys(uniforms)) {
++      if (!(key in program.uniforms)) delete uniforms[key];
++    }
++    for (const [key, uniform] of Object.entries(program.uniforms)) {
++      uniforms[key] = { ...uniform, value: copySparkUniformValue(uniform.value, this) };
++    }
++    material.uniformsNeedUpdate = true;
++  }
++  newMaterial(program) {
++    return new THREE.RawShaderMaterial({
++      glslVersion: THREE.GLSL3,
++      vertexShader: IDENT_VERTEX_SHADER,
++      fragmentShader: program.shader,
++      uniforms: {}
++    });
++  }
++  prepareMaterial(program, token) {
++    if (this.closing || this.disposed || !this.users.has(token)) throw new Error("Spark renderer resources released");
++    let record = this.programMaterials.get(program);
++    if (!record) {
++      record = { materials: new Map(), users: new Set() };
++      this.programMaterials.set(program, record);
++    }
++    let material = record.materials.get(token);
++    if (!material) {
++      material = this.newMaterial(program);
++      record.materials.set(token, material);
++      record.users.add(token);
++    }
++    return material;
++  }
++  retireMaterial(material) {
++    if (this.drawDepth > 0) {
++      this.retiredMaterials.add(material);
++    } else {
++      material.dispose();
++      material.uniforms = {};
++    }
++  }
++  retainPrograms(token, programs) {
++    for (const [program, record] of this.programMaterials) {
++      if (!programs.has(program)) {
++        const material = record.materials.get(token);
++        if (material) {
++          record.materials.delete(token);
++          record.users.delete(token);
++          this.retireMaterial(material);
++        }
++        if (record.materials.size === 0) this.programMaterials.delete(program);
++      }
++    }
++  }
++  withProgram(program, token, callback) {
++    const base = this.prepareMaterial(program, token);
++    // A recursive render of the same consumer must not overwrite its outer
++    // material/uniforms. Other consumers already have separate materials.
++    const transient = this.activeMaterials.has(base);
++    const material = transient ? this.newMaterial(program) : base;
++    const previous = this.quad.material;
++    this.drawDepth += 1;
++    this.activeMaterials.add(material);
++    try {
++      program.update();
++      if (this.closing || this.disposed || !this.users.has(token)) throw new Error("Spark renderer resources released");
++      this.syncUniforms(program, material);
++      this.quad.material = material;
++      return callback(material);
++    } finally {
++      this.quad.material = previous;
++      this.activeMaterials.delete(material);
++      if (transient) this.retiredMaterials.add(material);
++      this.drawDepth -= 1;
++      if (this.drawDepth === 0) {
++        for (const retired of this.retiredMaterials) {
++          retired.dispose();
++          retired.uniforms = {};
++        }
++        this.retiredMaterials.clear();
++        if (this.closing) this.destroy();
++      }
++    }
++  }
++  release(token) {
++    if (!this.users.delete(token)) return;
++    this.retainPrograms(token, new Set());
++    if (this.users.size === 0) {
++      this.closing = true;
++      if (this.drawDepth === 0) this.destroy();
++    }
++  }
++  destroy() {
++    if (this.disposed) return;
++    this.disposed = true;
++    this.quad.material = null;
++    this.quad.dispose();
++    for (const texture of this.placeholderTextures.values()) texture.dispose();
++    this.placeholderTextures.clear();
++    this.programMaterials.clear();
++    if (sparkRendererResources.get(this.renderer) === this) sparkRendererResources.delete(this.renderer);
++  }
++}
++function bindSparkResourceConsumer(consumer, renderer) {
++  if (!renderer) throw new Error("No renderer");
++  if (consumer._resourceOwner) {
++    if (consumer._resourceOwner.renderer !== renderer) throw new Error("Dispose Spark helper before switching renderer");
++    if (consumer._resourceOwner.closing || consumer._resourceOwner.disposed) throw new Error("Spark renderer resources released");
++    return consumer._resourceOwner;
++  }
++  let owner = sparkRendererResources.get(renderer);
++  if (!owner || owner.closing || owner.disposed) {
++    owner = new SparkRendererResources(renderer);
++    sparkRendererResources.set(renderer, owner);
++  }
++  owner.users.add(consumer._resourceToken);
++  consumer._resourceOwner = owner;
++  return owner;
++}
++function releaseSparkResourceConsumer(consumer) {
++  consumer._resourceGeneration += 1;
++  const owner = consumer._resourceOwner;
++  consumer._resourceOwner = null;
++  if (owner) owner.release(consumer._resourceToken);
++}
++function checkSparkResourceGeneration(consumer, generation) {
++  if (consumer._resourceGeneration !== generation) throw new Error("Spark helper work invalidated by disposal");
++}
++
+ const programMaterial = /* @__PURE__ */ new WeakMap();
+ function getMaterial(program) {
+   let material = programMaterial.get(program);
+@@ -7985,11 +8175,17 @@ function getShaders() {
+ }
+ const _Readback = class _Readback {
+   constructor({ renderer } = {}) {
++    initSparkResourceConsumer(this);
+     this.renderer = renderer;
+     this.capacity = 0;
+     this.count = 0;
+   }
+   dispose() {
++    this.disposeTarget();
++    this.renderer = void 0;
++    releaseSparkResourceConsumer(this);
++  }
++  disposeTarget() {
+     if (this.target) {
+       this.target.dispose();
+       this.target = void 0;
+@@ -8017,7 +8213,7 @@ const _Readback = class _Readback {
+   ensureCapacity(capacity) {
+     const { width, height, depth, maxSplats } = getTextureSize(capacity);
+     if (!this.target || maxSplats > this.capacity) {
+-      this.dispose();
++      this.disposeTarget();
+       this.capacity = maxSplats;
+       this.target = new THREE.WebGLArrayRenderTarget(width, height, depth, {
+         depthBuffer: false,
+@@ -8034,7 +8230,7 @@ const _Readback = class _Readback {
+   }
+   // Get a program and THREE.RawShaderMaterial for a given Rgba8Readback,
+   // generating it if necessary and caching the result.
+-  prepareProgramMaterial(reader) {
++  prepareProgramMaterial(reader, renderer) {
+     let program = _Readback.readbackProgram.get(reader);
+     if (!program) {
+       const graph = dynoBlock(
+@@ -8064,8 +8260,16 @@ const _Readback = class _Readback {
+       });
+       _Readback.readbackProgram.set(reader, program);
+     }
+-    const material = program.prepareMaterial();
+-    _Readback.fullScreenQuad.material = material;
++    let material;
++    if (renderer) {
++      const owner = bindSparkResourceConsumer(this, renderer);
++      owner.retainPrograms(this._resourceToken, new Set([program]));
++      material = owner.prepareMaterial(program, this._resourceToken);
++    } else {
++      // Public legacy preparation remains caller-owned.
++      material = program.prepareMaterial();
++      _Readback.fullScreenQuad.material = material;
++    }
+     return { program, material };
+   }
+   saveRenderState(renderer) {
+@@ -8082,9 +8286,11 @@ const _Readback = class _Readback {
+   }
+   process({
+     count,
+-    material
++    material,
++    renderer,
++    owner,
++    generation
+   }) {
+-    const renderer = this.renderer;
+     if (!renderer) {
+       throw new Error("No renderer");
+     }
+@@ -8096,6 +8302,7 @@ const _Readback = class _Readback {
+     material.uniforms.targetCount.value = count;
+     let baseIndex = 0;
+     while (baseIndex < count) {
++      checkSparkResourceGeneration(this, generation);
+       const layer = Math.floor(baseIndex / layerSize);
+       const layerBase = layer * layerSize;
+       const layerYEnd = Math.min(
+@@ -8107,7 +8314,7 @@ const _Readback = class _Readback {
+       renderer.setRenderTarget(this.target, layer);
+       renderer.xr.enabled = false;
+       renderer.autoClear = false;
+-      _Readback.fullScreenQuad.render(renderer);
++      owner.quad.render(renderer);
+       baseIndex += SPLAT_TEX_WIDTH * layerYEnd;
+     }
+     this.count = count;
+@@ -8167,16 +8374,22 @@ const _Readback = class _Readback {
+     count,
+     renderer
+   }) {
+-    this.renderer = renderer || this.renderer;
++    const useRenderer = renderer || this.renderer;
++    bindSparkResourceConsumer(this, useRenderer);
++    this.renderer = useRenderer;
+     if (!this.renderer) {
+       throw new Error("No renderer");
+     }
+     this.ensureCapacity(count);
+-    const { program, material } = this.prepareProgramMaterial(reader);
+-    program.update();
+-    const renderState = this.saveRenderState(this.renderer);
+-    this.process({ count, material });
+-    this.resetRenderState(this.renderer, renderState);
++    const { program } = this.prepareProgramMaterial(reader, this.renderer);
++    const owner = this._resourceOwner;
++    const generation = this._resourceGeneration;
++    const renderState = this.saveRenderState(useRenderer);
++    try {
++      owner.withProgram(program, this._resourceToken, (material) => this.process({ count, material, renderer: useRenderer, owner, generation }));
++    } finally {
++      this.resetRenderState(useRenderer, renderState);
++    }
+   }
+   // Perform a readback of the render target, returning a buffer of the
+   // given type.
+@@ -8186,10 +8399,13 @@ const _Readback = class _Readback {
+     if (!this.renderer) {
+       throw new Error("No renderer");
+     }
+-    const renderState = this.saveRenderState(this.renderer);
+-    const promise = this.read({ readback });
+-    this.resetRenderState(this.renderer, renderState);
+-    return promise;
++    const renderer = this.renderer;
++    const renderState = this.saveRenderState(renderer);
++    try {
++      return this.read({ readback });
++    } finally {
++      this.resetRenderState(renderer, renderState);
++    }
+   }
+   // Perform a render and readback operation for the given Rgba8Readback,
+   // and readback buffer (call ensureBuffer first).
+@@ -8199,18 +8415,24 @@ const _Readback = class _Readback {
+     renderer,
+     readback
+   }) {
+-    this.renderer = renderer || this.renderer;
++    const useRenderer = renderer || this.renderer;
++    bindSparkResourceConsumer(this, useRenderer);
++    this.renderer = useRenderer;
+     if (!this.renderer) {
+       throw new Error("No renderer");
+     }
+     this.ensureCapacity(count);
+-    const { program, material } = this.prepareProgramMaterial(reader);
+-    program.update();
+-    const renderState = this.saveRenderState(this.renderer);
+-    this.process({ count, material });
+-    const promise = this.read({ readback });
+-    this.resetRenderState(this.renderer, renderState);
+-    return promise;
++    const { program } = this.prepareProgramMaterial(reader, this.renderer);
++    const owner = this._resourceOwner;
++    const generation = this._resourceGeneration;
++    const renderState = this.saveRenderState(useRenderer);
++    try {
++      owner.withProgram(program, this._resourceToken, (material) => this.process({ count, material, renderer: useRenderer, owner, generation }));
++    } finally {
++      this.resetRenderState(useRenderer, renderState);
++    }
++    checkSparkResourceGeneration(this, generation);
++    return this.readback({ readback });
+   }
+   getTexture() {
+     var _a2;
+@@ -9249,6 +9471,7 @@ const _SplatAccumulator = class _SplatAccumulator {
+     extSplats,
+     covSplats
+   } = {}) {
++    initSparkResourceConsumer(this);
+     this.time = 0;
+     this.deltaTime = 0;
+     this.viewToWorld = new THREE.Matrix4();
+@@ -9269,6 +9492,16 @@ const _SplatAccumulator = class _SplatAccumulator {
+     this.covSplats = covSplats ?? false;
+   }
+   dispose() {
++    this.disposeTarget();
++    if (this.readback) this.readback.dispose();
++    this.readback = null;
++    this.readbackSplats = [];
++    this.mapping = [];
++    this.numSplats = 0;
++    this.maxSplats = 0;
++    releaseSparkResourceConsumer(this);
++  }
++  disposeTarget() {
+     if (this.target) {
+       this.target.dispose();
+       this.target = null;
+@@ -9301,7 +9534,7 @@ const _SplatAccumulator = class _SplatAccumulator {
+     if (this.target && (maxSplats ?? 1) <= this.maxSplats) {
+       return false;
+     }
+-    this.dispose();
++    this.disposeTarget();
+     const textureSize2 = getTextureSize(maxSplats ?? 1);
+     const { width, height, depth } = textureSize2;
+     this.maxSplats = textureSize2.maxSplats;
+@@ -9345,7 +9578,7 @@ const _SplatAccumulator = class _SplatAccumulator {
+   }
+   // Get a program and THREE.RawShaderMaterial for a given GsplatGenerator,
+   // generating it if necessary and caching the result.
+-  prepareProgramMaterial(generator, covGenerator) {
++  prepareProgramMaterial(generator, covGenerator, renderer) {
+     const theGenerator = generator ?? covGenerator;
+     if (!theGenerator) {
+       throw new Error("Either generator or covGenerator must be provided");
+@@ -9473,8 +9706,13 @@ const _SplatAccumulator = class _SplatAccumulator {
+       targetBase: { value: 0 },
+       targetCount: { value: 0 }
+     });
+-    const material = program.prepareMaterial();
+-    _SplatAccumulator.fullScreenQuad.material = material;
++    let material;
++    if (renderer) {
++      material = bindSparkResourceConsumer(this, renderer).prepareMaterial(program, this._resourceToken);
++    } else {
++      material = program.prepareMaterial();
++      _SplatAccumulator.fullScreenQuad.material = material;
++    }
+     return { program, material };
+   }
+   generate({
+@@ -9490,17 +9728,21 @@ const _SplatAccumulator = class _SplatAccumulator {
+     if (base + count > this.maxSplats) {
+       throw new Error("Base + count exceeds maxSplats");
+     }
+-    const { program, material } = this.prepareProgramMaterial(
+-      generator,
+-      covGenerator
+-    );
+-    program.update();
++    const { program } = this.prepareProgramMaterial(generator, covGenerator, renderer);
++    const owner = this._resourceOwner;
++    const programs = new Set(this.mapping.map(({ generator, covGenerator }) => _SplatAccumulator.generatorProgram.get(generator ?? covGenerator)).filter(Boolean));
++    programs.add(program);
++    owner.retainPrograms(this._resourceToken, programs);
++    const generation = this._resourceGeneration;
+     const renderState = this.saveRenderState(renderer);
+     const nextBase = Math.ceil((base + count) / SPLAT_TEX_WIDTH) * SPLAT_TEX_WIDTH;
+     const layerSize = SPLAT_TEX_WIDTH * SPLAT_TEX_HEIGHT;
++    return owner.withProgram(program, this._resourceToken, (material) => {
++    try {
+     material.uniforms.targetBase.value = base;
+     material.uniforms.targetCount.value = count;
+     while (base < nextBase) {
++      checkSparkResourceGeneration(this, generation);
+       const layer = Math.floor(base / layerSize);
+       material.uniforms.targetLayer.value = layer;
+       const layerBase = layer * layerSize;
+@@ -9518,11 +9760,14 @@ const _SplatAccumulator = class _SplatAccumulator {
+       renderer.setRenderTarget(this.target, layer);
+       renderer.xr.enabled = false;
+       renderer.autoClear = false;
+-      _SplatAccumulator.fullScreenQuad.render(renderer);
++      owner.quad.render(renderer);
+       base += SPLAT_TEX_WIDTH * (layerYEnd - layerYStart);
+     }
+-    this.resetRenderState(renderer, renderState);
+     return { nextBase };
++    } finally {
++      this.resetRenderState(renderer, renderState);
++    }
++    });
+   }
+   prepareGenerate({
+     renderer,
+@@ -9535,6 +9780,8 @@ const _SplatAccumulator = class _SplatAccumulator {
+     lodInstances
+   }) {
+     var _a2;
++    const owner = bindSparkResourceConsumer(this, renderer);
++    const generation = this._resourceGeneration;
+     this.viewToWorld.copy(camera.matrixWorld);
+     camera.getWorldPosition(this.viewOrigin);
+     camera.getWorldDirection(this.viewDirection);
+@@ -9626,6 +9873,8 @@ const _SplatAccumulator = class _SplatAccumulator {
+     const { splatsUpdated, mappingUpdated } = previous.checkVersions(
+       this.mapping
+     );
++    const programs = new Set(this.mapping.map(({ generator, covGenerator }) => _SplatAccumulator.generatorProgram.get(generator ?? covGenerator)).filter(Boolean));
++    owner.retainPrograms(this._resourceToken, programs);
+     this.version = previous.version + (splatsUpdated ? 1 : 0);
+     this.mappingVersion = previous.mappingVersion + (mappingUpdated ? 1 : 0);
+     return {
+@@ -9634,6 +9883,7 @@ const _SplatAccumulator = class _SplatAccumulator {
+       mappingVersion: this.mappingVersion,
+       visibleGenerators,
+       generate: () => {
++        checkSparkResourceGeneration(this, generation);
+         this.ensureGenerate({ maxSplats });
+         for (const { node, base, count } of this.mapping) {
+           const { generator, covGenerator } = node;
+@@ -9643,6 +9893,7 @@ const _SplatAccumulator = class _SplatAccumulator {
+         }
+       },
+       readback: async () => {
++        checkSparkResourceGeneration(this, generation);
+         const textures = this.getTextures();
+         if (this.readbackSplats.length === 0) {
+           this.readbackSplats = [
+@@ -9822,6 +10073,9 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
+       allowOverride: false
+     });
+     super(geometry, material);
++    initSparkResourceConsumer(this);
++    this._createdDisplayGeometry = geometry;
++    this._createdDisplayMaterial = material;
+     this.renderSize = new THREE.Vector2();
+     this.lastFrame = -1;
+     this.updateTimeoutId = -1;
+@@ -9830,6 +10084,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
+     this.activeSplats = 0;
+     this.accumulators = [];
+     this.sorting = false;
++    this.disposed = false;
+     this.sortDirty = false;
+     this.lastSortTime = 0;
+     this.sortWorker = null;
+@@ -9855,10 +10110,17 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
+     this.sortPause = 0;
+     this.sortDelay = 0;
+     this.pageSizeWarning = false;
++    try {
+     this.material = material;
+     this.uniforms = uniforms;
+     this.frustumCulled = false;
+     this.renderer = options.renderer;
++    const owner = bindSparkResourceConsumer(this, this.renderer);
++    for (const key of ["ordering", "extSplats", "extSplats2"]) {
++      const uniform = this.uniforms[key];
++      const value = owner.resolveTexture(uniform.value);
++      if (value !== uniform.value) this.uniforms[key] = { ...uniform, value };
++    }
+     this.onDirty = options.onDirty;
+     this.dirty = true;
+     this.autoUpdate = options.autoUpdate ?? true;
+@@ -9941,6 +10203,10 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
+       }
+       this.encodeLinear = options.encodeLinear ?? true;
+     }
++    } catch (error) {
++      this.dispose();
++      throw error;
++    }
+   }
+   static makeUniforms() {
+     const uniforms = {
+@@ -10005,6 +10271,20 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
+     return uniforms;
+   }
+   dispose() {
++    if (this.disposed) return;
++    // MetOrigin: async sort completions must not revive a released renderer.
++    this.disposed = true;
++    this.autoUpdate = false;
++    this.sortDirty = false;
++    if (this.updateTimeoutId !== -1) {
++      clearTimeout(this.updateTimeoutId);
++      this.updateTimeoutId = -1;
++    }
++    if (this.sortTimeoutId !== -1) {
++      clearTimeout(this.sortTimeoutId);
++      this.sortTimeoutId = -1;
++    }
++    this.readback32 = new Uint32Array(0);
+     if (this.target) {
+       this.target.dispose();
+       this.target = void 0;
+@@ -10018,15 +10298,15 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
+       this.orderingTexture = null;
+     }
+     const accumulators = /* @__PURE__ */ new Set();
+-    accumulators.add(this.display);
+-    accumulators.add(this.current);
++    if (this.display) accumulators.add(this.display);
++    if (this.current) accumulators.add(this.current);
+     for (const accumulator of this.accumulators) {
+       accumulators.add(accumulator);
+     }
+     for (const accumulator of accumulators) {
+       accumulator.dispose();
+     }
+-    const instances = this.lodInstances.values();
++    const instances = Array.from(this.lodInstances.values());
+     this.lodInstances.clear();
+     for (const instance of instances) {
+       instance.texture.dispose();
+@@ -10043,8 +10323,14 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
+       this.pager.dispose();
+       this.pager = void 0;
+     }
++    this._createdDisplayGeometry.dispose();
++    this._createdDisplayMaterial.dispose();
++    this._createdDisplayMaterial.uniforms = {};
++    this.uniforms = {};
++    releaseSparkResourceConsumer(this);
+   }
+   setDirty() {
++    if (this.disposed) return;
+     var _a2;
+     if (!this.dirty) {
+       this.dirty = true;
+@@ -10052,7 +10338,9 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
+     }
+   }
+   onBeforeRender(renderer, scene, camera) {
++    if (this.disposed) return;
+     var _a2;
++    const owner = bindSparkResourceConsumer(this, renderer);
+     const spark = _SparkRenderer.sparkOverride ?? this;
+     const frame = renderer.info.render.frame;
+     const isNewFrame = frame !== spark.lastFrame;
+@@ -10104,17 +10392,17 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
+     this.uniforms.clipXY.value = spark.clipXY;
+     this.uniforms.focalAdjustment.value = spark.focalAdjustment;
+     this.uniforms.encodeLinear.value = spark.encodeLinear;
+-    this.uniforms.ordering.value = spark.orderingTexture ?? _SparkRenderer.emptyOrdering;
++    this.uniforms.ordering.value = owner.resolveTexture(spark.orderingTexture ?? _SparkRenderer.emptyOrdering);
+     this.uniforms.enableExtSplats.value = this.display.extSplats;
+     this.uniforms.enableCovSplats.value = this.display.covSplats;
+     if (this.display.extSplats) {
+       const extSplats = spark.display.getTextures();
+-      this.uniforms.extSplats.value = extSplats[0];
+-      this.uniforms.extSplats2.value = extSplats[1];
++      this.uniforms.extSplats.value = owner.resolveTexture(extSplats[0]);
++      this.uniforms.extSplats2.value = owner.resolveTexture(extSplats[1]);
+     } else {
+       const packedSplats = spark.display.getTextures();
+-      this.uniforms.extSplats.value = packedSplats[0];
+-      this.uniforms.extSplats2.value = packedSplats[0];
++      this.uniforms.extSplats.value = owner.resolveTexture(packedSplats[0]);
++      this.uniforms.extSplats2.value = owner.resolveTexture(packedSplats[0]);
+     }
+     this.uniforms.time.value = spark.display.time;
+     this.uniforms.deltaTime.value = spark.display.deltaTime;
+@@ -10182,6 +10470,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
+     camera,
+     autoUpdate
+   }) {
++    if (this.disposed) return;
+     const renderer = this.renderer;
+     const time = this.time ?? this.clock.getElapsedTime();
+     const center = camera.getWorldPosition(new THREE.Vector3());
+@@ -10241,7 +10530,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
+     await this.driveSort();
+   }
+   async driveSort() {
+-    if (this.sorting || !this.sortDirty) {
++    if (this.disposed || this.sorting || !this.sortDirty) {
+       return;
+     }
+     if (this.sortTimeoutId !== -1) {
+@@ -10260,97 +10549,110 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
+     this.sorting = true;
+     this.sortDirty = false;
+     this.lastSortTime = now;
+-    if (this.readPause > 0) {
+-      await new Promise((resolve) => setTimeout(resolve, this.readPause));
+-    }
+-    const current = this.current;
+-    this.sortedCenter.copy(current.viewOrigin);
+-    this.sortedDir.copy(current.viewDirection);
+-    const { numSplats, maxSplats } = current;
+-    const rows = Math.max(1, Math.ceil(maxSplats / 16384));
+-    const orderingMaxSplats = rows * 16384;
+-    this.maxSplats = Math.max(this.maxSplats, orderingMaxSplats);
+-    const ordering = new Uint32Array(this.maxSplats);
+-    const readback = Readback.ensureBuffer(maxSplats, this.readback32);
+-    this.readback32 = readback;
+-    await this.readbackDepth({
+-      current,
+-      renderer: this.renderer,
+-      numSplats,
+-      readback
+-    });
+-    if (this.sortPause > 0) {
+-      await new Promise((resolve) => setTimeout(resolve, this.sortPause));
+-    }
+-    if (!this.sortWorker) {
+-      this.sortWorker = new SplatWorker();
+-    }
+-    const result = await this.sortWorker.call("sortSplats32", {
+-      numSplats,
+-      readback,
+-      ordering
+-    });
+-    if (this.sortDelay > 0) {
+-      await new Promise((resolve) => setTimeout(resolve, this.sortDelay));
+-    }
+-    this.readback32 = result.readback;
+-    this.activeSplats = result.activeSplats;
+-    if (this.orderingTexture) {
+-      if (rows > this.orderingTexture.image.height) {
+-        this.orderingTexture.dispose();
+-        this.orderingTexture = null;
++    try {
++      if (this.readPause > 0) {
++        await new Promise((resolve) => setTimeout(resolve, this.readPause));
++      }
++      if (this.disposed) return;
++      const current = this.current;
++      this.sortedCenter.copy(current.viewOrigin);
++      this.sortedDir.copy(current.viewDirection);
++      const { numSplats, maxSplats } = current;
++      const rows = Math.max(1, Math.ceil(maxSplats / 16384));
++      const orderingMaxSplats = rows * 16384;
++      this.maxSplats = Math.max(this.maxSplats, orderingMaxSplats);
++      const ordering = new Uint32Array(this.maxSplats);
++      const readback = Readback.ensureBuffer(maxSplats, this.readback32);
++      this.readback32 = readback;
++      await this.readbackDepth({
++        current,
++        renderer: this.renderer,
++        numSplats,
++        readback
++      });
++      if (this.disposed) return;
++      if (this.sortPause > 0) {
++        await new Promise((resolve) => setTimeout(resolve, this.sortPause));
+       }
+-    }
+-    if (!this.orderingTexture) {
+-      const orderingTexture = new THREE.DataTexture(
+-        result.ordering,
+-        4096,
+-        rows,
+-        THREE.RGBAIntegerFormat,
+-        THREE.UnsignedIntType
+-      );
+-      orderingTexture.internalFormat = "RGBA32UI";
+-      orderingTexture.needsUpdate = true;
+-      this.orderingTexture = orderingTexture;
+-    } else {
+-      const renderer = this.renderer;
+-      const gl = renderer.getContext();
+-      if (!renderer.properties.has(this.orderingTexture)) {
+-        this.orderingTexture.needsUpdate = true;
+-      } else {
+-        const props = renderer.properties.get(this.orderingTexture);
+-        const glTexture = props.__webglTexture;
+-        if (!glTexture) {
+-          throw new Error("ordering texture not found");
++      if (this.disposed) return;
++      if (!this.sortWorker) {
++        this.sortWorker = new SplatWorker();
++      }
++      const result = await this.sortWorker.call("sortSplats32", {
++        numSplats,
++        readback,
++        ordering
++      });
++      if (this.disposed) return;
++      if (this.sortDelay > 0) {
++        await new Promise((resolve) => setTimeout(resolve, this.sortDelay));
++      }
++      if (this.disposed) return;
++      this.readback32 = result.readback;
++      this.activeSplats = result.activeSplats;
++      if (this.orderingTexture) {
++        if (rows > this.orderingTexture.image.height) {
++          this.orderingTexture.dispose();
++          this.orderingTexture = null;
+         }
+-        renderer.state.activeTexture(gl.TEXTURE0);
+-        renderer.state.bindTexture(gl.TEXTURE_2D, glTexture);
+-        gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null);
+-        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+-        gl.texSubImage2D(
+-          gl.TEXTURE_2D,
+-          0,
+-          0,
+-          0,
++      }
++      if (!this.orderingTexture) {
++        const orderingTexture = new THREE.DataTexture(
++          result.ordering,
+           4096,
+           rows,
+-          gl.RGBA_INTEGER,
+-          gl.UNSIGNED_INT,
+-          // data,
+-          result.ordering
++          THREE.RGBAIntegerFormat,
++          THREE.UnsignedIntType
+         );
+-        renderer.state.bindTexture(gl.TEXTURE_2D, null);
++        orderingTexture.internalFormat = "RGBA32UI";
++        orderingTexture.needsUpdate = true;
++        this.orderingTexture = orderingTexture;
++      } else {
++        const renderer = this.renderer;
++        const gl = renderer.getContext();
++        if (!renderer.properties.has(this.orderingTexture)) {
++          this.orderingTexture.needsUpdate = true;
++        } else {
++          const props = renderer.properties.get(this.orderingTexture);
++          const glTexture = props.__webglTexture;
++          if (!glTexture) {
++            throw new Error("ordering texture not found");
++          }
++          renderer.state.activeTexture(gl.TEXTURE0);
++          renderer.state.bindTexture(gl.TEXTURE_2D, glTexture);
++          gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null);
++          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
++          gl.texSubImage2D(
++            gl.TEXTURE_2D,
++            0,
++            0,
++            0,
++            4096,
++            rows,
++            gl.RGBA_INTEGER,
++            gl.UNSIGNED_INT,
++            // data,
++            result.ordering
++          );
++          renderer.state.bindTexture(gl.TEXTURE_2D, null);
++        }
+       }
+-    }
+-    if (this.current.mappingVersion === current.mappingVersion) {
+-      if (this.current.mappingVersion !== this.display.mappingVersion) {
+-        this.accumulators.push(this.display);
+-        this.display = this.current;
++      if (this.current.mappingVersion === current.mappingVersion) {
++        if (this.current.mappingVersion !== this.display.mappingVersion) {
++          this.accumulators.push(this.display);
++          this.display = this.current;
++        }
+       }
++    } catch (error) {
++      // Disposal invalidates this work; active-renderer failures still propagate.
++      if (!this.disposed) throw error;
++    } finally {
++      this.sorting = false;
++    }
++    if (!this.disposed) {
++      this.setDirty();
++      this.driveSort();
+     }
+-    this.sorting = false;
+-    this.setDirty();
+-    this.driveSort();
+   }
+   ensureLodWorker() {
+     if (!this.lodWorker) {
+@@ -14193,6 +14495,7 @@ class SplatData {
+ }
+ const _PackedSplats = class _PackedSplats {
+   constructor(options = {}) {
++    initSparkResourceConsumer(this);
+     this.maxSplats = 0;
+     this.numSplats = 0;
+     this.packedArray = null;
+@@ -14338,6 +14641,7 @@ const _PackedSplats = class _PackedSplats {
+     }
+     this.extra = {};
+     this.disposeLodSplats();
++    releaseSparkResourceConsumer(this);
+   }
+   prepareFetchSplat() {
+   }
+@@ -14671,7 +14975,7 @@ const _PackedSplats = class _PackedSplats {
+   }
+   // Get a program and THREE.RawShaderMaterial for a given GsplatGenerator,
+   // generating it if necessary and caching the result.
+-  prepareProgramMaterial(generator) {
++  prepareProgramMaterial(generator, renderer) {
+     let program = _PackedSplats.generatorProgram.get(generator);
+     if (!program) {
+       const graph = dynoBlock(
+@@ -14706,8 +15010,15 @@ const _PackedSplats = class _PackedSplats {
+       });
+       _PackedSplats.generatorProgram.set(generator, program);
+     }
+-    const material = program.prepareMaterial();
+-    _PackedSplats.fullScreenQuad.material = material;
++    let material;
++    if (renderer) {
++      const owner = bindSparkResourceConsumer(this, renderer);
++      owner.retainPrograms(this._resourceToken, new Set([program]));
++      material = owner.prepareMaterial(program, this._resourceToken);
++    } else {
++      material = program.prepareMaterial();
++      _PackedSplats.fullScreenQuad.material = material;
++    }
+     return { program, material };
+   }
+   saveRenderState(renderer) {
+@@ -14739,14 +15050,18 @@ const _PackedSplats = class _PackedSplats {
+     if (base + count > this.maxSplats) {
+       throw new Error("Base + count exceeds maxSplats");
+     }
+-    const { program, material } = this.prepareProgramMaterial(generator);
+-    program.update();
++    const { program } = this.prepareProgramMaterial(generator, renderer);
++    const owner = this._resourceOwner;
++    const generation = this._resourceGeneration;
+     const renderState = this.saveRenderState(renderer);
+     const nextBase = Math.ceil((base + count) / SPLAT_TEX_WIDTH) * SPLAT_TEX_WIDTH;
+     const layerSize = SPLAT_TEX_WIDTH * SPLAT_TEX_HEIGHT;
++    return owner.withProgram(program, this._resourceToken, (material) => {
++    try {
+     material.uniforms.targetBase.value = base;
+     material.uniforms.targetCount.value = count;
+     while (base < nextBase) {
++      checkSparkResourceGeneration(this, generation);
+       const layer = Math.floor(base / layerSize);
+       material.uniforms.targetLayer.value = layer;
+       const layerBase = layer * layerSize;
+@@ -14764,11 +15079,14 @@ const _PackedSplats = class _PackedSplats {
+       renderer.setRenderTarget(this.target, layer);
+       renderer.xr.enabled = false;
+       renderer.autoClear = false;
+-      _PackedSplats.fullScreenQuad.render(renderer);
++      owner.quad.render(renderer);
+       base += SPLAT_TEX_WIDTH * (layerYEnd - layerYStart);
+     }
+-    this.resetRenderState(renderer, renderState);
+     return { nextBase };
++    } finally {
++      this.resetRenderState(renderer, renderState);
++    }
++    });
+   }
+   disposeLodSplats() {
+     if (this.lodSplats) {
+@@ -20676,4 +20994,4 @@ export {
+   unpackSplats,
+   utils
+ };
+-//# sourceMappingURL=spark.module.js.map
++// Source map omitted: see the tracked MetOrigin lifecycle patch.
+diff --git a/dist/types/PackedSplats.d.ts b/dist/types/PackedSplats.d.ts
+index 4685e6ca94564c5484cddf0d2196ce20024ffcc9..f5da47a7bf5842c5fa6a3173481432bf5724aefb 100644
+--- a/dist/types/PackedSplats.d.ts
++++ b/dist/types/PackedSplats.d.ts
+@@ -82,7 +82,12 @@ export declare class PackedSplats implements SplatSource {
+     getTexture(): THREE.DataArrayTexture;
+     private maybeUpdateSource;
+     static getEmptyArray: THREE.DataArrayTexture;
+-    prepareProgramMaterial(generator: GsplatGenerator): {
++    /**
++     * @param renderer Internal managed-draw preparation only. Local uniforms are
++     * synchronized by generate/render, not by a standalone program.update().
++     * Omit renderer for the legacy caller-owned, directly prepared material.
++     */
++    prepareProgramMaterial(generator: GsplatGenerator, renderer?: THREE.WebGLRenderer): {
+         program: DynoProgram;
+         material: THREE.RawShaderMaterial;
+     };
+diff --git a/dist/types/Readback.d.ts b/dist/types/Readback.d.ts
+index a56f00295c746b2e262ebb245a4188bc8cf0d41f..ed1a0554a4bd6dafb856a34a789ae52440795e3d 100644
+--- a/dist/types/Readback.d.ts
++++ b/dist/types/Readback.d.ts
+@@ -20,7 +20,12 @@ export declare class Readback {
+     static ensureBuffer<B extends ReadbackBuffer>(count: number, buffer: B): B;
+     ensureBuffer<B extends ReadbackBuffer>(count: number, buffer: B): B;
+     ensureCapacity(capacity: number): void;
+-    prepareProgramMaterial(reader: Rgba8Readback): {
++    /**
++     * @param renderer Internal managed-draw preparation only. Local uniforms are
++     * synchronized by generate/render, not by a standalone program.update().
++     * Omit renderer for the legacy caller-owned, directly prepared material.
++     */
++    prepareProgramMaterial(reader: Rgba8Readback, renderer?: THREE.WebGLRenderer): {
+         program: DynoProgram;
+         material: THREE.RawShaderMaterial;
+     };
+diff --git a/dist/types/SparkRenderer.d.ts b/dist/types/SparkRenderer.d.ts
+index e0505656c42c1e07eb07255f0eafd17656eb0e97..4048c6cab4d5501b5b2063ef8ba339bd57471cb5 100644
+--- a/dist/types/SparkRenderer.d.ts
++++ b/dist/types/SparkRenderer.d.ts
+@@ -334,6 +334,7 @@ export declare class SparkRenderer extends THREE.Mesh {
+     display: SplatAccumulator;
+     current: SplatAccumulator;
+     accumulators: SplatAccumulator[];
++    private disposed;
+     sorting: boolean;
+     sortDirty: boolean;
+     lastSortTime: number;
+diff --git a/dist/types/SplatAccumulator.d.ts b/dist/types/SplatAccumulator.d.ts
+index 70798ea4a79414a39b3c3dd9265af5814abd2d89..23c4e245c88cfa381eb7f46856d112b7a793c40b 100644
+--- a/dist/types/SplatAccumulator.d.ts
++++ b/dist/types/SplatAccumulator.d.ts
+@@ -52,7 +52,12 @@ export declare class SplatAccumulator {
+     }): boolean;
+     private saveRenderState;
+     private resetRenderState;
+-    prepareProgramMaterial(generator?: GsplatGenerator, covGenerator?: CovSplatGenerator): {
++    /**
++     * @param renderer Internal managed-draw preparation only. Local uniforms are
++     * synchronized by generate/render, not by a standalone program.update().
++     * Omit renderer for the legacy caller-owned, directly prepared material.
++     */
++    prepareProgramMaterial(generator?: GsplatGenerator, covGenerator?: CovSplatGenerator, renderer?: THREE.WebGLRenderer): {
+         program: DynoProgram;
+         material: THREE.RawShaderMaterial;
+     };

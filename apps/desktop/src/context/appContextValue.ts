@@ -16,6 +16,8 @@ export type Page =
 
 export interface AppState {
   page: Page;
+  navigationHistory: Page[];
+  navigationIndex: number;
   recentProjects: ProjectInfo[];
   projectAvailability: Record<string, RecentProjectAvailability>;
   pipelineSnapshot: PipelineSnapshot | null;
@@ -39,10 +41,12 @@ export interface AppState {
 
 export type Action =
   | { type: "NAVIGATE"; page: Page }
+  | { type: "NAVIGATE_BACK" }
+  | { type: "NAVIGATE_FORWARD" }
   | { type: "SET_RECENT_PROJECTS"; projects: ProjectInfo[] }
   | { type: "SET_RECENT_PROJECTS_LOADING" }
   | { type: "SET_RECENT_PROJECTS_ERROR"; error: string }
-  | { type: "ADD_RECENT_PROJECT"; project: ProjectInfo }
+  | { type: "ADD_RECENT_PROJECT"; project: ProjectInfo; recentlyOpened?: boolean }
   | { type: "REMOVE_RECENT_PROJECT"; projectId: string }
   | { type: "BEGIN_PROJECT_AVAILABILITY"; projectId: string; projectPath: string; generation: number }
   | { type: "SET_PROJECT_AVAILABILITY"; result: ProjectAvailabilityResult; generation: number }
@@ -69,6 +73,8 @@ export interface AppContextValue {
 
 export const initialState: AppState = {
   page: { type: "home" },
+  navigationHistory: [{ type: "home" }],
+  navigationIndex: 0,
   recentProjects: [],
   projectAvailability: {},
   pipelineSnapshot: null,
@@ -106,10 +112,49 @@ function isNonRegressingProjectUpdate(current: ProjectInfo, incoming: ProjectInf
   return Number.isFinite(currentTime) && Number.isFinite(incomingTime) && incomingTime >= currentTime;
 }
 
+function samePage(left: Page | undefined, right: Page): boolean {
+  if (!left || left.type !== right.type) return false;
+  return left.type !== "project-detail" || (right.type === "project-detail" &&
+    left.projectId === right.projectId && left.projectPath === right.projectPath);
+}
+
+/** Keep history destinations valid when a project is removed or relocated. */
+function rewriteNavigation(
+  state: AppState,
+  transform: (page: Page) => Page | null,
+): Pick<AppState, "page" | "navigationHistory" | "navigationIndex"> {
+  const navigationHistory: Page[] = [];
+  let navigationIndex = 0;
+  state.navigationHistory.forEach((entry, index) => {
+    const page = transform(entry) ?? (index === state.navigationIndex ? { type: "home" } as const : null);
+    if (!page) return;
+    if (!samePage(navigationHistory[navigationHistory.length - 1], page)) navigationHistory.push(page);
+    if (index === state.navigationIndex) navigationIndex = navigationHistory.length - 1;
+  });
+  return {
+    page: state.page.type === "new-project" ? state.page : navigationHistory[navigationIndex],
+    navigationHistory,
+    navigationIndex,
+  };
+}
+
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case "NAVIGATE":
-      return { ...state, page: action.page, error: null };
+    case "NAVIGATE": {
+      // The creation wizard owns draft/cancellation guards and is not a replayable visit.
+      if (action.page.type === "new-project" || samePage(state.navigationHistory[state.navigationIndex], action.page)) {
+        return { ...state, page: action.page, error: null };
+      }
+      const navigationHistory = [...state.navigationHistory.slice(0, state.navigationIndex + 1), action.page].slice(-50);
+      return { ...state, page: action.page, navigationHistory, navigationIndex: navigationHistory.length - 1, error: null };
+    }
+    case "NAVIGATE_BACK":
+    case "NAVIGATE_FORWARD": {
+      if (state.page.type === "new-project") return state;
+      const navigationIndex = state.navigationIndex + (action.type === "NAVIGATE_BACK" ? -1 : 1);
+      if (navigationIndex < 0 || navigationIndex >= state.navigationHistory.length) return state;
+      return { ...state, page: state.navigationHistory[navigationIndex], navigationIndex, error: null };
+    }
     case "SET_RECENT_PROJECTS":
       return {
         ...state,
@@ -131,23 +176,26 @@ export function reducer(state: AppState, action: Action): AppState {
     case "SET_RECENT_PROJECTS_ERROR":
       return { ...state, recentProjectsLoading: false, recentProjectsError: action.error };
     case "ADD_RECENT_PROJECT": {
-      const exists = state.recentProjects.some(
+      const existing = state.recentProjects.find(
         (project) => project.id === action.project.id,
       );
+      // A successful open changes visit order, not the freshness of cached data.
+      // Background pipeline/status updates keep their existing merge semantics.
+      const project = action.recentlyOpened && existing && !isNonRegressingProjectUpdate(existing, action.project)
+        ? existing
+        : action.project;
       return {
         ...state,
-        recentProjects: exists
-          ? state.recentProjects.map((project) =>
-              project.id === action.project.id ? action.project : project,
-            )
-          : [action.project, ...state.recentProjects],
+        recentProjects: action.recentlyOpened || !existing
+          ? [project, ...state.recentProjects.filter((entry) => entry.id !== project.id)]
+          : state.recentProjects.map((entry) => entry.id === project.id ? project : entry),
         projectAvailability: {
           ...state.projectAvailability,
-          [action.project.id]: state.projectAvailability[action.project.id]?.checkedPath === action.project.path
-            ? state.projectAvailability[action.project.id]
+          [project.id]: state.projectAvailability[project.id]?.checkedPath === project.path
+            ? state.projectAvailability[project.id]
             : unknownAvailability(
-                action.project.path,
-                (state.projectAvailability[action.project.id]?.generation ?? -1) + 1,
+                project.path,
+                (state.projectAvailability[project.id]?.generation ?? -1) + 1,
               ),
         },
       };
@@ -161,6 +209,7 @@ export function reducer(state: AppState, action: Action): AppState {
       delete projectAvailability[action.projectId];
       return {
         ...state,
+        ...rewriteNavigation(state, (page) => page.type === "project-detail" && page.projectId === action.projectId ? null : page),
         recentProjects: state.recentProjects.filter(
           (project) => project.id !== action.projectId,
         ),
@@ -255,6 +304,10 @@ export function reducer(state: AppState, action: Action): AppState {
       const currentAvailability = state.projectAvailability[action.project.id];
       return {
         ...state,
+        ...rewriteNavigation(state, (page) => page.type === "project-detail" &&
+          page.projectId === action.project.id && page.projectPath === action.previousPath
+          ? { ...page, projectPath: action.project.path }
+          : page),
         recentProjects: state.recentProjects.map((project) =>
           project.id === action.project.id && project.path === action.previousPath
             ? action.project

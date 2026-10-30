@@ -210,3 +210,8 @@ export function normalizeCommandError(error: unknown, command: string): UiError 
 export function formatUiError(error: UiError): string {
   return t("{0}：{1}", localizeMessage(error.title), localizeMessage(error.message));
 }
+
+/** Present a command's safe message without a JavaScript Error class prefix. */
+export function commandErrorSummary(error: unknown, command: string): string {
+  return normalizeCommandError(error instanceof Error ? error.message : error, command).message;
+}

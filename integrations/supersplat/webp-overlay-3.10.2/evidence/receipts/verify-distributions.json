@@ -1,0 +1,18 @@
+{
+  "started_at": "2026-10-29T16:45:55.677465+00:00",
+  "finished_at": "2026-10-29T16:45:56.658258+00:00",
+  "duration_seconds": 0.980708916,
+  "cwd": "${REPO_ROOT}",
+  "argv": [
+    "${HOME}/.nvm/versions/node/v22.23.2/bin/node",
+    "target/supersplat-3.7-webp/verify-distributions.mjs"
+  ],
+  "explicit_environment": {},
+  "proxy_environment_removed": true,
+  "exit_code": 0,
+  "log": {
+    "path": "logs/verify-distributions.log",
+    "size_bytes": 2349,
+    "sha256": "5e1cac9bdc7586d3021d5a29c03fcf79a07819267c9b86e7292dc99626bf3d84"
+  }
+}

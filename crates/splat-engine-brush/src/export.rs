@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 
+pub use crate::ply::PlyHeaderMetadata;
+
 /// Parameters for a PLY export request.
 #[derive(Debug, Clone)]
 pub struct ExportRequest {
@@ -50,7 +52,7 @@ impl ExportManager {
         // Priority 1: Direct files in training root
         for name in &["point_cloud.ply", "scene.ply", "output.ply"] {
             let path = training_dir.join(name);
-            if path.exists() && path.is_file() {
+            if Self::validate_ply(&path).is_ok() {
                 return Some(path);
             }
         }
@@ -60,7 +62,7 @@ impl ExportManager {
         if output_dir.exists() {
             for name in &["point_cloud.ply", "scene.ply"] {
                 let path = output_dir.join(name);
-                if path.exists() && path.is_file() {
+                if Self::validate_ply(&path).is_ok() {
                     return Some(path);
                 }
             }
@@ -87,7 +89,9 @@ impl ExportManager {
                     let mb = std::fs::metadata(b).and_then(|m| m.modified()).ok();
                     ma.cmp(&mb).reverse()
                 });
-                return Some(ply_files[0].clone());
+                return ply_files
+                    .into_iter()
+                    .find(|path| Self::validate_ply(path).is_ok());
             }
         }
 
@@ -148,6 +152,7 @@ impl ExportManager {
                 ),
             )
         })?;
+        Self::validate_ply(&request.output_path)?;
 
         // Get file metadata
         let meta = std::fs::metadata(&request.output_path).map_err(|e| {
@@ -174,112 +179,53 @@ impl ExportManager {
         })
     }
 
-    /// Validate that a PLY file exists and has reasonable content.
+    /// Validate the complete Gaussian header and every vertex value.
+    ///
+    /// Supports ASCII and both binary byte orders, including Brush 0.3 and 1.x
+    /// float properties. Truncated, extra, non-finite or inconsistent SH data
+    /// cannot be used as a completed model or a recovery checkpoint.
     pub fn validate_ply(path: &Path) -> AppResult<()> {
-        if !path.exists() {
-            return Err(AppError::new(
-                "E-1201",
-                ErrorCategory::Filesystem,
-                "PLY File Not Found",
-                format!("The PLY file '{}' does not exist.", path.display()),
-            ));
-        }
-
-        let meta = std::fs::metadata(path).map_err(|e| {
-            AppError::new(
-                "E-1201",
-                ErrorCategory::Filesystem,
-                "Failed to Read PLY File",
-                format!("Could not read PLY file: {}", e),
-            )
-        })?;
-
-        if meta.len() == 0 {
-            return Err(AppError::new(
-                "E-4006",
-                ErrorCategory::Engine,
-                "Empty PLY File",
-                format!(
-                    "The PLY file '{}' is empty (0 bytes). The model may have failed to export.",
-                    path.display()
-                ),
-            ));
-        }
-
-        // Check PLY header
-        let mut header = [0u8; 15];
-        if let Ok(mut f) = std::fs::File::open(path) {
-            use std::io::Read;
-            if f.read_exact(&mut header).is_ok() {
-                let magic = String::from_utf8_lossy(&header);
-                if !magic.starts_with("ply") {
-                    return Err(AppError::new(
-                        "E-4006",
-                        ErrorCategory::Engine,
-                        "Invalid PLY File",
-                        format!(
-                            "The file '{}' does not start with a valid PLY header.",
-                            path.display()
-                        ),
-                    ));
-                }
-            }
-        }
-
-        if Self::vertex_count(path)? == 0 {
-            return Err(AppError::new(
-                "E-4006",
-                ErrorCategory::Engine,
-                "PLY Contains No Splats",
-                "The PLY header reports zero vertices.",
-            ));
-        }
-
-        Ok(())
+        Self::inspect_ply(path).map(|_| ())
     }
 
-    /// Read the `element vertex` count from an ASCII or binary PLY header.
-    pub fn vertex_count(path: &Path) -> AppResult<u64> {
-        use std::io::BufRead;
+    /// Validate a complete model and return its verified Gaussian metadata.
+    pub fn inspect_ply(path: &Path) -> AppResult<PlyHeaderMetadata> {
+        crate::ply::metadata(path, true)
+    }
 
-        let file = std::fs::File::open(path).map_err(|error| {
-            AppError::new(
-                "E-1201",
-                ErrorCategory::Filesystem,
-                "Failed to Read PLY Header",
-                "The PLY file could not be opened for validation.",
-            )
-            .with_technical(error.to_string())
-        })?;
-        let mut reader = std::io::BufReader::new(file);
-        let mut line = String::new();
-        let mut vertices = None;
-        loop {
-            line.clear();
-            let bytes = reader.read_line(&mut line).map_err(|error| {
-                AppError::new(
-                    "E-4006",
-                    ErrorCategory::Engine,
-                    "Invalid PLY Header",
-                    "The PLY header could not be parsed.",
-                )
-                .with_technical(error.to_string())
-            })?;
-            if bytes == 0 || line.trim() == "end_header" {
-                break;
-            }
-            if let Some(value) = line.trim().strip_prefix("element vertex ") {
-                vertices = value.parse::<u64>().ok();
-            }
-        }
-        vertices.ok_or_else(|| {
-            AppError::new(
-                "E-4006",
-                ErrorCategory::Engine,
-                "PLY Vertex Count Missing",
-                "The PLY header does not declare an element vertex count.",
-            )
-        })
+    /// Fully validate the caller's already-open file, without reopening its path.
+    pub fn inspect_open_ply(file: &mut std::fs::File) -> AppResult<PlyHeaderMetadata> {
+        crate::ply::metadata_file(file, true)
+    }
+
+    /// Read only bounded native-preview header/layout metadata from the same
+    /// opened handle. This does not establish that vertex values are valid;
+    /// validate the actual response bytes before rendering them.
+    pub fn read_preview_header(file: &mut std::fs::File) -> AppResult<PlyHeaderMetadata> {
+        crate::ply::preview_header(file)
+    }
+
+    /// Fully validate borrowed native-preview response bytes in place. Supports
+    /// the renderer's little-endian float32 SH0–3 format without copying a model.
+    pub fn inspect_preview_bytes(bytes: &[u8]) -> AppResult<PlyHeaderMetadata> {
+        crate::ply::preview_bytes(bytes)
+    }
+
+    /// Read a count only after validating the complete Gaussian file.
+    ///
+    /// Existing callers use a positive count to decide whether an artifact is
+    /// usable, so this method must not accept a header-only or partial payload.
+    pub fn vertex_count(path: &Path) -> AppResult<u64> {
+        Self::inspect_ply(path).map(|metadata| metadata.vertex_count)
+    }
+
+    /// Read the header of a file that the caller has already validated.
+    ///
+    /// This fast path does NOT verify payload completeness. Never use it to
+    /// decide whether a checkpoint, export, or preview is valid. The caller must
+    /// establish that the previously validated file has not been modified.
+    pub fn read_header_metadata(path: &Path) -> AppResult<PlyHeaderMetadata> {
+        crate::ply::metadata(path, false)
     }
 }
 
@@ -289,7 +235,10 @@ mod tests {
 
     fn create_fake_ply(dir: &Path, name: &str) -> PathBuf {
         let path = dir.join(name);
-        let header = b"ply\nformat ascii 1.0\ncomment test\nelement vertex 1\nend_header\n0\n";
+        let header = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../test-fixtures/gaussian/minimal-sh0-ascii.ply"
+        ));
         std::fs::write(&path, header).unwrap();
         path
     }
@@ -412,5 +361,34 @@ mod tests {
     fn test_validate_ply_not_found() {
         let result = ExportManager::validate_ply(Path::new("/nonexistent/model.ply"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn invalid_preferred_output_does_not_hide_a_valid_model() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("point_cloud.ply"), b"ply\n").unwrap();
+        create_fake_ply(dir.path(), "scene.ply");
+        assert_eq!(
+            ExportManager::find_best_ply(dir.path()),
+            Some(dir.path().join("scene.ply"))
+        );
+        assert!(dir.path().join("point_cloud.ply").exists());
+    }
+
+    #[test]
+    fn invalid_source_cannot_replace_an_existing_export() {
+        let dir = tempfile::tempdir().unwrap();
+        let training = dir.path().join("training");
+        std::fs::create_dir(&training).unwrap();
+        std::fs::write(training.join("point_cloud.ply"), b"ply\n").unwrap();
+        let output = create_fake_ply(dir.path(), "scene.ply");
+        let original = std::fs::read(&output).unwrap();
+        assert!(ExportManager::export(&ExportRequest {
+            training_dir: training,
+            output_path: output.clone(),
+            checkpoint_iteration: None,
+        })
+        .is_err());
+        assert_eq!(std::fs::read(output).unwrap(), original);
     }
 }

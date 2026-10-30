@@ -1,0 +1,18 @@
+{
+  "started_at": "2026-10-29T16:45:10.581001+00:00",
+  "finished_at": "2026-10-29T16:45:10.869951+00:00",
+  "duration_seconds": 0.288857125,
+  "cwd": "${REPO_ROOT}",
+  "argv": [
+    "${HOME}/.nvm/versions/node/v22.23.2/bin/node",
+    "target/supersplat-3.7-webp/verify-codec-cleanup.mjs"
+  ],
+  "explicit_environment": {},
+  "proxy_environment_removed": true,
+  "exit_code": 0,
+  "log": {
+    "path": "logs/verify-cleanup-official.log",
+    "size_bytes": 277933,
+    "sha256": "effc7732d6d6cb61c7d52172f4027f29e07758b030d76c183b0d5fe1cfc65079"
+  }
+}

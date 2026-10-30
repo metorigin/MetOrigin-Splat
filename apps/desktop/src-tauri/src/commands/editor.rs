@@ -1,9 +1,9 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::{File, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{Arc, Mutex},
 };
 
 use tauri::{Emitter, Manager};
@@ -11,11 +11,26 @@ use tauri::{Emitter, Manager};
 use super::preview::{self, GaussianPreviewSource};
 use crate::state::AppState;
 
+mod image_save;
+
 const ORIGINAL: &str = "output/scene.ply";
 const MAX_BYTES: usize = 1024 * 1024 * 1024;
 
 #[derive(Default)]
-pub struct EditorState(Mutex<HashMap<String, EditorSession>>);
+pub struct EditorState(
+    Mutex<HashMap<String, EditorSession>>,
+    Arc<Mutex<HashSet<(String, String)>>>,
+);
+
+impl EditorState {
+    pub(crate) fn has_sessions(&self) -> bool {
+        // A poisoned lock must not allow a quit to discard an unknown session.
+        self.0
+            .lock()
+            .map(|sessions| !sessions.is_empty())
+            .unwrap_or(true)
+    }
+}
 
 #[derive(Clone, serde::Serialize)]
 pub struct EditorSession {
@@ -72,6 +87,7 @@ pub async fn open_model_editor(
     project_id: String,
     project_path: String,
 ) -> Result<EditorSession, String> {
+    let _pending_work = crate::lifecycle::PendingWork::begin(state.inner())?;
     uuid::Uuid::parse_str(&project_id).map_err(|_| "项目身份无效。")?;
     {
         let inner = state.0.lock().map_err(|e| e.to_string())?;
@@ -86,6 +102,14 @@ pub async fn open_model_editor(
             .await
             .map_err(|e| e.to_string())??;
     let mut sessions = editors.0.lock().map_err(|e| e.to_string())?;
+    if state
+        .0
+        .lock()
+        .map_err(|_| "无法读取任务状态。")?
+        .shutting_down
+    {
+        return Err("应用正在安全退出，请等待当前操作完成。".into());
+    }
     if sessions.contains_key(window.label()) {
         return Err("请先返回训练结果，再打开另一个编辑会话。".into());
     }
@@ -162,6 +186,15 @@ fn model_info(root: &Path, relative: &str) -> Result<SavedModel, String> {
         source,
         saved_at: chrono::DateTime::<chrono::Utc>::from(time).to_rfc3339(),
     })
+}
+
+#[tauri::command]
+pub async fn save_editor_image(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    request: tauri::ipc::Request<'_>,
+) -> Result<Option<String>, String> {
+    image_save::save_editor_image(app, window, request).await
 }
 
 #[tauri::command]
@@ -254,6 +287,91 @@ mod tests {
         let mut bytes = header.into_bytes();
         bytes.resize(bytes.len() + count * properties.len() * 4, 0);
         bytes
+    }
+
+    #[test]
+    fn image_export_lease_rejects_concurrent_requests_and_releases_on_cancel() {
+        let fixture = Fixture::new();
+        let editors = EditorState::default();
+        let session = fixture.session();
+        let session_id = session.session_id.clone();
+        editors.0.lock().unwrap().insert("main".into(), session);
+        assert!(image_save::reserve_export(&editors, "other-window", &session_id).is_err());
+        assert!(image_save::reserve_export(&editors, "main", "stale-session").is_err());
+        let first = image_save::reserve_export(&editors, "main", &session_id).unwrap();
+        assert!(image_save::reserve_export(&editors, "main", &session_id).is_err());
+        drop(first); // Same RAII cleanup as a dismissed native save dialog.
+        assert!(editors.1.lock().unwrap().is_empty());
+        let _retry = image_save::reserve_export(&editors, "main", &session_id).unwrap();
+        assert_eq!(
+            std::fs::read_dir(fixture.root.join("output"))
+                .unwrap()
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn image_export_from_closed_or_replaced_session_cannot_write_late() {
+        let fixture = Fixture::new();
+        let editors = EditorState::default();
+        let old = fixture.session();
+        let old_id = old.session_id.clone();
+        editors.0.lock().unwrap().insert("main".into(), old);
+        let old_lease = image_save::reserve_export(&editors, "main", &old_id).unwrap();
+        editors.0.lock().unwrap().remove("main");
+        let selected = fixture.root.join("image.webp");
+        assert!(image_save::write_for_session(
+            &editors,
+            "main",
+            &old_id,
+            &selected,
+            b"old",
+            image_save::ImageFormat::Webp
+        )
+        .is_err());
+        let fresh = fixture.session();
+        let fresh_id = fresh.session_id.clone();
+        let revision = fresh.source.revision.clone();
+        editors.0.lock().unwrap().insert("main".into(), fresh);
+        let _fresh_lease = image_save::reserve_export(&editors, "main", &fresh_id).unwrap();
+        assert!(image_save::write_for_session(
+            &editors,
+            "main",
+            &old_id,
+            &selected,
+            b"old",
+            image_save::ImageFormat::Webp
+        )
+        .is_err());
+        drop(old_lease);
+        assert_eq!(editors.1.lock().unwrap().len(), 1);
+        assert!(!selected.exists());
+        assert_eq!(editors.0.lock().unwrap()["main"].source.revision, revision);
+        assert_eq!(std::fs::read(fixture.root.join(ORIGINAL)).unwrap(), ply(2));
+    }
+
+    #[test]
+    fn final_exit_recheck_preserves_a_session_opened_during_shutdown() {
+        let fixture = Fixture::new();
+        let state = AppState::new();
+        let editors = EditorState::default();
+        // Opening was admitted while the editor set was still empty.
+        let pending = crate::lifecycle::PendingWork::begin(&state).unwrap();
+        assert!(!editors.has_sessions());
+        state.0.lock().unwrap().shutting_down = true;
+        // It crossed its final gate before shutdown, then finished registering.
+        editors
+            .0
+            .lock()
+            .unwrap()
+            .insert("main".into(), fixture.session());
+        drop(pending);
+        assert_eq!(state.0.lock().unwrap().pending_work, 0);
+        assert!(crate::lifecycle::validate_exit_complete(&state, &editors).is_err());
+        assert!(editors.has_sessions());
+        editors.0.lock().unwrap().clear();
+        crate::lifecycle::validate_exit_complete(&state, &editors).unwrap();
     }
 
     #[test]

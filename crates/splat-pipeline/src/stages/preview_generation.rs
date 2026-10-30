@@ -182,7 +182,10 @@ mod tests {
         let _ = std::fs::create_dir_all(dir.join("training"));
         std::fs::write(
             dir.join("output").join("scene.ply"),
-            b"ply\nformat ascii 1.0\nelement vertex 1\nend_header\n0\n",
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../test-fixtures/gaussian/minimal-sh0-ascii.ply"
+            )),
         )
         .unwrap();
         std::fs::write(
@@ -213,7 +216,10 @@ mod tests {
     async fn test_preview_cached() {
         let dir = std::env::temp_dir().join("splat-stage-preview-cached");
         let _ = std::fs::create_dir_all(dir.join("output"));
-        let ply = b"ply\nformat ascii 1.0\nelement vertex 1\nend_header\n0\n";
+        let ply = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../test-fixtures/gaussian/minimal-sh0-ascii.ply"
+        ));
         std::fs::write(dir.join("output").join("scene.ply"), ply).unwrap();
         std::fs::write(
             dir.join("output").join("manifest.json"),

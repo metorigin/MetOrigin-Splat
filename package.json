@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@11.12.0",
+  "engines": {
+    "node": ">=26.0.0 <27.0.0"
+  },
   "scripts": {
     "prepare:supersplat": "node integrations/supersplat/prepare.mjs",
     "dev": "pnpm --dir apps/desktop dev",
@@ -10,6 +13,10 @@
     "lint": "pnpm --dir apps/desktop lint",
     "typecheck": "pnpm --dir apps/desktop typecheck",
     "test": "pnpm --dir apps/desktop test",
+    "test:supersplat:packaging": "node --test integrations/supersplat/webp-overlay.test.mjs integrations/supersplat/webp-overlay-3.10.2/overlay.test.mjs integrations/supersplat/prepared-assets.test.mjs integrations/supersplat/webp-evidence.test.mjs integrations/supersplat/ui-theme/theme.test.mjs scripts/shared/supersplat-evidence.test.mjs",
+    "test:supersplat:bridge": "node integrations/supersplat/prepare.mjs && node --test integrations/supersplat/bridge-roundtrip.test.mjs",
+    "test:spark:lifecycle": "node --test integrations/spark/lifecycle.test.mjs integrations/spark/resource-ownership.test.mjs integrations/spark/verify-patch.test.mjs",
+    "test:three:lifecycle": "node --test integrations/three/orbit-controls.test.mjs integrations/three/verify-patch.test.mjs",
     "test:ux:automated": "node scripts/windows/Run-UxAutomation.mjs",
     "test:tauri:native-fast": "node scripts/windows/Run-NativeTauriFastValidation.mjs",
     "test:tauri:native-failure-recovery": "node scripts/windows/Run-NativeTauriFailureRecoveryValidation.mjs",
@@ -19,6 +26,7 @@
     "verify:windows:engines": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/windows/Test-EnginePack.ps1",
     "package:windows:full": "pnpm --dir apps/desktop package:windows:full",
     "build:brush:live": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/windows/Build-BrushLive.ps1",
-    "test:gaussian:native": "node scripts/windows/Validate-GaussianPreview.mjs"
+    "test:gaussian:native": "node scripts/windows/Validate-GaussianPreview.mjs",
+    "test:ui:provenance": "node --test scripts/shared/copied-ui-evidence.test.mjs scripts/shared/npm-notice-evidence.test.mjs integrations/jan/theme.test.mjs"
   }
 }

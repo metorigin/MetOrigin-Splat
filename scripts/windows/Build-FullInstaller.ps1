@@ -79,8 +79,8 @@ if ($actualPnpm.Trim() -ne $expectedPnpm) {
 }
 
 $nodeVersion = Invoke-CheckedTool -FilePath $node -Arguments @("--version") -Name "Node.js"
-if ($nodeVersion -notmatch '^v(?<major>\d+)\.' -or [int]$Matches.major -lt 22) {
-    throw "Node.js 22 or newer is required; found '$nodeVersion'."
+if ($nodeVersion -notmatch '^v(?<major>\d+)\.' -or [int]$Matches.major -ne 26) {
+    throw "Node.js 26.x is required; found '$nodeVersion'."
 }
 
 $toolchain = Get-Content -LiteralPath (Join-Path $repositoryRoot "rust-toolchain.toml") -Raw

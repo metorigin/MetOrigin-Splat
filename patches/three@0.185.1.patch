@@ -1,0 +1,104 @@
+diff --git a/examples/jsm/controls/OrbitControls.js b/examples/jsm/controls/OrbitControls.js
+--- a/examples/jsm/controls/OrbitControls.js
++++ b/examples/jsm/controls/OrbitControls.js
+@@ -433,6 +433,7 @@
+ 		this._pointerPositions = {};
+ 
+ 		this._controlActive = false;
++		this._rootNode = null;
+ 
+ 		// event listeners
+ 
+@@ -502,14 +503,28 @@
+ 		this.domElement.addEventListener( 'contextmenu', this._onContextMenu );
+ 		this.domElement.addEventListener( 'wheel', this._onMouseWheel, { passive: false } );
+ 
+-		const document = this.domElement.getRootNode(); // offscreen canvas compatibility
+-		document.addEventListener( 'keydown', this._interceptControlDown, { passive: true, capture: true } );
++		// Keep the registration root: the element may be detached before disconnect.
++		this._rootNode = this.domElement.getRootNode(); // offscreen canvas compatibility
++		this._rootNode.addEventListener( 'keydown', this._interceptControlDown, { passive: true, capture: true } );
+ 
+ 		this.domElement.style.touchAction = 'none'; // Disable touch scroll
+ 
+ 	}
+ 
+ 	disconnect() {
++
++		this.stopListenToKeyEvents();
++
++		if ( this._rootNode !== null ) {
++
++			this._rootNode.removeEventListener( 'keydown', this._interceptControlDown, { capture: true } );
++			this._rootNode.removeEventListener( 'keyup', this._interceptControlUp, { capture: true } );
++			this._rootNode = null;
++
++		}
++
++		this._controlActive = false;
++		if ( this.domElement === null ) return;
+ 
+ 		this.domElement.removeEventListener( 'pointerdown', this._onPointerDown );
+ 		this.domElement.ownerDocument.removeEventListener( 'pointermove', this._onPointerMove );
+@@ -518,11 +533,6 @@
+ 
+ 		this.domElement.removeEventListener( 'wheel', this._onMouseWheel );
+ 		this.domElement.removeEventListener( 'contextmenu', this._onContextMenu );
+-
+-		this.stopListenToKeyEvents();
+-
+-		const document = this.domElement.getRootNode(); // offscreen canvas compatibility
+-		document.removeEventListener( 'keydown', this._interceptControlDown, { capture: true } );
+ 
+ 		this.domElement.style.touchAction = ''; // Restore touch scroll
+ 
+@@ -1934,30 +1944,30 @@
+ 
+ function interceptControlDown( event ) {
+ 
++	if ( event.key === 'Control' && this._rootNode !== null ) {
++
++		this._controlActive = true;
++
++		this._rootNode.addEventListener( 'keyup', this._interceptControlUp, { passive: true, capture: true } );
++
++	}
++
++}
++
++function interceptControlUp( event ) {
++
+ 	if ( event.key === 'Control' ) {
+ 
+-		this._controlActive = true;
+-
+-		const document = this.domElement.getRootNode(); // offscreen canvas compatibility
+-
+-		document.addEventListener( 'keyup', this._interceptControlUp, { passive: true, capture: true } );
++		this._controlActive = false;
++
++		if ( this._rootNode !== null ) {
++
++			this._rootNode.removeEventListener( 'keyup', this._interceptControlUp, { capture: true } );
++
++		}
+ 
+ 	}
+ 
+ }
+ 
+-function interceptControlUp( event ) {
+-
+-	if ( event.key === 'Control' ) {
+-
+-		this._controlActive = false;
+-
+-		const document = this.domElement.getRootNode(); // offscreen canvas compatibility
+-
+-		document.removeEventListener( 'keyup', this._interceptControlUp, { passive: true, capture: true } );
+-
+-	}
+-
+-}
+-
+ export { OrbitControls };

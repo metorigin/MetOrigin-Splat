@@ -1,15 +1,27 @@
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use std::time::{Duration, Instant};
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::hardware::EngineInfo;
-use splat_process::{background_command, CommandSpec};
+use splat_domain::runtime::{BrushCliProfile, ExecutionProfile, LiveProtocol, ResumeMode};
+use splat_process::{background_command, probe_output_sync, CommandSpec};
 
 use crate::checkpoint::{Checkpoint, CheckpointScanner};
 use crate::config::TrainingConfig;
 use crate::dataset::{DatasetValidationResult, DatasetValidator};
 use crate::export::{ExportManager, ExportRequest, ExportResult};
+use crate::runtime::VerifiedBrushRuntime;
+
+/// Frozen runtime inputs for the checked training command builder.
+pub struct ProfiledTrainingRequest<'a> {
+    pub config: &'a TrainingConfig,
+    pub profile: &'a ExecutionProfile,
+    /// Required for the Metal path; legacy Windows keeps its existing contract.
+    pub verified_runtime: Option<&'a VerifiedBrushRuntime>,
+    pub dataset_path: &'a Path,
+    pub checkpoint_path: &'a Path,
+    pub start_iteration: u32,
+    pub log_path: &'a Path,
+}
 
 /// Brush training engine adapter.
 ///
@@ -35,7 +47,6 @@ pub struct BrushAdapter {
     brush_version: String,
 }
 
-const BRUSH_PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 const DIAGNOSTIC_OUTPUT_LIMIT: usize = 2_048;
 
 struct BrushProbeOutput {
@@ -120,6 +131,15 @@ impl BrushAdapter {
         &self.brush_path
     }
 
+    pub fn binary_sha256(&self) -> AppResult<String> {
+        crate::runtime::hash_binary(&self.brush_path)
+    }
+
+    /// Reject unknown versions instead of guessing a compatible argument set.
+    pub fn cli_profile(&self) -> AppResult<BrushCliProfile> {
+        cli_profile_from_version(&self.brush_version)
+    }
+
     /// Only use a companion that explicitly implements our preview protocol.
     pub fn live_preview_executable(&self) -> Option<PathBuf> {
         if self.brush_version.contains("+metorigin-live.1") {
@@ -176,6 +196,63 @@ impl BrushAdapter {
         CommandSpec::new(&self.brush_path, args, log_path)
     }
 
+    /// Build a command from the frozen profile and matching device evidence.
+    /// No data is changed here: preparation and atomic result publication remain
+    /// owned by the pipeline, and all process execution remains in splat-process.
+    pub fn build_train_command_for_profile(
+        &self,
+        request: ProfiledTrainingRequest<'_>,
+    ) -> AppResult<CommandSpec> {
+        let profile = request.profile;
+        profile.validate_for_execution()?;
+        let cli = self.cli_profile()?;
+        if cli != profile.brush.cli_profile
+            || cli_profile_from_version(&profile.engines.brush.version)? != cli
+            || self.binary_sha256()? != profile.engines.brush.binary_sha256
+        {
+            return Err(runtime_contract_error(
+                "Brush identity changed or disagrees with the execution profile",
+            ));
+        }
+        if cli == BrushCliProfile::Metorigin1 {
+            let runtime = request.verified_runtime.ok_or_else(|| {
+                runtime_contract_error("The Metal training path requires verified compute evidence")
+            })?;
+            if runtime.binary_sha256 != profile.engines.brush.binary_sha256
+                || runtime.capabilities.cli_profile != cli
+                || runtime.probe.identity != runtime.capabilities.identity
+                || runtime.probe.training_probe() != profile.brush.probe_result
+                || profile.engines.brush.source_commit.as_deref()
+                    != Some(runtime.capabilities.identity.source_commit.as_str())
+                || runtime.capabilities.identity.engine_version != profile.engines.brush.version
+                || !runtime.capabilities.supports("loader_thread_limit")
+                || (profile.live_protocol != LiveProtocol::Disabled
+                    && (runtime.capabilities.live_protocol != profile.live_protocol
+                        || !runtime.capabilities.supports("live_preview")))
+                || (profile.resume_mode != ResumeMode::Disabled
+                    && runtime.capabilities.resume_mode != profile.resume_mode)
+            {
+                return Err(runtime_contract_error("Verified Brush capabilities, probe or loader-thread support do not match the profile"));
+            }
+            validate_managed_dataset(request.dataset_path, request.start_iteration, profile)?;
+        }
+        let args = request.config.to_cli_args_for_profile(
+            cli,
+            &profile.effective_training,
+            request.dataset_path,
+            request.checkpoint_path,
+            request.start_iteration,
+        )?;
+        let mut command = CommandSpec::new(&self.brush_path, args, request.log_path);
+        if cli == BrushCliProfile::Metorigin1 {
+            let threads = profile.effective_training.threads.to_string();
+            command = command
+                .with_env("TOKIO_WORKER_THREADS", &threads)
+                .with_env("RAYON_NUM_THREADS", &threads);
+        }
+        Ok(command)
+    }
+
     // ─── Checkpoints ────────────────────────────────────────────────────
 
     /// Scan the training output directory for checkpoints.
@@ -218,7 +295,7 @@ impl BrushAdapter {
         #[cfg(target_os = "windows")]
         {
             for executable in ["brush", "brush_app"] {
-                if let Ok(output) = background_command("where").arg(executable).output() {
+                if let Ok(output) = probe_output_sync(background_command("where").arg(executable)) {
                     if output.status.success() {
                         if let Some(path) = String::from_utf8(output.stdout)
                             .ok()
@@ -265,6 +342,126 @@ impl BrushAdapter {
     }
 }
 
+fn cli_profile_from_version(version: &str) -> AppResult<BrushCliProfile> {
+    let token = version.split_whitespace().find(|token| {
+        token
+            .trim_start_matches('v')
+            .starts_with(|c: char| c.is_ascii_digit())
+    });
+    match token.and_then(|token| token.trim_start_matches('v').split('+').next()) {
+        Some("0.3.0") => Ok(BrushCliProfile::Legacy03),
+        Some("1.0.0") => Ok(BrushCliProfile::Metorigin1),
+        _ => Err(runtime_contract_error("Unsupported Brush CLI version")),
+    }
+}
+
+fn runtime_contract_error(detail: &str) -> AppError {
+    AppError::new(
+        "E-1403",
+        ErrorCategory::Environment,
+        "Brush Runtime Is Not Compatible",
+        "The selected Brush engine is not compatible with this training attempt.",
+    )
+    .with_technical(detail)
+    .with_suggestions(vec![
+        "Run engine capability checks again before starting training",
+    ])
+}
+
+fn dataset_io_error(error: std::io::Error) -> AppError {
+    AppError::new(
+        "E-1201",
+        ErrorCategory::Filesystem,
+        "Failed to Inspect Training Dataset",
+        "The managed training dataset could not be inspected safely.",
+    )
+    .with_technical(error.to_string())
+}
+
+fn validate_managed_dataset(
+    dataset: &Path,
+    start_iteration: u32,
+    profile: &ExecutionProfile,
+) -> AppResult<()> {
+    if !dataset.is_absolute() {
+        return Err(runtime_contract_error(
+            "Managed dataset path must be absolute",
+        ));
+    }
+    let mut directories = vec![dataset.to_path_buf()];
+    let mut initial_model = None;
+    while let Some(directory) = directories.pop() {
+        for entry in std::fs::read_dir(directory).map_err(dataset_io_error)? {
+            let entry = entry.map_err(dataset_io_error)?;
+            let kind = entry.file_type().map_err(dataset_io_error)?;
+            let path = entry.path();
+            if kind.is_symlink() {
+                return Err(runtime_contract_error(
+                    "Managed datasets must not contain symlinks",
+                ));
+            }
+            if entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.eq_ignore_ascii_case("args.txt"))
+            {
+                return Err(runtime_contract_error(
+                    "Unmanaged args.txt could override the frozen execution settings",
+                ));
+            }
+            if kind.is_dir() {
+                directories.push(path);
+            } else if path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("ply"))
+            {
+                if path != dataset.join("init.ply") || initial_model.is_some() {
+                    return Err(runtime_contract_error(
+                        "Unexpected PLY may silently replace the intended training initialization",
+                    ));
+                }
+                initial_model = Some(path);
+            }
+        }
+    }
+    if start_iteration == 0 {
+        if initial_model.is_some() {
+            return Err(runtime_contract_error(
+                "A fresh training attempt must not silently load init.ply",
+            ));
+        }
+    } else {
+        if profile.resume_mode != ResumeMode::PlyWarmStartOptimizerReset {
+            return Err(runtime_contract_error(
+                "PLY warm start has not been negotiated for this attempt",
+            ));
+        }
+        let initial_model = initial_model.ok_or_else(|| {
+            runtime_contract_error("Resuming requires the explicitly prepared init.ply")
+        })?;
+        let metadata = ExportManager::inspect_ply(&initial_model)?;
+        if profile
+            .effective_training
+            .max_splats
+            .is_some_and(|limit| metadata.vertex_count > u64::from(limit))
+        {
+            return Err(AppError::new(
+                "E-1402", ErrorCategory::User, "Checkpoint Exceeds the New Gaussian Limit",
+                "The checkpoint is larger than the selected resource budget. Choose a larger budget or start a separate reduced model attempt.",
+            ).with_technical("Warm start would silently discard Gaussian points"));
+        }
+        if metadata.sh_degree as u32 != profile.effective_training.sh_degree {
+            return Err(runtime_contract_error(
+                "Checkpoint spherical harmonics do not match the frozen training settings",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod profile_tests;
+
 fn interpret_brush_probe(output: BrushProbeOutput) -> AppResult<String> {
     if !output.success {
         let exit_code = output
@@ -306,44 +503,22 @@ fn interpret_brush_probe(output: BrushProbeOutput) -> AppResult<String> {
 }
 
 fn run_brush_probe(path: &Path) -> Result<BrushProbeOutput, BrushProbeFailure> {
-    let mut command = background_command(path);
-    command
-        .arg("--version")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = command.spawn().map_err(BrushProbeFailure::Launch)?;
-    let started = Instant::now();
-
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                let output = child
-                    .wait_with_output()
-                    .map_err(BrushProbeFailure::Launch)?;
-                return Ok(BrushProbeOutput {
-                    success: output.status.success(),
-                    exit_code: output.status.code(),
-                    stdout: output.stdout,
-                    stderr: output.stderr,
-                });
-            }
-            Ok(None) if started.elapsed() < BRUSH_PROBE_TIMEOUT => {
-                std::thread::sleep(Duration::from_millis(20));
-            }
-            Ok(None) => {
-                let _ = child.kill();
-                let output = child
-                    .wait_with_output()
-                    .map_err(BrushProbeFailure::Launch)?;
-                return Err(BrushProbeFailure::TimedOut(BrushProbeOutput {
-                    success: false,
-                    exit_code: output.status.code(),
-                    stdout: output.stdout,
-                    stderr: output.stderr,
-                }));
-            }
-            Err(error) => return Err(BrushProbeFailure::Launch(error)),
+    match probe_output_sync(background_command(path).arg("--version")) {
+        Ok(output) => Ok(BrushProbeOutput {
+            success: output.status.success(),
+            exit_code: output.status.code(),
+            stdout: output.stdout,
+            stderr: output.stderr,
+        }),
+        Err(error) if error.kind() == std::io::ErrorKind::TimedOut => {
+            Err(BrushProbeFailure::TimedOut(BrushProbeOutput {
+                success: false,
+                exit_code: None,
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+            }))
         }
+        Err(error) => Err(BrushProbeFailure::Launch(error)),
     }
 }
 

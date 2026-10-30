@@ -6,6 +6,8 @@ The application runs FFmpeg, COLMAP and Brush as local child processes. Engine a
 
 [engine-lock.json](../packaging/windows-x64/engine-lock.json) is the authority for packaged archives, versions, download locations and SHA-256 values. The current set is FFmpeg/FFprobe **8.1.2**, COLMAP **4.1.0 CUDA** and Brush **0.3.0**, with the locked Microsoft VC++ runtime prerequisite. A different executable passing a version command does not establish full pipeline compatibility.
 
+The macOS development path uses native arm64 FFmpeg/FFprobe **8.1.2**, COLMAP **4.1.0 CPU**, and the pinned Brush **1.0.0** source plus tracked MetOrigin patches. Recipes and actual engine evidence are in [macOS build scripts](../scripts/macos/README.md) and [M0 validation](validation/macos-m0.md). These development artifacts have not passed self-contained app/dmg acceptance. Windows continues to use its existing engine lock and CLI contract.
+
 Configure local executable paths or a containing engine directory through Settings & Engines. To prepare the locked pack from the repository root:
 
 ```powershell
@@ -23,6 +25,8 @@ Path selection is implemented by [EngineLocator](../crates/splat-hardware/src/lo
 - The desktop application can discover a local or portable `.engines` directory. A prepared pack can also be selected explicitly in settings.
 - Release mode ignores `METORIGIN_ENGINE_DIR` and prefers the verified resource pack. Missing or corrupt expected pack resources are surfaced as errors rather than silently switching to arbitrary executables on `PATH`.
 - Manifest verification checks the packaged inventory and integrity. Engine status and reconstruction use the resolved paths, avoiding a separate unverified launch path.
+- Manifest schema 1 accepts `windows-x64` and `macos-arm64`; a pack for another target is rejected before launch. macOS maps the logical `brush` executable to the manifest's `brush/bin/brush-cli` and validates Unix execute permission, arm64 Mach-O executable/dylib headers, exact path casing, symlink containment, unique inventory paths and SHA-256. Execute permission is rechecked when hashes are cached. Header validation is not a GPU compute probe or full dylib-closure validation.
+- Development lookup also recognizes `brush-cli` in root/bin/brush/bin layouts and on PATH. A corrupt expected resource pack still blocks fallback.
 
 The exact fallback behavior is defined by the locator and its tests. Preserve the distinction between an absent development engine and a corrupt packaged engine.
 

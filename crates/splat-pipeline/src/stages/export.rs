@@ -106,7 +106,10 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("checkpoint_003000.ply"),
-            b"ply\nformat ascii 1.0\nelement vertex 1\nend_header\n0\n",
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../test-fixtures/gaussian/minimal-sh0-ascii.ply"
+            )),
         )
         .unwrap();
     }

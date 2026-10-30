@@ -101,4 +101,14 @@ describe("message catalogs", () => {
     expect(localizeMessage("The confirmed action completed.")).toBe("The confirmed action completed.");
     expect(t("项目“{0}”已开始重建。", "<script>$&{1}</script>")).toBe("项目“<script>$&{1}</script>”已开始重建。");
   });
+
+  it("translates destination preflight blockers without translating the selected path", () => {
+    setLanguagePreference("en");
+    expect(localizeMessage("项目目标目录不可写：/工程 中文/只读目录。请更换目录，或检查当前账户权限与磁盘只读状态。"))
+      .toBe("The project destination is not writable: /工程 中文/只读目录. Choose another folder, or check your account permissions and whether the disk is read-only.");
+    expect(localizeMessage("创建前检查未通过：项目目标位置不是目录：D:\\工程\\素材.mp4。请选择可写文件夹。"))
+      .toBe("Pre-creation checks failed: The project destination is not a folder: D:\\工程\\素材.mp4. Select a writable folder.");
+    expect(localizeMessage("无法删除项目目录中的检查文件：/工程 中文/.metorigin-write-probe.tmp。请清理该文件并检查目录权限后重试。"))
+      .toBe("Unable to remove the destination check file: /工程 中文/.metorigin-write-probe.tmp. Remove this file and check the folder permissions before retrying.");
+  });
 });

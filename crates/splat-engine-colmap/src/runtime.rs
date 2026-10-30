@@ -2,6 +2,8 @@ use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
+use crate::execution::ColmapExecutionSettings;
+use splat_domain::runtime::RuntimePlatform;
 use splat_process::{background_command, CommandSpec};
 
 /// Build a COLMAP command spec with the portable Windows runtime environment.
@@ -23,14 +25,47 @@ pub(crate) fn command_spec(
     spec
 }
 
+pub(crate) fn command_spec_with_settings(
+    colmap_path: &Path,
+    args: Vec<impl Into<OsString>>,
+    log_path: &Path,
+    settings: Option<&ColmapExecutionSettings>,
+) -> CommandSpec {
+    if settings.is_some_and(|settings| settings.platform() == RuntimePlatform::Macos) {
+        CommandSpec::new(colmap_path, args, log_path)
+    } else {
+        command_spec(colmap_path, args, log_path)
+    }
+}
+
 /// Build a synchronous COLMAP command with the same environment as pipeline
 /// `CommandSpec`s. Detection, validation and model analysis use this path.
 pub(crate) fn command(colmap_path: &Path) -> std::process::Command {
+    command_with_settings(colmap_path, None)
+}
+
+pub(crate) fn command_with_settings(
+    colmap_path: &Path,
+    settings: Option<&ColmapExecutionSettings>,
+) -> std::process::Command {
     let mut command = background_command(colmap_path);
-    for (key, value) in runtime_variables(colmap_path) {
+    for (key, value) in execution_variables(colmap_path, settings) {
         command.env(key, value);
     }
     command
+}
+
+fn execution_variables(
+    colmap_path: &Path,
+    settings: Option<&ColmapExecutionSettings>,
+) -> Vec<(OsString, OsString)> {
+    if settings.is_some_and(|settings| settings.platform() == RuntimePlatform::Macos) {
+        // Native CLI-only Mach-O dependencies must resolve through their rpaths.
+        // No Qt directory or dylib directory is injected into PATH on this path.
+        Vec::new()
+    } else {
+        runtime_variables(colmap_path)
+    }
 }
 
 fn runtime_variables(colmap_path: &Path) -> Vec<(OsString, OsString)> {
@@ -93,6 +128,18 @@ fn normalized_path_key(path: &Path) -> OsString {
 mod tests {
     use super::*;
     use std::ffi::OsStr;
+
+    #[test]
+    fn native_synchronous_detection_does_not_inject_windows_or_dyld_environment() {
+        let profile = splat_domain::ExecutionProfile::from_json(include_bytes!(
+            "../../../schemas/examples/execution-profile/macos.valid.json"
+        ))
+        .unwrap();
+        let settings = ColmapExecutionSettings::from_execution_profile(&profile).unwrap();
+        let command =
+            command_with_settings(Path::new("engine-pack/colmap/bin/colmap"), Some(&settings));
+        assert_eq!(command.get_envs().count(), 0);
+    }
 
     #[test]
     fn packaged_command_spec_injects_colmap_runtime() {

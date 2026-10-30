@@ -4,15 +4,24 @@ import {
   CheckCircle,
   DotsThreeVertical,
   FolderOpen,
+  ImageSquare,
   LinkSimple,
   MagnifyingGlass,
+  PauseCircle,
+  SpinnerGap,
   Question,
   Stack,
   Trash,
   WarningCircle,
-  XCircle,
 } from "../primitives/icons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { DesktopMenu } from "./DesktopMenu";
+import { DesktopContextMenu, DesktopContextMenuItem, DesktopContextMenuSeparator } from "./DesktopContextMenu";
 
 import { formatRelativeTime, getProjectStatusLabel, getStageLabel } from "../../localization";
 import type { ProjectInfo, RecentProjectAvailability } from "../../types";
@@ -23,6 +32,22 @@ export type RelinkUiResult =
   | { kind: "mismatch"; candidatePath: string; code: string }
   | { kind: "error"; code: string; message: string };
 
+type ProjectMenuAction = { key: string; separator: true } | {
+  key: string;
+  label: string;
+  icon: ReactNode;
+  onSelect: () => void;
+  disabled?: boolean;
+  title?: string;
+  destructive?: boolean;
+};
+
+function projectMenuContent(actions: ProjectMenuAction[], context = false) {
+  const Item = context ? DesktopContextMenuItem : DropdownMenuItem;
+  const Separator = context ? DesktopContextMenuSeparator : DropdownMenuSeparator;
+  return actions.map((action) => "separator" in action ? <Separator key={action.key} /> : <Item key={action.key} disabled={action.disabled} title={action.title} className={action.destructive ? "text-destructive focus:text-destructive" : undefined} onSelect={action.onSelect}>{action.icon}{action.label}</Item>);
+}
+
 export interface ProjectNavigatorProps {
   projects: ProjectInfo[];
   availability: Record<string, RecentProjectAvailability>;
@@ -31,13 +56,19 @@ export interface ProjectNavigatorProps {
   activeProjectPath: string | null;
   onSelectProject: (project: ProjectInfo) => void;
   onRevealProject: (project: ProjectInfo) => void;
-  onRemoveProject: (project: ProjectInfo) => void;
   onDeleteProject: (project: ProjectInfo) => void;
   onRetryAvailability: (projectId: string) => Promise<void> | void;
   onRelinkProject: (project: ProjectInfo) => Promise<RelinkUiResult>;
   onOpenIndependent: (candidatePath: string) => Promise<void> | void;
   onRetryLoad?: () => void;
   onNavigate?: () => void;
+  compact?: boolean;
+  catalog?: boolean;
+  gallery?: boolean;
+  renderThumbnail?: (project: ProjectInfo) => ReactNode;
+  showSearch?: boolean;
+  maxItems?: number;
+  showHealthyAvailability?: boolean;
 }
 
 function compactProjectStatus(project: ProjectInfo): string {
@@ -50,20 +81,27 @@ function compactProjectStatus(project: ProjectInfo): string {
   return t("就绪");
 }
 
+function projectLocation(path: string): string {
+  const parts = path.split(/[\\/]+/).filter(Boolean);
+  if (parts.length <= 2) return path;
+  const separator = path.includes("\\") ? "\\" : "/";
+  return `…${separator}${parts.slice(-2).join(separator)}`;
+}
+
 function availabilityCopy(value: RecentProjectAvailability | undefined) {
   switch (value?.status ?? "unknown") {
     case "checking":
-      return { label: t("正在检查路径"), className: "is-checking", icon: <ArrowClockwise className="spin" size={13} /> };
+      return { label: t("正在检查路径"), className: "text-muted-foreground", icon: <ArrowClockwise className="spin" size={13} /> };
     case "available":
-      return { label: t("路径可用"), className: "is-available", icon: <CheckCircle size={13} weight="fill" /> };
+      return { label: t("路径可用"), className: "text-muted-foreground", icon: <CheckCircle size={13} /> };
     case "missing":
-      return { label: t("路径已丢失"), className: "is-missing", icon: <WarningCircle size={13} weight="fill" /> };
+      return { label: t("路径已丢失"), className: "text-warning", icon: <WarningCircle size={13} /> };
     case "unreadable":
-      return { label: t("项目数据无法读取"), className: "is-unreadable", icon: <WarningCircle size={13} weight="fill" /> };
+      return { label: t("项目数据无法读取"), className: "text-destructive", icon: <WarningCircle size={13} /> };
     case "check_failed":
-      return { label: t("暂时无法检查"), className: "is-check-failed", icon: <Question size={13} weight="fill" /> };
+      return { label: t("暂时无法检查"), className: "text-warning", icon: <Question size={13} /> };
     default:
-      return { label: t("等待检查路径"), className: "is-unknown", icon: <Question size={13} /> };
+      return { label: t("等待检查路径"), className: "text-muted-foreground", icon: <Question size={13} /> };
   }
 }
 
@@ -75,91 +113,42 @@ export function ProjectNavigator({
   activeProjectPath,
   onSelectProject,
   onRevealProject,
-  onRemoveProject,
   onDeleteProject,
   onRetryAvailability,
   onRelinkProject,
   onOpenIndependent,
   onRetryLoad = () => undefined,
   onNavigate = () => undefined,
+  compact = false,
+  catalog = false,
+  gallery = false,
+  renderThumbnail,
+  showSearch = true,
+  maxItems = 50,
+  showHealthyAvailability = true,
 }: ProjectNavigatorProps) {
+  const summaryPrefix = useId();
+  const galleryView = gallery && !compact;
+  const catalogRow = catalog && !compact && !galleryView;
   const [query, setQuery] = useState("");
   const [menuProjectId, setMenuProjectId] = useState<string | null>(null);
+  const [contextProjectId, setContextProjectId] = useState<string | null>(null);
   const [relinkBusyId, setRelinkBusyId] = useState<string | null>(null);
   const [retryBusyIds, setRetryBusyIds] = useState<Set<string>>(() => new Set());
   const [relinkResult, setRelinkResult] = useState<Record<string, RelinkUiResult>>({});
   const retryActivated = useRef(new Set<string>());
   const mismatchHeadings = useRef(new Map<string, HTMLDivElement>());
-  const menuRef = useRef<HTMLDivElement>(null);
-  const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const menuInitialPosition = useRef<"first" | "last">("first");
-
-  useEffect(() => {
-    if (!menuProjectId) return;
-    const frame = window.requestAnimationFrame(() => {
-      const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem']:not(:disabled)") ?? []);
-      (menuInitialPosition.current === "last" ? items[items.length - 1] : items[0])?.focus();
-    });
-    const close = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.closest(`[data-project-menu="${menuProjectId}"]`)) return;
-      setMenuProjectId(null);
-    };
-    window.addEventListener("mousedown", close);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("mousedown", close);
-    };
-  }, [menuProjectId]);
-
-  const closeProjectMenu = (restoreFocus: boolean) => {
-    setMenuProjectId(null);
-    if (restoreFocus) window.requestAnimationFrame(() => menuTriggerRef.current?.focus());
-  };
-
-  const openProjectMenu = (
-    trigger: HTMLButtonElement,
-    projectId: string,
-    position: "first" | "last" = "first",
-  ) => {
-    menuTriggerRef.current = trigger;
-    menuInitialPosition.current = position;
-    setMenuProjectId(projectId);
-  };
-
-  const handleProjectMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem']:not(:disabled)") ?? []);
-    const current = items.indexOf(document.activeElement as HTMLButtonElement);
-    let next = -1;
-    if (event.key === "ArrowDown") next = (current + 1) % items.length;
-    if (event.key === "ArrowUp") next = (current - 1 + items.length) % items.length;
-    if (event.key === "Home") next = 0;
-    if (event.key === "End") next = items.length - 1;
-    if (next >= 0 && items[next]) {
-      event.preventDefault();
-      items[next].focus();
-      return;
-    }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      closeProjectMenu(true);
-    } else if (event.key === "Tab") {
-      menuTriggerRef.current?.focus();
-      closeProjectMenu(false);
-    }
-  };
-
+  const menuTriggers = useRef(new Map<string, HTMLButtonElement>());
   const filteredProjects = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase(getLocale());
-    if (!normalized) return projects.slice(0, 50);
+    if (!normalized) return projects.slice(0, maxItems);
     return projects.filter((project) => [
       project.name,
       project.path,
       project.status,
       project.stage_label ?? "",
-    ].some((value) => value.toLocaleLowerCase(getLocale()).includes(normalized))).slice(0, 50);
-  }, [projects, query]);
+    ].some((value) => value.toLocaleLowerCase(getLocale()).includes(normalized))).slice(0, maxItems);
+  }, [projects, query, maxItems]);
 
   const relink = async (project: ProjectInfo) => {
     if (relinkBusyId) return;
@@ -178,135 +167,149 @@ export function ProjectNavigator({
     window.requestAnimationFrame(() => mismatchHeadings.current.get(project.id)?.focus());
   };
 
+  const retryAvailability = (projectId: string) => {
+    if (availability[projectId]?.status !== "check_failed" || retryBusyIds.has(projectId)) return;
+    retryActivated.current.add(projectId);
+    setRetryBusyIds((current) => new Set(current).add(projectId));
+    void Promise.resolve(onRetryAvailability(projectId)).finally(() => {
+      setRetryBusyIds((current) => {
+        const next = new Set(current);
+        next.delete(projectId);
+        return next;
+      });
+    });
+  };
+
   return (
-    <div className="project-navigator">
-      <label className="sidebar-search">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      {showSearch ? <label className="relative block shrink-0 [&>svg]:pointer-events-none [&>svg]:absolute [&>svg]:left-3 [&>svg]:top-1/2 [&>svg]:-translate-y-1/2 [&>svg]:text-muted-foreground">
         <MagnifyingGlass size={15} aria-hidden="true" />
-        <input
+        <Input className="h-9 pl-9 text-xs"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }}
           placeholder={t("按名称或路径搜索…")}
           aria-label={t("按项目名称或路径搜索")}
         />
-      </label>
+      </label> : null}
 
-      <div className="sidebar-project-list">
+      <div role={galleryView ? "list" : undefined} className={`min-h-0 overflow-y-auto ${galleryView ? "grid grid-cols-[repeat(auto-fill,minmax(min(100%,180px),1fr))] items-start gap-4" : compact ? "space-y-0.5" : "space-y-1"}`}>
         {loadError ? (
-          <button type="button" className="sidebar-load-error" title={loadError} onClick={onRetryLoad}>
-            <WarningCircle size={15} weight="fill" /> {t("项目列表加载失败，重试")}</button>
+          <Button type="button" variant="ghost" className={`h-auto w-full justify-start whitespace-normal text-left text-xs text-destructive ${galleryView ? "col-span-full" : ""}`} title={loadError} onClick={onRetryLoad}>
+            <WarningCircle size={15} /> {t("项目列表加载失败，重试")}</Button>
         ) : null}
         {filteredProjects.map((project) => {
           const availabilityState = availability[project.id];
           const availabilityView = availabilityCopy(availabilityState);
           const rowRelink = relinkResult[project.id];
           const active = ["starting", "running", "pausing", "cancelling", "recovering"].includes(project.status);
-          return (
+          const statusTitle = project.stage_label ? `${getProjectStatusLabel(project.status)} · ${getStageLabel(project.stage_label)}` : getProjectStatusLabel(project.status);
+          const summaryId = `${summaryPrefix}-project-summary-${project.id}`;
+          const availabilityProblem = ["missing", "unreadable", "check_failed"].includes(availabilityState?.status ?? "");
+          const showAvailability = !compact && !galleryView && (showHealthyAvailability || availabilityProblem || retryActivated.current.has(project.id));
+          const statusIcon = active || project.status === "creating"
+            ? <SpinnerGap size={15} className="motion-safe:animate-spin" />
+            : project.status === "failed"
+              ? <WarningCircle size={15} className="text-destructive" />
+              : project.status === "paused"
+                ? <PauseCircle size={15} className="text-warning" />
+                : <Stack size={15} />;
+          const actions: ProjectMenuAction[] = [
+            { key: "reveal", label: t("在资源管理器中显示"), icon: <FolderOpen size={15} />, onSelect: () => onRevealProject(project) },
+            ...((compact || galleryView) && availabilityState?.status === "check_failed" ? [{ key: "retry", label: t("重试检查"), icon: <ArrowClockwise size={15} />, disabled: retryBusyIds.has(project.id), onSelect: () => retryAvailability(project.id) }] : []),
+            ...(["missing", "unreadable"].includes(availabilityState?.status ?? "") ? [{ key: "relink", label: t("重新定位"), icon: <LinkSimple size={15} />, onSelect: () => void relink(project) }] : []),
+            { key: "separator", separator: true },
+            { key: "delete", label: t("永久删除项目"), icon: <Trash size={15} />, disabled: active, title: active ? t("请先安全取消重建") : undefined, destructive: true, onSelect: () => onDeleteProject(project) },
+          ];
+          const projectMenu = <DesktopMenu open={menuProjectId === project.id} onOpenChange={(open) => { setMenuProjectId(open ? project.id : null); if (open) setContextProjectId(null); }} trigger={<Button ref={(node) => { if (node) menuTriggers.current.set(project.id, node); else menuTriggers.current.delete(project.id); }} variant="ghost" size="icon-sm" className={galleryView ? "absolute top-2 right-2 size-7 rounded-md bg-background/90 text-foreground opacity-0 shadow-sm group-hover/project:opacity-100 group-focus-within/project:opacity-100 data-[state=open]:opacity-100 hover:bg-background dark:hover:bg-background" : compact ? "size-6 shrink-0 text-muted-foreground opacity-0 group-hover/project:opacity-100 group-focus-within/project:opacity-100 data-[state=open]:opacity-100" : undefined} aria-label={t("{0} 项目操作", project.name)}><DotsThreeVertical size={17} /></Button>}>
+            {projectMenuContent(actions)}
+          </DesktopMenu>;
+          const projectCard = (
             <div
               key={`${project.id}:${project.path}`}
               data-project-menu={project.id}
-              className={`sidebar-project-row ${activeProjectPath === project.path ? "is-active" : ""}`}
+              role={galleryView ? "listitem" : undefined}
+              className={`group/project rounded-md ${galleryView ? "w-full max-w-[220px] p-1.5" : compact ? "px-1" : catalogRow ? "px-2 py-1" : "p-2"} ${activeProjectPath === project.path ? "bg-accent" : "hover:bg-accent/70"}`}
               aria-busy={availabilityState?.status === "checking" || undefined}
             >
-              <div className="project-row-main">
-                <button type="button" className="sidebar-project-select" aria-label={project.name} onClick={() => { onSelectProject(project); onNavigate(); }}>
-                  <span className={`project-file-icon status-${project.status}`} aria-hidden="true"><Stack size={16} weight="fill" /></span>
-                  <span className="project-row-copy">
-                    <span className="project-row-title-line">
-                      <span className="project-row-title" title={project.name}>{project.name}</span>
-                      <span className={`project-row-status status-${project.status}`} title={project.stage_label ? `${getProjectStatusLabel(project.status)} · ${getStageLabel(project.stage_label)}` : getProjectStatusLabel(project.status)}>
-                        {compactProjectStatus(project)}
-                      </span>
-                    </span>
-                    <span className="project-row-path" title={project.path}>{project.path}</span>
-                    <span className="project-row-meta">{formatRelativeTime(project.updated_at)}</span>
+              {galleryView ? <div className="relative">
+                <Button type="button" variant="ghost" className="h-auto w-full min-w-0 flex-col items-stretch gap-0 rounded-sm p-0 text-left whitespace-normal hover:bg-transparent dark:hover:bg-transparent" aria-label={project.name} aria-describedby={summaryId} title={`${project.name}\n${statusTitle}\n${project.path}\n${availabilityView.label}\n${formatRelativeTime(project.updated_at)}`} onClick={() => { onSelectProject(project); onNavigate(); }}>
+                  <span className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-sm border border-border/70 bg-muted/45 [&>img]:size-full [&>img]:object-cover">
+                    {renderThumbnail?.(project) ?? <ImageSquare size={30} aria-hidden="true" className="size-[30px] text-muted-foreground" />}
                   </span>
-                </button>
-                <button
-                  type="button"
-                  className="sidebar-project-menu-button"
-                  aria-label={t("{0} 项目操作", project.name)}
-                  aria-haspopup="menu"
-                  aria-expanded={menuProjectId === project.id}
-                  aria-controls={menuProjectId === project.id ? `project-menu-${project.id}` : undefined}
-                  onClick={(event) => {
-                    if (menuProjectId === project.id) closeProjectMenu(true);
-                    else openProjectMenu(event.currentTarget, project.id);
-                  }}
-                  onKeyDown={(event) => {
-                    if (!["Enter", " ", "ArrowDown", "ArrowUp"].includes(event.key)) return;
-                    event.preventDefault();
-                    openProjectMenu(event.currentTarget, project.id, event.key === "ArrowUp" ? "last" : "first");
-                  }}
-                >
-                  <DotsThreeVertical size={17} weight="bold" />
-                </button>
-              </div>
+                  <span className="mt-2 block min-w-0 truncate text-center text-[13px] font-medium" title={project.name}>{project.name}</span>
+                  <span id={summaryId} className="sr-only">{statusTitle} · {project.path} · {availabilityView.label} · {formatRelativeTime(project.updated_at)}</span>
+                </Button>
+                {projectMenu}
+              </div> : <div className={`flex gap-1 ${compact ? "h-8 items-center" : catalogRow ? "items-center" : "items-start"}`}>
+                <Button type="button" variant="ghost" className={`min-w-0 flex-1 justify-start gap-2 text-left hover:bg-transparent ${compact ? "h-8 px-1 py-0" : catalogRow ? "h-12 items-center p-1" : "h-auto items-start p-1"}`} aria-label={project.name} aria-describedby={compact || catalogRow ? summaryId : undefined} title={compact ? `${project.name}\n${statusTitle}\n${project.path}\n${availabilityView.label}` : undefined} onClick={() => { onSelectProject(project); onNavigate(); }}>
+                  <span className={`shrink-0 text-muted-foreground ${compact || catalogRow ? "" : "mt-0.5"}`} role={compact ? "img" : undefined} aria-hidden={compact ? undefined : true} aria-label={compact ? availabilityProblem ? availabilityView.label : compactProjectStatus(project) : undefined} title={compact && availabilityProblem ? `${statusTitle} · ${availabilityView.label}` : statusTitle}>{compact ? availabilityProblem ? availabilityView.icon : statusIcon : <Stack size={16} />}</span>
+                  <span className={`min-w-0 flex-1 ${compact ? "truncate" : catalogRow ? "grid gap-0.5" : "grid gap-1"}`}>
+                    <span className={`min-w-0 ${compact ? "block truncate" : catalogRow ? "flex items-center gap-1" : "flex flex-wrap items-center gap-1"}`}>
+                      <span className={`min-w-0 truncate ${compact ? "text-[13px] font-normal" : "text-sm font-medium"}`} title={project.name}>{project.name}</span>
+                      {!compact ? <Badge variant={project.status === "failed" ? "destructive" : project.status === "completed" ? "success" : project.status === "paused" ? "warning" : "secondary"} className={`px-1.5 py-0 text-xs font-normal ${catalogRow ? "shrink-0" : ""}`} title={statusTitle}>
+                        {compactProjectStatus(project)}
+                      </Badge> : null}
+                    </span>
+                    {!compact ? <>
+                      <span className="truncate text-xs font-normal text-muted-foreground" title={project.path}>{catalogRow ? projectLocation(project.path) : project.path}</span>
+                      {!catalogRow ? <span className="text-xs font-normal text-muted-foreground">{formatRelativeTime(project.updated_at)}</span> : null}
+                    </> : null}
+                  </span>
+                  {compact || catalogRow ? <span id={summaryId} className="sr-only">{statusTitle} · {project.path} · {availabilityView.label}</span> : null}
+                </Button>
+                {catalogRow ? <time dateTime={project.updated_at} className="w-24 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{formatRelativeTime(project.updated_at)}</time> : null}
+                {projectMenu}
+              </div>}
 
-              <div className={`project-availability ${availabilityView.className}`}>
-                {availabilityView.icon}<span>{availabilityView.label}</span>
+              {showAvailability ? <div className={`flex items-center text-xs ${compact ? "h-6 min-w-0 gap-1 pb-1 pl-6 pr-1" : "mt-1 flex-wrap gap-1.5 px-1"} ${availabilityView.className}`}>
+                <span className={`flex items-center gap-1 ${compact ? "min-w-0 flex-1" : ""}`} title={availabilityView.label}>
+                  <span className="shrink-0" aria-hidden="true">{availabilityView.icon}</span>
+                  <span className={compact ? "truncate" : undefined}>{availabilityView.label}</span>
+                </span>
                 {availabilityState?.status === "check_failed" || retryActivated.current.has(project.id) ? (
-                  <button
+                  <Button variant="ghost" size="sm" className={compact ? "h-5 shrink-0 px-1 py-0 text-[11px]" : "h-auto px-1 py-0.5 text-xs"}
                     type="button"
                     aria-busy={retryBusyIds.has(project.id) || availabilityState?.status === "checking" || undefined}
                     aria-disabled={availabilityState?.status !== "check_failed" || retryBusyIds.has(project.id)}
                     tabIndex={availabilityState?.status === "check_failed" || retryActivated.current.has(project.id) ? 0 : -1}
-                    onClick={() => {
-                      if (availabilityState?.status !== "check_failed" || retryBusyIds.has(project.id)) return;
-                      retryActivated.current.add(project.id);
-                      setRetryBusyIds((current) => new Set(current).add(project.id));
-                      void Promise.resolve(onRetryAvailability(project.id)).finally(() => {
-                        setRetryBusyIds((current) => {
-                          const next = new Set(current);
-                          next.delete(project.id);
-                          return next;
-                        });
-                      });
-                    }}
+                    onClick={() => retryAvailability(project.id)}
                   >
                     {availabilityState?.status === "check_failed" ? t("重试检查") : availabilityView.label}
-                  </button>
+                  </Button>
                 ) : null}
-                {availabilityState?.status === "check_failed" ? <small>{t("记录已保留")}</small> : null}
-                {availabilityState?.status === "unreadable" ? <small>{t("请检查项目数据，或选择正确的项目位置。")}</small> : null}
+                {availabilityState?.status === "check_failed" ? <small className={compact ? "sr-only" : undefined}>{t("记录已保留")}</small> : null}
+                {availabilityState?.status === "unreadable" ? <small className={compact ? "sr-only" : undefined}>{t("请检查项目数据，或选择正确的项目位置。")}</small> : null}
                 {["missing", "unreadable"].includes(availabilityState?.status ?? "") ? (
-                  <button type="button" disabled={relinkBusyId === project.id} onClick={() => void relink(project)}>
-                    <LinkSimple size={13} />{relinkBusyId === project.id ? t("正在验证…") : t("重新定位")}
-                  </button>
+                  <Button variant="ghost" size="sm" className={compact ? "h-5 shrink-0 px-1 py-0 text-[11px]" : "h-auto px-1 py-0.5 text-xs"} type="button" disabled={relinkBusyId === project.id} onClick={() => void relink(project)}>
+                    {!compact ? <LinkSimple size={13} /> : null}{relinkBusyId === project.id ? t("正在验证…") : t("重新定位")}
+                  </Button>
                 ) : null}
-              </div>
+              </div> : null}
 
               {rowRelink?.kind === "mismatch" ? (
                 <div
-                  ref={(node) => { if (node) mismatchHeadings.current.set(project.id, node); }}
-                  className="project-relink-error"
+                  ref={(node) => { if (node) mismatchHeadings.current.set(project.id, node); else mismatchHeadings.current.delete(project.id); }}
+                  className="mt-2 space-y-2 rounded-md bg-destructive/5 p-3 text-xs break-words [&>strong]:block [&>span]:block [&>div]:flex [&>div]:flex-wrap [&>div]:gap-2"
                   role="alert"
                   tabIndex={-1}
                 >
                   <strong>{t("所选目录属于另一个项目")}</strong>
                   <span>{t("原记录未更改（")}{rowRelink.code}）。</span>
                   <div>
-                    <button type="button" onClick={() => void relink(project)}>{t("选择其他位置")}</button>
-                    <button type="button" onClick={() => { void onOpenIndependent(rowRelink.candidatePath); onNavigate(); }}>{t("作为独立项目打开")}</button>
+                    <Button variant="outline" size="sm" type="button" onClick={() => void relink(project)}>{t("选择其他位置")}</Button>
+                    <Button variant="outline" size="sm" type="button" onClick={() => { void onOpenIndependent(rowRelink.candidatePath); onNavigate(); }}>{t("作为独立项目打开")}</Button>
                   </div>
                 </div>
               ) : rowRelink?.kind === "error" ? (
-                <div className="project-relink-error" role="alert"><strong>{t("无法重新定位")}</strong><span>{localizeMessage(rowRelink.message)}（{rowRelink.code}）</span></div>
-              ) : null}
-
-              {menuProjectId === project.id ? (
-                <div ref={menuRef} id={`project-menu-${project.id}`} className="sidebar-project-menu action-menu-popover" role="menu" data-keyboard-overlay="true" onKeyDown={handleProjectMenuKeyDown}>
-                  <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setMenuProjectId(null); onRevealProject(project); }}><FolderOpen size={15} />{t("在资源管理器中显示")}</button>
-                  {["missing", "unreadable"].includes(availabilityState?.status ?? "") ? <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setMenuProjectId(null); void relink(project); }}><LinkSimple size={15} />{t("重新定位")}</button> : null}
-                  <button type="button" role="menuitem" tabIndex={-1} disabled={active} title={active ? t("请先安全取消重建") : undefined} onClick={() => { setMenuProjectId(null); onRemoveProject(project); }}><XCircle size={15} />{t("从最近项目移除")}</button>
-                  <button type="button" role="menuitem" tabIndex={-1} className="is-danger" disabled={active} title={active ? t("请先安全取消重建") : undefined} onClick={() => { setMenuProjectId(null); onDeleteProject(project); }}><Trash size={15} />{t("永久删除项目")}</button>
-                </div>
+                <div className="mt-2 space-y-2 rounded-md bg-destructive/5 p-3 text-xs [&>strong]:block [&>span]:block [&>div]:flex [&>div]:flex-wrap [&>div]:gap-2" role="alert"><strong>{t("无法重新定位")}</strong><span>{localizeMessage(rowRelink.message)}（{rowRelink.code}）</span></div>
               ) : null}
             </div>
           );
+          return galleryView ? <DesktopContextMenu key={`${project.id}:${project.path}`} trigger={projectCard} label={t("{0} 项目操作", project.name)} open={contextProjectId === project.id} onOpenChange={(open) => { setContextProjectId(open ? project.id : null); if (open) setMenuProjectId(null); }} onReturnFocus={() => menuTriggers.current.get(project.id)?.focus()}>{projectMenuContent(actions, true)}</DesktopContextMenu> : projectCard;
         })}
         {filteredProjects.length === 0 ? (
-          <div className="sidebar-empty">{loading ? t("正在加载最近项目…") : loadError ? t("无法读取最近项目") : query ? t("没有匹配项目") : t("还没有最近项目")}</div>
+          <div className={`px-3 py-8 text-center text-xs text-muted-foreground ${galleryView ? "col-span-full" : ""}`}>{loading ? t("正在加载最近项目…") : loadError ? t("无法读取最近项目") : query ? t("没有匹配项目") : t("还没有最近项目")}</div>
         ) : null}
       </div>
     </div>

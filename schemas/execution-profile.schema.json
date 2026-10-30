@@ -1,0 +1,793 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metorigin.dev/schemas/execution-profile.json",
+  "title": "MetOrigin Splat Execution Profile v1",
+  "description": "Portable per-run execution contract, stored separately from project.json. A structurally valid profile may retain unknown or failed evidence. Rust validate_for_execution enforces successful evidence and negotiated live/resume capabilities. Rust validation additionally enforces arithmetic cache/training/working-set bounds, which standard JSON Schema cannot compare across fields. No executable paths or source media are stored.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "not": {
+        "const": "00000000-0000-0000-0000-000000000000"
+      }
+    },
+    "platform": {
+      "type": "string",
+      "enum": [
+        "windows",
+        "macos"
+      ]
+    },
+    "architecture": {
+      "type": "string",
+      "enum": [
+        "x86_64",
+        "arm64"
+      ]
+    },
+    "os_version": {
+      "$ref": "#/$defs/text"
+    },
+    "engine_pack_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/text"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "engines": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ffmpeg": {
+          "$ref": "#/$defs/engine_identity"
+        },
+        "ffprobe": {
+          "$ref": "#/$defs/engine_identity"
+        },
+        "colmap": {
+          "$ref": "#/$defs/engine_identity"
+        },
+        "brush": {
+          "$ref": "#/$defs/engine_identity"
+        }
+      },
+      "required": [
+        "ffmpeg",
+        "ffprobe",
+        "colmap",
+        "brush"
+      ]
+    },
+    "colmap": {
+      "$ref": "#/$defs/colmap_execution"
+    },
+    "brush": {
+      "$ref": "#/$defs/brush_execution"
+    },
+    "memory": {
+      "$ref": "#/$defs/memory_budget"
+    },
+    "effective_training": {
+      "$ref": "#/$defs/effective_training"
+    },
+    "live_protocol": {
+      "type": "string",
+      "enum": [
+        "disabled",
+        "ply_request_ack_v1"
+      ]
+    },
+    "resume_mode": {
+      "type": "string",
+      "enum": [
+        "disabled",
+        "ply_warm_start_optimizer_reset"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "run_id",
+    "platform",
+    "architecture",
+    "os_version",
+    "engines",
+    "colmap",
+    "brush",
+    "memory",
+    "effective_training",
+    "live_protocol",
+    "resume_mode"
+  ],
+  "$defs": {
+    "text": {
+      "type": "string",
+      "pattern": "^(?!.*[\\u0000-\\u001f\\u007f-\\u009f])(?=.*\\S)[\\s\\S]+$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{64}$"
+    },
+    "brush_backend": {
+      "type": "string",
+      "enum": [
+        "legacy_default",
+        "metal",
+        "vulkan",
+        "dx12"
+      ]
+    },
+    "capability_status": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "supported",
+        "unsupported",
+        "failed"
+      ]
+    },
+    "engine_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "$ref": "#/$defs/text"
+        },
+        "source_commit": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "binary_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "required": [
+        "version",
+        "binary_sha256"
+      ]
+    },
+    "training_probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "legacy_nvidia_driver",
+            "compute_smoke"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/capability_status"
+        },
+        "backend": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/brush_backend"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "device_name": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "device_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "status"
+      ]
+    },
+    "colmap_execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cli_profile": {
+          "type": "string",
+          "enum": [
+            "colmap_4_1"
+          ]
+        },
+        "database_schema_profile": {
+          "type": "string",
+          "enum": [
+            "colmap_4_1"
+          ]
+        },
+        "feature_backend": {
+          "type": "string",
+          "enum": [
+            "cpu",
+            "cuda"
+          ]
+        },
+        "matching_backend": {
+          "type": "string",
+          "enum": [
+            "cpu",
+            "cuda"
+          ]
+        },
+        "ba_backend": {
+          "type": "string",
+          "enum": [
+            "ceres_cpu"
+          ]
+        },
+        "global_positioning_backend": {
+          "type": "string",
+          "enum": [
+            "cpu",
+            "cuda"
+          ]
+        }
+      },
+      "required": [
+        "cli_profile",
+        "database_schema_profile",
+        "feature_backend",
+        "matching_backend",
+        "ba_backend",
+        "global_positioning_backend"
+      ]
+    },
+    "brush_execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cli_profile": {
+          "type": "string",
+          "enum": [
+            "legacy_0_3",
+            "metorigin_1"
+          ]
+        },
+        "backend": {
+          "$ref": "#/$defs/brush_backend"
+        },
+        "probe_result": {
+          "$ref": "#/$defs/training_probe"
+        },
+        "live_preview": {
+          "$ref": "#/$defs/capability_status",
+          "default": "unknown"
+        },
+        "ply_warm_start": {
+          "$ref": "#/$defs/capability_status",
+          "default": "unknown"
+        }
+      },
+      "required": [
+        "cli_profile",
+        "backend",
+        "probe_result"
+      ]
+    },
+    "memory_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "dedicated",
+            "unified"
+          ]
+        },
+        "physical_memory_bytes": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 18446744073709551615
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "training_budget_bytes": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 18446744073709551615
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "available_working_set_bytes": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 18446744073709551615
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    },
+    "effective_training": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "iterations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "sh_degree": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "resolution": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "image_cache_budget_bytes": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 18446744073709551615
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_splats": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "threads": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "lod_levels": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "iterations",
+        "sh_degree",
+        "threads"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "properties": {
+        "engines": {
+          "properties": {
+            "colmap": {
+              "properties": {
+                "version": {
+                  "pattern": "^4\\.1\\.0(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "platform": {
+            "const": "macos"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "architecture": {
+            "const": "arm64"
+          },
+          "os_version": {
+            "pattern": "^(1[5-9]|[2-9][0-9]|[1-9][0-9]{2,})(\\.[0-9]+){1,2}$"
+          },
+          "colmap": {
+            "properties": {
+              "feature_backend": {
+                "const": "cpu"
+              },
+              "matching_backend": {
+                "const": "cpu"
+              },
+              "global_positioning_backend": {
+                "const": "cpu"
+              }
+            }
+          },
+          "brush": {
+            "properties": {
+              "cli_profile": {
+                "const": "metorigin_1"
+              },
+              "backend": {
+                "const": "metal"
+              },
+              "probe_result": {
+                "properties": {
+                  "kind": {
+                    "const": "compute_smoke"
+                  }
+                }
+              }
+            }
+          },
+          "memory": {
+            "required": [
+              "training_budget_bytes"
+            ],
+            "properties": {
+              "kind": {
+                "const": "unified"
+              },
+              "training_budget_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18446744073709551615
+              }
+            }
+          },
+          "effective_training": {
+            "required": [
+              "resolution",
+              "image_cache_budget_bytes",
+              "max_splats",
+              "lod_levels"
+            ],
+            "properties": {
+              "resolution": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295
+              },
+              "image_cache_budget_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18446744073709551615
+              },
+              "max_splats": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295
+              },
+              "lod_levels": {
+                "const": 0
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "architecture": {
+            "const": "x86_64"
+          },
+          "brush": {
+            "properties": {
+              "cli_profile": {
+                "const": "legacy_0_3"
+              },
+              "backend": {
+                "type": "string",
+                "enum": [
+                  "legacy_default",
+                  "vulkan",
+                  "dx12"
+                ]
+              }
+            }
+          },
+          "memory": {
+            "properties": {
+              "kind": {
+                "const": "dedicated"
+              }
+            }
+          },
+          "effective_training": {
+            "properties": {
+              "lod_levels": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "brush": {
+            "properties": {
+              "cli_profile": {
+                "const": "legacy_0_3"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "engines": {
+            "properties": {
+              "brush": {
+                "properties": {
+                  "version": {
+                    "pattern": "^0\\.3\\.0(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "brush": {
+            "properties": {
+              "cli_profile": {
+                "const": "metorigin_1"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "engines": {
+            "properties": {
+              "brush": {
+                "properties": {
+                  "version": {
+                    "pattern": "^1\\.0\\.0(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "brush": {
+            "properties": {
+              "backend": {
+                "const": "legacy_default"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "brush": {
+            "properties": {
+              "probe_result": {
+                "properties": {
+                  "backend": {
+                    "type": "null"
+                  },
+                  "kind": {
+                    "const": "legacy_nvidia_driver"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "brush": {
+            "properties": {
+              "backend": {
+                "const": "metal"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "brush": {
+            "properties": {
+              "probe_result": {
+                "properties": {
+                  "backend": {
+                    "enum": [
+                      "metal",
+                      null
+                    ]
+                  },
+                  "kind": {
+                    "const": "compute_smoke"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "brush": {
+            "properties": {
+              "backend": {
+                "const": "vulkan"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "brush": {
+            "properties": {
+              "probe_result": {
+                "properties": {
+                  "backend": {
+                    "enum": [
+                      "vulkan",
+                      null
+                    ]
+                  },
+                  "kind": {
+                    "const": "compute_smoke"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "brush": {
+            "properties": {
+              "backend": {
+                "const": "dx12"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "brush": {
+            "properties": {
+              "probe_result": {
+                "properties": {
+                  "backend": {
+                    "enum": [
+                      "dx12",
+                      null
+                    ]
+                  },
+                  "kind": {
+                    "const": "compute_smoke"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "effective_training": {
+            "required": [
+              "image_cache_budget_bytes"
+            ],
+            "properties": {
+              "image_cache_budget_bytes": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "memory": {
+            "required": [
+              "training_budget_bytes"
+            ],
+            "properties": {
+              "training_budget_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18446744073709551615
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

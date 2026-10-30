@@ -3,7 +3,7 @@ use std::path::Path;
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 
-use crate::plan::ExtractionPlan;
+use crate::plan::{display_rotation_filter, ExtractionPlan};
 use crate::probe::VideoMetadata;
 
 /// Entry for a single extracted frame.
@@ -66,6 +66,19 @@ pub fn validate_frames(
                 frame_dir.display()
             ),
         ));
+    }
+
+    // A historical manifest can describe readable, self-consistent JPEGs
+    // while having applied the wrong display-matrix direction. Such frames
+    // must be extracted again under the current orientation semantics.
+    if plan.rotation_correction.as_deref() != display_rotation_filter(metadata.rotation) {
+        return Err(AppError::new(
+            "E-1103",
+            ErrorCategory::Media,
+            "Frame Orientation Needs Refresh",
+            "The stored frame extraction plan uses an outdated video orientation. Extract the frames again.",
+        )
+        .retryable(true));
     }
 
     // Read directory entries
@@ -150,6 +163,24 @@ pub fn validate_frames(
                     ),
                 )
             })?;
+
+        // With no scaling, a quarter-turn must swap the exact dimensions.
+        // The scale filter preserves aspect ratio within rounded bounds and
+        // may produce smaller dimensions; keep those actual sizes below.
+        if !plan.will_scale && (width, height) != (plan.output_width, plan.output_height) {
+            return Err(AppError::new(
+                "E-1103",
+                ErrorCategory::Media,
+                "Unexpected Frame Dimensions",
+                format!(
+                    "Frame '{}' is {width}×{height}, but the extraction plan requires {}×{}.",
+                    path.display(),
+                    plan.output_width,
+                    plan.output_height
+                ),
+            )
+            .retryable(true));
+        }
 
         frames.push(FrameEntry {
             filename: entry.file_name().to_string_lossy().to_string(),
@@ -463,6 +494,110 @@ mod tests {
         assert_eq!(result.total_frames, 2);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cached_frames_with_legacy_rotation_plans_are_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        create_test_frame(dir.path(), "000000.jpg", 100);
+        for (angle, legacy_correction) in [
+            (-90, None),
+            (90, Some("transpose=1")),
+            (270, Some("transpose=2")),
+            (-180, None),
+            (450, None),
+        ] {
+            let mut metadata = sample_metadata();
+            metadata.rotation = Some(angle);
+            let mut plan = sample_plan();
+            plan.target_frame_count = 1;
+            plan.rotation_correction = legacy_correction.map(str::to_string);
+            // Even readable JPEGs of the stored size cannot rehabilitate an
+            // extraction plan that applied the wrong display orientation.
+            assert!(
+                validate_frames(dir.path(), &plan, &metadata).is_err(),
+                "{angle}"
+            );
+        }
+    }
+
+    #[test]
+    fn unscaled_jpeg_dimensions_must_match_the_current_extraction_plan() {
+        let dir = tempfile::tempdir().unwrap();
+        create_test_frame(dir.path(), "000000.jpg", 100);
+        let mut metadata = sample_metadata();
+        metadata.rotation = Some(-90);
+        let plan = crate::plan::plan_extraction(
+            &metadata,
+            &crate::plan::FrameExtractionPreset {
+                fps: 1.0,
+                max_frames: 1,
+                target_long_edge: 1920,
+                colmap_long_edge: 1920,
+            },
+        );
+        assert!(validate_frames(dir.path(), &plan, &metadata).is_err());
+    }
+
+    #[test]
+    fn correctly_oriented_jpegs_remain_valid_for_equivalent_display_angles() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = create_test_frame(dir.path(), "000000.jpg", 100);
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes[7..9].copy_from_slice(&1920u16.to_be_bytes());
+        bytes[9..11].copy_from_slice(&1080u16.to_be_bytes());
+        std::fs::write(path, bytes).unwrap();
+        for angle in [-90, 90, 270, 450] {
+            let mut metadata = sample_metadata();
+            metadata.rotation = Some(angle);
+            let plan = crate::plan::plan_extraction(
+                &metadata,
+                &crate::plan::FrameExtractionPreset {
+                    fps: 1.0,
+                    max_frames: 1,
+                    target_long_edge: 1920,
+                    colmap_long_edge: 1920,
+                },
+            );
+            let manifest = validate_frames(dir.path(), &plan, &metadata).unwrap();
+            assert_eq!(
+                (manifest.frames[0].width, manifest.frames[0].height),
+                (1080, 1920)
+            );
+        }
+    }
+
+    #[test]
+    fn scaled_frames_preserve_actual_dimensions_after_aspect_ratio_rounding() {
+        for (source, actual) in [
+            ((1920, 1001), (1279u16, 667u16)),
+            ((1920, 1076), (1279, 717)),
+            ((16, 3840), (5, 1280)),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = create_test_frame(dir.path(), "000000.jpg", 100);
+            let mut bytes = std::fs::read(&path).unwrap();
+            bytes[7..9].copy_from_slice(&actual.1.to_be_bytes());
+            bytes[9..11].copy_from_slice(&actual.0.to_be_bytes());
+            std::fs::write(path, bytes).unwrap();
+            let mut metadata = sample_metadata();
+            (metadata.width, metadata.height) = source;
+            let plan = crate::plan::plan_extraction(
+                &metadata,
+                &crate::plan::FrameExtractionPreset {
+                    fps: 1.0,
+                    max_frames: 1,
+                    target_long_edge: 1280,
+                    colmap_long_edge: 1280,
+                },
+            );
+            assert!(plan.will_scale);
+            let manifest = validate_frames(dir.path(), &plan, &metadata).unwrap();
+            assert_eq!(
+                (manifest.frames[0].width, manifest.frames[0].height),
+                (u32::from(actual.0), u32::from(actual.1))
+            );
+        }
     }
 
     #[test]

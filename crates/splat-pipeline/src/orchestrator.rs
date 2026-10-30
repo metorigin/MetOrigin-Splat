@@ -16,6 +16,8 @@ use crate::stages::{
     MediaValidationStage, ModelValidationStage, PreviewGenerationStage, TrainingPreparationStage,
 };
 
+mod invalidation;
+
 /// Events emitted by the pipeline orchestrator.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum OrchestratorEvent {
@@ -42,6 +44,9 @@ pub enum OrchestratorEvent {
 pub struct PipelineConfig {
     pub preset: String,
     pub engine_paths: EnginePaths,
+    /// Frozen evidence and effective settings. None supports legacy projects
+    /// and standalone stage tests; macOS training requires a verified profile.
+    pub execution_profile: Option<Arc<splat_domain::ExecutionProfile>>,
 }
 
 impl Default for PipelineConfig {
@@ -49,6 +54,7 @@ impl Default for PipelineConfig {
         Self {
             preset: "balanced".to_string(),
             engine_paths: EnginePaths::default(),
+            execution_profile: None,
         }
     }
 }
@@ -180,24 +186,71 @@ impl PipelineOrchestrator {
             )
         })?;
 
-        // Store lock guard
+        self.adopt_execution_lock(guard).await?;
+        self.start_with_acquired_lock().await
+    }
+
+    /// Retain an admission lock acquired before any project state is changed.
+    /// The supervisor keeps this receipt even when the worker is aborted.
+    pub async fn adopt_execution_lock(&self, guard: LockGuard) -> AppResult<()> {
+        let mut owned = self.lock_guard.write().await;
+        if owned.is_some() || !guard.covers_project(&self.project_dir) {
+            return Err(AppError::new(
+                "E-9002",
+                ErrorCategory::Internal,
+                "Invalid Project Lock",
+                "The pipeline admission lock is missing, already installed, or belongs to another project.",
+            ));
+        }
+        *owned = Some(guard);
+        Ok(())
+    }
+
+    /// Execute while retaining an already adopted lock through finalization.
+    pub async fn start_with_acquired_lock(&self) -> AppResult<()> {
+        if !self
+            .lock_guard
+            .read()
+            .await
+            .as_ref()
+            .is_some_and(|guard| guard.covers_project(&self.project_dir))
         {
-            let mut lock = self.lock_guard.write().await;
-            *lock = Some(guard);
+            return Err(AppError::new(
+                "E-9002",
+                ErrorCategory::Internal,
+                "Missing Project Lock",
+                "Pipeline execution requires its project admission lock.",
+            ));
         }
 
         // Run the pipeline
         let result = self.start().await;
 
         // Release the lock on completion
-        {
-            let mut lock = self.lock_guard.write().await;
-            if let Some(g) = lock.take() {
-                g.release();
-            }
+        if !splat_process::ProcessScope::is_active() {
+            self.release_execution_lock().await?;
         }
 
         result
+    }
+
+    /// A supervisor may release a lock after an aborted/panicked worker has
+    /// joined and its owned engine processes have been cleaned up.
+    pub async fn release_execution_lock(&self) -> AppResult<()> {
+        let mut owned = self.lock_guard.write().await;
+        if let Some(guard) = owned.as_mut() {
+            guard.try_release().map_err(|error| {
+                AppError::new(
+                    "E-9002",
+                    ErrorCategory::Internal,
+                    "Project Lock Cleanup Failed",
+                    "The project lock could not be released; cleanup remains pending.",
+                )
+                .with_technical(error.to_string())
+            })?;
+            *owned = None;
+        }
+        Ok(())
     }
 
     /// Start the pipeline execution from the first pending stage.
@@ -213,6 +266,39 @@ impl PipelineOrchestrator {
         }
         drop(state);
 
+        // Every platform protects explicit existing evidence, including future
+        // schemas. None only means a legacy project when no evidence exists.
+        let previous = splat_project::load_execution_profile(&self.project_dir)?;
+        let mut pending = invalidation::load(&self.project_dir)?;
+        if let Some(profile) = &self.config.execution_profile {
+            profile.validate_for_execution()?;
+            let force_from = invalidation::earlier(
+                crate::runtime::profile_invalidation_stage(previous.as_ref(), profile),
+                pending.as_ref().map(|pending| pending.next_stage),
+            );
+            if let Some(first) = force_from {
+                // Persist intent before changing the profile: cancellation or
+                // an application restart must not turn old outputs into caches.
+                pending = Some(invalidation::begin(
+                    &self.project_dir,
+                    profile,
+                    first,
+                    pending.as_ref(),
+                )?);
+            }
+            splat_project::save_execution_profile(&self.project_dir, profile)?;
+            if let Some(first) = force_from {
+                self.invalidate_from(first).await;
+            }
+        } else if previous.is_some() || pending.is_some() {
+            return Err(AppError::new(
+                "E-1403",
+                ErrorCategory::Environment,
+                "Explicit Execution Profile Required",
+                "This project contains an explicit runtime profile or pending rebuild. Run preflight with a compatible engine pack before continuing.",
+            ));
+        }
+
         // Execute stages in order
         for stage_reg in &self.stages {
             if self.cancellation.is_cancelled() {
@@ -220,18 +306,20 @@ impl PipelineOrchestrator {
                 return Ok(());
             }
             let sid = stage_reg.id();
+            let mut force_execute = invalidation::requires_execution(pending.as_ref(), sid);
 
             // Build stage context
-            let ctx = StageContext::with_configuration(
+            let mut ctx = StageContext::with_configuration(
                 sid,
                 &self.project_dir,
                 Some(self.config.preset.clone()),
                 self.config.engine_paths.clone(),
                 self.cancellation.clone(),
             );
+            ctx.execution_profile = self.config.execution_profile.clone();
 
             // Check stage status from state
-            let should_run = {
+            let mut should_run = {
                 let state = self.state.read().await;
                 let should = state
                     .stages
@@ -241,12 +329,40 @@ impl PipelineOrchestrator {
                 should
             };
 
+            // Completed project state alone cannot bypass current output contracts
+            // or profile-aware caches. Changed frames invalidate every dependent stage.
+            match self.config.execution_profile.as_ref() {
+                Some(profile)
+                    if !should_run
+                        && matches!(
+                            sid,
+                            PipelineStageId::FrameExtraction
+                                | PipelineStageId::ColmapFeatureExtraction
+                                | PipelineStageId::ColmapMatching
+                                | PipelineStageId::ColmapMapping
+                                | PipelineStageId::TrainingPreparation
+                                | PipelineStageId::BrushTraining
+                        )
+                        && !stage_reg.check_cached(&ctx)? =>
+                {
+                    pending = Some(invalidation::begin(
+                        &self.project_dir,
+                        profile,
+                        sid,
+                        pending.as_ref(),
+                    )?);
+                    self.invalidate_from(sid).await;
+                    force_execute = true;
+                    should_run = true;
+                }
+                _ => {}
+            }
             if !should_run {
                 continue;
             }
 
             // Check if this stage can be skipped (cached outputs exist)
-            let cached = stage_reg.check_cached(&ctx).unwrap_or(false);
+            let cached = !force_execute && stage_reg.check_cached(&ctx).unwrap_or(false);
             if cached {
                 let mut state = self.state.write().await;
                 if let Some(s) = state.stages.get_mut(&sid) {
@@ -293,7 +409,7 @@ impl PipelineOrchestrator {
             let event_tx = self.event_tx.clone();
             let progress_state = self.state.clone();
             let progress_project_dir = self.project_dir.clone();
-            let mut progress_forwarder = tokio::spawn(async move {
+            let mut progress_forwarder = splat_process::spawn_scoped(async move {
                 let mut last_persisted = Instant::now();
                 while let Ok(progress) = progress_rx.recv().await {
                     let snapshot =
@@ -349,6 +465,7 @@ impl PipelineOrchestrator {
                     drop(state);
                     self.update_overall_progress().await;
                     self.persist_state().await?;
+                    pending = invalidation::completed(&self.project_dir, pending, sid)?;
                 }
                 Err(e) => {
                     self.fail_stage(sid, &e).await?;
@@ -382,6 +499,19 @@ impl PipelineOrchestrator {
     }
 
     /// Get the current pipeline state.
+    async fn invalidate_from(&self, first: PipelineStageId) {
+        let mut state = self.state.write().await;
+        let mut affected = false;
+        for id in PipelineStageId::all() {
+            affected |= *id == first;
+            if affected {
+                state.stages.insert(*id, StageState::new(*id));
+            }
+        }
+        state.current_stage = None;
+        state.overall_progress = state.weighted_progress();
+    }
+
     pub async fn get_state(&self) -> PipelineState {
         self.state.read().await.clone()
     }
@@ -521,6 +651,27 @@ mod tests {
     use crate::stage::StageContext;
     use tokio::sync::broadcast;
 
+    #[tokio::test]
+    async fn adopted_lock_must_belong_to_project_and_span_execution() {
+        let project = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let orchestrator = PipelineOrchestrator::new(project.path().to_owned());
+        assert!(orchestrator.start_with_acquired_lock().await.is_err());
+        let wrong = ProjectLock::try_lock(other.path(), "wrong").unwrap();
+        assert!(orchestrator.adopt_execution_lock(wrong).await.is_err());
+        let correct = ProjectLock::try_lock(project.path(), "admission").unwrap();
+        orchestrator.adopt_execution_lock(correct).await.unwrap();
+        assert!(ProjectLock::try_lock(project.path(), "other-app").is_err());
+        let scope = splat_process::ProcessScope::default();
+        scope
+            .run(orchestrator.start_with_acquired_lock())
+            .await
+            .unwrap();
+        assert!(ProjectLock::try_lock(project.path(), "other-app").is_err());
+        orchestrator.release_execution_lock().await.unwrap();
+        assert!(ProjectLock::try_lock(project.path(), "after-completion").is_ok());
+    }
+
     struct FakeStage {
         id: PipelineStageId,
         should_fail: bool,
@@ -589,6 +740,574 @@ mod tests {
         let state = orch.get_state().await;
         assert_eq!(state.stages.len(), 12);
         assert!(state.current_stage.is_none());
+    }
+
+    struct ProfileStage {
+        executions: Arc<std::sync::atomic::AtomicUsize>,
+        expected_profile: splat_domain::ExecutionProfile,
+    }
+
+    struct JournalStage {
+        id: PipelineStageId,
+        calls: Arc<std::sync::Mutex<Vec<PipelineStageId>>>,
+        cache_checks: Option<Arc<std::sync::Mutex<Vec<PipelineStageId>>>>,
+        cached: bool,
+        cancel: bool,
+        invalid_output: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl PipelineStage for JournalStage {
+        fn id(&self) -> PipelineStageId {
+            self.id
+        }
+        fn validate_inputs(&self, _ctx: &StageContext) -> AppResult<()> {
+            Ok(())
+        }
+        fn check_cached(&self, _ctx: &StageContext) -> AppResult<bool> {
+            if let Some(checks) = &self.cache_checks {
+                checks.lock().unwrap().push(self.id);
+            }
+            Ok(self.cached)
+        }
+        async fn execute(
+            &self,
+            ctx: &StageContext,
+            _progress: broadcast::Sender<TaskProgress>,
+        ) -> AppResult<StageState> {
+            self.calls.lock().unwrap().push(self.id);
+            if self.cancel {
+                ctx.cancellation.cancel();
+            }
+            Ok(StageState::new(self.id))
+        }
+        fn validate_outputs(&self, _ctx: &StageContext) -> AppResult<()> {
+            if self.invalid_output {
+                Err(AppError::new(
+                    "E-9001",
+                    ErrorCategory::Engine,
+                    "Invalid Output",
+                    "Injected output failure",
+                ))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    fn completed_state() -> PipelineState {
+        let mut state = PipelineState::new();
+        for stage in state.stages.values_mut() {
+            stage.status = StageStatus::Completed;
+            stage.progress = 1.0;
+        }
+        state
+    }
+
+    fn register_journal_stages(
+        orchestrator: &mut PipelineOrchestrator,
+        calls: &Arc<std::sync::Mutex<Vec<PipelineStageId>>>,
+        cancel: Option<PipelineStageId>,
+    ) {
+        for id in PipelineStageId::all().iter().skip(1) {
+            orchestrator.register_stage(Box::new(JournalStage {
+                id: *id,
+                calls: calls.clone(),
+                cache_checks: None,
+                cached: true,
+                cancel: cancel == Some(*id),
+                invalid_output: false,
+            }));
+        }
+    }
+
+    fn frame_cache_fixture(status: StageStatus) -> (tempfile::TempDir, PipelineConfig) {
+        let root = tempfile::tempdir().unwrap();
+        let profile = splat_domain::ExecutionProfile::from_json(include_bytes!(
+            "../../../schemas/examples/execution-profile/macos.valid.json"
+        ))
+        .unwrap();
+        splat_project::save_execution_profile(root.path(), &profile).unwrap();
+        let mut project = splat_domain::Project::new("frame cache contract");
+        project.pipeline_state = completed_state();
+        project
+            .pipeline_state
+            .stages
+            .get_mut(&PipelineStageId::FrameExtraction)
+            .unwrap()
+            .status = status;
+        std::fs::create_dir(root.path().join("source")).unwrap();
+        std::fs::write(root.path().join("source/original.mp4"), b"original source").unwrap();
+        splat_project::ProjectManager::new(root.path().to_path_buf())
+            .save_project(&project, root.path())
+            .unwrap();
+        (
+            root,
+            PipelineConfig {
+                execution_profile: Some(Arc::new(profile)),
+                ..PipelineConfig::default()
+            },
+        )
+    }
+
+    fn register_frame_cache_stages(
+        orchestrator: &mut PipelineOrchestrator,
+        calls: &Arc<std::sync::Mutex<Vec<PipelineStageId>>>,
+        checks: &Arc<std::sync::Mutex<Vec<PipelineStageId>>>,
+        frames_cached: bool,
+        cancel: Option<PipelineStageId>,
+    ) {
+        for id in PipelineStageId::all() {
+            orchestrator.register_stage(Box::new(JournalStage {
+                id: *id,
+                calls: calls.clone(),
+                cache_checks: Some(checks.clone()),
+                cached: *id != PipelineStageId::FrameExtraction || frames_cached,
+                cancel: cancel == Some(*id),
+                invalid_output: false,
+            }));
+        }
+    }
+
+    #[tokio::test]
+    async fn completed_frame_cache_contract_invalidates_every_dependent_stage() {
+        for status in [StageStatus::Completed, StageStatus::Skipped] {
+            for existing_journal in [None, Some(PipelineStageId::ColmapFeatureExtraction)] {
+                let (root, config) = frame_cache_fixture(status);
+                let manager = splat_project::ProjectManager::new(root.path().to_path_buf());
+                let original = manager.open_project(root.path()).unwrap();
+                if let Some(first) = existing_journal {
+                    invalidation::begin(
+                        root.path(),
+                        config.execution_profile.as_ref().unwrap(),
+                        first,
+                        None,
+                    )
+                    .unwrap();
+                }
+                let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+                let checks = Arc::new(std::sync::Mutex::new(Vec::new()));
+                let mut orchestrator = PipelineOrchestrator::new_with_config(
+                    root.path().to_path_buf(),
+                    config.clone(),
+                );
+                register_frame_cache_stages(&mut orchestrator, &calls, &checks, false, None);
+                orchestrator.initialize_from(original.pipeline_state).await;
+                orchestrator
+                    .start_with_lock("frame-contract")
+                    .await
+                    .unwrap();
+
+                assert_eq!(*calls.lock().unwrap(), PipelineStageId::all()[1..]);
+                // A stale frame cache cannot be followed by any downstream cache hit.
+                assert_eq!(*checks.lock().unwrap(), [PipelineStageId::FrameExtraction]);
+                assert!(invalidation::load(root.path()).unwrap().is_none());
+                let saved = manager.open_project(root.path()).unwrap();
+                assert!(saved
+                    .pipeline_state
+                    .stages
+                    .values()
+                    .all(|stage| stage.status == StageStatus::Completed));
+                assert_eq!(saved.schema_version, 1);
+                assert_eq!(saved.id, original.id);
+                assert_eq!(
+                    std::fs::read(root.path().join("source/original.mp4")).unwrap(),
+                    b"original source"
+                );
+                assert_eq!(
+                    splat_project::load_execution_profile(root.path())
+                        .unwrap()
+                        .as_ref(),
+                    config.execution_profile.as_deref()
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn completed_frame_cache_invalidation_survives_cancel_and_disk_reload() {
+        for cancel_at in [
+            PipelineStageId::FrameExtraction,
+            PipelineStageId::ImagePreprocessing,
+        ] {
+            let (root, config) = frame_cache_fixture(StageStatus::Completed);
+            let manager = splat_project::ProjectManager::new(root.path().to_path_buf());
+            let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let checks = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let mut first =
+                PipelineOrchestrator::new_with_config(root.path().to_path_buf(), config.clone());
+            register_frame_cache_stages(&mut first, &calls, &checks, false, Some(cancel_at));
+            first
+                .initialize_from(manager.open_project(root.path()).unwrap().pipeline_state)
+                .await;
+            first
+                .start_with_lock("frame-contract-cancel")
+                .await
+                .unwrap();
+            assert_eq!(
+                invalidation::load(root.path()).unwrap().unwrap().next_stage,
+                cancel_at
+            );
+            drop(first);
+
+            // Simulate an application restart after the new frames are now cacheable.
+            let mut resumed =
+                PipelineOrchestrator::new_with_config(root.path().to_path_buf(), config);
+            register_frame_cache_stages(&mut resumed, &calls, &checks, true, None);
+            resumed
+                .initialize_from(manager.open_project(root.path()).unwrap().pipeline_state)
+                .await;
+            resumed
+                .start_with_lock("frame-contract-resume")
+                .await
+                .unwrap();
+            assert!(invalidation::load(root.path()).unwrap().is_none());
+            let calls = calls.lock().unwrap();
+            for id in PipelineStageId::all().iter().skip(1) {
+                assert_eq!(
+                    calls.iter().filter(|call| **call == *id).count(),
+                    if *id == cancel_at { 2 } else { 1 },
+                    "{id}"
+                );
+            }
+            let saved = manager.open_project(root.path()).unwrap();
+            assert!(saved
+                .pipeline_state
+                .stages
+                .values()
+                .all(|s| s.status == StageStatus::Completed));
+            assert_eq!(saved.schema_version, 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn completed_frame_cache_cannot_discharge_unadvanced_journal() {
+        let (root, config) = frame_cache_fixture(StageStatus::Completed);
+        let manager = splat_project::ProjectManager::new(root.path().to_path_buf());
+        invalidation::begin(
+            root.path(),
+            config.execution_profile.as_ref().unwrap(),
+            PipelineStageId::FrameExtraction,
+            None,
+        )
+        .unwrap();
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let checks = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut orchestrator =
+            PipelineOrchestrator::new_with_config(root.path().to_path_buf(), config);
+        register_frame_cache_stages(&mut orchestrator, &calls, &checks, true, None);
+        orchestrator
+            .initialize_from(manager.open_project(root.path()).unwrap().pipeline_state)
+            .await;
+        orchestrator
+            .start_with_lock("frame-contract-crash-window")
+            .await
+            .unwrap();
+        assert_eq!(*calls.lock().unwrap(), PipelineStageId::all()[1..]);
+        assert!(checks.lock().unwrap().is_empty());
+        assert!(invalidation::load(root.path()).unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn completed_frame_cache_retains_valid_outputs() {
+        let (root, config) = frame_cache_fixture(StageStatus::Completed);
+        let manager = splat_project::ProjectManager::new(root.path().to_path_buf());
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let checks = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut orchestrator =
+            PipelineOrchestrator::new_with_config(root.path().to_path_buf(), config);
+        register_frame_cache_stages(&mut orchestrator, &calls, &checks, true, None);
+        orchestrator
+            .initialize_from(manager.open_project(root.path()).unwrap().pipeline_state)
+            .await;
+        orchestrator
+            .start_with_lock("frame-contract-valid")
+            .await
+            .unwrap();
+        assert!(calls.lock().unwrap().is_empty());
+        assert!(checks
+            .lock()
+            .unwrap()
+            .contains(&PipelineStageId::FrameExtraction));
+        assert!(invalidation::load(root.path()).unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn pending_invalidation_survives_cancellation_after_profile_save_and_ignores_old_caches()
+    {
+        for cancel_at in [
+            PipelineStageId::FrameExtraction,
+            PipelineStageId::ImagePreprocessing,
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let previous = splat_domain::ExecutionProfile::from_json(include_bytes!(
+                "../../../schemas/examples/execution-profile/macos.valid.json"
+            ))
+            .unwrap();
+            splat_project::save_execution_profile(root.path(), &previous).unwrap();
+            let mut current = previous.clone();
+            current.engines.ffmpeg.binary_sha256 = "f".repeat(64);
+            let config = PipelineConfig {
+                execution_profile: Some(Arc::new(current.clone())),
+                ..PipelineConfig::default()
+            };
+            let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let mut first =
+                PipelineOrchestrator::new_with_config(root.path().to_path_buf(), config.clone());
+            register_journal_stages(&mut first, &calls, Some(cancel_at));
+            first.initialize_from(completed_state()).await;
+            first.start_with_lock("journal-cancel-test").await.unwrap();
+            assert_eq!(
+                splat_project::load_execution_profile(root.path()).unwrap(),
+                Some(current.clone())
+            );
+            assert_eq!(
+                invalidation::load(root.path()).unwrap().unwrap().next_stage,
+                cancel_at
+            );
+            assert_eq!(
+                crate::runtime::profile_invalidation_stage(Some(&current), &current),
+                None
+            );
+
+            let mut resumed =
+                PipelineOrchestrator::new_with_config(root.path().to_path_buf(), config);
+            register_journal_stages(&mut resumed, &calls, None);
+            resumed.initialize_from(first.get_state().await).await;
+            resumed
+                .start_with_lock("journal-resume-test")
+                .await
+                .unwrap();
+            assert!(invalidation::load(root.path()).unwrap().is_none());
+            let calls = calls.lock().unwrap();
+            for id in PipelineStageId::all().iter().skip(1) {
+                let expected = if *id == cancel_at { 2 } else { 1 };
+                assert_eq!(
+                    calls.iter().filter(|call| **call == *id).count(),
+                    expected,
+                    "{id}"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn output_validation_failure_does_not_advance_pending_invalidation() {
+        let root = tempfile::tempdir().unwrap();
+        let profile = splat_domain::ExecutionProfile::from_json(include_bytes!(
+            "../../../schemas/examples/execution-profile/macos.valid.json"
+        ))
+        .unwrap();
+        splat_project::save_execution_profile(root.path(), &profile).unwrap();
+        invalidation::begin(root.path(), &profile, PipelineStageId::Export, None).unwrap();
+        let mut orchestrator = PipelineOrchestrator::new_with_config(
+            root.path().to_path_buf(),
+            PipelineConfig {
+                execution_profile: Some(Arc::new(profile)),
+                ..PipelineConfig::default()
+            },
+        );
+        orchestrator.register_stage(Box::new(JournalStage {
+            id: PipelineStageId::Export,
+            calls: Arc::new(std::sync::Mutex::new(Vec::new())),
+            cache_checks: None,
+            cached: true,
+            cancel: false,
+            invalid_output: true,
+        }));
+        orchestrator.initialize_from(completed_state()).await;
+        assert!(orchestrator
+            .start_with_lock("journal-failure-test")
+            .await
+            .is_err());
+        assert_eq!(
+            invalidation::load(root.path()).unwrap().unwrap().next_stage,
+            PipelineStageId::Export
+        );
+    }
+
+    #[tokio::test]
+    async fn profile_save_failure_leaves_old_evidence_and_durable_pending_rebuild() {
+        let root = tempfile::tempdir().unwrap();
+        let previous = splat_domain::ExecutionProfile::from_json(include_bytes!(
+            "../../../schemas/examples/execution-profile/macos.valid.json"
+        ))
+        .unwrap();
+        splat_project::save_execution_profile(root.path(), &previous).unwrap();
+        let mut next = previous.clone();
+        next.effective_training.threads += 1;
+        next.engine_pack_id = Some("x".repeat(70 * 1024));
+        next.validate_for_execution().unwrap();
+        let orchestrator = PipelineOrchestrator::new_with_config(
+            root.path().to_path_buf(),
+            PipelineConfig {
+                execution_profile: Some(Arc::new(next)),
+                ..PipelineConfig::default()
+            },
+        );
+        orchestrator.initialize_from(completed_state()).await;
+        assert_eq!(
+            orchestrator
+                .start_with_lock("journal-save-failure")
+                .await
+                .unwrap_err()
+                .code,
+            "E-1402"
+        );
+        assert_eq!(
+            splat_project::load_execution_profile(root.path()).unwrap(),
+            Some(previous)
+        );
+        assert_eq!(
+            invalidation::load(root.path()).unwrap().unwrap().next_stage,
+            PipelineStageId::ColmapFeatureExtraction
+        );
+        assert!(orchestrator
+            .get_state()
+            .await
+            .stages
+            .values()
+            .all(|state| state.status == StageStatus::Completed));
+    }
+
+    #[tokio::test]
+    async fn absent_current_profile_cannot_downgrade_explicit_or_unknown_saved_evidence() {
+        let profile = splat_domain::ExecutionProfile::from_json(include_bytes!(
+            "../../../schemas/examples/execution-profile/macos.valid.json"
+        ))
+        .unwrap();
+        for bytes in [
+            serde_json::to_vec(&profile).unwrap(),
+            b"{\"schema_version\":2,\"new_contract\":true}".to_vec(),
+            b"broken profile".to_vec(),
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            std::fs::create_dir(root.path().join("runtime")).unwrap();
+            let path = splat_project::execution_profile_path(root.path());
+            std::fs::write(&path, &bytes).unwrap();
+            let orchestrator = PipelineOrchestrator::new(root.path().to_path_buf());
+            assert!(orchestrator.start_with_lock("no-downgrade").await.is_err());
+            assert_eq!(std::fs::read(path).unwrap(), bytes);
+            assert!(!invalidation::path(root.path()).exists());
+        }
+        let root = tempfile::tempdir().unwrap();
+        invalidation::begin(
+            root.path(),
+            &profile,
+            PipelineStageId::FrameExtraction,
+            None,
+        )
+        .unwrap();
+        let orchestrator = PipelineOrchestrator::new(root.path().to_path_buf());
+        assert_eq!(
+            orchestrator
+                .start_with_lock("pending-no-downgrade")
+                .await
+                .unwrap_err()
+                .code,
+            "E-1403"
+        );
+    }
+
+    #[async_trait::async_trait]
+    impl PipelineStage for ProfileStage {
+        fn id(&self) -> PipelineStageId {
+            PipelineStageId::TrainingPreparation
+        }
+        fn validate_inputs(&self, _ctx: &StageContext) -> AppResult<()> {
+            Ok(())
+        }
+        fn check_cached(&self, _ctx: &StageContext) -> AppResult<bool> {
+            Ok(true)
+        }
+        async fn execute(
+            &self,
+            ctx: &StageContext,
+            _progress: broadcast::Sender<TaskProgress>,
+        ) -> AppResult<StageState> {
+            assert_eq!(
+                ctx.execution_profile.as_deref(),
+                Some(&self.expected_profile)
+            );
+            assert_eq!(
+                splat_project::load_execution_profile(&ctx.project_dir)
+                    .unwrap()
+                    .as_ref(),
+                Some(&self.expected_profile)
+            );
+            self.executions
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(StageState::new(self.id()))
+        }
+        fn validate_outputs(&self, _ctx: &StageContext) -> AppResult<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn changed_profile_reexecutes_completed_stage_and_passes_frozen_snapshot() {
+        let root = tempfile::tempdir().unwrap();
+        let previous = splat_domain::ExecutionProfile::from_json(include_bytes!(
+            "../../../schemas/examples/execution-profile/macos.valid.json"
+        ))
+        .unwrap();
+        splat_project::save_execution_profile(root.path(), &previous).unwrap();
+        let mut next = previous;
+        next.engines.brush.binary_sha256 = "a".repeat(64);
+        let executions = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut orch = PipelineOrchestrator::new_with_config(
+            root.path().to_path_buf(),
+            PipelineConfig {
+                execution_profile: Some(Arc::new(next.clone())),
+                ..PipelineConfig::default()
+            },
+        );
+        orch.register_stage(Box::new(ProfileStage {
+            executions: executions.clone(),
+            expected_profile: next,
+        }));
+        let mut completed = PipelineState::new();
+        for stage in completed.stages.values_mut() {
+            stage.status = StageStatus::Completed;
+            stage.progress = 1.0;
+        }
+        orch.initialize_from(completed).await;
+        orch.start_with_lock("profile-test").await.unwrap();
+        assert_eq!(executions.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn unknown_probe_does_not_launch_or_replace_execution_evidence() {
+        let root = tempfile::tempdir().unwrap();
+        let mut profile = splat_domain::ExecutionProfile::from_json(include_bytes!(
+            "../../../schemas/examples/execution-profile/macos.valid.json"
+        ))
+        .unwrap();
+        splat_project::save_execution_profile(root.path(), &profile).unwrap();
+        let before = std::fs::read(splat_project::execution_profile_path(root.path())).unwrap();
+        profile.brush.probe_result.status = splat_domain::runtime::CapabilityStatus::Unknown;
+        let executions = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut orch = PipelineOrchestrator::new_with_config(
+            root.path().to_path_buf(),
+            PipelineConfig {
+                execution_profile: Some(Arc::new(profile.clone())),
+                ..PipelineConfig::default()
+            },
+        );
+        orch.register_stage(Box::new(ProfileStage {
+            executions: executions.clone(),
+            expected_profile: profile,
+        }));
+        assert!(orch.start_with_lock("profile-test").await.is_err());
+        assert_eq!(executions.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(
+            std::fs::read(splat_project::execution_profile_path(root.path())).unwrap(),
+            before
+        );
+        assert!(matches!(
+            ProjectLock::check(root.path()),
+            crate::lock::LockStatus::Unlocked
+        ));
     }
 
     #[tokio::test]

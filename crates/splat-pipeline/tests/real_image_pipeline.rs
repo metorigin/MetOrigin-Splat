@@ -55,6 +55,7 @@ async fn reconstructs_real_image_folder_without_ffmpeg() {
     copy_image_source(&input, &project_dir.join("source"));
 
     let config = PipelineConfig {
+        execution_profile: None,
         preset: "fast".into(),
         engine_paths: EnginePaths {
             ffmpeg: None,

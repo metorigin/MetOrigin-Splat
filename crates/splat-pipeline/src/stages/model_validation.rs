@@ -160,7 +160,10 @@ mod tests {
         std::fs::create_dir_all(&checkpoints).unwrap();
         std::fs::write(
             checkpoints.join("checkpoint_003000.ply"),
-            b"ply\nformat ascii 1.0\nelement vertex 1\nend_header\n0\n",
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../test-fixtures/gaussian/minimal-sh0-ascii.ply"
+            )),
         )
         .unwrap();
         let ctx = StageContext::new(PipelineStageId::ModelValidation, dir.path(), None);

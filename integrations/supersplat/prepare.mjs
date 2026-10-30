@@ -1,8 +1,13 @@
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { cp, mkdir, readFile, writeFile, access, readdir } from 'node:fs/promises';
+import { cp, readFile, writeFile, access, readdir, rm } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { applyWebpOverlay, loadWebpOverlay, verifyWebpOverlayInstalled } from './webp-overlay-3.10.2/overlay.mjs';
+import { inventoryPreparedAssets, overlayIdentity, preparationSignature, verifyPreparedAssets, verifyPreparedCodec } from './prepared-assets.mjs';
+import { verifyWebpBuildEvidence } from './webp-evidence.mjs';
+import { applyThemeSources, finishThemeAssets } from './ui-theme/apply.mjs';
+import { ensureSourceRepository } from './source-checkout.mjs';
 
 const integration = dirname(fileURLToPath(import.meta.url));
 const root = resolve(integration, '../..');
@@ -10,48 +15,70 @@ const upstream = JSON.parse(await readFile(join(integration, 'upstream.json'), '
 const source = join(root, 'target/supersplat-source/upstream');
 const destination = join(root, 'apps/desktop/public/supersplat');
 const bridge = await readFile(join(integration, 'metorigin-bridge.ts'), 'utf8');
-const signature = createHash('sha256').update(upstream.commit).update(bridge)
-  .update(await readFile(fileURLToPath(import.meta.url))).digest('hex');
+const overlayRoot = join(integration, 'webp-overlay-3.10.2');
+const overlay = await loadWebpOverlay(overlayRoot);
+const webpEvidence = await verifyWebpBuildEvidence(overlayRoot, overlay);
+const signature = await preparationSignature(integration, upstream, bridge, overlay);
+const transformPackage = join(source, 'node_modules/@playcanvas/splat-transform');
 const exists = (path) => access(path).then(() => true, () => false);
-if (await exists(join(destination, 'build.json'))) {
-  const previous = JSON.parse(await readFile(join(destination, 'build.json'), 'utf8'));
-  const required = ['index.html', 'index.js', 'index.css', 'static/lib/webp/webp.wasm', 'THIRD_PARTY_NOTICES.txt'];
-  if (previous.signature === signature && (await Promise.all(required.map((name) => exists(join(destination, name))))).every(Boolean)) process.exit(0);
+// Validate the independent source repository even on the prepared-asset fast path.
+const sourceRepository = await ensureSourceRepository({ root, upstream, log: console.log });
+if (!sourceRepository.changed && await exists(join(destination, 'build.json'))) {
+  try {
+    await verifyPreparedAssets(destination, signature, overlay);
+    await verifyWebpOverlayInstalled(transformPackage, overlay);
+    process.exit(0);
+  } catch (error) {
+    console.log(`SuperSplat cache requires preparation: ${error.message}`);
+  }
 }
 const run = (command, args, cwd = root, env = process.env) => new Promise((resolveRun, reject) => {
   const child = spawn(command, args, { cwd, env, stdio: 'inherit', windowsHide: true });
   child.once('error', reject);
   child.once('exit', (code) => code === 0 ? resolveRun() : reject(new Error(`${command} failed (${code})`)));
 });
-const git = (...args) => run('git', ['-c', 'http.sslBackend=openssl', '-c', `safe.directory=${source.replaceAll('\\', '/')}`, ...args]);
-await mkdir(dirname(source), { recursive: true });
-if (!await exists(join(source, '.git'))) await git('clone', '--no-checkout', '--filter=blob:none', upstream.repository, source);
-await git('-C', source, 'fetch', '--depth', '1', 'origin', upstream.commit);
-await git('-C', source, 'checkout', '--detach', upstream.commit);
-// These files are generated in target/, never in the user's checkout.
-await git('-C', source, 'restore', '--source', upstream.commit, '--', 'src/main.ts');
+await sourceRepository.restore();
+await applyThemeSources(integration, source);
 await writeFile(join(source, 'src/metorigin-bridge.ts'), bridge);
 const mainPath = join(source, 'src/main.ts');
 let main = await readFile(mainPath, 'utf8');
 if (!main.includes('    scene.start();')) throw new Error('Pinned SuperSplat startup hook changed.');
-main = `import { registerMetOriginBridge } from './metorigin-bridge';\n${main}`
-  .replace('    scene.start();', '    scene.start();\n    registerMetOriginBridge(events);');
+if (!main.includes('    registerPreferences(events, sceneConfig, urlArgs);')) throw new Error('Pinned SuperSplat preferences hook changed.');
+main = `import { migrateEmbeddedOverlayDefaults } from './ui/metorigin-presentation';\nimport { registerMetOriginBridge } from './metorigin-bridge';\n${main}`
+  .replace('    registerPreferences(events, sceneConfig, urlArgs);', '    migrateEmbeddedOverlayDefaults();\n    registerPreferences(events, sceneConfig, urlArgs);')
+  .replace('    scene.start();', '    scene.start();\n    registerMetOriginBridge(events, scene);');
 await writeFile(mainPath, main);
-// npm's CLI is JS; invoking via Node avoids shell quoting and visible consoles.
-// Use the npm shipped beside node (also works when pnpm launches this script).
-const npmPath = process.env.METORIGIN_NPM_CLI ?? join(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
-if (!await exists(npmPath)) throw new Error(`npm CLI not found: ${npmPath}. Set METORIGIN_NPM_CLI to npm-cli.js.`);
 const lockHash = createHash('sha256').update(await readFile(join(source, 'package-lock.json'))).digest('hex');
 const installStamp = join(source, 'node_modules/.metorigin-lock');
-if (!await exists(installStamp) || (await readFile(installStamp, 'utf8')) !== lockHash) {
-  await run(process.execPath, [npmPath, 'ci', '--ignore-scripts', '--legacy-peer-deps', '--no-audit', '--no-fund', '--cache', join(root, 'target/supersplat-npm-cache'), '--fetch-retries=1', '--fetch-timeout=30000'], source);
-  await writeFile(installStamp, lockHash);
+// Changing the derivative requires a fresh fixed npm base even when the
+// upstream lockfile is unchanged. Never accept unrelated previous overlay bytes.
+const installIdentity = JSON.stringify({ package_lock_sha256: lockHash, overlay_manifest_sha256: overlay.digest });
+if (!await exists(installStamp) || (await readFile(installStamp, 'utf8')) !== installIdentity) {
+  // Invoke npm's JS entrypoint without a shell. Standard Node/NVM layouts keep
+  // it under ../lib; portable distributions may place it beside node. A cached
+  // fixed dependency tree does not need an npm executable just to rebuild UI.
+  const candidates = process.env.METORIGIN_NPM_CLI ? [process.env.METORIGIN_NPM_CLI] : [
+    join(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js'),
+    resolve(dirname(process.execPath), '../lib/node_modules/npm/bin/npm-cli.js'),
+  ];
+  let npmPath;
+  for (const candidate of candidates) if (await exists(candidate)) { npmPath = candidate; break; }
+  if (!npmPath) throw new Error('npm CLI not found. Set METORIGIN_NPM_CLI to npm-cli.js.');
+  await run(process.execPath, [npmPath, 'ci', '--ignore-scripts', '--legacy-peer-deps', '--no-audit', '--no-fund', '--prefer-offline', '--cache', join(root, 'target/supersplat-npm-cache'), '--fetch-retries=1', '--fetch-timeout=30000'], source);
+  await writeFile(installStamp, installIdentity);
 }
+// These are explicitly derived bytes, applied after every npm install. All
+// entry points and their maps use the same generated glue/WASM pair.
+await applyWebpOverlay(transformPackage, overlay);
+await verifyWebpOverlayInstalled(transformPackage, overlay);
+// SuperSplat 3.7 copies WASM from its paired splat-transform package in Rollup.
+// Its JS glue is bundled from that same dependency, with no second static copy.
+await rm(join(source, 'dist'), { recursive: true, force: true });
 await run(process.execPath, [join(source, 'node_modules/rollup/dist/bin/rollup'), '-c'], source, { ...process.env, BASE_HREF: './' });
-await mkdir(destination, { recursive: true });
-await cp(join(source, 'dist'), destination, { recursive: true });
-await cp(join(source, 'LICENSE'), join(destination, 'LICENSE'));
-await cp(join(source, 'LICENSE'), join(integration, 'LICENSE'));
+const prepared = join(source, 'dist');
+await verifyPreparedCodec(prepared, overlay);
+const themeNotices = await finishThemeAssets(integration, source, prepared);
+await cp(join(source, 'LICENSE'), join(prepared, 'LICENSE'));
 // Keep notices for the packages actually included by Rollup, including the
 // transitive runtime dependencies. Source maps retain their corresponding source.
 const map = JSON.parse(await readFile(join(source, 'dist/index.js.map'), 'utf8'));
@@ -60,13 +87,25 @@ const packageDirs = new Set(map.sources.flatMap((name) => {
   return match ? [match[1]] : [];
 }));
 let notices = `SuperSplat ${upstream.version}\n${upstream.repository}\nCommit: ${upstream.commit}\n\n${await readFile(join(source, 'LICENSE'), 'utf8')}\n`;
+notices += '\nMetOrigin modified the UI palette, PCUI presentation, embedded menu branding and initial overlay preferences, and UI-only histogram/performance paint. Jan design values are adapted from Menlo Research, Apache-2.0; see host copied-UI notices. Scene rendering, selection colors and serialization remain upstream.\n' + themeNotices;
 for (const relative of [...packageDirs].sort()) {
   const directory = join(source, relative);
   const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
-  notices += `\n=== ${pkg.name} ${pkg.version} (${pkg.license ?? 'see license text'}) ===\n`;
+  const label = pkg.name === overlay.manifest.base.name
+    ? `derived from ${pkg.version}; MetOrigin overlay ${overlay.manifest.id}` : pkg.version;
+  notices += `\n=== ${pkg.name} ${label} (${pkg.license ?? 'see license text'}) ===\n`;
   const licenses = (await readdir(directory)).filter((name) => /^(licen[cs]e|copying|notice)(\.|$)/i.test(name));
   for (const license of licenses) notices += `${await readFile(join(directory, license), 'utf8')}\n`;
 }
-await writeFile(join(destination, 'THIRD_PARTY_NOTICES.txt'), notices);
-await writeFile(join(destination, 'build.json'), JSON.stringify({ ...upstream, signature }, null, 2));
+for (const notice of webpEvidence.notices) {
+  notices += `\n=== Rebuilt WebP: ${notice.component} — ${notice.path} ===\n${notice.bytes.toString('utf8')}\n`;
+}
+await writeFile(join(prepared, 'THIRD_PARTY_NOTICES.txt'), notices);
+await writeFile(join(prepared, 'build.json'), JSON.stringify({ ...upstream, signature,
+  webp_overlay: overlayIdentity(overlay), assets: await inventoryPreparedAssets(prepared) }, null, 2) + '\n');
+await verifyPreparedAssets(prepared, signature, overlay);
+// Publish only the fully checked generated tree, excluding stale cache files.
+await rm(destination, { recursive: true, force: true });
+await cp(prepared, destination, { recursive: true });
+await cp(join(source, 'LICENSE'), join(integration, 'LICENSE'));
 console.log(`SuperSplat ${upstream.version} prepared locally (${upstream.commit}).`);

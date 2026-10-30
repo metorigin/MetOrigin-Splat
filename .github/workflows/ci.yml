@@ -34,8 +34,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
       - run: npm install --global ajv-cli
+      - run: node schemas/test-execution-profile.mjs
+      - run: node schemas/test-training-provenance.mjs
+      - run: node schemas/test-runtime-invalidation.mjs
+      - run: node schemas/test-checkpoint-restore.mjs
       - run: ajv validate --spec=draft2020 --strict=false -s schemas/preset.schema.json -d "presets/*.json"
       - run: ajv validate --spec=draft2020 --strict=false -s schemas/project.schema.json -d schemas/examples/project.valid.json
       - run: ajv validate --spec=draft2020 --strict=false -s schemas/event.schema.json -d schemas/examples/event.valid.json
@@ -58,7 +62,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
       - uses: pnpm/action-setup@v4
         with:
           version: 11.12.0
@@ -66,8 +70,46 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm test:supersplat:packaging
+      - run: pnpm test:supersplat:bridge
+      - run: pnpm test:spark:lifecycle
+      - run: pnpm test:three:lifecycle
       - run: pnpm build
       - run: pnpm test:ux:automated
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --workspace --all-targets
       - run: pnpm --dir apps/desktop tauri build --debug --no-bundle
+
+  macos-baseline:
+    name: macOS arm64 Baseline (no GPU acceptance)
+    runs-on: macos-15
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "15.0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require Apple Silicon
+        run: test "$(uname -m)" = arm64
+      - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          components: clippy
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.12.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:supersplat:packaging
+      - run: pnpm test:supersplat:bridge
+      - run: pnpm test:spark:lifecycle
+      - run: pnpm test:three:lifecycle
+      - run: pnpm build
+      - run: python3 -m unittest discover -s scripts/macos -p 'test_*.py'
+      - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --locked --workspace --all-targets
+      - run: pnpm --dir apps/desktop tauri build --debug --bundles app --config src-tauri/tauri.macos.conf.json

@@ -1,0 +1,6 @@
+{
+  "original_sha256": "5f130ff891e0c1df6ed58bc5547a61f2cd1a859c3eed7b6c6d0c45a11284ae0c",
+  "modified_sha256": "c2a6f25923f3915131f743d397f499866b31154958d283b333214448c72f19dd",
+  "patch_sha256": "57998f169b65acaa2f0434fcd0370c869bee03872f89cc2f9e07879b7937e133",
+  "scope": "Retain the 3.10.2 effort API and level ABI; release all caller allocations and codec outputs in finally for failures and JS exceptions."
+}

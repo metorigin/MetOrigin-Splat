@@ -61,7 +61,10 @@ impl CrashRecovery {
 
             match stage_state.status {
                 // Stage was running when the crash happened
-                StageStatus::Running | StageStatus::Preparing | StageStatus::Cancelling => {
+                StageStatus::Running
+                | StageStatus::Preparing
+                | StageStatus::Pausing
+                | StageStatus::Cancelling => {
                     found_running = true;
 
                     // Verify this stage's outputs
@@ -81,8 +84,7 @@ impl CrashRecovery {
                         // Outputs are not intact — mark as failed for retry
                         if let Some(s) = recovered_state.stages.get_mut(stage_id) {
                             s.status = StageStatus::Failed;
-                            s.error =
-                                Some("Pipeline was interrupted (crash or shutdown).".to_string());
+                            s.error = Some("上一次处理意外中断，将从已有结果继续。".to_string());
                         }
                         messages.push(format!(
                             "阶段“{}”被中断，将重新执行。",
@@ -115,6 +117,7 @@ impl CrashRecovery {
         if found_running {
             recovered_state.current_stage = None;
         }
+        recovered_state.refresh_overall_progress();
 
         // Build the recovery action
         if found_running || !messages.is_empty() {
@@ -345,7 +348,10 @@ mod tests {
             b"image",
         )
         .unwrap();
-        let ply = b"ply\nformat ascii 1.0\nelement vertex 1\nend_header\n0\n";
+        let ply = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../test-fixtures/gaussian/minimal-sh0-ascii.ply"
+        ));
         std::fs::write(
             project_dir.join("training/checkpoints/checkpoint_3000.ply"),
             ply,
@@ -519,7 +525,10 @@ mod tests {
         std::fs::create_dir_all(dir.join("training/checkpoints")).unwrap();
         std::fs::write(
             dir.join("training/checkpoints/checkpoint_0500.ply"),
-            b"ply\nformat ascii 1.0\nelement vertex 1\nend_header\n0\n",
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../test-fixtures/gaussian/minimal-sh0-ascii.ply"
+            )),
         )
         .unwrap();
 

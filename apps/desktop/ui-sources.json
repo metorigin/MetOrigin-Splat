@@ -1,0 +1,886 @@
+{
+  "components": [
+    {
+      "component": "button",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/button.json",
+      "sourcePath": "registry/new-york-v4/ui/button.tsx",
+      "sha256": "79dd6f75f8136394442202d6b8b922fb269eaad0a5dba579397c9d5b41f893bb",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/button.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility.",
+        "Default type=button; warning and semantic destructive variants; color-only transition; export the component without the unused variant factory."
+      ]
+    },
+    {
+      "component": "input",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/input.json",
+      "sourcePath": "registry/new-york-v4/ui/input.tsx",
+      "sha256": "0c9457181f6ddc80969bcf854e92c362903a55b6e889fbef3fd85343ecc4af5b",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/input.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility."
+      ]
+    },
+    {
+      "component": "native-select",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/native-select.json",
+      "sourcePath": "registry/new-york-v4/ui/native-select.tsx",
+      "sha256": "4bdbce5575dce610fed747df4547a3d494713f4df8d28e09b3ccee62e4d72f93",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/native-select.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility."
+      ]
+    },
+    {
+      "component": "label",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/label.json",
+      "sourcePath": "registry/new-york-v4/ui/label.tsx",
+      "sha256": "344bde38b8531615dbf8e14af3895517c24d8ef6ce56ddeda7e2e6fe4b5d0c00",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/label.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility."
+      ]
+    },
+    {
+      "component": "checkbox",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/checkbox.json",
+      "sourcePath": "registry/new-york-v4/ui/checkbox.tsx",
+      "sha256": "ba0ac64064e2d8fa7299d53e9e84b9a4772fef8dd4cf6170c56d3030a1d69941",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/checkbox.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility."
+      ]
+    },
+    {
+      "component": "switch",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/switch.json",
+      "sourcePath": "registry/new-york-v4/ui/switch.tsx",
+      "sha256": "743676f33f823ffa8008bbd5eb94cb68e227599447d60e132a202291a395f8e4",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/switch.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility."
+      ]
+    },
+    {
+      "component": "badge",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/badge.json",
+      "sourcePath": "registry/new-york-v4/ui/badge.tsx",
+      "sha256": "13a9380dfff853ee730c14a52df49f22aecd31f40f2998d7c1e7ec458b6e1650",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/badge.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility.",
+        "Add success/warning semantic variants; export the component without the unused variant factory."
+      ]
+    },
+    {
+      "component": "alert",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/alert.json",
+      "sourcePath": "registry/new-york-v4/ui/alert.tsx",
+      "sha256": "d03dcae5cdb63c381c1144ca9a0c49ba0e46466967d7deb94662034042acb034",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/alert.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility.",
+        "Keep the complete alert title readable without line clamping."
+      ]
+    },
+    {
+      "component": "card",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/card.json",
+      "sourcePath": "registry/new-york-v4/ui/card.tsx",
+      "sha256": "ef8305b12c3112dab42a4708b41b1ebcc042fa5ab4c20f039da8d45b09ed5059",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/card.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility."
+      ]
+    },
+    {
+      "component": "progress",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/progress.json",
+      "sourcePath": "registry/new-york-v4/ui/progress.tsx",
+      "sha256": "e012e1f7e6e66d11229d1233eccf91954edcd9179b418ff1d114dc651b86fd35",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/progress.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility.",
+        "Forward the real value (or null for unknown) to Radix; clamp the visual 0–100 range; show unknown progress with a reduced-motion-aware indicator."
+      ]
+    },
+    {
+      "component": "tabs",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/tabs.json",
+      "sourcePath": "registry/new-york-v4/ui/tabs.tsx",
+      "sha256": "e1df6e2f95ece373ca909c1d54b8ba8cf4c47dd425c1784bbb9a01c38dd0936b",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/tabs.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility.",
+        "Export components without the unused variant factory."
+      ]
+    },
+    {
+      "component": "dropdown-menu",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/dropdown-menu.json",
+      "sourcePath": "registry/new-york-v4/ui/dropdown-menu.tsx",
+      "sha256": "d954efb735f13734751207ad22cb0cddd7f6ec53c59d16675d103dae08cb61fb",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/dropdown-menu.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility.",
+        "Mount portals inside the active modal container; mark the menu as a keyboard overlay."
+      ]
+    },
+    {
+      "component": "tooltip",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/tooltip.json",
+      "sourcePath": "registry/new-york-v4/ui/tooltip.tsx",
+      "sha256": "611e4305879b2773eafe76bf3c5caa69d8e47367fd97887a71634a27828f4433",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/tooltip.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility.",
+        "Mount portals inside the active modal container."
+      ]
+    },
+    {
+      "component": "dialog",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/dialog.json",
+      "sourcePath": "registry/new-york-v4/ui/dialog.tsx",
+      "sha256": "2ade6074e5fad0a4eb171ead44c43d3301a3c83d186d7236fb1fdbea80ee556b",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/dialog.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility.",
+        "Localize close labels through the application i18n function."
+      ]
+    },
+    {
+      "component": "alert-dialog",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/alert-dialog.json",
+      "sourcePath": "registry/new-york-v4/ui/alert-dialog.tsx",
+      "sha256": "b3dfb83e54ed8c82071df5289e5149628bf573458fc2da2d62f93f8380041b28",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/alert-dialog.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility."
+      ]
+    },
+    {
+      "component": "sheet",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/sheet.json",
+      "sourcePath": "registry/new-york-v4/ui/sheet.tsx",
+      "sha256": "ea473d38a26a9b0b879e5a13139899ad45e9782e896b3fa205c7763a6c506876",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/sheet.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility.",
+        "Localize close labels through the application i18n function."
+      ]
+    },
+    {
+      "component": "separator",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/separator.json",
+      "sourcePath": "registry/new-york-v4/ui/separator.tsx",
+      "sha256": "ad7d5403fe337160e41dbf04147896e448ae3a747b8d06660d627d74d60021bc",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/separator.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility."
+      ]
+    },
+    {
+      "component": "skeleton",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/skeleton.json",
+      "sourcePath": "registry/new-york-v4/ui/skeleton.tsx",
+      "sha256": "f51ce0fcd31e5c31437382e80ea0af94b4fc3d64221d27091d36824546780a43",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/skeleton.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility."
+      ]
+    },
+    {
+      "component": "collapsible",
+      "registry": "https://ui.shadcn.com/r/styles/new-york-v4/collapsible.json",
+      "sourcePath": "registry/new-york-v4/ui/collapsible.tsx",
+      "sha256": "c6598e5584f4258b5d9fefadbc5ad6a66888ad58729f4b634a0bb2d9c513188b",
+      "license": "MIT",
+      "retrieved": "2026-10-28",
+      "cli": "4.23.0",
+      "project": "shadcn/ui",
+      "localPath": "src/components/ui/collapsible.tsx",
+      "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
+      "copyright": "Copyright (c) 2023 shadcn",
+      "localChanges": [
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility."
+      ]
+    },
+    {
+      "component": "jan:src/components/ui/button.tsx:button.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/components/ui/button.tsx",
+      "upstreamBlobSha": "0a4a309865bc158836b943b7d6eedb294925f9c2",
+      "upstreamSha256": "5771109b37686b69bf2086e5a8e43b39be93136644c1d93db1d86665df8feb5e",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/components/ui/button.tsx",
+      "localPath": "src/components/ui/button.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Merge Jan presentation with existing shadcn MIT source; use merged radix-ui, cn, semantic theme and React 19 refs.",
+        "Retain local button type, domain variants, focus rings, localized labels, bounded/unknown progress and active-modal portal scope as applicable; see jan-MODIFICATIONS.md."
+      ]
+    },
+    {
+      "component": "jan:src/components/ui/input.tsx:input.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/components/ui/input.tsx",
+      "upstreamBlobSha": "146f6ea4a18fb2565c2f89748d1cbdd280eefd2e",
+      "upstreamSha256": "d14cad56f90c5110d7f34212229359ffe404f8adbc72093bb4cd23548d0051ac",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/components/ui/input.tsx",
+      "localPath": "src/components/ui/input.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Merge Jan presentation with existing shadcn MIT source; use merged radix-ui, cn, semantic theme and React 19 refs.",
+        "Retain local button type, domain variants, focus rings, localized labels, bounded/unknown progress and active-modal portal scope as applicable; see jan-MODIFICATIONS.md."
+      ]
+    },
+    {
+      "component": "jan:src/components/ui/dialog.tsx:dialog.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/components/ui/dialog.tsx",
+      "upstreamBlobSha": "1fa5f71a64bb2467ccbd95667ccf1a1aedaaea9e",
+      "upstreamSha256": "8a2e38d27190ad6df1dd1aca7d882b45af735d502227def1a098b9e84b713549",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/components/ui/dialog.tsx",
+      "localPath": "src/components/ui/dialog.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Merge Jan presentation with existing shadcn MIT source; use merged radix-ui, cn, semantic theme and React 19 refs.",
+        "Retain local button type, domain variants, focus rings, localized labels, bounded/unknown progress and active-modal portal scope as applicable; see jan-MODIFICATIONS.md."
+      ]
+    },
+    {
+      "component": "jan:src/components/ui/dropdown-menu.tsx:dropdown-menu.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/components/ui/dropdown-menu.tsx",
+      "upstreamBlobSha": "eaed9baffa5f42d6a253d14e66aee9446ee91d7e",
+      "upstreamSha256": "ba022169876b487c849d046ac577654ab61a4cfba158305c8790c572b704ed9e",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/components/ui/dropdown-menu.tsx",
+      "localPath": "src/components/ui/dropdown-menu.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Merge Jan presentation with existing shadcn MIT source; use merged radix-ui, cn, semantic theme and React 19 refs.",
+        "Retain local button type, domain variants, focus rings, localized labels, bounded/unknown progress and active-modal portal scope as applicable; see jan-MODIFICATIONS.md."
+      ]
+    },
+    {
+      "component": "jan:src/components/ui/tooltip.tsx:tooltip.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/components/ui/tooltip.tsx",
+      "upstreamBlobSha": "1f022c1da7d15f583a21d8c2aeab02c123ab11a6",
+      "upstreamSha256": "6ce876f55fec08297ab9fa8a22052d39e6a2ceb5c0a42ed49473d2af800064b8",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/components/ui/tooltip.tsx",
+      "localPath": "src/components/ui/tooltip.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Merge Jan presentation with existing shadcn MIT source; use merged radix-ui, cn, semantic theme and React 19 refs.",
+        "Retain local button type, domain variants, focus rings, localized labels, bounded/unknown progress and active-modal portal scope as applicable; see jan-MODIFICATIONS.md."
+      ]
+    },
+    {
+      "component": "jan:src/components/ui/switch.tsx:switch.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/components/ui/switch.tsx",
+      "upstreamBlobSha": "41c7e9e91e29387894592843cf8473c9aab1fd84",
+      "upstreamSha256": "07e2bdcb4374274e183c37542aa84de2f07735554ac2096594bde2d19707775b",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/components/ui/switch.tsx",
+      "localPath": "src/components/ui/switch.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Merge Jan presentation with existing shadcn MIT source; use merged radix-ui, cn, semantic theme and React 19 refs.",
+        "Retain local button type, domain variants, focus rings, localized labels, bounded/unknown progress and active-modal portal scope as applicable; see jan-MODIFICATIONS.md."
+      ]
+    },
+    {
+      "component": "jan:src/components/ui/separator.tsx:separator.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/components/ui/separator.tsx",
+      "upstreamBlobSha": "bb3ad74cff11f2d43ae6ee8b36387c6ae4a67400",
+      "upstreamSha256": "18e5bf93682eb91864d9a1b8c0a09e46ad15d6ef1ffe97b3ccf9e4697756b6e2",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/components/ui/separator.tsx",
+      "localPath": "src/components/ui/separator.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Merge Jan presentation with existing shadcn MIT source; use merged radix-ui, cn, semantic theme and React 19 refs.",
+        "Retain local button type, domain variants, focus rings, localized labels, bounded/unknown progress and active-modal portal scope as applicable; see jan-MODIFICATIONS.md."
+      ]
+    },
+    {
+      "component": "jan:src/components/ui/sheet.tsx:sheet.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/components/ui/sheet.tsx",
+      "upstreamBlobSha": "97f751061178c43d8dbe64f8bc0ad81743dc5e84",
+      "upstreamSha256": "65bf9003a607d9e5f7f6a734fd1f81e22c3cb9da5b5ea59fea9be8684c998acc",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/components/ui/sheet.tsx",
+      "localPath": "src/components/ui/sheet.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Merge Jan presentation with existing shadcn MIT source; use merged radix-ui, cn, semantic theme and React 19 refs.",
+        "Retain local button type, domain variants, focus rings, localized labels, bounded/unknown progress and active-modal portal scope as applicable; see jan-MODIFICATIONS.md."
+      ]
+    },
+    {
+      "component": "jan:src/components/ui/progress.tsx:progress.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/components/ui/progress.tsx",
+      "upstreamBlobSha": "9ef4f8cfaf791f59d96aaa12420628e8d18825f1",
+      "upstreamSha256": "ae1f040765bee7e354890aa9fabdf6097177923c7f6c18cd250523698c889889",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/components/ui/progress.tsx",
+      "localPath": "src/components/ui/progress.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Merge Jan presentation with existing shadcn MIT source; use merged radix-ui, cn, semantic theme and React 19 refs.",
+        "Retain local button type, domain variants, focus rings, localized labels, bounded/unknown progress and active-modal portal scope as applicable; see jan-MODIFICATIONS.md."
+      ]
+    },
+    {
+      "component": "jan:src/styles/app.css:index.css",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/index.css",
+      "upstreamBlobSha": "c8242dd520076a3cf9752e1367a1717766878dc2",
+      "upstreamSha256": "d8cb17cac94535a6d710ebf94d1b5ea0c72a0065591da264f95424d3c5de7ac5",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/index.css",
+      "localPath": "src/styles/app.css",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Extract font scale, semantic mappings, 6/8/10/14px radius, caret and scrollbar styling; retain current fonts, renderer isolation and reduced motion; omit Jan business styles and global SVG overrides."
+      ]
+    },
+    {
+      "component": "jan:src/styles/tokens.css:index.css",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/index.css",
+      "upstreamBlobSha": "c8242dd520076a3cf9752e1367a1717766878dc2",
+      "upstreamSha256": "d8cb17cac94535a6d710ebf94d1b5ea0c72a0065591da264f95424d3c5de7ac5",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/index.css",
+      "localPath": "src/styles/tokens.css",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Generate light/dark semantics from integrations/jan/theme.json using data-theme and a 16px base. Strengthen primary/input/focus contrast; retain reconstruction status colors."
+      ]
+    },
+    {
+      "component": "jan:src/styles/tokens.css:useInterfaceSettings.ts",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/hooks/useInterfaceSettings.ts",
+      "upstreamBlobSha": "cb02b4ac420d08f1b62dc90928af0e66e258363c",
+      "upstreamSha256": "4c040d8e7e44e951ac8555041e0a74562a29c753fa41ad44089d3fecc78c25ff",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/hooks/useInterfaceSettings.ts",
+      "localPath": "src/styles/tokens.css",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Extract actual default gray sidebar and warm accent only; no Zustand, backend storage or second theme owner."
+      ]
+    },
+    {
+      "component": "jan:src/styles/tokens.css:InterfaceProvider.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/providers/InterfaceProvider.tsx",
+      "upstreamBlobSha": "657361cfe17a78baf92558e254f8e1f14d5bc880",
+      "upstreamSha256": "f5b7f6719501dd47b466c1144a4a3c169348da31fc3f72466460a00e0f325dcb",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/providers/InterfaceProvider.tsx",
+      "localPath": "src/styles/tokens.css",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Apply runtime default palette at build time; no Jan runtime Provider."
+      ]
+    },
+    {
+      "component": "jan:src/components/ui/sidebar.tsx:sidebar.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/components/ui/sidebar.tsx",
+      "upstreamBlobSha": "6d686f6c91ddaf53bef721508323a841edabf118",
+      "upstreamSha256": "7533d5843311d2ac698aab6ec06be5439ab250b83df610585e96e12f89175dac",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/components/ui/sidebar.tsx",
+      "localPath": "src/components/ui/sidebar.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Extract surface, inset, navigation row and 224–320px sizing; controlled shell without cookies, Jan stores or global shortcuts."
+      ]
+    },
+    {
+      "component": "jan:src/components/ui/sidebar.tsx:use-sidebar-resize.ts",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/hooks/use-sidebar-resize.ts",
+      "upstreamBlobSha": "059c02eb670a611c16660732733e0d6347d5b782",
+      "upstreamSha256": "f9039e617292dae791fe73262114c22735527caae191c2618356533287bd2df0",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/hooks/use-sidebar-resize.ts",
+      "localPath": "src/components/ui/sidebar.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Retain width constraints; replace mouse document listeners, cookies and rem assumptions with pointer capture, pixels, keyboard access and cleanup."
+      ]
+    },
+    {
+      "component": "jan:src/components/shell/ProjectSidebar.tsx:index.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/components/left-sidebar/index.tsx",
+      "upstreamBlobSha": "79ebaf11c379753bbd1717ecaa65d5d4d9671848",
+      "upstreamSha256": "4747e8ee3b2b06143dc35e04167f586e23cc7a54bbf264c63d1cf640deafd23b",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/components/left-sidebar/index.tsx",
+      "localPath": "src/components/shell/ProjectSidebar.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Adapt the sidebar to one Project Hub entry, at most five recent projects with compact status/accessible metadata, and bottom settings. Omit the brand row and duplicate create/open controls at the user's request. Preserve offcanvas zero occupancy, controlled224–320px width and independent compact navigation drawer; keep full project recovery/management in the hub."
+      ]
+    },
+    {
+      "component": "jan:src/components/shell/DesktopAppShell.tsx:sidebar.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/components/ui/sidebar.tsx",
+      "upstreamBlobSha": "6d686f6c91ddaf53bef721508323a841edabf118",
+      "upstreamSha256": "7533d5843311d2ac698aab6ec06be5439ab250b83df610585e96e12f89175dac",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/components/ui/sidebar.tsx",
+      "localPath": "src/components/shell/DesktopAppShell.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Adapt neutral outer surface into flush desktop quadrants, without floating gaps or inset radii; preserve existing AppContext and stable renderer/iframe ownership."
+      ]
+    },
+    {
+      "component": "jan:src/components/shell/PageHeader.tsx:HeaderPage.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/containers/HeaderPage.tsx",
+      "upstreamBlobSha": "a7dbbcaecef74759a68348f264b0c28d5dffc36d",
+      "upstreamSha256": "de17eead12a24c146ced63873ab407e7f98775f17a522852cfd0df8d72134cf5",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/containers/HeaderPage.tsx",
+      "localPath": "src/components/shell/PageHeader.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Extract 60px page heading/actions structure; semantic header, local fonts, no Jan panel/download/titlebar stores."
+      ]
+    },
+    {
+      "component": "jan:src/components/shell/DesktopTitlebar.tsx:HeaderPage.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/containers/HeaderPage.tsx",
+      "upstreamBlobSha": "a7dbbcaecef74759a68348f264b0c28d5dffc36d",
+      "upstreamSha256": "de17eead12a24c146ced63873ab407e7f98775f17a522852cfd0df8d72134cf5",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/containers/HeaderPage.tsx",
+      "localPath": "src/components/shell/DesktopTitlebar.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Adapt HeaderPage and LeftSidebar trigger ownership to one48px desktop row with a right-aligned expanded sidebar toggle and intrinsic hidden region. Omit history controls at the user's request; compact mode opens Project navigation. Preserve stable toggle/header portal, native control padding, drag regions and safety guards;32px circular hit target."
+      ]
+    },
+    {
+      "component": "jan:src/components/settings/SettingsSection.tsx:Card.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/containers/Card.tsx",
+      "upstreamBlobSha": "83ae89f321b014ee26c2a56b4d81aa8c70ba7942",
+      "upstreamSha256": "03e29389b06a6274ec695c6712f1d3a6d1ac5bb559c5db3d4beca8e31f255b3c",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/containers/Card.tsx",
+      "localPath": "src/components/settings/SettingsSection.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Extract padded card and section heading presentation; semantic h3, local data and translation."
+      ]
+    },
+    {
+      "component": "jan:src/components/settings/SettingsRow.tsx:Card.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/containers/Card.tsx",
+      "upstreamBlobSha": "83ae89f321b014ee26c2a56b4d81aa8c70ba7942",
+      "upstreamSha256": "03e29389b06a6274ec695c6712f1d3a6d1ac5bb559c5db3d4beca8e31f255b3c",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/containers/Card.tsx",
+      "localPath": "src/components/settings/SettingsRow.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Extract grouped row descriptions, action alignment and separators; semantic labels and responsive stacking preserve draft/save behavior."
+      ]
+    },
+    {
+      "component": "jan:src/components/settings/SettingsShell.tsx:SettingsMenu.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/containers/SettingsMenu.tsx",
+      "upstreamBlobSha": "02fee4c95f800a5e8d5f5e94094bde4ca849b41c",
+      "upstreamSha256": "a86ca002184e6af0f2f25e94ee4e06ca832593e9a5fd4e4b47828a2e48728711",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/containers/SettingsMenu.tsx",
+      "localPath": "src/components/settings/SettingsShell.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Adapt 232px category rail to five existing settings using controlled Radix tabs; omit Jan router, provider/account business and stores."
+      ]
+    },
+    {
+      "component": "jan:src/components/settings/SettingsShell.tsx:interface.tsx",
+      "project": "Jan",
+      "repository": "https://github.com/janhq/jan",
+      "commit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b",
+      "upstreamPath": "web-app/src/routes/settings/interface.tsx",
+      "upstreamBlobSha": "ade5c1d7060678b8335583cbbc864684397cd3c1",
+      "upstreamSha256": "e50332680fe814cbe9bcb653aecc7cd097366f63e09f7600683eab4c614450c9",
+      "upstreamLocalPath": "integrations/jan/upstream/web-app/src/routes/settings/interface.tsx",
+      "localPath": "src/components/settings/SettingsShell.tsx",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt",
+        "src/components/ui/licenses/jan-LICENSE"
+      ],
+      "copyright": "Copyright 2025 Menlo Research",
+      "upstreamNotice": "No NOTICE file in the fixed upstream root directory",
+      "retrieved": "2026-10-29",
+      "localChanges": [
+        "Extract independent scrolling settings content; remain a stable modal so viewport/editor are not unmounted."
+      ]
+    }
+  ],
+  "schemaVersion": 2,
+  "maintenance": {
+    "owner": "MetOrigin desktop frontend maintainers",
+    "hashAlgorithm": "SHA-256",
+    "hashScope": "sha256/upstreamSha256 identifies exact original upstream bytes; both platform collectors independently compute local hashes. Fixed Jan originals under integrations/jan/upstream have verified Git blob identity.",
+    "updatePolicy": "Review upstream source and dependency diffs, preserve local contracts and licenses, and rerun component, application, build and browser checks. The CLI version does not pin remote registry contents.",
+    "shadcnLicense": "src/components/ui/LICENSE",
+    "janLicense": "src/components/ui/licenses/jan-LICENSE",
+    "janCommit": "b8d58255baf6d9e870025d3f0c60a5b80a63143b"
+  },
+  "projectAdapters": [
+    {
+      "localPath": "src/components/ui/resizable.tsx",
+      "basedOn": "shadcn/ui Resizable pattern",
+      "upstream": "https://ui.shadcn.com/docs/components/resizable",
+      "license": "MIT",
+      "licenseFile": "src/components/ui/LICENSE",
+      "note": "Locally adapted wrapper for the pinned react-resizable-panels 3.0.6 PanelGroup/Panel/PanelResizeHandle API; not a byte-for-byte registry import."
+    },
+    {
+      "localPath": "src/components/ui/overlay-context.ts",
+      "note": "Application-owned portal container context shared by ModalSurface, menus and tooltips."
+    }
+  ],
+  "sourceGroups": [
+    {
+      "id": "shadcn",
+      "project": "shadcn/ui",
+      "license": "MIT",
+      "licenseFiles": [
+        "src/components/ui/LICENSE"
+      ],
+      "fileSha256": {
+        "src/components/ui/LICENSE": "1564074e13439397221ffd522e2e504d56561994a23d371aa5e3ad43e4f5423f"
+      }
+    },
+    {
+      "id": "jan",
+      "project": "Jan",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "src/components/ui/licenses/Apache-2.0.txt"
+      ],
+      "noticeFiles": [
+        "src/components/ui/licenses/jan-LICENSE",
+        "src/components/ui/licenses/jan-MODIFICATIONS.md"
+      ],
+      "fileSha256": {
+        "src/components/ui/licenses/Apache-2.0.txt": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+        "src/components/ui/licenses/jan-LICENSE": "240e79d4976dbf1d4c76e0ac1da223df97935a75497eaf8dd045771c3e92de16",
+        "src/components/ui/licenses/jan-MODIFICATIONS.md": "e00d6596b6d3960c95d9603f81b0bd036abe43849fb7a5897615988d6918468d"
+      }
+    }
+  ]
+}

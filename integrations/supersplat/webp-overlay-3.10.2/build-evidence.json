@@ -1,0 +1,1734 @@
+{
+  "schema_version": 2,
+  "profile": "splat-transform-3.10.2-webp-1.6.0-emscripten-4.0.21-v1",
+  "kind": "fixed-source-webp-rebuild",
+  "status": "passed-node-acceptance",
+  "completed_at": "2026-10-29T16:51:40.094792+00:00",
+  "sources": [
+    {
+      "name": "libwebp",
+      "version": "1.6.0",
+      "repository": "https://github.com/webmproject/libwebp",
+      "commit": "4fa21912338357f89e4fd51cf2368325b59e9bd9",
+      "download_url": "https://codeload.github.com/webmproject/libwebp/tar.gz/4fa21912338357f89e4fd51cf2368325b59e9bd9",
+      "archive": {
+        "path": "downloads/libwebp-4fa21912338357f89e4fd51cf2368325b59e9bd9.tar.gz",
+        "size_bytes": 3834766,
+        "sha256": "923f3382a47a2af185c3240c954cf004428b237bd7317413a95146d01eb4b94b"
+      }
+    },
+    {
+      "name": "emsdk",
+      "version": "4.0.21",
+      "repository": "https://github.com/emscripten-core/emsdk",
+      "commit": "b2436aafa7351ee1b581f15841f1b45ed716a279",
+      "download_url": "https://codeload.github.com/emscripten-core/emsdk/tar.gz/b2436aafa7351ee1b581f15841f1b45ed716a279",
+      "archive": {
+        "path": "downloads/emsdk-b2436aafa7351ee1b581f15841f1b45ed716a279.tar.gz",
+        "size_bytes": 207827,
+        "sha256": "0279973682a9830976256cd5b28692c4ea7931f2a47baf2d0b3e22e31b6d3741"
+      }
+    },
+    {
+      "name": "splat-transform",
+      "version": "3.10.2",
+      "repository": "https://github.com/playcanvas/splat-transform",
+      "commit": "e0dab1fa0b7f7546d2b4b197f6294570e53ba3b8",
+      "download_url": "https://codeload.github.com/playcanvas/splat-transform/tar.gz/e0dab1fa0b7f7546d2b4b197f6294570e53ba3b8",
+      "archive": {
+        "path": "downloads/splat-transform-e0dab1fa.tar.gz",
+        "size_bytes": 1258852,
+        "sha256": "1055eda1e8a4af68d03d9f5f5a319bbac5fa9103b3ae7e361c598d8ea2aea1a4"
+      },
+      "wrapper": {
+        "path": "sources/splat-transform/lib/webp.c",
+        "size_bytes": 3296,
+        "sha256": "6fe1ce4d5412915fa021837de902b0c3c50008c189e8dc1ec59b697a27a6c3bf"
+      },
+      "wrapper_unchanged_from_pinned_source": true,
+      "npm": {
+        "download_url": "https://registry.npmjs.org/@playcanvas/splat-transform/-/splat-transform-3.10.2.tgz",
+        "archive": {
+          "path": "downloads/splat-transform-3.10.2.tgz",
+          "size_bytes": 10262643,
+          "sha256": "94d8158a11b7643d2cf2200bdb9c810af9d398b85283eaa259f23e0d55274edd"
+        },
+        "integrity": "sha512-HqPKu4mY63Ec7Cf92UQKopc9LdNyszWka47eepbL30RCg76RIECn4EUX+zyQtMs7NWfjU29e6q3zO4itA8T/eQ=="
+      }
+    },
+    {
+      "name": "sharpyuv",
+      "version": "0.4.2",
+      "source": "same libwebp source tree, not an independently downloaded revision",
+      "commit": "4fa21912338357f89e4fd51cf2368325b59e9bd9",
+      "version_header": {
+        "path": "sources/libwebp/sharpyuv/sharpyuv.h",
+        "size_bytes": 7669,
+        "sha256": "4fcb150246232b0e8e605752deb66ca861872f86dd692308d9f854e10ad964ee"
+      }
+    }
+  ],
+  "toolchain": {
+    "emscripten_version": "4.0.21",
+    "emscripten_commit": "d6f42310010ddec0753a69bab01a4b33aae255b7",
+    "release_selector": "d70a5da89b3e673bf6a482724478fc17e81e575e",
+    "host": "macOS arm64",
+    "archives": [
+      {
+        "path": "sources/emsdk/downloads/d70a5da89b3e673bf6a482724478fc17e81e575e-wasm-binaries-arm64.tar.xz",
+        "size_bytes": 297503416,
+        "sha256": "7960d8d33243f2f7acdac157136c6e93680550361ed71bb225fcfa25b6bbb2fb",
+        "download_url": "https://storage.googleapis.com/webassembly/emscripten-releases-builds/mac/d70a5da89b3e673bf6a482724478fc17e81e575e/wasm-binaries-arm64.tar.xz"
+      },
+      {
+        "path": "sources/emsdk/downloads/node-v22.16.0-darwin-arm64.tar.gz",
+        "size_bytes": 47716750,
+        "sha256": "1d7f34ec4c03e12d8b33481e5c4560432d7dc31a0ef3ff5a4d9a8ada7cf6ecc9",
+        "download_url": "https://storage.googleapis.com/webassembly/emscripten-releases-builds/deps/node-v22.16.0-darwin-arm64.tar.gz"
+      },
+      {
+        "path": "sources/emsdk/downloads/python-3.13.3-0-macos-arm64.tar.gz",
+        "size_bytes": 44280478,
+        "sha256": "2b0899d7ade9463b0c909ef23aeea27546a4f412637998d817a49718bc2bac19",
+        "download_url": "https://storage.googleapis.com/webassembly/emscripten-releases-builds/deps/python-3.13.3-0-macos-arm64.tar.gz"
+      }
+    ],
+    "actual_versions": {
+      "emcc": {
+        "argv": [
+          "emcc",
+          "--version"
+        ],
+        "exit_code": 0,
+        "stdout": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 4.0.21 (d6f42310010ddec0753a69bab01a4b33aae255b7)\nCopyright (C) 2025 the Emscripten authors (see AUTHORS.txt)\nThis is free and open source software under the MIT license.\nThere is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+        "stderr": ""
+      },
+      "clang": {
+        "argv": [
+          "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin/clang",
+          "--version"
+        ],
+        "exit_code": 0,
+        "stdout": "clang version 22.0.0git (https:/github.com/llvm/llvm-project 60513b8d6ebacde46e8fbe4faf1319ac87e990e3)\nTarget: unknown\nThread model: posix\nInstalledDir: ${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin\n",
+        "stderr": ""
+      },
+      "wasm-opt": {
+        "argv": [
+          "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin/wasm-opt",
+          "--version"
+        ],
+        "exit_code": 0,
+        "stdout": "wasm-opt version 125 (version_125-6-gf03355bd6)\n",
+        "stderr": ""
+      },
+      "node": {
+        "argv": [
+          "node",
+          "--version"
+        ],
+        "exit_code": 0,
+        "stdout": "v22.16.0\n",
+        "stderr": ""
+      },
+      "cmake": {
+        "argv": [
+          "cmake",
+          "--version"
+        ],
+        "exit_code": 0,
+        "stdout": "cmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
+        "stderr": ""
+      },
+      "ninja": {
+        "argv": [
+          "ninja",
+          "--version"
+        ],
+        "exit_code": 0,
+        "stdout": "1.13.2\n",
+        "stderr": ""
+      }
+    },
+    "signature_verification": "official fixed repository/archive identities and retained hashes; no independent signature verification claimed"
+  },
+  "configuration": {
+    "allocator": "dlmalloc",
+    "simd": false,
+    "threads": false,
+    "stage": "${REPO_ROOT}/target/supersplat-3.7-webp",
+    "upstream_C_wrapper_unchanged": true,
+    "codec_source_change": {
+      "original": {
+        "path": "originals/webp-codec.ts",
+        "size_bytes": 5614,
+        "sha256": "5f130ff891e0c1df6ed58bc5547a61f2cd1a859c3eed7b6c6d0c45a11284ae0c"
+      },
+      "modified": {
+        "path": "sources/splat-transform/src/lib/utils/webp-codec.ts",
+        "size_bytes": 6762,
+        "sha256": "c2a6f25923f3915131f743d397f499866b31154958d283b333214448c72f19dd"
+      },
+      "patch": {
+        "path": "source-cleanup.patch",
+        "size_bytes": 5606,
+        "sha256": "57998f169b65acaa2f0434fcd0370c869bee03872f89cc2f9e07879b7937e133"
+      },
+      "patch_record": {
+        "path": "source-patch.json",
+        "size_bytes": 417,
+        "sha256": "668d09ad37afe47e578e07778fe218495948c26a280de66c8a133b3aa3bea1dd"
+      }
+    },
+    "fixed_revision_patch": {
+      "path": "fixed-revision.patch",
+      "size_bytes": 479,
+      "sha256": "92c45fb13adffa7f5adc57e5d34a79b22161cc4f55f91393427bc48c46a2e1c7"
+    },
+    "reused_libraries": [
+      {
+        "path": "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a",
+        "size_bytes": 504710,
+        "sha256": "9f13951a3f97af7da304543988d3afec5d1e4569ee7f0ced355241e99d11e8d3"
+      },
+      {
+        "path": "target/macos-m4/webp-rebuild-20261028/build-libwebp/libsharpyuv.a",
+        "size_bytes": 22012,
+        "sha256": "969f51b18202d9791ff01b949a23d30eb16bbda83b35268fd0def051e1bbf4f3"
+      }
+    ],
+    "reused_build_evidence": {
+      "path": "reuse/build-evidence-3.4.2.json",
+      "size_bytes": 98095,
+      "sha256": "45d7e3629a84fdb892654335b5ce48528df518ec42af3ce9dd331cc6701a26b8"
+    },
+    "build_driver": {
+      "path": "build-distributions.mjs",
+      "size_bytes": 1085,
+      "sha256": "6093f0782025d0347e05195003d1662abb333aff90e7dd8ac5a450402da9c3a3"
+    },
+    "emit_driver": {
+      "path": "emit-overlay.py",
+      "size_bytes": 10952,
+      "sha256": "e8baee3b98c79c4e15eaf40b19ca3f2a6ccfe01880e3958f3e22c63809452fc9"
+    }
+  },
+  "successful_steps": [
+    {
+      "path": "receipts/download-npm.json",
+      "command": {
+        "started_at": "2026-10-29T16:41:37.891725+00:00",
+        "finished_at": "2026-10-29T16:41:40.503902+00:00",
+        "duration_seconds": 2.612002875,
+        "cwd": "${REPO_ROOT}",
+        "argv": [
+          "/usr/bin/curl",
+          "--fail",
+          "--location",
+          "--connect-timeout",
+          "15",
+          "--max-time",
+          "120",
+          "https://registry.npmjs.org/@playcanvas/splat-transform/-/splat-transform-3.10.2.tgz",
+          "-o",
+          "target/supersplat-3.7-webp/downloads/splat-transform-3.10.2.tgz"
+        ],
+        "explicit_environment": {},
+        "proxy_environment_removed": true,
+        "exit_code": 0,
+        "log": {
+          "path": "logs/download-npm.log",
+          "size_bytes": 554,
+          "sha256": "6cde34816b0cbe27ca498e8d85138d005f12b28e613a82ebaad9581dcff1f5c9"
+        }
+      }
+    },
+    {
+      "path": "receipts/npm-ci.json",
+      "command": {
+        "started_at": "2026-10-29T16:42:32.428517+00:00",
+        "finished_at": "2026-10-29T16:43:46.885074+00:00",
+        "duration_seconds": 74.455975583,
+        "cwd": "${REPO_ROOT}/target/supersplat-3.7-webp/sources/splat-transform",
+        "argv": [
+          "${HOME}/.nvm/versions/node/v22.23.2/bin/node",
+          "${HOME}/.nvm/versions/node/v22.23.2/lib/node_modules/npm/bin/npm-cli.js",
+          "ci",
+          "--ignore-scripts",
+          "--legacy-peer-deps",
+          "--no-audit",
+          "--no-fund",
+          "--prefer-offline",
+          "--cache",
+          "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "--fetch-retries=1",
+          "--fetch-timeout=30000"
+        ],
+        "explicit_environment": {},
+        "proxy_environment_removed": true,
+        "exit_code": 0,
+        "log": {
+          "path": "logs/npm-ci.log",
+          "size_bytes": 26,
+          "sha256": "4ab1c99b44ecfe563e25f16a058cf43fc588ce235c22096f5e861090831522e4"
+        }
+      }
+    },
+    {
+      "path": "receipts/link-webp.json",
+      "command": {
+        "started_at": "2026-10-29T16:43:12.326222+00:00",
+        "finished_at": "2026-10-29T16:43:14.592256+00:00",
+        "duration_seconds": 2.2659480409999997,
+        "cwd": "${REPO_ROOT}",
+        "argv": [
+          "emcc",
+          "-O3",
+          "-Itarget/macos-m4/webp-rebuild-20261028/sources/libwebp",
+          "target/supersplat-3.7-webp/sources/splat-transform/lib/webp.c",
+          "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a",
+          "target/macos-m4/webp-rebuild-20261028/build-libwebp/libsharpyuv.a",
+          "-sENVIRONMENT=node,web,worker",
+          "-sMODULARIZE=1",
+          "-sEXPORT_ES6=1",
+          "-sALLOW_MEMORY_GROWTH=1",
+          "-sEXPORTED_FUNCTIONS=[\"_webp_encode_rgba\",\"_webp_encode_lossless_rgba\",\"_webp_encode_lossless_rgba_level\",\"_webp_decode_rgba\",\"_webp_free\",\"_malloc\",\"_free\"]",
+          "-sEXPORTED_RUNTIME_METHODS=[\"cwrap\",\"HEAPU8\",\"HEAPU32\"]",
+          "-Wl,--Map=target/supersplat-3.7-webp/outputs/webp-link.map",
+          "--emit-symbol-map",
+          "-o",
+          "target/supersplat-3.7-webp/outputs/webp.mjs"
+        ],
+        "explicit_environment": {
+          "PATH": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin:${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+          "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+          "EMCC_CORES": "2",
+          "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "EMSDK_KEEP_DOWNLOADS": "1",
+          "EMSDK_NUM_CORES": "2",
+          "EMSDK_NOTTY": "1",
+          "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
+          "EMSDK": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+          "EMSDK_NODE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin/node",
+          "EMSDK_PYTHON": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin/python3"
+        },
+        "proxy_environment_removed": true,
+        "exit_code": 0,
+        "log": {
+          "path": "logs/link-webp.log",
+          "size_bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "path": "receipts/build-distributions.json",
+      "command": {
+        "started_at": "2026-10-29T16:44:31.351179+00:00",
+        "finished_at": "2026-10-29T16:44:53.794514+00:00",
+        "duration_seconds": 22.443038375,
+        "cwd": "${REPO_ROOT}",
+        "argv": [
+          "${HOME}/.nvm/versions/node/v22.23.2/bin/node",
+          "target/supersplat-3.7-webp/build-distributions.mjs"
+        ],
+        "explicit_environment": {},
+        "proxy_environment_removed": true,
+        "exit_code": 0,
+        "log": {
+          "path": "logs/build-distributions.log",
+          "size_bytes": 7104,
+          "sha256": "1f2b3a6149f414b7ab4dbd31f159a89d2418786464961ac895c9a102e8134779"
+        }
+      }
+    },
+    {
+      "path": "receipts/verify-cleanup-official.json",
+      "command": {
+        "started_at": "2026-10-29T16:45:10.581001+00:00",
+        "finished_at": "2026-10-29T16:45:10.869951+00:00",
+        "duration_seconds": 0.288857125,
+        "cwd": "${REPO_ROOT}",
+        "argv": [
+          "${HOME}/.nvm/versions/node/v22.23.2/bin/node",
+          "target/supersplat-3.7-webp/verify-codec-cleanup.mjs"
+        ],
+        "explicit_environment": {},
+        "proxy_environment_removed": true,
+        "exit_code": 0,
+        "log": {
+          "path": "logs/verify-cleanup-official.log",
+          "size_bytes": 277933,
+          "sha256": "effc7732d6d6cb61c7d52172f4027f29e07758b030d76c183b0d5fe1cfc65079"
+        }
+      }
+    },
+    {
+      "path": "receipts/verify-distributions.json",
+      "command": {
+        "started_at": "2026-10-29T16:45:55.677465+00:00",
+        "finished_at": "2026-10-29T16:45:56.658258+00:00",
+        "duration_seconds": 0.980708916,
+        "cwd": "${REPO_ROOT}",
+        "argv": [
+          "${HOME}/.nvm/versions/node/v22.23.2/bin/node",
+          "target/supersplat-3.7-webp/verify-distributions.mjs"
+        ],
+        "explicit_environment": {},
+        "proxy_environment_removed": true,
+        "exit_code": 0,
+        "log": {
+          "path": "logs/verify-distributions.log",
+          "size_bytes": 2349,
+          "sha256": "5e1cac9bdc7586d3021d5a29c03fcf79a07819267c9b86e7292dc99626bf3d84"
+        }
+      }
+    },
+    {
+      "path": "receipts/verify-upstream.json",
+      "command": {
+        "started_at": "2026-10-29T16:45:56.741025+00:00",
+        "finished_at": "2026-10-29T16:46:07.401893+00:00",
+        "duration_seconds": 10.660767459,
+        "cwd": "${REPO_ROOT}/target/supersplat-3.7-webp/sources/splat-transform",
+        "argv": [
+          "${HOME}/.nvm/versions/node/v22.23.2/bin/node",
+          "--import",
+          "tsx",
+          "--test",
+          "test/webp-codec.test.mjs",
+          "test/write-sog.test.mjs",
+          "test/html-output.test.mjs"
+        ],
+        "explicit_environment": {},
+        "proxy_environment_removed": true,
+        "exit_code": 0,
+        "log": {
+          "path": "logs/verify-upstream.log",
+          "size_bytes": 4187,
+          "sha256": "c404daba9cc750d3df516a26009af0cf2f85eb9b18624e1cd435c4695d8bfa4b"
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "paired_codec": [
+      {
+        "path": "outputs/webp.mjs",
+        "size_bytes": 11649,
+        "sha256": "f95547c1c361fa7d2540a03f204457f036af6d98600f0f96de578917e39f421d"
+      },
+      {
+        "path": "outputs/webp.wasm",
+        "size_bytes": 346832,
+        "sha256": "e65b8818d755ddb3f27e1843d4f7e7e7bcba9982f027b8a66468cadb0ac31d2d"
+      }
+    ],
+    "link_map": {
+      "path": "outputs/webp-link.map",
+      "size_bytes": 159411,
+      "sha256": "569bc15505524579319e0442e320777aec84e5ae26e104a430c9e5a31837fd8e"
+    },
+    "symbol_map": {
+      "path": "outputs/webp.mjs.symbols",
+      "size_bytes": 8358,
+      "sha256": "e0ce9474c34089214dc20beb8fa8307dfe411f5b1a9b1c2c733d8b7e21305870"
+    },
+    "derived_files": [
+      {
+        "file": {
+          "path": "sources/splat-transform/lib/webp.mjs",
+          "size_bytes": 11649,
+          "sha256": "f95547c1c361fa7d2540a03f204457f036af6d98600f0f96de578917e39f421d"
+        },
+        "original_sha256": "cec9a2ad93c87786fc358afedb8f00d0ff40a02b98bc69513063d6f5addb829f"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform/lib/webp.wasm",
+          "size_bytes": 346832,
+          "sha256": "e65b8818d755ddb3f27e1843d4f7e7e7bcba9982f027b8a66468cadb0ac31d2d"
+        },
+        "original_sha256": "2460985592f576eb6ff4a6ec893e6770ac760be5469b02cfbee35649e1548f50"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform/dist/index.mjs",
+          "size_bytes": 5650654,
+          "sha256": "bbc9cba7d6a2829767371085e203ef3768102fa442c1066a2d33bd37f50b564b"
+        },
+        "original_sha256": "40e8588561f4fc245d9bed4f18fb9ca77cc520636ff6a178f2edf3d918ed4fd0"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform/dist/index.mjs.map",
+          "size_bytes": 7557621,
+          "sha256": "0016bee39f858cea6edd768399726414e30053838e827ba68ed1d74d112b7f15"
+        },
+        "original_sha256": "a2abadc6d20724408227446d54665885e5c634d581fbe2f1ab8a8be9c0cac0b1"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform/dist/index.cjs",
+          "size_bytes": 5659548,
+          "sha256": "a066123a2f75c172437b880a743a4f906c8a7eb6d984273c7cd619c863dfeb7a"
+        },
+        "original_sha256": "fc3fd64d535f2de25f1cb2f862470d7a245c5e3259500de5ad978f920617a485"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform/dist/index.cjs.map",
+          "size_bytes": 7558742,
+          "sha256": "6d960c6c2187ea4026f3b80d7b730290c47f76563a27028ebec28ee2526f3b13"
+        },
+        "original_sha256": "4ebc3d36b8b330c8bc1c7ae1e252365723256734b7db0e9747e48dc5f5955677"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform/dist/worker.mjs",
+          "size_bytes": 66089,
+          "sha256": "a3520388469bc02aad13864347c878c6820c2cbb82eab3e97b5e3cb22fcb7559"
+        },
+        "original_sha256": "c8c795e51f2b500a4fae63bb57b8c2b2e61438e86d6937620d2ff203da893504"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform/dist/worker.mjs.map",
+          "size_bytes": 148183,
+          "sha256": "d6d0d6bc45fc5e9c223c41f5554ce27bbe67a4c6d6058453dfcfa27bca1049ef"
+        },
+        "original_sha256": "2b78342d14b1193afc025e17d249b8f569953b3180ca0e78953b1d7cc53766d3"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform/dist/cli.mjs",
+          "size_bytes": 6175663,
+          "sha256": "efc085fbd8faa54aeb11431b591af57ea940580fc08adfa6db88031c6d929fe7"
+        },
+        "original_sha256": "1fcd2c19f288073e35f3a6983794ec906448b0507b2e0f951a58191979dd40bf"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform/dist/cli.mjs.map",
+          "size_bytes": 8781635,
+          "sha256": "9e624f03614b756a73fe2d077fffea76be71d7f85d8fb551f982e922662f5f51"
+        },
+        "original_sha256": "20b8ab4043938c5ec50877118dd468bd16b0db7c1b8ee26e546b5ed01527dad0"
+      }
+    ],
+    "overlay_candidate": {
+      "path": "candidate-manifest.json",
+      "size_bytes": 4202,
+      "sha256": "0dd8f0bae9696dae6909c2243ca56a69bcf6e698e6b79dc993e003232647dc0d"
+    }
+  },
+  "runtime_evidence": {
+    "linked_members": [
+      "libc.a(__errno_location.o)",
+      "libc.a(__math_divzero.o)",
+      "libc.a(__math_divzerof.o)",
+      "libc.a(__math_invalid.o)",
+      "libc.a(__math_invalidf.o)",
+      "libc.a(__math_oflow.o)",
+      "libc.a(__math_oflowf.o)",
+      "libc.a(__math_uflow.o)",
+      "libc.a(__math_uflowf.o)",
+      "libc.a(__math_xflow.o)",
+      "libc.a(__math_xflowf.o)",
+      "libc.a(emscripten_get_heap_size.o)",
+      "libc.a(emscripten_memcpy.o)",
+      "libc.a(emscripten_memcpy_bulkmem.o)",
+      "libc.a(emscripten_memset.o)",
+      "libc.a(exp2f_data.o)",
+      "libc.a(exp_data.o)",
+      "libc.a(expf.o)",
+      "libc.a(fabs.o)",
+      "libc.a(log.o)",
+      "libc.a(log10.o)",
+      "libc.a(log_data.o)",
+      "libc.a(logf.o)",
+      "libc.a(logf_data.o)",
+      "libc.a(memcmp.o)",
+      "libc.a(pow.o)",
+      "libc.a(pow_data.o)",
+      "libc.a(qsort.o)",
+      "libc.a(qsort_nr.o)",
+      "libcompiler_rt.a(stack_ops.o)",
+      "libdlmalloc.a(dlmalloc.o)",
+      "libdlmalloc.a(sbrk.o)",
+      "libsharpyuv.a(sharpyuv.c.o)",
+      "libsharpyuv.a(sharpyuv_cpu.c.o)",
+      "libsharpyuv.a(sharpyuv_csp.c.o)",
+      "libsharpyuv.a(sharpyuv_dsp.c.o)",
+      "libsharpyuv.a(sharpyuv_gamma.c.o)",
+      "libwebp.a(alpha_dec.c.o)",
+      "libwebp.a(alpha_enc.c.o)",
+      "libwebp.a(alpha_processing.c.o)",
+      "libwebp.a(analysis_enc.c.o)",
+      "libwebp.a(backward_references_cost_enc.c.o)",
+      "libwebp.a(backward_references_enc.c.o)",
+      "libwebp.a(bit_reader_utils.c.o)",
+      "libwebp.a(bit_writer_utils.c.o)",
+      "libwebp.a(buffer_dec.c.o)",
+      "libwebp.a(color_cache_utils.c.o)",
+      "libwebp.a(config_enc.c.o)",
+      "libwebp.a(cost.c.o)",
+      "libwebp.a(cost_enc.c.o)",
+      "libwebp.a(cpu.c.o)",
+      "libwebp.a(dec.c.o)",
+      "libwebp.a(dec_clip_tables.c.o)",
+      "libwebp.a(enc.c.o)",
+      "libwebp.a(filter_enc.c.o)",
+      "libwebp.a(filters.c.o)",
+      "libwebp.a(filters_utils.c.o)",
+      "libwebp.a(frame_dec.c.o)",
+      "libwebp.a(frame_enc.c.o)",
+      "libwebp.a(histogram_enc.c.o)",
+      "libwebp.a(huffman_encode_utils.c.o)",
+      "libwebp.a(huffman_utils.c.o)",
+      "libwebp.a(io_dec.c.o)",
+      "libwebp.a(iterator_enc.c.o)",
+      "libwebp.a(lossless.c.o)",
+      "libwebp.a(lossless_enc.c.o)",
+      "libwebp.a(near_lossless_enc.c.o)",
+      "libwebp.a(palette.c.o)",
+      "libwebp.a(picture_csp_enc.c.o)",
+      "libwebp.a(picture_enc.c.o)",
+      "libwebp.a(picture_rescale_enc.c.o)",
+      "libwebp.a(picture_tools_enc.c.o)",
+      "libwebp.a(predictor_enc.c.o)",
+      "libwebp.a(quant_dec.c.o)",
+      "libwebp.a(quant_enc.c.o)",
+      "libwebp.a(quant_levels_dec_utils.c.o)",
+      "libwebp.a(quant_levels_utils.c.o)",
+      "libwebp.a(random_utils.c.o)",
+      "libwebp.a(rescaler.c.o)",
+      "libwebp.a(rescaler_utils.c.o)",
+      "libwebp.a(ssim.c.o)",
+      "libwebp.a(syntax_enc.c.o)",
+      "libwebp.a(thread_utils.c.o)",
+      "libwebp.a(token_enc.c.o)",
+      "libwebp.a(tree_dec.c.o)",
+      "libwebp.a(tree_enc.c.o)",
+      "libwebp.a(upsampling.c.o)",
+      "libwebp.a(utils.c.o)",
+      "libwebp.a(vp8_dec.c.o)",
+      "libwebp.a(vp8l_dec.c.o)",
+      "libwebp.a(vp8l_enc.c.o)",
+      "libwebp.a(webp_dec.c.o)",
+      "libwebp.a(webp_enc.c.o)",
+      "libwebp.a(yuv.c.o)"
+    ],
+    "source_mapping": [
+      {
+        "archive_member": "libc.a(__errno_location.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/errno/__errno_location.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(__math_divzero.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_divzero.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(__math_divzerof.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_divzerof.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(__math_invalid.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_invalid.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(__math_invalidf.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_invalidf.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(__math_oflow.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_oflow.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(__math_oflowf.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_oflowf.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(__math_uflow.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_uflow.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(__math_uflowf.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_uflowf.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(__math_xflow.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_xflow.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(__math_xflowf.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_xflowf.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(emscripten_get_heap_size.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_get_heap_size.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(emscripten_memcpy.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_memcpy.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(emscripten_memcpy_bulkmem.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_memcpy_bulkmem.S"
+        ]
+      },
+      {
+        "archive_member": "libc.a(emscripten_memset.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_memset.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(exp2f_data.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp2f_data.c",
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp2f_data.h"
+        ]
+      },
+      {
+        "archive_member": "libc.a(exp_data.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp_data.c",
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp_data.h"
+        ]
+      },
+      {
+        "archive_member": "libc.a(expf.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/expf.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(fabs.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/fabs.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(log.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(log10.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log10.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(log_data.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log_data.c",
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log_data.h"
+        ]
+      },
+      {
+        "archive_member": "libc.a(logf.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/logf.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(logf_data.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/logf_data.c",
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/logf_data.h"
+        ]
+      },
+      {
+        "archive_member": "libc.a(memcmp.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/string/memcmp.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(pow.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/pow.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(pow_data.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/pow_data.c",
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/pow_data.h"
+        ]
+      },
+      {
+        "archive_member": "libc.a(qsort.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/stdlib/qsort.c"
+        ]
+      },
+      {
+        "archive_member": "libc.a(qsort_nr.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/stdlib/qsort_nr.c"
+        ]
+      },
+      {
+        "archive_member": "libcompiler_rt.a(stack_ops.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/compiler-rt/stack_ops.S"
+        ]
+      },
+      {
+        "archive_member": "libdlmalloc.a(dlmalloc.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/dlmalloc.c"
+        ]
+      },
+      {
+        "archive_member": "libdlmalloc.a(sbrk.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/sbrk.c"
+        ]
+      }
+    ],
+    "original_notices_and_linked_sources": [
+      {
+        "path": "licenses/libwebp/COPYING",
+        "source_path": "sources/libwebp/COPYING",
+        "origin": "libwebp commit 4fa21912338357f89e4fd51cf2368325b59e9bd9",
+        "reason": "libwebp 1.6.0 and bundled sharpyuv 0.4.2 notices",
+        "size_bytes": 1496,
+        "sha256": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf"
+      },
+      {
+        "path": "licenses/libwebp/PATENTS",
+        "source_path": "sources/libwebp/PATENTS",
+        "origin": "libwebp commit 4fa21912338357f89e4fd51cf2368325b59e9bd9",
+        "reason": "libwebp 1.6.0 and bundled sharpyuv 0.4.2 notices",
+        "size_bytes": 1436,
+        "sha256": "cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c"
+      },
+      {
+        "path": "licenses/libwebp/AUTHORS",
+        "source_path": "sources/libwebp/AUTHORS",
+        "origin": "libwebp commit 4fa21912338357f89e4fd51cf2368325b59e9bd9",
+        "reason": "libwebp 1.6.0 and bundled sharpyuv 0.4.2 notices",
+        "size_bytes": 3279,
+        "sha256": "f251be89fd442bd9d701360730aea163cc8e2076ff03528f59267dc2c4f8b60a"
+      },
+      {
+        "path": "licenses/splat-transform/LICENSE",
+        "source_path": "sources/splat-transform/LICENSE",
+        "origin": "splat-transform e0dab1fa0b7f7546d2b4b197f6294570e53ba3b8",
+        "reason": "Official 3.10.2 C wrapper and cleanup-patched TypeScript wrapper with derived distributions",
+        "size_bytes": 1064,
+        "sha256": "42fa51ddd556be151a29f381fb97ee975825dcc454e805ea3ea9c079cca04d34"
+      },
+      {
+        "path": "licenses/toolchain/emsdk-LICENSE",
+        "source_path": "sources/emsdk/LICENSE",
+        "origin": "emsdk commit b2436aafa7351ee1b581f15841f1b45ed716a279",
+        "reason": "build tool source notice; not substituted for linked runtime notices",
+        "size_bytes": 1326,
+        "sha256": "99d9a9616fbde3f5ee22a71d8645799a8522d48526130c5ba6dc27ad15ce01f1"
+      },
+      {
+        "path": "licenses/emscripten/LICENSE",
+        "source_path": "sources/emsdk/upstream/emscripten/LICENSE",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "runtime or linked system library original notice",
+        "size_bytes": 5093,
+        "sha256": "620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86"
+      },
+      {
+        "path": "licenses/emscripten/AUTHORS",
+        "source_path": "sources/emsdk/upstream/emscripten/AUTHORS",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "runtime or linked system library original notice",
+        "size_bytes": 29004,
+        "sha256": "8585fa1b981f576f52806833481323007ccac5c00f31a873215e31c0f42820f0"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/COPYRIGHT",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/COPYRIGHT",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "runtime or linked system library original notice",
+        "size_bytes": 6204,
+        "sha256": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/compiler-rt/LICENSE.TXT",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/compiler-rt/LICENSE.TXT",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "runtime or linked system library original notice",
+        "size_bytes": 16708,
+        "sha256": "1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/errno/__errno_location.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/errno/__errno_location.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __errno_location.o; preserve full file including original notices",
+        "size_bytes": 447,
+        "sha256": "167fe0721c519c40c6d674db4a3a7c042e54140be230b876024e999660424878"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_divzero.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_divzero.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_divzero.o; preserve full file including original notices",
+        "size_bytes": 105,
+        "sha256": "84aa910bdc5e7ccfed42098c37c44e278aa942d46e5a51d5ee8273336c79e719"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_divzerof.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_divzerof.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_divzerof.o; preserve full file including original notices",
+        "size_bytes": 109,
+        "sha256": "194c95f6cd238ffa14e78087b9acffca3a064f2fe46320d67b090bb7a559b1ca"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_invalid.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_invalid.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_invalid.o; preserve full file including original notices",
+        "size_bytes": 82,
+        "sha256": "b56440ed59fa1e1aaaf6bf8b672c8bb71eaf844457906f7773da1d67d7ef013b"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_invalidf.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_invalidf.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_invalidf.o; preserve full file including original notices",
+        "size_bytes": 81,
+        "sha256": "d2af8360271109d77dfab3c538eb158e34633454707dea4efa9f2f1e7e2bd0c7"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_oflow.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_oflow.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_oflow.o; preserve full file including original notices",
+        "size_bytes": 95,
+        "sha256": "74669de53bc4b250183cfa262a8a03ee8106f33a83e3aca6b217bafc7363b83c"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_oflowf.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_oflowf.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_oflowf.o; preserve full file including original notices",
+        "size_bytes": 96,
+        "sha256": "69414934bb798f5261e2d80f4b878e2bbe4dfa6025adbd06586195ba5554b04a"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_uflow.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_uflow.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_uflow.o; preserve full file including original notices",
+        "size_bytes": 96,
+        "sha256": "9a841197bbe9ade9bbd684f8bc65424a97c481d37dabb9fa1790bafe7959034a"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_uflowf.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_uflowf.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_uflowf.o; preserve full file including original notices",
+        "size_bytes": 97,
+        "sha256": "2371ed08fc95e48833a67122b5ef538ce7fc87f40fc7a4df451d71e1787d1d42"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_xflow.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_xflow.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_xflow.o; preserve full file including original notices",
+        "size_bytes": 123,
+        "sha256": "5feafe10347636884a071a5096f912d5ca4a0939844804ca09b88241405648ad"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_xflowf.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_xflowf.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_xflowf.o; preserve full file including original notices",
+        "size_bytes": 122,
+        "sha256": "38da031cfed0ba90e68a14dfbc57404ebcb827c9ac34648161c7d11cb212c9ba"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/emscripten_get_heap_size.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_get_heap_size.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member emscripten_get_heap_size.o; preserve full file including original notices",
+        "size_bytes": 396,
+        "sha256": "f642e9c8e89121b3c379535996cb78d8a7fa0626ef8351d7b00c1824dcdb1dbe"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/emscripten_memcpy.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_memcpy.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member emscripten_memcpy.o; preserve full file including original notices",
+        "size_bytes": 3185,
+        "sha256": "1eed22a14ee2143283ad19a0494355734bd9d48a19b318b605c86f274642afa0"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/emscripten_memcpy_bulkmem.S",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_memcpy_bulkmem.S",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member emscripten_memcpy_bulkmem.o; preserve full file including original notices",
+        "size_bytes": 521,
+        "sha256": "39af87c7ef0479fa2c4863838b4012a8ed86e89d6e37035c1054666731ffc016"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/emscripten_memset.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_memset.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member emscripten_memset.o; preserve full file including original notices",
+        "size_bytes": 804,
+        "sha256": "7f345bf7ffbb49e3d7e1691538a243471e67e0e11c9e06b518c2b691295b1cdf"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/exp2f_data.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp2f_data.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member exp2f_data.o; preserve full file including original notices",
+        "size_bytes": 1323,
+        "sha256": "3da38c471cc5eb8dc1c2e283c6c00a36b1d353ba5c8ca1e82d95180948e26bd5"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/exp2f_data.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp2f_data.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member exp2f_data.o; preserve full file including original notices",
+        "size_bytes": 499,
+        "sha256": "fb52b690bef63df2e8996f2d2b3fd77f9ea08795863e73afdc882df04460e850"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/exp_data.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp_data.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member exp_data.o; preserve full file including original notices",
+        "size_bytes": 6347,
+        "sha256": "c55dff64e369fe816cd8ce367064989bb119f85783599680d1a329031c660689"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/exp_data.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp_data.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member exp_data.o; preserve full file including original notices",
+        "size_bytes": 540,
+        "sha256": "df77fca837edd02b260dd09a2914202775909ae67a059218ae38cfab104e6d16"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/expf.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/expf.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member expf.o; preserve full file including original notices",
+        "size_bytes": 1895,
+        "sha256": "225123b9b3a47a083c06f2580c6b73d5cadae5cec545f9e928f7041ff837b4b4"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/fabs.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/fabs.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member fabs.o; preserve full file including original notices",
+        "size_bytes": 318,
+        "sha256": "f6387612e1f879cac47fa71a808b584c76d78c23df4e44274ed9c7b1ddf24eff"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/log.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member log.o; preserve full file including original notices",
+        "size_bytes": 3030,
+        "sha256": "a0694d8587a0d145d0f8ae87cbffba014d7988bc2ebcbfad94cea73b394c9ecc"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/log10.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log10.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member log10.o; preserve full file including original notices",
+        "size_bytes": 2968,
+        "sha256": "ef9b4b1f0918cf1fcb797f9fa4d4ffe177bfa27f668d74a41d613bfbcd83850a"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/log_data.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log_data.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member log_data.o; preserve full file including original notices",
+        "size_bytes": 13927,
+        "sha256": "e96bcd99d88fc57e0f3686299014f4b949a6212603ce237f39e16cedc155617a"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/log_data.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log_data.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member log_data.o; preserve full file including original notices",
+        "size_bytes": 552,
+        "sha256": "a8dced6f0821f30cad040ba326b03e419fbe0a750ed8f3b0d7145992bee4bccc"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/logf.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/logf.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member logf.o; preserve full file including original notices",
+        "size_bytes": 1732,
+        "sha256": "eecf8e5dd0afd5f64f938ccae07c85b0a8e82919f5d4269936a3b8493fb64e47"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/logf_data.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/logf_data.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member logf_data.o; preserve full file including original notices",
+        "size_bytes": 1087,
+        "sha256": "60b08342fcef877b393a76fc36d92c576d6340ce153459aad03aad3d4716f9b5"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/logf_data.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/logf_data.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member logf_data.o; preserve full file including original notices",
+        "size_bytes": 406,
+        "sha256": "80176d1f045f162e917ca5c2879994ab0ed9e27b479086d752e5793c91135adf"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/string/memcmp.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/string/memcmp.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member memcmp.o; preserve full file including original notices",
+        "size_bytes": 782,
+        "sha256": "2514492fc7e9249713857dfd12c1a3630661aa163f16bc40a6f59f8cd8e76aeb"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/pow.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/pow.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member pow.o; preserve full file including original notices",
+        "size_bytes": 10817,
+        "sha256": "b06f0a08d74fcff8cced7afa2c0e47e301e3e8a19c0de5becdec28cd7b014027"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/pow_data.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/pow_data.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member pow_data.o; preserve full file including original notices",
+        "size_bytes": 10455,
+        "sha256": "2052ec913f9b4a2170a98a6fcbcd7694f5dec220036b00c36106a2b4b65a4c55"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/pow_data.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/pow_data.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member pow_data.o; preserve full file including original notices",
+        "size_bytes": 519,
+        "sha256": "5014345a7958adcf6ff835b5e96afa99dd5a98c40dfe968442288e002b8e01a3"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/stdlib/qsort.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/stdlib/qsort.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member qsort.o; preserve full file including original notices",
+        "size_bytes": 5131,
+        "sha256": "3a838cc7f83f4746df6063f567be1ebb2f7d204243342122acd43f44d2434ec6"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/stdlib/qsort_nr.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/stdlib/qsort_nr.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member qsort_nr.o; preserve full file including original notices",
+        "size_bytes": 316,
+        "sha256": "ba6ce7460e7b4b22d70c8d7acab2bdb5d3916f428d50b42bb29e4da5eec484d9"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/compiler-rt/stack_ops.S",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/compiler-rt/stack_ops.S",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member stack_ops.o; preserve full file including original notices",
+        "size_bytes": 902,
+        "sha256": "f99c53c18be77b978f2255c5ef9c1c31798fe17dea87ca87f34ae39a2f237045"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/dlmalloc.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/dlmalloc.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member dlmalloc.o; preserve full file including original notices",
+        "size_bytes": 236568,
+        "sha256": "c008dc3c2b005ba822efb1bf6187a9d7a6aecd096826c6f28c6f5ee62885053d"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/sbrk.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/sbrk.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member sbrk.o; preserve full file including original notices",
+        "size_bytes": 4507,
+        "sha256": "7a348606c92e9e5311ed307bbfba0b4a6a56692ff4005d440cb3a9e983fed7c9"
+      },
+      {
+        "path": "licenses/emscripten/tools/system_libs.py",
+        "source_path": "sources/emsdk/upstream/emscripten/tools/system_libs.py",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "source selection or included header evidence; retained unmodified",
+        "size_bytes": 85800,
+        "sha256": "3bb9a723b089a3b466a4bef6ed32327e9a8c225a700778f2bd25dd74c3253ac6"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/internal/libm.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/internal/libm.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "source selection or included header evidence; retained unmodified",
+        "size_bytes": 7666,
+        "sha256": "8cb6cc4af4b96b92f5af9d4e20609c8b8456bded8908c3d58f5b8e8f37620f67"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/internal/atomic.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/internal/atomic.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "source selection or included header evidence; retained unmodified",
+        "size_bytes": 5800,
+        "sha256": "7564773807b69ceeb5542882ab20e92253ded8289d8944eafe7208903aaa2e18"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/internal/pthread_impl.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/internal/pthread_impl.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "source selection or included header evidence; retained unmodified",
+        "size_bytes": 8312,
+        "sha256": "9c0917012766522e7465195774c7ea766366e567a64f62df9535b1ae7d60b07d"
+      }
+    ],
+    "note": "Actual link map includes libc, libdlmalloc, compiler_rt stack_ops; generated JS runtime covered by complete Emscripten LICENSE including third-party text. C++ libraries generated in cache but no linked members observed; not claimed as linked.",
+    "scope": "New link map was compared to the inherited reviewed runtime/source mapping; all 94 members match. Inherited codec/distribution acceptance is historical and is not this build's acceptance."
+  },
+  "verification": {
+    "codec": {
+      "path": "logs/verify-cleanup-official.log",
+      "size_bytes": 277933,
+      "sha256": "effc7732d6d6cb61c7d52172f4027f29e07758b030d76c183b0d5fe1cfc65079"
+    },
+    "cleanup": {
+      "path": "logs/verify-cleanup-official.log",
+      "size_bytes": 277933,
+      "sha256": "effc7732d6d6cb61c7d52172f4027f29e07758b030d76c183b0d5fe1cfc65079"
+    },
+    "cleanup_counts": {
+      "primary_cases": 33,
+      "recovery_cases": 99,
+      "successful_output_comparisons": 30,
+      "failed_case_groups": 0
+    },
+    "official_binary_comparisons": 12,
+    "distributions": {
+      "path": "logs/verify-distributions.log",
+      "size_bytes": 2349,
+      "sha256": "5e1cac9bdc7586d3021d5a29c03fcf79a07819267c9b86e7292dc99626bf3d84"
+    },
+    "upstream_sog_html_webp_tests": {
+      "status": "passed",
+      "tests": 16,
+      "passed": 16,
+      "failed": 0,
+      "suite_files": [
+        "test/webp-codec.test.mjs",
+        "test/write-sog.test.mjs",
+        "test/html-output.test.mjs"
+      ],
+      "log": {
+        "path": "logs/verify-upstream.log",
+        "size_bytes": 4187,
+        "sha256": "c404daba9cc750d3df516a26009af0cf2f85eb9b18624e1cd435c4695d8bfa4b"
+      },
+      "receipt": {
+        "path": "receipts/upstream-acceptance.json",
+        "size_bytes": 351,
+        "sha256": "7377ae559747e61b9b99da372999f0b58c6e0524cce30236a28fa5c5ff1936b3"
+      }
+    }
+  },
+  "limits": [
+    "Fresh Node tests against actual new ABI and bundles; browser/native full application acceptance is separate.",
+    "Inherited libwebp/SDK caches have fixed original source/build provenance; no old codec or distribution test is counted as new acceptance.",
+    "Allocation fault injection measures caller-visible ownership, not arbitrary true OOM or every libwebp internal allocation.",
+    "Direct Node CJS require has the same PlayCanvas interop limitation as the official 3.10.2 package; CJS codec/worker tests use actual PlayCanvas ESM exports as its external."
+  ],
+  "files": [
+    {
+      "path": "build-distributions.mjs",
+      "size_bytes": 1085,
+      "sha256": "6093f0782025d0347e05195003d1662abb333aff90e7dd8ac5a450402da9c3a3"
+    },
+    {
+      "path": "build-environment.json",
+      "size_bytes": 1273,
+      "sha256": "7785e0ab4ab725a22ed029af84cf69a72f4104f82e64e16b51d4def19a67b889"
+    },
+    {
+      "path": "candidate-manifest.json",
+      "size_bytes": 4202,
+      "sha256": "0dd8f0bae9696dae6909c2243ca56a69bcf6e698e6b79dc993e003232647dc0d"
+    },
+    {
+      "path": "emit-overlay.py",
+      "size_bytes": 10952,
+      "sha256": "e8baee3b98c79c4e15eaf40b19ca3f2a6ccfe01880e3958f3e22c63809452fc9"
+    },
+    {
+      "path": "fixed-revision.patch",
+      "size_bytes": 479,
+      "sha256": "92c45fb13adffa7f5adc57e5d34a79b22161cc4f55f91393427bc48c46a2e1c7"
+    },
+    {
+      "path": "licenses/emscripten/AUTHORS",
+      "size_bytes": 29004,
+      "sha256": "8585fa1b981f576f52806833481323007ccac5c00f31a873215e31c0f42820f0"
+    },
+    {
+      "path": "licenses/emscripten/LICENSE",
+      "size_bytes": 5093,
+      "sha256": "620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/compiler-rt/LICENSE.TXT",
+      "size_bytes": 16708,
+      "sha256": "1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/compiler-rt/stack_ops.S",
+      "size_bytes": 902,
+      "sha256": "f99c53c18be77b978f2255c5ef9c1c31798fe17dea87ca87f34ae39a2f237045"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/dlmalloc.c",
+      "size_bytes": 236568,
+      "sha256": "c008dc3c2b005ba822efb1bf6187a9d7a6aecd096826c6f28c6f5ee62885053d"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/emscripten_get_heap_size.c",
+      "size_bytes": 396,
+      "sha256": "f642e9c8e89121b3c379535996cb78d8a7fa0626ef8351d7b00c1824dcdb1dbe"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/emscripten_memcpy.c",
+      "size_bytes": 3185,
+      "sha256": "1eed22a14ee2143283ad19a0494355734bd9d48a19b318b605c86f274642afa0"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/emscripten_memcpy_bulkmem.S",
+      "size_bytes": 521,
+      "sha256": "39af87c7ef0479fa2c4863838b4012a8ed86e89d6e37035c1054666731ffc016"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/emscripten_memset.c",
+      "size_bytes": 804,
+      "sha256": "7f345bf7ffbb49e3d7e1691538a243471e67e0e11c9e06b518c2b691295b1cdf"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/COPYRIGHT",
+      "size_bytes": 6204,
+      "sha256": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/errno/__errno_location.c",
+      "size_bytes": 447,
+      "sha256": "167fe0721c519c40c6d674db4a3a7c042e54140be230b876024e999660424878"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/internal/atomic.h",
+      "size_bytes": 5800,
+      "sha256": "7564773807b69ceeb5542882ab20e92253ded8289d8944eafe7208903aaa2e18"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/internal/libm.h",
+      "size_bytes": 7666,
+      "sha256": "8cb6cc4af4b96b92f5af9d4e20609c8b8456bded8908c3d58f5b8e8f37620f67"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/internal/pthread_impl.h",
+      "size_bytes": 8312,
+      "sha256": "9c0917012766522e7465195774c7ea766366e567a64f62df9535b1ae7d60b07d"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_divzero.c",
+      "size_bytes": 105,
+      "sha256": "84aa910bdc5e7ccfed42098c37c44e278aa942d46e5a51d5ee8273336c79e719"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_divzerof.c",
+      "size_bytes": 109,
+      "sha256": "194c95f6cd238ffa14e78087b9acffca3a064f2fe46320d67b090bb7a559b1ca"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_invalid.c",
+      "size_bytes": 82,
+      "sha256": "b56440ed59fa1e1aaaf6bf8b672c8bb71eaf844457906f7773da1d67d7ef013b"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_invalidf.c",
+      "size_bytes": 81,
+      "sha256": "d2af8360271109d77dfab3c538eb158e34633454707dea4efa9f2f1e7e2bd0c7"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_oflow.c",
+      "size_bytes": 95,
+      "sha256": "74669de53bc4b250183cfa262a8a03ee8106f33a83e3aca6b217bafc7363b83c"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_oflowf.c",
+      "size_bytes": 96,
+      "sha256": "69414934bb798f5261e2d80f4b878e2bbe4dfa6025adbd06586195ba5554b04a"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_uflow.c",
+      "size_bytes": 96,
+      "sha256": "9a841197bbe9ade9bbd684f8bc65424a97c481d37dabb9fa1790bafe7959034a"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_uflowf.c",
+      "size_bytes": 97,
+      "sha256": "2371ed08fc95e48833a67122b5ef538ce7fc87f40fc7a4df451d71e1787d1d42"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_xflow.c",
+      "size_bytes": 123,
+      "sha256": "5feafe10347636884a071a5096f912d5ca4a0939844804ca09b88241405648ad"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_xflowf.c",
+      "size_bytes": 122,
+      "sha256": "38da031cfed0ba90e68a14dfbc57404ebcb827c9ac34648161c7d11cb212c9ba"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/exp2f_data.c",
+      "size_bytes": 1323,
+      "sha256": "3da38c471cc5eb8dc1c2e283c6c00a36b1d353ba5c8ca1e82d95180948e26bd5"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/exp2f_data.h",
+      "size_bytes": 499,
+      "sha256": "fb52b690bef63df2e8996f2d2b3fd77f9ea08795863e73afdc882df04460e850"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/exp_data.c",
+      "size_bytes": 6347,
+      "sha256": "c55dff64e369fe816cd8ce367064989bb119f85783599680d1a329031c660689"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/exp_data.h",
+      "size_bytes": 540,
+      "sha256": "df77fca837edd02b260dd09a2914202775909ae67a059218ae38cfab104e6d16"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/expf.c",
+      "size_bytes": 1895,
+      "sha256": "225123b9b3a47a083c06f2580c6b73d5cadae5cec545f9e928f7041ff837b4b4"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/fabs.c",
+      "size_bytes": 318,
+      "sha256": "f6387612e1f879cac47fa71a808b584c76d78c23df4e44274ed9c7b1ddf24eff"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/log.c",
+      "size_bytes": 3030,
+      "sha256": "a0694d8587a0d145d0f8ae87cbffba014d7988bc2ebcbfad94cea73b394c9ecc"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/log10.c",
+      "size_bytes": 2968,
+      "sha256": "ef9b4b1f0918cf1fcb797f9fa4d4ffe177bfa27f668d74a41d613bfbcd83850a"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/log_data.c",
+      "size_bytes": 13927,
+      "sha256": "e96bcd99d88fc57e0f3686299014f4b949a6212603ce237f39e16cedc155617a"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/log_data.h",
+      "size_bytes": 552,
+      "sha256": "a8dced6f0821f30cad040ba326b03e419fbe0a750ed8f3b0d7145992bee4bccc"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/logf.c",
+      "size_bytes": 1732,
+      "sha256": "eecf8e5dd0afd5f64f938ccae07c85b0a8e82919f5d4269936a3b8493fb64e47"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/logf_data.c",
+      "size_bytes": 1087,
+      "sha256": "60b08342fcef877b393a76fc36d92c576d6340ce153459aad03aad3d4716f9b5"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/logf_data.h",
+      "size_bytes": 406,
+      "sha256": "80176d1f045f162e917ca5c2879994ab0ed9e27b479086d752e5793c91135adf"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/pow.c",
+      "size_bytes": 10817,
+      "sha256": "b06f0a08d74fcff8cced7afa2c0e47e301e3e8a19c0de5becdec28cd7b014027"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/pow_data.c",
+      "size_bytes": 10455,
+      "sha256": "2052ec913f9b4a2170a98a6fcbcd7694f5dec220036b00c36106a2b4b65a4c55"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/math/pow_data.h",
+      "size_bytes": 519,
+      "sha256": "5014345a7958adcf6ff835b5e96afa99dd5a98c40dfe968442288e002b8e01a3"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/stdlib/qsort.c",
+      "size_bytes": 5131,
+      "sha256": "3a838cc7f83f4746df6063f567be1ebb2f7d204243342122acd43f44d2434ec6"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/stdlib/qsort_nr.c",
+      "size_bytes": 316,
+      "sha256": "ba6ce7460e7b4b22d70c8d7acab2bdb5d3916f428d50b42bb29e4da5eec484d9"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/musl/src/string/memcmp.c",
+      "size_bytes": 782,
+      "sha256": "2514492fc7e9249713857dfd12c1a3630661aa163f16bc40a6f59f8cd8e76aeb"
+    },
+    {
+      "path": "licenses/emscripten/system/lib/libc/sbrk.c",
+      "size_bytes": 4507,
+      "sha256": "7a348606c92e9e5311ed307bbfba0b4a6a56692ff4005d440cb3a9e983fed7c9"
+    },
+    {
+      "path": "licenses/emscripten/tools/system_libs.py",
+      "size_bytes": 85800,
+      "sha256": "3bb9a723b089a3b466a4bef6ed32327e9a8c225a700778f2bd25dd74c3253ac6"
+    },
+    {
+      "path": "licenses/libwebp/AUTHORS",
+      "size_bytes": 3279,
+      "sha256": "f251be89fd442bd9d701360730aea163cc8e2076ff03528f59267dc2c4f8b60a"
+    },
+    {
+      "path": "licenses/libwebp/COPYING",
+      "size_bytes": 1496,
+      "sha256": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf"
+    },
+    {
+      "path": "licenses/libwebp/PATENTS",
+      "size_bytes": 1436,
+      "sha256": "cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c"
+    },
+    {
+      "path": "licenses/splat-transform/LICENSE",
+      "size_bytes": 1064,
+      "sha256": "42fa51ddd556be151a29f381fb97ee975825dcc454e805ea3ea9c079cca04d34"
+    },
+    {
+      "path": "licenses/toolchain/emsdk-LICENSE",
+      "size_bytes": 1326,
+      "sha256": "99d9a9616fbde3f5ee22a71d8645799a8522d48526130c5ba6dc27ad15ce01f1"
+    },
+    {
+      "path": "logs/build-distributions.log",
+      "size_bytes": 7104,
+      "sha256": "1f2b3a6149f414b7ab4dbd31f159a89d2418786464961ac895c9a102e8134779"
+    },
+    {
+      "path": "logs/download-npm.log",
+      "size_bytes": 554,
+      "sha256": "6cde34816b0cbe27ca498e8d85138d005f12b28e613a82ebaad9581dcff1f5c9"
+    },
+    {
+      "path": "logs/link-webp.log",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "logs/npm-ci.log",
+      "size_bytes": 26,
+      "sha256": "4ab1c99b44ecfe563e25f16a058cf43fc588ce235c22096f5e861090831522e4"
+    },
+    {
+      "path": "logs/verify-cleanup-official.log",
+      "size_bytes": 277933,
+      "sha256": "effc7732d6d6cb61c7d52172f4027f29e07758b030d76c183b0d5fe1cfc65079"
+    },
+    {
+      "path": "logs/verify-distributions.log",
+      "size_bytes": 2349,
+      "sha256": "5e1cac9bdc7586d3021d5a29c03fcf79a07819267c9b86e7292dc99626bf3d84"
+    },
+    {
+      "path": "logs/verify-upstream.log",
+      "size_bytes": 4187,
+      "sha256": "c404daba9cc750d3df516a26009af0cf2f85eb9b18624e1cd435c4695d8bfa4b"
+    },
+    {
+      "path": "originals/package.json",
+      "size_bytes": 2707,
+      "sha256": "c65ef9c4e9e84512638391a9b7ca2a2c064dc8a291f80073039174b01e87e1aa"
+    },
+    {
+      "path": "originals/rollup.config.mjs",
+      "size_bytes": 4943,
+      "sha256": "092a742dfbde67930baeb0db9ff9579191b494fa226dd144613b9609a8f5c049"
+    },
+    {
+      "path": "originals/webp-codec.ts",
+      "size_bytes": 5614,
+      "sha256": "5f130ff891e0c1df6ed58bc5547a61f2cd1a859c3eed7b6c6d0c45a11284ae0c"
+    },
+    {
+      "path": "outputs/webp-link.map",
+      "size_bytes": 159411,
+      "sha256": "569bc15505524579319e0442e320777aec84e5ae26e104a430c9e5a31837fd8e"
+    },
+    {
+      "path": "outputs/webp.mjs.symbols",
+      "size_bytes": 8358,
+      "sha256": "e0ce9474c34089214dc20beb8fa8307dfe411f5b1a9b1c2c733d8b7e21305870"
+    },
+    {
+      "path": "receipts/build-distributions.json",
+      "size_bytes": 545,
+      "sha256": "38f294373b357c555747e5b45989d74494975152b945a7d228066188ce7d4ac6"
+    },
+    {
+      "path": "receipts/download-npm.json",
+      "size_bytes": 715,
+      "sha256": "46249604a3c8006932c9154e42a76dea30305dc3ed3c7cde04d4314f9c3e3560"
+    },
+    {
+      "path": "receipts/link-webp.json",
+      "size_bytes": 2537,
+      "sha256": "39a2184c4f166496702fabf7b63af472c8f9bea7ee6eaccb4d71832e3cd0b8e0"
+    },
+    {
+      "path": "receipts/npm-ci.json",
+      "size_bytes": 858,
+      "sha256": "8fb87cb4e3eb995bcfd6b8e7605d7943b3630fe35f48fa8653322f853f57ccab"
+    },
+    {
+      "path": "receipts/upstream-acceptance.json",
+      "size_bytes": 351,
+      "sha256": "7377ae559747e61b9b99da372999f0b58c6e0524cce30236a28fa5c5ff1936b3"
+    },
+    {
+      "path": "receipts/verify-cleanup-official.json",
+      "size_bytes": 551,
+      "sha256": "e4f8d5175388a3a509e93a4d5f4f6a3ebfe8da85b3002da56027a027bba36c19"
+    },
+    {
+      "path": "receipts/verify-distributions.json",
+      "size_bytes": 546,
+      "sha256": "0edd2c698a03b8623ba457cf4848c16440829ce5cef7d1cc297dcc5a66a0ed32"
+    },
+    {
+      "path": "receipts/verify-upstream.json",
+      "size_bytes": 671,
+      "sha256": "f21db8230fa58a8d9e4b7878dad43fbc3acb656431ebac6dd3f0762fd9a4dbbb"
+    },
+    {
+      "path": "reuse/build-evidence-3.4.2.json",
+      "size_bytes": 98095,
+      "sha256": "45d7e3629a84fdb892654335b5ce48528df518ec42af3ce9dd331cc6701a26b8"
+    },
+    {
+      "path": "run-step.py",
+      "size_bytes": 1407,
+      "sha256": "d664befcff64b5da354001bc69767fe85596835fbdcfa5df68e6bb4d65439405"
+    },
+    {
+      "path": "source-cleanup.patch",
+      "size_bytes": 5606,
+      "sha256": "57998f169b65acaa2f0434fcd0370c869bee03872f89cc2f9e07879b7937e133"
+    },
+    {
+      "path": "source-identity.json",
+      "size_bytes": 792,
+      "sha256": "8e7b952cb75bd0da5317fd81c7d29341636d5b36ccd316db55b26a7625334736"
+    },
+    {
+      "path": "source-patch.json",
+      "size_bytes": 417,
+      "sha256": "668d09ad37afe47e578e07778fe218495948c26a280de66c8a133b3aa3bea1dd"
+    },
+    {
+      "path": "sources/libwebp/sharpyuv/sharpyuv.h",
+      "size_bytes": 7669,
+      "sha256": "4fcb150246232b0e8e605752deb66ca861872f86dd692308d9f854e10ad964ee"
+    },
+    {
+      "path": "sources/splat-transform/lib/webp.c",
+      "size_bytes": 3296,
+      "sha256": "6fe1ce4d5412915fa021837de902b0c3c50008c189e8dc1ec59b697a27a6c3bf"
+    },
+    {
+      "path": "sources/splat-transform/package-lock.json",
+      "size_bytes": 209071,
+      "sha256": "b6b9d4750e7398dd380e71b91451d0f319ebc100872440b324b7154c8daaf9c6"
+    },
+    {
+      "path": "sources/splat-transform/rollup.config.mjs",
+      "size_bytes": 4885,
+      "sha256": "a35e954c6df31929164c338c47f3d8d358d6e74e2573a798f24813852128ad9e"
+    },
+    {
+      "path": "sources/splat-transform/src/lib/utils/webp-codec.ts",
+      "size_bytes": 6762,
+      "sha256": "c2a6f25923f3915131f743d397f499866b31154958d283b333214448c72f19dd"
+    },
+    {
+      "path": "verify-codec-cleanup.mjs",
+      "size_bytes": 20589,
+      "sha256": "f2160ad62f17fbcc029beb5f1b4b37006ec3fd5ad63db50b9315cc93cb5a9b4a"
+    },
+    {
+      "path": "verify-distributions.mjs",
+      "size_bytes": 4866,
+      "sha256": "fdcdd0554aad43499533a7c49740d0d5d7900e18678d24674061a1efbd1cb075"
+    }
+  ],
+  "path_normalization": {
+    "schema_version": 1,
+    "scope": "Publication copy: only machine-specific repository, home and temporary directory path prefixes are replaced by ${REPO_ROOT}, ${HOME} and ${TMPDIR}; metadata hashes are rebound to the normalized retained files. Original source, license, archive and runtime bytes, tool versions, commands, times and acceptance results are preserved.",
+    "original_build_evidence_sha256": "cc62594c79c592967ba7ba59da3ca1a5381e8c198b544938cbb004276bed5f19",
+    "original_file_sha256": {
+      "build-environment.json": "5df6e10469684d8f87c555ec4e1138bb8cfe67bbe4f14500c9b7b6d2dfa5e36b",
+      "logs/verify-cleanup-official.log": "77934c16b008c791274f6d2f2d14af1eea186c497752c2fda276baca7840f6a2",
+      "outputs/webp-link.map": "ff59872461ac07e1d9aa5ffce020aeea93a629b78b4b71e51bb6874c50c28efc",
+      "receipts/build-distributions.json": "18eef5d136e114ac86ed9d488068e825f2910d7bf02b526dd04da25cdfdf4051",
+      "receipts/download-npm.json": "c7a038b80c0d91bc9ecd759a441ded28c4a9f7e965efc64c56aa6a0cdd72d4ac",
+      "receipts/link-webp.json": "73cb86d210e541f0ec744a1be70e62745e675a5001bb8cdc760bcca1a410bb17",
+      "receipts/npm-ci.json": "b090b41f29503b7ffd25a2d13e7b90dca56591136bba64f9b5cdd37caf22fd4d",
+      "receipts/verify-cleanup-official.json": "cf4fc77a1d0cb645e38d83a77f865609b9c2d4f2ebcd5f1f59f542299d748938",
+      "receipts/verify-distributions.json": "b01b1d38553a24241dbd020af52029d42acb9a530005118a9216353d7fcc59ca",
+      "receipts/verify-upstream.json": "fdb8908d4cae64ad8f3e612399fdd3ef533daedc63d7fc015a07860ae24b62d9",
+      "reuse/build-evidence-3.4.2.json": "d5b9bb0d38bb3f611656455a2853651469e5ed1f5c02cae965396630c873ecaa"
+    }
+  }
+}

@@ -1,6 +1,7 @@
 import { t } from "../i18n";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import { confirm, open } from "@tauri-apps/plugin-dialog";
+import { open } from "@tauri-apps/plugin-dialog";
+import { requestConfirmation } from "./confirmation";
 
 import type {
   CreateProjectRequest,
@@ -21,6 +22,7 @@ import type {
   CheckpointSummary,
   EventPage,
   FramePreview,
+  FramePreviewItem,
   PlyPreview,
   GaussianPreviewSource,
   SavedModel,
@@ -32,6 +34,7 @@ import type {
   AppSettings,
   DiagnosticExport,
   ResourceMetrics,
+  PreviewResourcePolicy,
   OpenProjectLocationRequest,
   OpenProjectLocationResult,
   OpenEngineLocationResult,
@@ -172,8 +175,7 @@ export async function selectEngineExecutable(name: string): Promise<string | nul
 }
 
 export async function confirmSafeCancel(stageLabel: string): Promise<boolean> {
-  ensureDesktopRuntime();
-  return confirm(
+  return confirmApplication(
     t("将停止{0}并保留已验证阶段与合法检查点。当前阶段下次可能需要重新执行。", stageLabel),
     {
       title: t("安全取消重建"),
@@ -185,8 +187,7 @@ export async function confirmSafeCancel(stageLabel: string): Promise<boolean> {
 }
 
 export async function confirmRerunStage(stageLabel: string): Promise<boolean> {
-  ensureDesktopRuntime();
-  return confirm(
+  return confirmApplication(
     t("将从“{0}”重新运行，并重置该阶段及后续阶段的状态。已验证的更早阶段会保留。", stageLabel),
     {
       title: t("从指定阶段重新运行"),
@@ -198,8 +199,7 @@ export async function confirmRerunStage(stageLabel: string): Promise<boolean> {
 }
 
 export async function confirmRemoveRecentProject(projectName: string): Promise<boolean> {
-  ensureDesktopRuntime();
-  return confirm(t("仅从最近项目列表移除“{0}”，磁盘中的项目文件会保留。", projectName), {
+  return confirmApplication(t("仅从最近项目列表移除“{0}”，磁盘中的项目文件会保留。", projectName), {
     title: t("从最近项目移除"),
     kind: "warning",
     okLabel: t("移除记录"),
@@ -207,7 +207,19 @@ export async function confirmRemoveRecentProject(projectName: string): Promise<b
   });
 }
 
+function confirmApplication(description: string, options: { title: string; okLabel: string; cancelLabel: string; kind?: "warning" | "info" | "error" }): Promise<boolean> {
+  return requestConfirmation({
+    title: options.title,
+    description,
+    confirmLabel: options.okLabel,
+    cancelLabel: options.cancelLabel,
+    destructive: options.kind === "warning" || options.kind === "error",
+  });
+}
+
 export const desktopApi = {
+  confirm: confirmApplication,
+  finishAppExit: () => invoke<void>("finish_app_exit"),
   appVersion: () => invoke<string>("app_version"),
   checkEngines: () => invoke<EngineInfo[]>("check_engines"),
   listRecentProjects: () =>
@@ -278,8 +290,10 @@ export const desktopApi = {
     invoke<ArtifactSummary>("get_project_artifacts", { projectPath }),
   ensureOutputDirectory: (projectPath: string) =>
     invoke<string>("ensure_output_directory", { projectPath }),
-  getFramePreview: (projectPath: string) =>
-    invoke<FramePreview>("get_frame_preview", { projectPath }),
+  getFramePreview: (projectPath: string, projectId: string) =>
+    invoke<FramePreview>("get_frame_preview", { projectPath, projectId }),
+  getProjectThumbnail: (projectPath: string, projectId: string) =>
+    invoke<FramePreviewItem | null>("get_project_thumbnail", { projectPath, projectId }),
   getSparsePreviewPack: (projectPath: string) =>
     invoke<SparsePreviewPack>("get_sparse_preview_pack", { projectPath }),
   inspectPly: (projectPath: string, relativePath?: string) =>
@@ -293,6 +307,17 @@ export const desktopApi = {
     try { return await tauriInvoke<SavedModel>("save_edited_ply", new Uint8Array(bytes), { headers: { "x-editor-session": sessionId } }); }
     catch (error) { throw new DesktopCommandError("save_edited_ply", error); }
   },
+  saveEditorImage: async (sessionId: string, format: "png" | "jpeg" | "webp", bytes: ArrayBuffer): Promise<string | null> => {
+    try {
+      return await tauriInvoke<string | null>("save_editor_image", new Uint8Array(bytes), {
+        headers: { "x-editor-session": sessionId, "x-image-format": format },
+      });
+    } catch (error) {
+      throw error instanceof DesktopCommandError
+        ? error
+        : new DesktopCommandError("save_editor_image", error);
+    }
+  },
   getGaussianCamera: (projectId: string, projectPath: string) =>
     invoke<GaussianCamera | null>("get_gaussian_camera", { projectId, projectPath }),
   readGaussianPly: (projectId: string, projectPath: string, source: GaussianPreviewSource) =>
@@ -304,6 +329,7 @@ export const desktopApi = {
   setEngineDirectory: (path: string) => invoke<AppSettings>("set_engine_directory", { path }),
   setEngineExecutable: (name: string, path: string) => invoke<AppSettings>("set_engine_executable", { name, path }),
   clearEngineOverride: (name?: string) => invoke<AppSettings>("clear_engine_override", { name: name ?? null }),
+  getPreviewResourcePolicy: () => invoke<PreviewResourcePolicy>("get_preview_resource_policy"),
   getResourceMetrics: (projectPath?: string) => invoke<ResourceMetrics>("get_resource_metrics", { projectPath: projectPath ?? null }),
   exportDiagnostics: (projectPath: string) => invoke<DiagnosticExport>("export_diagnostics", { projectPath }),
 };

@@ -1,0 +1,2790 @@
+{
+  "schema_version": 1,
+  "scope": "Original M0 build only; regenerate for a changed Alpha build",
+  "canonical_dylibs": 125,
+  "canonical_owner_packages": 90,
+  "release_ready": false,
+  "components": [
+    {
+      "id": "colmap",
+      "name": "COLMAP",
+      "version": "4.1.0",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "executable",
+      "source": {
+        "url": "https://github.com/colmap/colmap",
+        "commit": "fa8e3b3ff591552855f8ad2806723c80f963f69c"
+      }
+    },
+    {
+      "id": "aom-3.14.1-pl5321hf79ea98_2",
+      "name": "aom",
+      "version": "3.14.1",
+      "build": "pl5321hf79ea98_2",
+      "license_declared": "BSD-2-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/aom-3.14.1-pl5321hf79ea98_2.conda",
+        "sha256": "292b3cfab77d5db222b53add0ec3b5e7e5c04ce2cb8cf8a7237cbe0643b3e6c1"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/aom-feedstock",
+        "commit": "5988b2112b07e6a9a4726f60c581a490b534a129"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://storage.googleapis.com/aom-releases/libaom-3.14.1.tar.gz"
+          ],
+          "sha256": [
+            "44bf90dbd23e734d50e70a8c41c285193922938bd0d3bc2ee56764d181d55ef5"
+          ],
+          "patches": [
+            "0001-Do-not-install-the-static-aom-library.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bzip2-1.0.8-h4e30115_10",
+      "name": "bzip2",
+      "version": "1.0.8",
+      "build": "h4e30115_10",
+      "license_declared": "bzip2-1.0.6",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/bzip2-1.0.8-h4e30115_10.conda",
+        "sha256": "8ec22f0ba25cbfc2e64d70cf29459eccd7ffdf6436f6a6ff15bbfef799f7d4f6"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/bzip2-feedstock",
+        "commit": "f0f345e062aed39aa7f500c0746efed2dcea6971"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://gitlab.com/bzip2/bzip2/-/archive/bzip2-1.0.8/bzip2-bzip2-1.0.8.tar.gz"
+          ],
+          "sha256": [
+            "db106b740252669664fd8f3a1c69fe7f689d5cd4b132f82ba82b9afba27627df"
+          ],
+          "patches": [
+            "patches/0001-cross.patch",
+            "patches/0002-Windows-Make-library-name-lowercase.patch",
+            "patches/0003-Windows-Add-dyn-lib-build-rename-libbz2_static.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cairo-1.18.6-h580cee5_0",
+      "name": "cairo",
+      "version": "1.18.6",
+      "build": "h580cee5_0",
+      "license_declared": "LGPL-2.1-only or MPL-1.1",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/cairo-1.18.6-h580cee5_0.conda",
+        "sha256": "32ad9b731d0b4c6dd82061201206164b07bd695bc695e5eb3addc0087ed54cca"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/cairo-feedstock",
+        "commit": "8b534c45e4a7945ac29aa8bd177109af1c318594"
+      },
+      "sources": [
+        {
+          "urls": [
+            "http://cairographics.org/releases/cairo-1.18.6.tar.xz"
+          ],
+          "sha256": [
+            "1c767308174337a74694da0f3ec069c271452163a1ef4540964c50c301f157d4"
+          ],
+          "patches": [
+            "meson-darwin-versions.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ceres-solver-2.2.0-cpugplh6fe7525_211",
+      "name": "ceres-solver",
+      "version": "2.2.0",
+      "build": "cpugplh6fe7525_211",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/ceres-solver-2.2.0-cpugplh6fe7525_211.conda",
+        "sha256": "2e9edb899fa43e8d937ab98a48ed97c6f67813aae4710a23cfb7862558f0a96f"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/ceres-solver-feedstock",
+        "commit": "2cc7f1045b6f0903b96f33c8a2e9fb3449130a43"
+      },
+      "sources": [
+        {
+          "urls": [
+            "http://ceres-solver.org/ceres-solver-2.2.0.tar.gz"
+          ],
+          "sha256": [
+            "48b2302a7986ece172898477c3bcd6deb8fb5cf19b3327bc49969aad4cede82d"
+          ],
+          "patches": [
+            "fix-eigen5.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cgal-cpp-6.2.1-hffbae91_0",
+      "name": "cgal-cpp",
+      "version": "6.2.1",
+      "build": "hffbae91_0",
+      "license_declared": "GPL3/LGPL3",
+      "linkage": "header-only",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/cgal-cpp-6.2.1-hffbae91_0.conda",
+        "sha256": "7bf4f4dcc9aa4eaea16fbc4f79de29ef50c7ed3da568486a88166985104dd262"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/cgal-cpp-feedstock",
+        "commit": "b6061fa664788f6ff110af8430e6bdccc3b7ab23"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/CGAL/cgal/releases/download/v6.2.1/CGAL-6.2.1.tar.xz"
+          ],
+          "sha256": [
+            "b6be77c60765a8456335de991eeaf6ffec55256984e4a9ecc6a97c37bbfe85bf"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "dcmtk-3.7.0-hd9d6b7d_0",
+      "name": "dcmtk",
+      "version": "3.7.0",
+      "build": "hd9d6b7d_0",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/dcmtk-3.7.0-hd9d6b7d_0.conda",
+        "sha256": "5292086a2c71b88e1b59ebf042ad701d4ed43052a95ff3ab4c5c41ceba02ac59"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/dcmtk-feedstock",
+        "commit": "31f6e7b6cef4884abf3d1592fbd4e8fb7169dda5"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://dicom.offis.de/download/dcmtk/dcmtk370/dcmtk-3.7.0.tar.gz"
+          ],
+          "sha256": [
+            "f103df876040a4f904f01d2464f7868b4feb659d8cd3f46a5f1f61aa440be415"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "eigen-5.0.1-hdb59ae0_3",
+      "name": "eigen",
+      "version": "5.0.1",
+      "build": "hdb59ae0_3",
+      "license_declared": "MPL-2.0",
+      "linkage": "header-only",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/eigen-5.0.1-hdb59ae0_3.conda",
+        "sha256": "da0696b71ab191ea0d15feed3d96a21ec85da0633ba0aabd99ca509806f8ea78"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/eigen-feedstock",
+        "commit": "6a4986cd0c9148345e1eb07efd55e8874882b765"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.tar.gz"
+          ],
+          "sha256": [
+            "e9c326dc8c05cd1e044c71f30f1b2e34a6161a3b6ecf445d56b53ff1669e3dec"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "ffmpeg-9.0.2-gpl_h45cda2f_105",
+      "name": "ffmpeg",
+      "version": "9.0.2",
+      "build": "gpl_h45cda2f_105",
+      "license_declared": "GPL-2.0-or-later",
+      "license_effective": "GPL-3.0-or-later",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/ffmpeg-9.0.2-gpl_h45cda2f_105.conda",
+        "sha256": "e1513d48c60a92f8e694d9fa0cdd126c3e9cc0dc8a55ba894986787df5148b27"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/ffmpeg-feedstock",
+        "commit": "86baa8908502ede48ee12292d211ecf77b8924f0"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.gz"
+          ],
+          "sha256": [
+            "84960df915059e8754fef2cd7c9afeb614062b1b5458ec471eecee619ee04e98"
+          ],
+          "patches": [
+            "patches/0002-Revert-compat-Use-instead-of-for-rc.exe-options.patch",
+            "patches/0003-disable-gnu-windres.patch",
+            "patches/0004-Remove-private-requirements-to-help-downstream-compi.patch",
+            "patches/0005-Chromium-patches-for-qtwebengine.patch",
+            "patches/0006-Use-forward-lahs-on-windows.patch",
+            "patches/0007-avcodec-nvenc-fix-double-free-of-the-input-buffer.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fontconfig-2.18.3-h81aa574_1",
+      "name": "fontconfig",
+      "version": "2.18.3",
+      "build": "h81aa574_1",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/fontconfig-2.18.3-h81aa574_1.conda",
+        "sha256": "004570d35fb0eff73ce3ae49b209a47622d0c2e580dd0dc4c61d59626b386a09"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/fontconfig-feedstock",
+        "commit": "7f94a24652814e2985044aeae8b2966fae633035"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://gitlab.freedesktop.org/api/v4/projects/890/packages/generic/fontconfig/2.18.3/fontconfig-2.18.3.tar.xz"
+          ],
+          "sha256": [
+            "4f7b554a38cdf78c033f666c8871f3749e14a094f65a07f630c91ed0b43d35e3"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "fribidi-1.0.17-hb001647_0",
+      "name": "fribidi",
+      "version": "1.0.17",
+      "build": "hb001647_0",
+      "license_declared": "LGPL-2.1-or-later",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/fribidi-1.0.17-hb001647_0.conda",
+        "sha256": "803e78ec4a832a646dae842f09de0bc04acd2613deafa9b11d1970399d24d163"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/fribidi-feedstock",
+        "commit": "f0153760c34a31830b8f7c29647a262daae058bc"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/fribidi/fribidi/releases/download/v1.0.17/fribidi-1.0.17.tar.xz"
+          ],
+          "sha256": [
+            "6949dcde27d41cebad1fd741fcafc36d55a1020d2d872d4a6eb3914caabbada2"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "gdk-pixbuf-2.44.8-h5867e2c_2",
+      "name": "gdk-pixbuf",
+      "version": "2.44.8",
+      "build": "h5867e2c_2",
+      "license_declared": "LGPL-2.1-or-later",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/gdk-pixbuf-2.44.8-h5867e2c_2.conda",
+        "sha256": "96dcac22eaea2f24b9c92e8be078c3e39058829aa4db2a8103c1a4e85f8925ed"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/gdk-pixbuf-feedstock",
+        "commit": "298cae6c841f515bee104df16b112d5cf713c087"
+      },
+      "sources": [
+        {
+          "urls": [
+            "http://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/2.44/gdk-pixbuf-2.44.8.tar.xz"
+          ],
+          "sha256": [
+            "919f529512961a12e81cd4b4b466a48c3933469e7f9a310c6513cd4fb252ba3c"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "gflags-2.3.1-h784d473_0",
+      "name": "gflags",
+      "version": "2.3.1",
+      "build": "h784d473_0",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/gflags-2.3.1-h784d473_0.conda",
+        "sha256": "3028f8f857d438444d3fb56c9c74d46699cb04e676c6575747cf3ad8d9a308b1"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/gflags-feedstock",
+        "commit": "148f94ef7c53936afca7b072f72f9bbc16faf472"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/gflags/gflags/archive/v2.3.1.tar.gz"
+          ],
+          "sha256": [
+            "1b5e0648d7b94021895086e65479b4eaca7935eecfffd7dd9512eb576181c53d"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "giflib-6.1.3-h74c22ad_2",
+      "name": "giflib",
+      "version": "6.1.3",
+      "build": "h74c22ad_2",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/giflib-6.1.3-h74c22ad_2.conda",
+        "sha256": "36a1605ea258ea805fd5a0f23f07ce3febcf4ac041d1ea99d0b31902b79f4358"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/giflib-feedstock",
+        "commit": "00b90daa45b74b49a9fc221dca24778d680997e0"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://downloads.sourceforge.net/project/giflib/giflib-6.x/giflib-6.1.3.tar.gz"
+          ],
+          "sha256": [
+            "b65b66b99f0424b93525f987386f22fc5efb9da2bfc92ad4a532249aaffbab0e"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "glog-0.7.1-h6f9ecc1_1",
+      "name": "glog",
+      "version": "0.7.1",
+      "build": "h6f9ecc1_1",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/glog-0.7.1-h6f9ecc1_1.conda",
+        "sha256": "1ac5991fd354de81baf3892fee0ad09438623698fcad73758521dfe90711ed44"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/glog-feedstock",
+        "commit": "373cc955de3073f9c63207cc7bfd60efeb9f8fd9"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/google/glog/archive/v0.7.1.tar.gz"
+          ],
+          "sha256": [
+            "00e4a87e87b7e7612f519a41e491f16623b12423620006f59f5688bfd8d13b08"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "gmp-6.3.0-hf5e55b1_3",
+      "name": "gmp",
+      "version": "6.3.0",
+      "build": "hf5e55b1_3",
+      "license_declared": "GPL-2.0-or-later OR LGPL-3.0-or-later",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/gmp-6.3.0-hf5e55b1_3.conda",
+        "sha256": "980cb1bbc3656d6f923d44297a2c4ab75f20482b8930c70537fd7f1ef2378894"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/gmp-feedstock",
+        "commit": "c86b1cfc044553f036a9ff87ff197a17052889ad"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz",
+            "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz"
+          ],
+          "sha256": [
+            "a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "graphite2-1.3.15-h784d473_1",
+      "name": "graphite2",
+      "version": "1.3.15",
+      "build": "h784d473_1",
+      "license_declared": "LGPL-2.0-or-later",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/graphite2-1.3.15-h784d473_1.conda",
+        "sha256": "471f34a187fdb4f2df33e26f2e471b16c239a5b277903f643d9c3a8c9a9f44ec"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/graphite2-feedstock",
+        "commit": "ba0a8e0362b411f2fa172e105d805270ac086509"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/silnrsi/graphite/releases/download/1.3.15/graphite2-1.3.15.tgz"
+          ],
+          "sha256": [
+            "c6bc8b4252724665297f7cad0c55897285c673f9b8e6db3522ace833593fe0b1"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "icu-78.3-py310h579977c_2",
+      "name": "icu",
+      "version": "78.3",
+      "build": "py310h579977c_2",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/icu-78.3-py310h579977c_2.conda",
+        "sha256": "6cdb5dee54c72e56ab189fb3ad33cb28533553d42590e7e831160248f4416a43"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/icu-feedstock",
+        "commit": "72c98272513977fda6ffa2dd7a4e6f67a77976c9"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/unicode-org/icu/releases/download/release-78.3/icu4c-78.3-sources.tgz"
+          ],
+          "sha256": [
+            "3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0"
+          ],
+          "patches": [
+            "mach-port-t.patch"
+          ]
+        },
+        {
+          "urls": [
+            "https://github.com/unicode-org/icu/releases/download/release-78.3/icu4c-78.3-data.zip"
+          ],
+          "sha256": [
+            "9d8b3899096aeb83e4e21ef8a40fec9e03b28db18c48452efac882ce25a91e27"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "imath-3.2.3-h83d81d2_1",
+      "name": "imath",
+      "version": "3.2.3",
+      "build": "h83d81d2_1",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/imath-3.2.3-h83d81d2_1.conda",
+        "sha256": "ee996315909ab9eff406db69c68edcfbb6bb33e50e286bee50f3f3f946c79bb0"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/imath-feedstock",
+        "commit": "5dae78dbf9f8cfe03e4903fa54349a97b016bad8"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/AcademySoftwareFoundation/Imath/archive/v3.2.3.tar.gz"
+          ],
+          "sha256": [
+            "e10c12b3f21f45bf08e09d4215d9c7691368d747beebd840de0b6fefed2df9f8"
+          ],
+          "patches": [
+            "macos-portability.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "krb5-1.22.2-h34f8a20_2",
+      "name": "krb5",
+      "version": "1.22.2",
+      "build": "h34f8a20_2",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/krb5-1.22.2-h34f8a20_2.conda",
+        "sha256": "aaea1d42b07769920db2af7471ece9399d2613448863da64ad8272998db5db34"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/krb5-feedstock",
+        "commit": "39e6b3c27e0762e320d9518e069c3df9f26b5bf9"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/krb5/krb5/archive/krb5-1.22.2-final.tar.gz"
+          ],
+          "sha256": [
+            "289f5bb81d1f2f8d5eecebe56a056aeed95d35fd9bb4a7071c5dd7ad4b3fe888"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "lame-4.0-hef9b5c2_1",
+      "name": "lame",
+      "version": "4.0",
+      "build": "hef9b5c2_1",
+      "license_declared": "LGPL-2.0-only",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/lame-4.0-hef9b5c2_1.conda",
+        "sha256": "98b9195b315777c9cf1d785b5d43f223bafadbb2c5467116d688bd96305fa353"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/lame-feedstock",
+        "commit": "99f0db95ef708de39d246a738195c6722b981621"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://downloads.sourceforge.net/sourceforge/lame/lame-4.0.tar.gz"
+          ],
+          "sha256": [
+            "3df5124d5ad3a98312ffd7ba6a9b36230e4f8a3e66d3ce0f425e336c32d216eb"
+          ],
+          "patches": [
+            "fix_id3tag_ucs2_decls.patch",
+            "fix_id3tag_utf8_casts.patch",
+            "fix_id3v2tag_utf8_frontend.patch",
+            "fix_missing_locale_include.patch",
+            "fixup_windows_build.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lcms2-2.19.1-hce41798_3",
+      "name": "lcms2",
+      "version": "2.19.1",
+      "build": "hce41798_3",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/lcms2-2.19.1-hce41798_3.conda",
+        "sha256": "5f9b511f918e13dfddb8495c1764aec894b66c5a88359737aa302b8899ae25fa"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/lcms2-feedstock",
+        "commit": "3cefa7a569e5d8918e253214097b6c4fdef2eef0"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/mm2/Little-CMS/releases/download/lcms2.19.1/lcms2-2.19.1.tar.gz"
+          ],
+          "sha256": [
+            "bfc54f7bab59fbc921012014a8032e4cba4abd46db47d46b76416a8c0b2815c8"
+          ],
+          "patches": [
+            "lcms-sln-winarm64.patch",
+            "win_jpegturbo.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lerc-4.2.0-h1eee2c3_0",
+      "name": "lerc",
+      "version": "4.2.0",
+      "build": "h1eee2c3_0",
+      "license_declared": "Apache-2.0",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/lerc-4.2.0-h1eee2c3_0.conda",
+        "sha256": "c97aa17d16d2ac332ba9f184e82ce8f72dcb10e9a10c5f299030be2d44e191b9"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/lerc-feedstock",
+        "commit": "11a9b9cedb32ef23cd0dc48743e0a354fc4f7342"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/Esri/lerc/archive/v4.2.0.tar.gz"
+          ],
+          "sha256": [
+            "a1fb593ed1fcb5b38800caf3c4454f872745202e961d00d745e53d81447e17c9"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libamd-3.3.3-h5087772_7100102",
+      "name": "libamd",
+      "version": "3.3.3",
+      "build": "h5087772_7100102",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libamd-3.3.3-h5087772_7100102.conda",
+        "sha256": "69b5340e7abace13f31f3d9df024ed554d99a250a179d480976fc9682bf7d46e"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/suitesparse-feedstock",
+        "commit": "5ecf05db9901a3153f044ccf695a150089c34a1e"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/v7.10.1.tar.gz"
+          ],
+          "sha256": [
+            "9e2974e22dba26a3cffe269731339ae8e01365cfe921b06be6359902bd05862c"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libboost-1.90.0-h30c325d_3",
+      "name": "libboost",
+      "version": "1.90.0",
+      "build": "h30c325d_3",
+      "license_declared": "BSL-1.0",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libboost-1.90.0-h30c325d_3.conda",
+        "sha256": "86540e41f1005a45301003ccca159d4c97f9347a514406c6abecd049bdb8b2cd"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/boost-feedstock",
+        "commit": "72db56d7fcc23c2477b9248567e9a690c43d1d9d"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://archives.boost.io/release/1.90.0/source/boost_1_90_0.tar.bz2"
+          ],
+          "sha256": [
+            "49551aff3b22cbc5c5a9ed3dbc92f0e23ea50a0f7325b0d198b705e8ee3fc305"
+          ],
+          "patches": [
+            "patches/0001-Add-default-value-for-cxx-and-cxxflags-options-for-t.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "libboost-headers-1.90.0-h707e725_3",
+      "name": "libboost-headers",
+      "version": "1.90.0",
+      "build": "h707e725_3",
+      "license_declared": "BSL-1.0",
+      "linkage": "header-only",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/noarch/libboost-headers-1.90.0-h707e725_3.conda",
+        "sha256": "ca00a55588bd34d7cb8b5ffa9ad535bf3a1e16a88fea6b5fb98a22e76e69b673"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/boost-feedstock",
+        "commit": "72db56d7fcc23c2477b9248567e9a690c43d1d9d"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://archives.boost.io/release/1.90.0/source/boost_1_90_0.tar.bz2"
+          ],
+          "sha256": [
+            "49551aff3b22cbc5c5a9ed3dbc92f0e23ea50a0f7325b0d198b705e8ee3fc305"
+          ],
+          "patches": [
+            "patches/0001-Add-default-value-for-cxx-and-cxxflags-options-for-t.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "libbrotlicommon-1.2.1-h1dcdb26_0",
+      "name": "libbrotlicommon",
+      "version": "1.2.1",
+      "build": "h1dcdb26_0",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libbrotlicommon-1.2.1-h1dcdb26_0.conda",
+        "sha256": "4ee2413810c5ef07e29a4c2a39d11f08f27d17ecee3577541e4dad06f635b375"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/brotli-feedstock",
+        "commit": "1d1a72cf503c033e0c30ceb58b91f01e0098d274"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/google/brotli/archive/v1.2.1.tar.gz"
+          ],
+          "sha256": [
+            "98d35d11a78dc453aebb7d10c3748f3f73ff78c8267c0dc697b8631f67bf7e8f"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libbrotlidec-1.2.1-h5295a6a_0",
+      "name": "libbrotlidec",
+      "version": "1.2.1",
+      "build": "h5295a6a_0",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libbrotlidec-1.2.1-h5295a6a_0.conda",
+        "sha256": "d77356267bf34639265ec79b217efe0b32fc2e91f4ca7a04263a5169cb156458"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/brotli-feedstock",
+        "commit": "1d1a72cf503c033e0c30ceb58b91f01e0098d274"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/google/brotli/archive/v1.2.1.tar.gz"
+          ],
+          "sha256": [
+            "98d35d11a78dc453aebb7d10c3748f3f73ff78c8267c0dc697b8631f67bf7e8f"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libbrotlienc-1.2.1-h2ddc9cb_0",
+      "name": "libbrotlienc",
+      "version": "1.2.1",
+      "build": "h2ddc9cb_0",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libbrotlienc-1.2.1-h2ddc9cb_0.conda",
+        "sha256": "5572a16f08a527f7b952d125be3c3215b4b0a1c8163efcb6fd052c8895fcc8ee"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/brotli-feedstock",
+        "commit": "1d1a72cf503c033e0c30ceb58b91f01e0098d274"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/google/brotli/archive/v1.2.1.tar.gz"
+          ],
+          "sha256": [
+            "98d35d11a78dc453aebb7d10c3748f3f73ff78c8267c0dc697b8631f67bf7e8f"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libcamd-3.3.3-h99b4a89_7100102",
+      "name": "libcamd",
+      "version": "3.3.3",
+      "build": "h99b4a89_7100102",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libcamd-3.3.3-h99b4a89_7100102.conda",
+        "sha256": "7ee0d0881bde6702b662fdaea2d7ca2dd455b37cc413ba466075d7fc3186094d"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/suitesparse-feedstock",
+        "commit": "5ecf05db9901a3153f044ccf695a150089c34a1e"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/v7.10.1.tar.gz"
+          ],
+          "sha256": [
+            "9e2974e22dba26a3cffe269731339ae8e01365cfe921b06be6359902bd05862c"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libccolamd-3.3.4-h99b4a89_7100102",
+      "name": "libccolamd",
+      "version": "3.3.4",
+      "build": "h99b4a89_7100102",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libccolamd-3.3.4-h99b4a89_7100102.conda",
+        "sha256": "c2adccb535216828b036311da2e5ff67210cbd796c5c008c8c0aff8225b33adf"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/suitesparse-feedstock",
+        "commit": "5ecf05db9901a3153f044ccf695a150089c34a1e"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/v7.10.1.tar.gz"
+          ],
+          "sha256": [
+            "9e2974e22dba26a3cffe269731339ae8e01365cfe921b06be6359902bd05862c"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libcholmod-5.3.1-hbba04d7_7100102",
+      "name": "libcholmod",
+      "version": "5.3.1",
+      "build": "hbba04d7_7100102",
+      "license_declared": "LGPL-2.1-or-later AND GPL-2.0-or-later AND Apache-2.0",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libcholmod-5.3.1-hbba04d7_7100102.conda",
+        "sha256": "d031714d1c5c29461113b732a9788579f6c8b466cf44580fdd350e585c246b40"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/suitesparse-feedstock",
+        "commit": "5ecf05db9901a3153f044ccf695a150089c34a1e"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/v7.10.1.tar.gz"
+          ],
+          "sha256": [
+            "9e2974e22dba26a3cffe269731339ae8e01365cfe921b06be6359902bd05862c"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libcolamd-3.3.4-h99b4a89_7100102",
+      "name": "libcolamd",
+      "version": "3.3.4",
+      "build": "h99b4a89_7100102",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libcolamd-3.3.4-h99b4a89_7100102.conda",
+        "sha256": "3c4467faf60994dd095a66ba5a4508b9d610487ed89458084d87ad3e4b0fe53f"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/suitesparse-feedstock",
+        "commit": "5ecf05db9901a3153f044ccf695a150089c34a1e"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/v7.10.1.tar.gz"
+          ],
+          "sha256": [
+            "9e2974e22dba26a3cffe269731339ae8e01365cfe921b06be6359902bd05862c"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libcurl-8.23.0-h6651222_0",
+      "name": "libcurl",
+      "version": "8.23.0",
+      "build": "h6651222_0",
+      "license_declared": "curl",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libcurl-8.23.0-h6651222_0.conda",
+        "sha256": "d9f60525b665e50da15c84fcb4e74e6b1f0a56ea4c89a02d4258f23c3fe1f02c"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/curl-feedstock",
+        "commit": "d770c46d773d7e2c81555d606720c3d6435b216f"
+      },
+      "sources": [
+        {
+          "urls": [
+            "http://curl.haxx.se/download/curl-8.23.0.tar.bz2"
+          ],
+          "sha256": [
+            "95b22eb32bf6d1fa6e3e9463bdb61cece3efc56d86576a9b3cbd428246a6d854"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libcxx-23.1.4-h55c6f16_2",
+      "name": "libcxx",
+      "version": "23.1.4",
+      "build": "h55c6f16_2",
+      "license_declared": "Apache-2.0 WITH LLVM-exception",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libcxx-23.1.4-h55c6f16_2.conda",
+        "sha256": "9c390b4f403db32346754ccef6b84b7e5d9b70cb6d76258fd23b05f2db2ab216"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libcxx-feedstock",
+        "commit": "f1a6ecf281e73a53a1aa00a94e10b453831a6860"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/llvm/llvm-project/archive/refs/tags/llvmorg-23.1.4.tar.gz"
+          ],
+          "sha256": [
+            "3e1c70b30f623976c2046d94b8eeab6cac536f107914cb4ed7bac572a03131db"
+          ],
+          "patches": [
+            "patches/0002-custom-error-message-for-old-sdk.patch",
+            "patches/0003-disable-_LIBCPP_AVAILABILITY_HAS_INIT_PRIMARY_EXCEPT.patch",
+            "patches/0004-Work-around-stray-nostdlib-flags-causing-errors-with.patch",
+            "patches/0005-patch-__libcpp_tzdb_directory-to-allow-use-on-osx.patch",
+            "patches/0006-make-headers-platform-neutral-for-conda-forge.patch",
+            "patches/0007-Fix-compiling-with-gcc.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "libdav1d7-1.5.4-h74c22ad_4",
+      "name": "libdav1d7",
+      "version": "1.5.4",
+      "build": "h74c22ad_4",
+      "license_declared": "BSD-2-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libdav1d7-1.5.4-h74c22ad_4.conda",
+        "sha256": "aaa2ef49ed328fba9520cbf2fdadf46fa7487ce38f7bf969625530eff58161ed"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/dav1d-feedstock",
+        "commit": "815cce38502c61a168b53a64a056bd7af6c74430"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://code.videolan.org/videolan/dav1d/-/archive/1.5.4/dav1d-1.5.4.tar.gz"
+          ],
+          "sha256": [
+            "a1d5b63d2d38ec9bd03acf643caa51fa22edd1e89c5a109c4807717216bbec07"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libde265-1.1.3-hfbe1efa_1",
+      "name": "libde265",
+      "version": "1.1.3",
+      "build": "hfbe1efa_1",
+      "license_declared": "LGPL-3.0-or-later",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libde265-1.1.3-hfbe1efa_1.conda",
+        "sha256": "789c0028997f73bf3ac74f3ec22c41fff261dcc7620f0027137dd8e34c7f8f46"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libde265-feedstock",
+        "commit": "d1a050c2150adec15b8f8e013227e37f692bf8c9"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/strukturag/libde265/releases/download/v1.1.3/libde265-1.1.3.tar.gz"
+          ],
+          "sha256": [
+            "554228bd17788c99a7e63b37ab5634722190e6e2bf60c1dcb01cef328e133905"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libdeflate-1.25-he7e0567_1",
+      "name": "libdeflate",
+      "version": "1.25",
+      "build": "he7e0567_1",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libdeflate-1.25-he7e0567_1.conda",
+        "sha256": "d896f4aa4ce4c590c2838678cb1917356fdb461d2a189991c0280c818c362172"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libdeflate-feedstock",
+        "commit": "995dda5e8253e79324b87cb9b2fcf8cd40357ed2"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/ebiggers/libdeflate/archive/v1.25.tar.gz"
+          ],
+          "sha256": [
+            "d11473c1ad4c57d874695e8026865e38b47116bbcb872bfc622ec8f37a86017d"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libexpat-2.8.5-h6111c0a_0",
+      "name": "libexpat",
+      "version": "2.8.5",
+      "build": "h6111c0a_0",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libexpat-2.8.5-h6111c0a_0.conda",
+        "sha256": "50aa761b83fc7a116ca88fe0cb4cefce5abababb10a926bf8afbafd5c298d102"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/expat-feedstock",
+        "commit": "9bed6b038b32ec3f0d9cd7f55d4483911a0451c4"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/libexpat/libexpat/releases/download/R_2_8_5/expat-2.8.5.tar.xz"
+          ],
+          "sha256": [
+            "1e727b8933ec51a77a9a9d9afcf8e688bce45d907c13e36ab7393fe36e703182"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libffi-3.7.0-h47dc5ef_1",
+      "name": "libffi",
+      "version": "3.7.0",
+      "build": "h47dc5ef_1",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libffi-3.7.0-h47dc5ef_1.conda",
+        "sha256": "2783389a7b9dda04c62cc54c6bbeb03dd3cef24b3fc642715d02a3fa19464a9a"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libffi-feedstock",
+        "commit": "dc557589925d228815625e735ff1e63236d5fcd7"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/libffi/libffi/releases/download/v3.7.0/libffi-3.7.0.tar.gz"
+          ],
+          "sha256": [
+            "2255c5a638dfb51bf67c20a12a7bb70d17feb1e9eababac05f5573146f586436"
+          ],
+          "patches": [
+            "0001-arm64-use-a-dedicated-dylib-for-trampolines-so-it-ca.patch",
+            "0002-Add-support-for-ffi_find_closure_for_code_np-on-Appl.patch",
+            "0003-define-extend_hfa_type-with-inline-assembly-for-clan.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "libfreetype6-2.14.3-h2ed5691_2",
+      "name": "libfreetype6",
+      "version": "2.14.3",
+      "build": "h2ed5691_2",
+      "license_declared": "GPL-2.0-only OR FTL",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libfreetype6-2.14.3-h2ed5691_2.conda",
+        "sha256": "d9b203d6484ad491b5b5f33d49a9d7a91189d776a9adae53d2b63af18ec11e6a"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/freetype-feedstock",
+        "commit": "3520c4122afde3a5c30609f035de7cc4f501c069"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.gz"
+          ],
+          "sha256": [
+            "e61b31ab26358b946e767ed7eb7f4bb2e507da1cfefeb7a8861ace7fd5c899a1"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libgcc-16.2.0-h3cf6597_7",
+      "name": "libgcc",
+      "version": "16.2.0",
+      "build": "h3cf6597_7",
+      "license_declared": "GPL-3.0-only WITH GCC-exception-3.1",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libgcc-16.2.0-h3cf6597_7.conda",
+        "sha256": "deacf62bd6cbbe05eb085dd69a2ca120053597c37066d53c8f7cf6815f26e9eb"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/ctng-compilers-feedstock",
+        "commit": "9130f5e7a99ff6de8041ce7b9542d5454e863689"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://ftp.gnu.org/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.gz",
+            "https://mirrors.ocf.berkeley.edu/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.gz"
+          ],
+          "sha256": [
+            "071d00a097579e5ef7ce97fc4a9e58e73fd3503c0a013c765c970370a5a53b9b"
+          ],
+          "patches": [
+            "patches/0001-allow-commands-in-main-specfile.patch",
+            "patches/0002-patch-zoneinfo_dir_override-to-point-to-our-tzdata.patch",
+            "patches/macos/0002-Make-stdlib-libc-the-default-for-macos-platforms.patch",
+            "patches/macos/0003-Find-macos-sysroot-by-calling-xcrun.patch",
+            "patches/macos/0004-fix-malloc-error.patch",
+            "patches/macos/gcc-16.2.0.diff"
+          ]
+        },
+        {
+          "urls": [
+            "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz"
+          ],
+          "sha256": [
+            "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libgfortran5-16.2.0-hdb7a957_7",
+      "name": "libgfortran5",
+      "version": "16.2.0",
+      "build": "hdb7a957_7",
+      "license_declared": "GPL-3.0-only WITH GCC-exception-3.1",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libgfortran5-16.2.0-hdb7a957_7.conda",
+        "sha256": "19297e5cf39de976cdd1a46499a4e15fdf54d249d3231f3b2a9d43af3be0bc66"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/ctng-compilers-feedstock",
+        "commit": "9130f5e7a99ff6de8041ce7b9542d5454e863689"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://ftp.gnu.org/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.gz",
+            "https://mirrors.ocf.berkeley.edu/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.gz"
+          ],
+          "sha256": [
+            "071d00a097579e5ef7ce97fc4a9e58e73fd3503c0a013c765c970370a5a53b9b"
+          ],
+          "patches": [
+            "patches/0001-allow-commands-in-main-specfile.patch",
+            "patches/0002-patch-zoneinfo_dir_override-to-point-to-our-tzdata.patch",
+            "patches/macos/0002-Make-stdlib-libc-the-default-for-macos-platforms.patch",
+            "patches/macos/0003-Find-macos-sysroot-by-calling-xcrun.patch",
+            "patches/macos/0004-fix-malloc-error.patch",
+            "patches/macos/gcc-16.2.0.diff"
+          ]
+        },
+        {
+          "urls": [
+            "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz"
+          ],
+          "sha256": [
+            "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libglib-2.90.0-hccd281b_0",
+      "name": "libglib",
+      "version": "2.90.0",
+      "build": "hccd281b_0",
+      "license_declared": "LGPL-2.1-or-later",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libglib-2.90.0-hccd281b_0.conda",
+        "sha256": "4ec64c476881b31f211842952f192208a3af0925a596da227f4d97fb9a63e0ac"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/glib-feedstock",
+        "commit": "680d46a6d7a6dae4cb68234c72067a9d20313633"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://download.gnome.org/sources/glib/2.90/glib-2.90.0.tar.xz"
+          ],
+          "sha256": [
+            "17d15cac2af80a33271127408e0abc2748eb297c595c2a26409e81e14e7d1b8f"
+          ],
+          "patches": [
+            "patches/0001-Remove-hard-coded-paths.patch",
+            "patches/0002-crossplatform-test-tweaks.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "libharfbuzz-15.0.0-hcda0f7c_0",
+      "name": "libharfbuzz",
+      "version": "15.0.0",
+      "build": "hcda0f7c_0",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libharfbuzz-15.0.0-hcda0f7c_0.conda",
+        "sha256": "1cf7900cfd17b60a8e3f76a31ca95140deca4781899e290b499b6caad82058b2"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/harfbuzz-feedstock",
+        "commit": "b7092947e2f9c36e4c23d1ea9bbce9de3712eb9c"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/harfbuzz/harfbuzz/archive/15.0.0.tar.gz"
+          ],
+          "sha256": [
+            "fe4b8bad7afbbae75d61b2095c267c98f4ed04fe4a117680130ed253d2732efe"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libheif-1.23.6-gpl_hea44f65_101",
+      "name": "libheif",
+      "version": "1.23.6",
+      "build": "gpl_hea44f65_101",
+      "license_declared": "LGPL-3.0-or-later",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libheif-1.23.6-gpl_hea44f65_101.conda",
+        "sha256": "70a02b4be722dfbe2501bb09254e2530f4f284c2df192879a41436057e736caa"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libheif-feedstock",
+        "commit": "a10b3064286703b8a9a786a9aab583e8a30fc86c"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/strukturag/libheif/releases/download/v1.23.6/libheif-1.23.6.tar.gz"
+          ],
+          "sha256": [
+            "4484346dc5995319dbc11e3a1c35d0a2ec46511ce370900869337fd2c7033125"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libhwy-1.4.0-hd2bdd19_2",
+      "name": "libhwy",
+      "version": "1.4.0",
+      "build": "hd2bdd19_2",
+      "license_declared": "Apache-2.0 OR BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libhwy-1.4.0-hd2bdd19_2.conda",
+        "sha256": "117e856df7fcce374f1a8721fca521e759cd861010047fc5e277f8af13f448f8"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libhwy-feedstock",
+        "commit": "93e7c60279fe99082fd01e2eaa94679ccfec7c6b"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/google/highway/archive/refs/tags/1.4.0.tar.gz"
+          ],
+          "sha256": [
+            "e72241ac9524bb653ae52ced768b508045d4438726a303f10181a38f764a453c"
+          ],
+          "patches": [
+            "0001-add-missing-stats-to-cmake.patch",
+            "0002-add-missing-dllexport-to-stats.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "libiconv-1.18-he4c29f2_3",
+      "name": "libiconv",
+      "version": "1.18",
+      "build": "he4c29f2_3",
+      "license_declared": "LGPL-2.1-only",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libiconv-1.18-he4c29f2_3.conda",
+        "sha256": "689a14968267f2f97c07112fca5636e7d756036b9aee969911267c20bd3eea1f"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libiconv-feedstock",
+        "commit": "c7fdcb1b68d6579a08d0c5dc5f34cbbf38780538"
+      },
+      "sources": [
+        {
+          "urls": [
+            "http://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.18.tar.gz"
+          ],
+          "sha256": [
+            "3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8"
+          ],
+          "patches": [
+            "utf_8_mac.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "libintl-0.25.1-hae62183_2",
+      "name": "libintl",
+      "version": "0.25.1",
+      "build": "hae62183_2",
+      "license_declared": "LGPL-2.1-or-later",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libintl-0.25.1-hae62183_2.conda",
+        "sha256": "b43c6645e668f86d04d5c06d6dc17efe921bbd9244be4b77946d56fb950a3fcc"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/gettext-feedstock",
+        "commit": "19edcefc1ebbaa06c80f9af85d8f0d32ad5d8d40"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://ftp.gnu.org/pub/gnu/gettext/gettext-0.25.1.tar.xz"
+          ],
+          "sha256": [
+            "2c8294be238f03fb3fa65b8051057e5b68167f3e21f08008070cf40a7051ba22"
+          ],
+          "patches": [
+            "0009-string-h-dont-redeclare-macro-functions.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "libjpeg-turbo-3.2.0-h84a0fba_1",
+      "name": "libjpeg-turbo",
+      "version": "3.2.0",
+      "build": "h84a0fba_1",
+      "license_declared": "IJG AND BSD-3-Clause AND Zlib",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libjpeg-turbo-3.2.0-h84a0fba_1.conda",
+        "sha256": "05006418f9392c9b723e8428808db106de0350a497832f95f921b85ff1072310"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libjpeg-turbo-feedstock",
+        "commit": "cc922f6dba346613d6c2820d58011f1c6c175e7d"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/3.2.0.tar.gz"
+          ],
+          "sha256": [
+            "980dd81f425082aa6d7c9e47fef27554ce7a9ffc8e2f6e863b97d263c5c50858"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libjxl-0.12.0-hb71b141_4",
+      "name": "libjxl",
+      "version": "0.12.0",
+      "build": "hb71b141_4",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libjxl-0.12.0-hb71b141_4.conda",
+        "sha256": "77fa5ba83bdbad2fa14e62a1bcaa82529af58f8728111dd38df5df61fbaff5c0"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libjxl-split-feedstock",
+        "commit": "a308dccbc16355d0844eebd3e4a08d76e3686560"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/libjxl/libjxl/archive/v0.12.0.tar.gz"
+          ],
+          "sha256": [
+            "03e9be69a30be4011f559da75328b6d7cea8ad921fabfbd551ce10bf45cdc992"
+          ],
+          "patches": [
+            "patches/0002-BACKPORT_FIX_LM_PKGCONFIG_LIBJXL_CMAKE.patch",
+            "patches/0003-FIX_LM_PKGCONFIG_LIBJXL_CMS_CMAKE.patch",
+            "patches/0004-FIX_LM_PKGCONFIG_LIBJXL_THREADS_CMAKE.patch"
+          ]
+        },
+        {
+          "urls": [
+            "https://github.com/google/skcms/archive/96d9171c94b937a1b5f0293de7309ac16311b722.tar.gz"
+          ],
+          "sha256": [
+            "9bb4b5bba0b7c04f6c2bce9ff713d61e23c9a20c4945161ae16290498ad74627"
+          ],
+          "patches": []
+        },
+        {
+          "urls": [
+            "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/8ecba3647edb6dd940463fedf38ca33a8e2a73d1.tar.gz"
+          ],
+          "sha256": [
+            "ed729127097af5000bfeddc6b3e679c4363bb1618ebfc07efb6b47f576471b4b"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "liblzma-5.8.3-h8088a28_1",
+      "name": "liblzma",
+      "version": "5.8.3",
+      "build": "h8088a28_1",
+      "license_declared": "0BSD",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/liblzma-5.8.3-h8088a28_1.conda",
+        "sha256": "23d0630046a3e8b164d8f80f2b74ed2605af2e7050ab9913018056402fae4311"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/xz-feedstock",
+        "commit": "bc37fbf54469221332fc589c1404294a159f403b"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/tukaani-project/xz/releases/download/v5.8.3/xz-5.8.3.tar.gz"
+          ],
+          "sha256": [
+            "3d3a1b973af218114f4f889bbaa2f4c037deaae0c8e815eec381c3d546b974a0"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libnghttp2-1.68.1-h435687b_1",
+      "name": "libnghttp2",
+      "version": "1.68.1",
+      "build": "h435687b_1",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libnghttp2-1.68.1-h435687b_1.conda",
+        "sha256": "445440d8cccccb6585f71d1eb7c949d64a2af2ced5481d924621424ff3b6a398"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/nghttp2-feedstock",
+        "commit": "e15954f89745f04fde47402004f074c7e62fe28b"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/nghttp2/nghttp2/releases/download/v1.68.1/nghttp2-1.68.1.tar.gz"
+          ],
+          "sha256": [
+            "ceb434c1f9dfe2a9d305b6b797786fb9227484dfa88508d14ca1c50263db55d3"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libogg-1.3.5-h48c0fde_1",
+      "name": "libogg",
+      "version": "1.3.5",
+      "build": "h48c0fde_1",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libogg-1.3.5-h48c0fde_1.conda",
+        "sha256": "28bd1fe20fe43da105da41b95ac201e95a1616126f287985df8e86ddebd1c3d8"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libogg-feedstock",
+        "commit": "4a6aab548cb18cf824ba1919d648f13a806299ab"
+      },
+      "sources": [
+        {
+          "urls": [
+            "http://downloads.xiph.org/releases/ogg/libogg-1.3.5.tar.gz"
+          ],
+          "sha256": [
+            "0eb4b4b9420a0f51db142ba3f9c64b333f826532dc0f48c6410ae51f4799b664"
+          ],
+          "patches": [
+            "001-fix-win32-export-symbols.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "libopenblas-0.3.34-openmp_h5e6e99c_1",
+      "name": "libopenblas",
+      "version": "0.3.34",
+      "build": "openmp_h5e6e99c_1",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libopenblas-0.3.34-openmp_h5e6e99c_1.conda",
+        "sha256": "18f167fdaa26f67a123c59766f4730b41866d2c0920b5c29d74a93d3a2e92a96"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/openblas-feedstock",
+        "commit": "4f31e607f19fe27e44310d3daba12974d477f848"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/OpenMathLib/OpenBLAS/archive/v0.3.34.tar.gz"
+          ],
+          "sha256": [
+            "cd7e129868320cc2d033afa920e31202dfe0b8066a5b66661900ccc0f197dfed"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libopencolorio-2.6.0-h42b0b0b_7",
+      "name": "libopencolorio",
+      "version": "2.6.0",
+      "build": "h42b0b0b_7",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libopencolorio-2.6.0-h42b0b0b_7.conda",
+        "sha256": "e5e8e05ac1ec5f4fce190f2dda4818ce05e659d8ef0c76e3b9c2025fb9e374bd"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/openimageio-feedstock",
+        "commit": "d3bf6e40c0dfdf78e346defdc7dc6fabc187715f"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/AcademySoftwareFoundation/OpenImageIO/releases/download/v3.2.1.1/OpenImageIO-3.2.1.1.tar.gz"
+          ],
+          "sha256": [
+            "518dd997d457fa198cd4aa51a0ccf2b79a45176cf2522fe3d7392580dcb7ae11"
+          ],
+          "patches": [
+            "patches/0004-AVOID_OIIO_CORE_REBUILD_FOR_PYTHON.patch"
+          ]
+        },
+        {
+          "urls": [
+            "https://github.com/AcademySoftwareFoundation/OpenColorIO/releases/download/v2.6.0/OpenColorIO-2.6.0.tar.gz"
+          ],
+          "sha256": [
+            "9271f4cb7751b465daf0e178323aef3f3fdf7595908ee4bb6442cceb73a24296"
+          ],
+          "patches": [
+            "patches/0001-FIX_WIN_NINJA_PYTHON_ENV.patch",
+            "patches/0002-CF_SKIP_UNUSED_DOC_DEPS.patch",
+            "patches/0003-FIX_WIN_DOCSTRING_COMMANDS.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "libopenimageio-3.2.1.2-hb8a7d7e_1",
+      "name": "libopenimageio",
+      "version": "3.2.1.2",
+      "build": "hb8a7d7e_1",
+      "license_declared": "Apache-2.0",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libopenimageio-3.2.1.2-hb8a7d7e_1.conda",
+        "sha256": "adc4b19c26bfcaa15655840e2d9f54f703932c172a25729aa8f1b669cf6010fd"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/openimageio-feedstock",
+        "commit": "f97e6f67b78c573d889817f313a42d07c31896cf"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/AcademySoftwareFoundation/OpenImageIO/releases/download/v3.2.1.2/OpenImageIO-3.2.1.2.tar.gz"
+          ],
+          "sha256": [
+            "d447c2f1e889e92c5b7952e7b24807e756105869e60bee2d67fc7cb0a17fb0fe"
+          ],
+          "patches": [
+            "patches/0004-AVOID_OIIO_CORE_REBUILD_FOR_PYTHON.patch"
+          ]
+        },
+        {
+          "urls": [
+            "https://github.com/AcademySoftwareFoundation/OpenColorIO/releases/download/v2.6.0/OpenColorIO-2.6.0.tar.gz"
+          ],
+          "sha256": [
+            "9271f4cb7751b465daf0e178323aef3f3fdf7595908ee4bb6442cceb73a24296"
+          ],
+          "patches": [
+            "patches/0001-FIX_WIN_NINJA_PYTHON_ENV.patch",
+            "patches/0002-CF_SKIP_UNUSED_DOC_DEPS.patch",
+            "patches/0003-FIX_WIN_DOCSTRING_COMMANDS.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "libopus-1.6.1-h74c22ad_1",
+      "name": "libopus",
+      "version": "1.6.1",
+      "build": "h74c22ad_1",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libopus-1.6.1-h74c22ad_1.conda",
+        "sha256": "f5fd2e1b1fec6da5d9218177b7d989af15f5aa14a84a1b1491dc3572e2457f1f"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libopus-feedstock",
+        "commit": "edc1135009230e49f9f85b1277f886041e82199f"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/xiph/opus/archive/v1.6.1.tar.gz"
+          ],
+          "sha256": [
+            "bf0b97ec7a65890b8db90ef94c4d6c18de12584c3085031953a10986f5917745"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libpango-1.58.2-hc2ac4f2_3",
+      "name": "libpango",
+      "version": "1.58.2",
+      "build": "hc2ac4f2_3",
+      "license_declared": "LGPL-2.1-or-later",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libpango-1.58.2-hc2ac4f2_3.conda",
+        "sha256": "90118019ce64d713888abbe41a15be9e5885bdc8d5d4f84480e615299d2b5a01"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/pango-feedstock",
+        "commit": "a44a7ad3c99350e12d2c20c5953e21a137d89094"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://download.gnome.org/sources/pango/1.58/pango-1.58.2.tar.xz"
+          ],
+          "sha256": [
+            "342385b6ca3b7c73455d7c80a13b7dbe4489e00bc3bd4c5bd6ed4dce421e374a"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libpng-1.6.59-hf5e6511_0",
+      "name": "libpng",
+      "version": "1.6.59",
+      "build": "hf5e6511_0",
+      "license_declared": "zlib-acknowledgement",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libpng-1.6.59-hf5e6511_0.conda",
+        "sha256": "4de4dc4cb7432c328c1eaf4f7cc9c6b48c073eab1e9c6723d4533e6d57e7d595"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libpng-feedstock",
+        "commit": "fb861d8ff886d5bfe7fc4f01c6545d59779798ff"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://downloads.sourceforge.net/project/libpng/libpng16/1.6.59/libpng-1.6.59.tar.gz"
+          ],
+          "sha256": [
+            "86a3e4b501f7f50e392c4e456ea158893e9a595b1c63eb88c7bb9f6cf8772dad"
+          ],
+          "patches": [
+            "patches/0001-Include-pkg-config-files-in-the-Windows-packages-too.patch",
+            "patches/0002-Ensure-that-lm-is-not-included-in-Windows-pkg-config.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "libpsl-0.23.1-hdb0c161_1",
+      "name": "libpsl",
+      "version": "0.23.1",
+      "build": "hdb0c161_1",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libpsl-0.23.1-hdb0c161_1.conda",
+        "sha256": "c8c3153df39abedf3413483f672151ad70f1adb0c06c192bdf7ec432c3616b07"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libpsl-feedstock",
+        "commit": "d93d163e4ace3c8de663d880c0381630b65d4590"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/rockdaboot/libpsl/releases/download/0.23.1/libpsl-0.23.1.tar.gz"
+          ],
+          "sha256": [
+            "8fbb03054556498ba9c4cc48fcaa36a4483748c6504a65bdb9ba348f555b0e56"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libraw-0.22.2-h2d05ff4_0",
+      "name": "libraw",
+      "version": "0.22.2",
+      "build": "h2d05ff4_0",
+      "license_declared": "LGPL-2.1-only",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libraw-0.22.2-h2d05ff4_0.conda",
+        "sha256": "e3e654527f10346ca39fe628bb6f81dadf946647e5c081f84703ab654ae15a45"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libraw-feedstock",
+        "commit": "0fd90be48b382a2ae44ca5f9883f559c02c71dd0"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/LibRaw/LibRaw/archive/0.22.2.tar.gz"
+          ],
+          "sha256": [
+            "627928088300ecde6ca91ffd202e189203f04ad61ad12f0fe9dc57b9a7a0fb3c"
+          ],
+          "patches": []
+        },
+        {
+          "urls": [
+            "https://github.com/LibRaw/LibRaw-cmake/archive/eb98e4325aef2ce85d2eb031c2ff18640ca616d3.tar.gz"
+          ],
+          "sha256": [
+            "3cd218bf6d1254de86e27269541277fbfc5bae57a9002ce0b46fbe2a97088b43"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "librsvg-2.62.4-hc8ac265_0",
+      "name": "librsvg",
+      "version": "2.62.4",
+      "build": "hc8ac265_0",
+      "license_declared": "LGPL-2.1-or-later",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/librsvg-2.62.4-hc8ac265_0.conda",
+        "sha256": "3bd54de0136907782249a0d5797744ecac5bbd77026f5f2712dd62390c5c9f77"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/librsvg-feedstock",
+        "commit": "861fd4701bffbbaeb7c50dfc9be71fa0f97856f9"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://download.gnome.org/sources/librsvg/2.62/librsvg-2.62.4.tar.xz"
+          ],
+          "sha256": [
+            "c982b8157a054b803493bf994d31e50105eb948dd8da6b4ab9734e8d392712a3"
+          ],
+          "patches": [
+            "add_rust_lto.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "libspqr-4.3.4-h775d698_7100102",
+      "name": "libspqr",
+      "version": "4.3.4",
+      "build": "h775d698_7100102",
+      "license_declared": "GPL-2.0-or-later",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libspqr-4.3.4-h775d698_7100102.conda",
+        "sha256": "35decda7f3de10dfeb6159ddaf27017fcf53c52119297a1f943b6396d18328a7"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/suitesparse-feedstock",
+        "commit": "5ecf05db9901a3153f044ccf695a150089c34a1e"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/v7.10.1.tar.gz"
+          ],
+          "sha256": [
+            "9e2974e22dba26a3cffe269731339ae8e01365cfe921b06be6359902bd05862c"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libsqlite-3.54.1-hca69786_0",
+      "name": "libsqlite",
+      "version": "3.54.1",
+      "build": "hca69786_0",
+      "license_declared": "blessing",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libsqlite-3.54.1-hca69786_0.conda",
+        "sha256": "998cd122027b2523f2f25807b1d476b82a168489d16b1430fd848a9a6b606a80"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/sqlite-feedstock",
+        "commit": "4ea447cf7266e0bb8b1e24b3f708e72806902156"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://www.sqlite.org/2026/sqlite-autoconf-3540100.tar.gz"
+          ],
+          "sha256": [
+            "926ef8d3eab93fbf6e06011901273eec076b25594a4e1cdadd50c987f4f6d64e"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libssh2-1.11.1-hbf2880b_1",
+      "name": "libssh2",
+      "version": "1.11.1",
+      "build": "hbf2880b_1",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libssh2-1.11.1-hbf2880b_1.conda",
+        "sha256": "a056e518c3d2d09fbb1778cea80c0c95338fb24adf1a817bbf90fb484850a304"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libssh2-feedstock",
+        "commit": "e5701cd76588f38d76a9fd704185ffc88184c102"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://www.libssh2.org/download/libssh2-1.11.1.tar.gz"
+          ],
+          "sha256": [
+            "d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libsuitesparseconfig-7.10.1-h4a8fc20_7100102",
+      "name": "libsuitesparseconfig",
+      "version": "7.10.1",
+      "build": "h4a8fc20_7100102",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libsuitesparseconfig-7.10.1-h4a8fc20_7100102.conda",
+        "sha256": "847b393bfb5c8db10923544e44dcb5ba78e5978cbd841b04b7dc626a2b3c3306"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/suitesparse-feedstock",
+        "commit": "5ecf05db9901a3153f044ccf695a150089c34a1e"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/v7.10.1.tar.gz"
+          ],
+          "sha256": [
+            "9e2974e22dba26a3cffe269731339ae8e01365cfe921b06be6359902bd05862c"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libtiff-4.7.2-hf67920b_1",
+      "name": "libtiff",
+      "version": "4.7.2",
+      "build": "hf67920b_1",
+      "license_declared": "HPND",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libtiff-4.7.2-hf67920b_1.conda",
+        "sha256": "847d22a86ae28f66d3888702698254d25bb4eac3a0f64c1fabfb1842ac00be4c"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libtiff-feedstock",
+        "commit": "69b00df993d8c9571dbd2aa423e50a10f1adfeda"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://download.osgeo.org/libtiff/tiff-4.7.2.tar.gz"
+          ],
+          "sha256": [
+            "672bd7d10aee4606171afb864f3570b83340f6a33e2c186dc0512f7145ffdf6a"
+          ],
+          "patches": [
+            "patches/use_unix_io.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "libultrahdr-2.0.2-h7a3a3d6_0",
+      "name": "libultrahdr",
+      "version": "2.0.2",
+      "build": "h7a3a3d6_0",
+      "license_declared": "Apache-2.0",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libultrahdr-2.0.2-h7a3a3d6_0.conda",
+        "sha256": "165e77dd07237fffb63252e1896baa6475d09862c4f145ba38882092d1767d95"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libultrahdr-feedstock",
+        "commit": "f49931f8e63ec981b1a2a28c68f505841d77c15e"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/google/libultrahdr/archive/refs/tags/v2.0.2.tar.gz"
+          ],
+          "sha256": [
+            "aa8d193bb887c348c419780511dd03b374f4e07af8812b6d3f80c8537cf1ef2c"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libvorbis-1.3.7-h81086ad_2",
+      "name": "libvorbis",
+      "version": "1.3.7",
+      "build": "h81086ad_2",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libvorbis-1.3.7-h81086ad_2.conda",
+        "sha256": "95768e4eceaffb973081fd986d03da15d93aa10609ed202e6fd5ca1e490a3dce"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libvorbis-feedstock",
+        "commit": "36926e3293e0d966f734e5643402fcef3df745a3"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/xiph/vorbis/archive/v1.3.7.tar.gz"
+          ],
+          "sha256": [
+            "270c76933d0934e42c5ee0a54a36280e2d87af1de3cc3e584806357e237afd13"
+          ],
+          "patches": [
+            "export_legacy_so_symlinks.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "libvpx-1.17.0-h484c67d_0",
+      "name": "libvpx",
+      "version": "1.17.0",
+      "build": "h484c67d_0",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libvpx-1.17.0-h484c67d_0.conda",
+        "sha256": "2413c6959f78ed821aaa74f596ea3678ef54a63d89c8517f1146dfbdac3f798d"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libvpx-feedstock",
+        "commit": "2d3c6a4bf2654f3c320e7b529c454fb162940b27"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/webmproject/libvpx/archive/refs/tags/v1.17.0.tar.gz"
+          ],
+          "sha256": [
+            "1020f184046187baa2985dbde38e0691f49c44088bca7a1842b0236c6081dc0a"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libwebp-base-1.6.0-h202fb40_1",
+      "name": "libwebp-base",
+      "version": "1.6.0",
+      "build": "h202fb40_1",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libwebp-base-1.6.0-h202fb40_1.conda",
+        "sha256": "0ff54650d470c7e54cbeffdd53a8c063e055a7bcf784388c0385ce5c4741b0f4"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libwebp-base-feedstock",
+        "commit": "b8a54ec0653ea0ac18e509fc889f1fc8f0b90233"
+      },
+      "sources": [
+        {
+          "urls": [
+            "http://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz"
+          ],
+          "sha256": [
+            "e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libxml2-16-2.15.4-heb56d2d_1",
+      "name": "libxml2-16",
+      "version": "2.15.4",
+      "build": "heb56d2d_1",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libxml2-16-2.15.4-heb56d2d_1.conda",
+        "sha256": "1acd4dd49c6f54440dc172ab469d0e2c7c3c02de5b1f21158a233eb585ec3c38"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/libxml2-feedstock",
+        "commit": "2aea8424bab23ebc32ac1493984e90e73cda28dd"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://gitlab.gnome.org/GNOME/libxml2/-/archive/v2.15.4/libxml2-v2.15.4.tar.gz"
+          ],
+          "sha256": [
+            "a569ee9c59eabb197a0d5047046d757ee14c86fb2d4a734555b633cb5584ad25"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "libzlib-1.3.2-h8088a28_3",
+      "name": "libzlib",
+      "version": "1.3.2",
+      "build": "h8088a28_3",
+      "license_declared": "Zlib",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/libzlib-1.3.2-h8088a28_3.conda",
+        "sha256": "a18fa5d5bac452401459f966cf0d872224e8080c4ff93c77e168d43ab42ef9d7"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/zlib-feedstock",
+        "commit": "044fc2361e1c5f1a35c8f417f1434a585e627297"
+      },
+      "sources": [
+        {
+          "urls": [
+            "http://zlib.net/zlib-1.3.2.tar.gz",
+            "https://gnupg.org/ftp/gcrypt/zlib/zlib-1.3.2.tar.gz"
+          ],
+          "sha256": [
+            "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "llvm-openmp-23.1.4-hdb3d66b_0",
+      "name": "llvm-openmp",
+      "version": "23.1.4",
+      "build": "hdb3d66b_0",
+      "license_declared": "Apache-2.0 WITH LLVM-exception",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/llvm-openmp-23.1.4-hdb3d66b_0.conda",
+        "sha256": "cc6d67df56d4ea967e17d938d3108cdf7d971531350df9e7fc5e18cb89066a70"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/openmp-feedstock",
+        "commit": "423f01d8555189ac07b5f9a80b958dea0c42328c"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/llvm/llvm-project/archive/refs/tags/llvmorg-23.1.4.zip"
+          ],
+          "sha256": [
+            "1033074747807458eb54aad341877db5838fac8d9f0392be543b50cef857d025"
+          ],
+          "patches": [
+            "patches/0001-don-t-build-z_Linux_asm.S-with-MSVC-ensure-__kmp_inv.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "metis-5.1.0-h4fd61ea_1008",
+      "name": "metis",
+      "version": "5.1.0",
+      "build": "h4fd61ea_1008",
+      "license_declared": "Apache-2.0",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/metis-5.1.0-h4fd61ea_1008.conda",
+        "sha256": "4fbbe58ce5c062edae5f28cb9534925da87168a592577e8b39de51d8dfa32a8f"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/metis-feedstock",
+        "commit": "4b2dd1188735da0f55c0683c99c39ce64d863091"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://karypis.github.io/glaros/files/sw/metis/metis-5.1.0.tar.gz"
+          ],
+          "sha256": [
+            "76faebe03f6c963127dbb73c13eab58c9a3faeae48779f049066a21c087c5db2"
+          ],
+          "patches": [
+            "vc14.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "minizip-4.2.2-h6a11f2a_1",
+      "name": "minizip",
+      "version": "4.2.2",
+      "build": "h6a11f2a_1",
+      "license_declared": "Zlib",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/minizip-4.2.2-h6a11f2a_1.conda",
+        "sha256": "a715db5100acebb66ec81748dc25f7a7d90be4568a6307a8077797e0f4fba931"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/minizip-feedstock",
+        "commit": "c5d0d25d3bc2aff85865d3b06828b77b3d4d0b89"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/zlib-ng/minizip-ng/archive/4.2.2/minizip-4.2.2.tar.gz"
+          ],
+          "sha256": [
+            "71af7b9799856d8b03619df3949e9c1be9703f8de0795af71399ba283cb27aac"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "mpfr-4.2.2-h72846b0_1",
+      "name": "mpfr",
+      "version": "4.2.2",
+      "build": "h72846b0_1",
+      "license_declared": "LGPL-3.0-only",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/mpfr-4.2.2-h72846b0_1.conda",
+        "sha256": "6a86fe9c09d708d71508c601dec53fb7a4fbfb23e6f57a590ef832afdca738c4"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/mpfr-feedstock",
+        "commit": "f0626e5b9fa91958eaf73226921b704b2160452b"
+      },
+      "sources": [
+        {
+          "urls": [
+            "http://ftp.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.gz"
+          ],
+          "sha256": [
+            "826cbb24610bd193f36fde172233fb8c009f3f5c2ad99f644d0dea2e16a20e42"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "mpg123-1.33.7-h0e3f465_1",
+      "name": "mpg123",
+      "version": "1.33.7",
+      "build": "h0e3f465_1",
+      "license_declared": "LGPL-2.1-only",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/mpg123-1.33.7-h0e3f465_1.conda",
+        "sha256": "36cdae1076fc8d92b030af4e8d02e32629aaa31dbe32233040a04d495815b0bb"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/mpg123-feedstock",
+        "commit": "d4c5d4a3ec7e3435cedc414a004bec9d3f808c11"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://downloads.sourceforge.net/project/mpg123/mpg123/1.33.7/mpg123-1.33.7.tar.bz2"
+          ],
+          "sha256": [
+            "31d0e35a4ca567ec9b5ebda6c3062bb4435d6d3eacd6ef0d95cadd7854dc03ee"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "openexr-3.5.2-h1458d73_1",
+      "name": "openexr",
+      "version": "3.5.2",
+      "build": "h1458d73_1",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/openexr-3.5.2-h1458d73_1.conda",
+        "sha256": "b0caf56ce1b1a73c6844b35f884d4dfd94b017a0f6bcc2abdaf1877d51f67de1"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/openexr-feedstock",
+        "commit": "3dc4ac57c0c2e34909aa1fc9ceb982948a57d623"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/AcademySoftwareFoundation/openexr/archive/v3.5.2.tar.gz"
+          ],
+          "sha256": [
+            "85a291b9b8563fabef1aa3f6e912d744ce1d4b9fd5a8f978eda194cd51b15ae9"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "openh264-2.6.0-hf8510ef_2",
+      "name": "openh264",
+      "version": "2.6.0",
+      "build": "hf8510ef_2",
+      "license_declared": "BSD-2-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/openh264-2.6.0-hf8510ef_2.conda",
+        "sha256": "abbf05ef3f338eb70623400c6ecf3318fe3a71fbf56b1099d7b3fddd13a0a0aa"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/openh264-feedstock",
+        "commit": "c575d1155bd4cafa829b4f37401edbe59c877346"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/cisco/openh264/archive/v2.6.0.tar.gz"
+          ],
+          "sha256": [
+            "558544ad358283a7ab2930d69a9ceddf913f4a51ee9bf1bfb9e377322af81a69"
+          ],
+          "patches": [
+            "0001-allocate-enough-memory-for-all-slices.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "openjpeg-2.5.4-h4d1e80c_2",
+      "name": "openjpeg",
+      "version": "2.5.4",
+      "build": "h4d1e80c_2",
+      "license_declared": "BSD-2-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/openjpeg-2.5.4-h4d1e80c_2.conda",
+        "sha256": "e71bd04b5d0e39f39a3c039d021d3b76cd65bee3032e7f859ab7082f0ace8be5"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/openjpeg-feedstock",
+        "commit": "00d4e8f7d73043cb46153df594d005aef33e05c7"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/uclouvain/openjpeg/archive/v2.5.4.tar.gz"
+          ],
+          "sha256": [
+            "a695fbe19c0165f295a8531b1e4e855cd94d0875d2f88ec4b61080677e27188a"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "openjph-0.32.0-h16ef464_1",
+      "name": "openjph",
+      "version": "0.32.0",
+      "build": "h16ef464_1",
+      "license_declared": "BSD-2-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/openjph-0.32.0-h16ef464_1.conda",
+        "sha256": "bb45b19bf3cd8cf5773f0eb413cdb1be58d145d65dbd123128c3d84c44d40161"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/openjph-feedstock",
+        "commit": "41c0cb8547b2c16d7a4125806dd331f9b861cb2e"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/aous72/OpenJPH/archive/0.32.0.tar.gz"
+          ],
+          "sha256": [
+            "5cb1ebe18e5ee1322d23ff2130b37562d447d1ad5586c3d16cf84be3ae30f719"
+          ],
+          "patches": [
+            "windows_lib_so_name.patch",
+            "fix_aarch_old_stdlibc.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "openssl-3.6.5-h55eecbc_0",
+      "name": "openssl",
+      "version": "3.6.5",
+      "build": "h55eecbc_0",
+      "license_declared": "Apache-2.0",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/openssl-3.6.5-h55eecbc_0.conda",
+        "sha256": "44fbc526456571a9fb8fa18157f6f269d4d4bd40eef20183a93b9c9296f94497"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/openssl-feedstock",
+        "commit": "f0c4979996e075ca6fb7efbd6b65d4fe2cc1fe6f"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/openssl/openssl/releases/download/openssl-3.6.5/openssl-3.6.5.tar.gz"
+          ],
+          "sha256": [
+            "a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "pcre2-10.47-he63d830_1",
+      "name": "pcre2",
+      "version": "10.47",
+      "build": "he63d830_1",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/pcre2-10.47-he63d830_1.conda",
+        "sha256": "f8c415329b542e1fca1ff2917b80e687c18302dfa0353530668b90cb225b494f"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/pcre2-feedstock",
+        "commit": "1036df63759c1365071c7531a6e01fcca90f28a1"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/PCRE2Project/pcre2/archive/refs/tags/pcre2-10.47.tar.gz"
+          ],
+          "sha256": [
+            "409c443549b13b216da40049850a32f3e6c57d4224ab11553ab5a786878a158e"
+          ],
+          "patches": []
+        },
+        {
+          "urls": [
+            "https://github.com/zherczeg/sljit/archive/45f910b78c6605ebf5b53d3ec7cb00f2312fe417.tar.gz"
+          ],
+          "sha256": [
+            "ea5a6fb45e050f813f070ecaa098fe0389068beea61ac7dce5410a0c642ccfa3"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "pixman-0.46.4-h784d473_3",
+      "name": "pixman",
+      "version": "0.46.4",
+      "build": "h784d473_3",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/pixman-0.46.4-h784d473_3.conda",
+        "sha256": "4779cd57231ce2e96fac643fcbdd4a6f51a57986264545445574e9c4acf526d3"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/pixman-feedstock",
+        "commit": "aa115040c3fa1c298ba27ed7afb42d6feb4fac28"
+      },
+      "sources": [
+        {
+          "urls": [
+            "http://cairographics.org/releases/pixman-0.46.4.tar.gz"
+          ],
+          "sha256": [
+            "d09c44ebc3bd5bee7021c79f922fe8fb2fb57f7320f55e97ff9914d2346a591c"
+          ],
+          "patches": [
+            "meson-darwin-versions.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pugixml-1.15-hd3d436d_0",
+      "name": "pugixml",
+      "version": "1.15",
+      "build": "hd3d436d_0",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/pugixml-1.15-hd3d436d_0.conda",
+        "sha256": "5ad8d036040b095f85d23c70624d3e5e1e4c00bc5cea97831542f2dcae294ec9"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/pugixml-feedstock",
+        "commit": "01958587cd4a45f2db1f65c78149e3affd57f4c3"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/zeux/pugixml/archive/v1.15.tar.gz"
+          ],
+          "sha256": [
+            "b39647064d9e28297a34278bfb897092bf33b7c487906ddfc094c9e8868bddcb"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "pystring-1.2.0-h3feff0a_0",
+      "name": "pystring",
+      "version": "1.2.0",
+      "build": "h3feff0a_0",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/pystring-1.2.0-h3feff0a_0.conda",
+        "sha256": "984eb29cd70d21c626d40587e6ca5d0375c8dc4e09531b315f4a2cecc3824b3c"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/pystring-feedstock",
+        "commit": "57b9c91578b43fc9b28e10087a9ca6dd4f5357cb"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/imageworks/pystring/archive/refs/tags/v1.2.0.tar.gz"
+          ],
+          "sha256": [
+            "020a603a757ba1e429f4b1ea6feb3afbe0fb34bcafa355032e1f1b8a0019d198"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "svt-av1-4.2.0-h484c67d_1",
+      "name": "svt-av1",
+      "version": "4.2.0",
+      "build": "h484c67d_1",
+      "license_declared": "BSD-2-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/svt-av1-4.2.0-h484c67d_1.conda",
+        "sha256": "9122d11ed85053b1223ea0645aeac0ca583adc7482e60e3266c37e70d5242195"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/svt-av1-feedstock",
+        "commit": "58897cabbc35487357fd4ad16b6b3085bc91b5b6"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://gitlab.com/AOMediaCodec/SVT-AV1/-/archive/v4.2.0/SVT-AV1-v4.2.0.tar.gz"
+          ],
+          "sha256": [
+            "c7b13c4a84bd3751aa35fcc72be13e6875467e7c2216879251a486e5b1e4e740"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "tbb-2023.1.0-h81c76ee_2",
+      "name": "tbb",
+      "version": "2023.1.0",
+      "build": "h81c76ee_2",
+      "license_declared": "Apache-2.0",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/tbb-2023.1.0-h81c76ee_2.conda",
+        "sha256": "fad8ffbe4ec2333c501c0c6702b21aba86319539fe2714651d6ebf91cce6eac9"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/tbb-feedstock",
+        "commit": "5ff181664c34c8ce6959fa934b217634d908db7e"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v2023.1.0.tar.gz"
+          ],
+          "sha256": [
+            "191288b52e1e6b17198000b64d77d194bb65e791be46ebc606e9b091781e2070"
+          ],
+          "patches": [
+            "patches/0001-disable-windows-path-hack-that-s-wrong-for-conda.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "x264-1!164.3095-pl5321h4df14c8_3",
+      "name": "x264",
+      "version": "1!164.3095",
+      "build": "pl5321h4df14c8_3",
+      "license_declared": "GPL-2.0-or-later",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/x264-1!164.3095-pl5321h4df14c8_3.conda",
+        "sha256": "0a30e9f55a62c1a179f17e65d10af1fb8baba47263e807efcb07632a40313d49"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/x264-feedstock",
+        "commit": "8e8f340576ba8cac2b66fb21a3cbb1298788ff09"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://code.videolan.org/videolan/x264/-/archive/baee400fa9ced6f5481a728138fed6e867b0ff7f/x264-baee400fa9ced6f5481a728138fed6e867b0ff7f.tar.gz"
+          ],
+          "sha256": [
+            "436a2be54d8bc0cb05dd33ecbbcb7df9c3b57362714fcdaa3a5991189a33319b"
+          ],
+          "patches": [
+            "patches/0001-ppc-Fix-incompatible-pointer-type-errors.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "x265-3.5-h55d2f36_4",
+      "name": "x265",
+      "version": "3.5",
+      "build": "h55d2f36_4",
+      "license_declared": "GPL-2.0-or-later",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/x265-3.5-h55d2f36_4.conda",
+        "sha256": "78850cd685004b1c5e41c2dd0a4fd1c9e3dd150279da8d99925832983ba82688"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/x265-feedstock",
+        "commit": "c99a2f3e7c9bc7ea3056b1e306608d72c6226eec"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://bitbucket.org/multicoreware/x265_git/downloads/x265_3.5.tar.gz"
+          ],
+          "sha256": [
+            "e70a3335cacacbba0b3a20ec6fecd6783932288ebc8163ad74bcc9606477cae8"
+          ],
+          "patches": [
+            "patches/0001-Fix-the-build-with-CMake-4.patch",
+            "patches/0002-json11-include-cstdint-for-uint8_t.patch",
+            "patches/0003-Assemble-asm-objects-once-before-linking.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "yaml-cpp-0.8.0-h784d473_1",
+      "name": "yaml-cpp",
+      "version": "0.8.0",
+      "build": "h784d473_1",
+      "license_declared": "MIT",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/yaml-cpp-0.8.0-h784d473_1.conda",
+        "sha256": "450d4c6ad26bc2c18eb9420261568b86918b118c96ab4a7f2176c352b94101a2"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/yaml-cpp-feedstock",
+        "commit": "2abed9ce0d2d07c2acf17ecc96919821c74ec24e"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/jbeder/yaml-cpp/archive/refs/tags/0.8.0.tar.gz"
+          ],
+          "sha256": [
+            "fbe74bbdcee21d656715688706da3c8becfd946d92cd44705cc6098bb23b3a16"
+          ],
+          "patches": [
+            "add-cstdint-include.patch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zstd-1.5.7-hf451053_7",
+      "name": "zstd",
+      "version": "1.5.7",
+      "build": "hf451053_7",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "dynamic",
+      "binary_package": {
+        "url": "https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hf451053_7.conda",
+        "sha256": "da867f5092eb0cb746d353694f0098031fd9817a4ce7d5743121209ae0f406ca"
+      },
+      "feedstock": {
+        "url": "https://github.com/conda-forge/zstd-feedstock",
+        "commit": "24c0f94340c0875e1a3bb815611276850f7cd7ca"
+      },
+      "sources": [
+        {
+          "urls": [
+            "https://github.com/facebook/zstd/archive/v1.5.7.tar.gz"
+          ],
+          "sha256": [
+            "37d7284556b20954e56e1ca85b80226768902e2edabd3b649e9e72c0c9012ee3"
+          ],
+          "patches": []
+        }
+      ]
+    },
+    {
+      "id": "LSD",
+      "name": "LSD",
+      "version": "vendored-at-fa8e3b3ff591552855f8ad2806723c80f963f69c",
+      "license_declared": "AGPL-3.0-or-later",
+      "linkage": "static",
+      "source": {
+        "url": "https://github.com/colmap/colmap",
+        "commit": "fa8e3b3ff591552855f8ad2806723c80f963f69c",
+        "path": "src/thirdparty/LSD"
+      }
+    },
+    {
+      "id": "PoissonRecon",
+      "name": "PoissonRecon",
+      "version": "vendored-at-fa8e3b3ff591552855f8ad2806723c80f963f69c",
+      "license_declared": "MIT",
+      "linkage": "static",
+      "source": {
+        "url": "https://github.com/colmap/colmap",
+        "commit": "fa8e3b3ff591552855f8ad2806723c80f963f69c",
+        "path": "src/thirdparty/PoissonRecon"
+      }
+    },
+    {
+      "id": "VLFeat",
+      "name": "VLFeat",
+      "version": "vendored-at-fa8e3b3ff591552855f8ad2806723c80f963f69c",
+      "license_declared": "BSD-2-Clause",
+      "linkage": "static",
+      "source": {
+        "url": "https://github.com/colmap/colmap",
+        "commit": "fa8e3b3ff591552855f8ad2806723c80f963f69c",
+        "path": "src/thirdparty/VLFeat"
+      }
+    },
+    {
+      "id": "PoseLib",
+      "name": "PoseLib",
+      "license_declared": "BSD-3-Clause",
+      "linkage": "static",
+      "source": {
+        "url": "https://github.com/PoseLib/PoseLib/archive/fa7280fee27f97aff31ae7f98bab7f583fac7d08.zip",
+        "sha256": "5408d4ae8ce367cb2f076bc6c5f0f6f78abd3573d2c015304b04e46f23455f5b"
+      }
+    },
+    {
+      "id": "FAISS",
+      "name": "FAISS",
+      "license_declared": "MIT",
+      "linkage": "static",
+      "source": {
+        "url": "https://github.com/facebookresearch/faiss/archive/refs/tags/v1.14.1.zip",
+        "sha256": "4b1ae7e7a0a46385b4084f0e3945623a15fcf99d793bf44d82aae8e24f11e5f5"
+      }
+    }
+  ]
+}

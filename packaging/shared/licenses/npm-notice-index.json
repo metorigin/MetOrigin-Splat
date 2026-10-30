@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "scope": "Exact-version original npm notices recovered from the publication gitHead; source-only offline evidence, never an installed-package mutation or an assertion of full distribution clearance.",
+  "packages": [
+    {
+      "name": "react-resizable-panels",
+      "version": "3.0.6",
+      "license": "MIT",
+      "repository": "https://github.com/bvaughn/react-resizable-panels",
+      "commit": "43a071df6bb96d54e8b81a6be0e2d453af45cc4b",
+      "metadata": {
+        "path": "packaging/shared/licenses/npm/react-resizable-panels/3.0.6/registry-metadata.json",
+        "sha256": "a2637b5a52addc2707a8c5b8646503d424227626d94fe1ba0a561cae5a8e3031",
+        "url": "https://registry.npmjs.org/react-resizable-panels/3.0.6"
+      },
+      "publication": {
+        "url": "https://registry.npmjs.org/react-resizable-panels/-/react-resizable-panels-3.0.6.tgz",
+        "integrity": "sha512-b3qKHQ3MLqOgSS+FRYKapNkJZf5EQzuf6+RLiq1/IlTHw99YrZ2NJZLk4hQIzTnnIkRg2LUqyVinu6YWWpUYew==",
+        "sha1": "8183132ea13a09821e9c93962ed49f240cdcfd3f",
+        "sha256": "3a52cfe3c7d9e4693566718af32deedbc50eeef7fae561bd48d7ac29c6737ceb",
+        "files": [
+          {
+            "path": "dist/react-resizable-panels.browser.development.js",
+            "sha256": "73a6f4184aa23c308084927f2afe80bf4be95acb42c008c5eba3a18192218e98",
+            "bytes": 88470
+          },
+          {
+            "path": "dist/react-resizable-panels.browser.js",
+            "sha256": "7a8dbf42855905cf67c97194ce3dda3e17e35a18e913027df0c61dc8c1ae3e76",
+            "bytes": 84585
+          },
+          {
+            "path": "dist/react-resizable-panels.development.edge-light.js",
+            "sha256": "9f72be3a52917c0dbb49f1193e3a390bae0d48e32fa7a0b686ebe1a0d60c1457",
+            "bytes": 80384
+          },
+          {
+            "path": "dist/react-resizable-panels.development.js",
+            "sha256": "28f69ba0e8ba5540a7da4bd3091327efe3fdf36eee5c67d742b97b089eaf7cde",
+            "bytes": 88788
+          },
+          {
+            "path": "dist/react-resizable-panels.edge-light.js",
+            "sha256": "6039a89099328f1552d7be3df49be96f353806515692fae58e59ce9a439c9e64",
+            "bytes": 76643
+          },
+          {
+            "path": "dist/react-resizable-panels.js",
+            "sha256": "5c40f4be426572c0e222db55631e9ffa5671a37cb9bea4b2090aebaa0d078866",
+            "bytes": 84657
+          },
+          {
+            "path": "package.json",
+            "sha256": "55453bd9a6b17054e16b09213f76075b8c8077ff635507b40d2f3c9376b558c8",
+            "bytes": 2918
+          },
+          {
+            "path": "README.md",
+            "sha256": "b7ef0dd8c61d69f219b4fa2618a8303f0c56b1081bf113470948f8bbbea565f8",
+            "bytes": 12667
+          },
+          {
+            "path": "dist/declarations/src/utils/assert.d.ts",
+            "sha256": "3aa3513d5e13d028202e788d763f021d2d113bd673087b42a2606ab50345492d",
+            "bytes": 100
+          },
+          {
+            "path": "dist/declarations/src/constants.d.ts",
+            "sha256": "1f2bbbe38d5e536607b385f04c3d2cbf1e678c5ded7e8c5871ad8ae91ef33c3d",
+            "bytes": 698
+          },
+          {
+            "path": "dist/declarations/src/utils/csp.d.ts",
+            "sha256": "f012173d64d0579875aa60405de21ad379af7971b93bf46bee23acc5fa2b76a4",
+            "bytes": 113
+          },
+          {
+            "path": "dist/declarations/src/utils/cursor.d.ts",
+            "sha256": "b3836ebd2b061bdc6fb5c1aca36fecb007a90298728ef276bf517f3b448e3930",
+            "bytes": 983
+          },
+          {
+            "path": "dist/declarations/src/utils/rects/getIntersectingRectangle.d.ts",
+            "sha256": "af3d97c3a0da9491841efc4e25585247aa76772b840dd279dbff714c69d3a1ec",
+            "bytes": 158
+          },
+          {
+            "path": "dist/declarations/src/utils/dom/getPanelElement.d.ts",
+            "sha256": "ec35f1490510239b89c745c948007c5dd00a8dca0861a836dcf0db5360679a2d",
+            "bytes": 107
+          },
+          {
+            "path": "dist/declarations/src/utils/dom/getPanelElementsForGroup.d.ts",
+            "sha256": "32868e4ec9b6bd4b1d96d24611343404b3a0a37064a7ac514b1d66b48325a911",
+            "bytes": 116
+          },
+          {
+            "path": "dist/declarations/src/utils/dom/getPanelGroupElement.d.ts",
+            "sha256": "4bbea07f21ff84bf3ceeb218b5a8c367c6e0f08014d3fd09e457d2ffb2826b9c",
+            "bytes": 118
+          },
+          {
+            "path": "dist/declarations/src/utils/dom/getResizeHandleElement.d.ts",
+            "sha256": "873a07dbeb0f8a3018791d245c0cf10c3289c8f7162cdbbb4a5b9cf723136185",
+            "bytes": 114
+          },
+          {
+            "path": "dist/declarations/src/utils/dom/getResizeHandleElementIndex.d.ts",
+            "sha256": "43839af7f24edbd4b4e42e861eb7c0d85d80ec497095bb5002c93b451e9fcf88",
+            "bytes": 131
+          },
+          {
+            "path": "dist/declarations/src/utils/dom/getResizeHandleElementsForGroup.d.ts",
+            "sha256": "54a7ee56aadecbe8126744f7787f54f79d1e110adab8fe7026ad83a9681f136a",
+            "bytes": 123
+          },
+          {
+            "path": "dist/declarations/src/utils/dom/getResizeHandlePanelIds.d.ts",
+            "sha256": "6333c727ee2b79cdab55e9e10971e59cbfee26c73dfb350972cfd97712fc2162",
+            "bytes": 239
+          },
+          {
+            "path": "dist/declarations/src/index.d.ts",
+            "sha256": "59d16cf6e688b8c6f588b1ff6b6a4090e24eea078e1996ccc89f984978a1cbf8",
+            "bytes": 2340
+          },
+          {
+            "path": "dist/declarations/src/utils/rects/intersects.d.ts",
+            "sha256": "d9ac50fe802967929467413a79631698b8d8f4f2dc692b207e509b6bb3a92524",
+            "bytes": 142
+          },
+          {
+            "path": "dist/declarations/src/Panel.d.ts",
+            "sha256": "516f5cbe8a88c68a5493da43dae904e595fe7fb081608d42a7b226a3e1fc5753",
+            "bytes": 3891
+          },
+          {
+            "path": "dist/declarations/src/PanelGroup.d.ts",
+            "sha256": "576be63cb6921d0aafc8ce6af43f0f19185414fa2f0b4422d120f9d48d97e9a2",
+            "bytes": 1488
+          },
+          {
+            "path": "dist/declarations/src/PanelResizeHandle.d.ts",
+            "sha256": "74dedffc2d09627f5a4de02bbd7eedf634938c13c2cc4e92f0b4135573432783",
+            "bytes": 1247
+          },
+          {
+            "path": "dist/declarations/src/PanelResizeHandleRegistry.d.ts",
+            "sha256": "279248c34ecd223fc46224f86384ebf49c775eb69329ad644d3d99f1205f3e7d",
+            "bytes": 996
+          },
+          {
+            "path": "dist/react-resizable-panels.d.ts",
+            "sha256": "59142e44474ea8b9e1856ec9460abac6939d77d0bc50444f8b0dc332bfbe7791",
+            "bytes": 298
+          },
+          {
+            "path": "dist/declarations/src/types.d.ts",
+            "sha256": "348c13a1c9160681e41bc5cd3cc519dd8170d38a36a30480b41849f60f5bf8a0",
+            "bytes": 178
+          },
+          {
+            "path": "dist/declarations/src/utils/rects/types.d.ts",
+            "sha256": "8743b4356e522c26dc37f20cde4bcdb5ebd0a71a3afe156e81c099db7f34621d",
+            "bytes": 100
+          },
+          {
+            "path": "dist/declarations/src/hooks/usePanelGroupContext.d.ts",
+            "sha256": "54261223043b61b727fc82d218aa0dc2bd1009a5e545e4fecfb158a0c1bea45e",
+            "bytes": 140
+          }
+        ],
+        "file_count": 30,
+        "unpacked_size": 532932,
+        "inspection": "Official tarball SHA512 matched pnpm-lock.yaml; every regular tarball member matched installed bytes on 2026-10-29. The archive contains no LICENSE/NOTICE. Archive retained only in ignored .test-results/jan-ui-migration/npm-notice-recovery; it is not a runtime dependency."
+      },
+      "upstream_manifest": {
+        "path": "packaging/shared/licenses/npm/react-resizable-panels/3.0.6/upstream-package.json",
+        "upstream_path": "packages/react-resizable-panels/package.json",
+        "sha256": "55453bd9a6b17054e16b09213f76075b8c8077ff635507b40d2f3c9376b558c8",
+        "git_blob_sha1": "2b21be7986a92cea351b7046fb99f8a9a08d3a20"
+      },
+      "notices": [
+        {
+          "path": "packaging/shared/licenses/npm/react-resizable-panels/3.0.6/LICENSE",
+          "upstream_path": "LICENSE",
+          "sha256": "8b21167f99f3c016b39473b2984ceb03b54bf796dd9a7c74fcb80cfd513fe8a8",
+          "git_blob_sha1": "b82ec77829ada9b6e82987f4c5fbc2043db28f49",
+          "url": "https://github.com/bvaughn/react-resizable-panels/blob/43a071df6bb96d54e8b81a6be0e2d453af45cc4b/LICENSE"
+        }
+      ]
+    }
+  ],
+  "unresolved": [
+    {
+      "name": "react-remove-scroll-bar",
+      "version": "2.3.8",
+      "evidence_path": "packaging/shared/licenses/npm/react-remove-scroll-bar/2.3.8/unresolved-evidence.json",
+      "sha256": "26b2014a442ae58ad577437d6d35a2510b1e27157913ebefc712ef0486a6b300"
+    }
+  ]
+}

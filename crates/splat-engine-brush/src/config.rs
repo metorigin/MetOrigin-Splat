@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
+use splat_domain::runtime::{BrushCliProfile, EffectiveTraining};
 
 /// Training parameters parsed from a preset JSON file.
 ///
@@ -159,6 +160,114 @@ impl TrainingConfig {
         args
     }
 
+    /// Apply the frozen effective settings without changing shared presets.
+    /// Keep explicitly chosen legacy intervals when its iteration target is
+    /// unchanged; a reduced target needs correspondingly frequent checkpoints.
+    pub fn with_effective_training(&self, effective: &EffectiveTraining) -> AppResult<Self> {
+        if effective.iterations == 0
+            || effective.sh_degree > 3
+            || effective.threads == 0
+            || effective.resolution == Some(0)
+            || effective.image_cache_budget_bytes == Some(0)
+            || effective.max_splats == Some(0)
+            || self.checkpoint_interval == 0
+            || self.render_interval == 0
+        {
+            return Err(invalid_runtime_config(
+                "Invalid effective training limits or intervals",
+            ));
+        }
+        let mut config = self.clone();
+        config.iterations = effective.iterations;
+        config.sh_degree = effective.sh_degree;
+        if self.iterations != effective.iterations {
+            config.checkpoint_interval = Self::calc_checkpoint_interval(effective.iterations);
+            config.render_interval = Self::calc_render_interval(effective.iterations);
+        }
+        Ok(config)
+    }
+
+    /// Build structural arguments for an explicitly selected, validated CLI.
+    /// The adapter also checks the actual binary, capabilities and managed
+    /// dataset before these arguments may be executed.
+    pub fn to_cli_args_for_profile(
+        &self,
+        cli: BrushCliProfile,
+        effective: &EffectiveTraining,
+        dataset_path: &Path,
+        checkpoint_path: &Path,
+        start_iteration: u32,
+    ) -> AppResult<Vec<std::ffi::OsString>> {
+        let config = self.with_effective_training(effective)?;
+        if start_iteration >= config.iterations {
+            return Err(invalid_runtime_config(
+                "Resume iteration must precede the target iteration",
+            ));
+        }
+        if cli == BrushCliProfile::Legacy03 {
+            if effective.resolution.is_some()
+                || effective.image_cache_budget_bytes.is_some()
+                || effective.max_splats.is_some()
+                || effective.lod_levels.is_some()
+            {
+                return Err(invalid_runtime_config(
+                    "Legacy CLI resource overrides are not negotiated",
+                ));
+            }
+            return Ok(config.to_cli_args(dataset_path, checkpoint_path, start_iteration));
+        }
+        if !dataset_path.is_absolute()
+            || !checkpoint_path.is_absolute()
+            || checkpoint_path.starts_with(dataset_path)
+            || effective.lod_levels != Some(0)
+        {
+            return Err(invalid_runtime_config(
+                "Brush 1.x needs absolute dataset/export paths, external checkpoints and LOD zero",
+            ));
+        }
+        let resolution = effective.resolution.ok_or_else(|| {
+            invalid_runtime_config("Brush 1.x needs an explicit training resolution")
+        })?;
+        let cache = effective.image_cache_budget_bytes.ok_or_else(|| {
+            invalid_runtime_config("Brush 1.x needs an explicit image cache budget")
+        })?;
+        let max_splats = effective
+            .max_splats
+            .ok_or_else(|| invalid_runtime_config("Brush 1.x needs an explicit Gaussian limit"))?;
+        let mut args: Vec<std::ffi::OsString> = vec![
+            dataset_path.as_os_str().to_owned(),
+            "--total-train-iters".into(),
+            config.iterations.to_string().into(),
+            "--sh-degree".into(),
+            config.sh_degree.to_string().into(),
+            "--max-resolution".into(),
+            resolution.to_string().into(),
+            "--max-scene-batch-cache-size".into(),
+            format!("{cache}B").into(),
+            "--max-splats".into(),
+            max_splats.to_string().into(),
+            "--num-loader-threads".into(),
+            effective.threads.to_string().into(),
+            "--lod-levels".into(),
+            "0".into(),
+            "--units-per-meter".into(),
+            "1".into(),
+            "--export-every".into(),
+            config.checkpoint_interval.to_string().into(),
+            "--export-path".into(),
+            checkpoint_path.as_os_str().to_owned(),
+            "--export-name".into(),
+            "checkpoint_{iter}.ply".into(),
+            "--eval-every".into(),
+            config.render_interval.to_string().into(),
+        ];
+        if start_iteration > 0 {
+            args.push("--start-iter".into());
+            args.push(start_iteration.to_string().into());
+        }
+        Ok(args)
+    }
+
     fn calc_checkpoint_interval(iterations: u32) -> u32 {
         if iterations <= 1000 {
             100
@@ -178,6 +287,19 @@ impl TrainingConfig {
             (iterations / 10).max(1)
         }
     }
+}
+
+fn invalid_runtime_config(detail: &str) -> AppError {
+    AppError::new(
+        "E-1402",
+        ErrorCategory::User,
+        "Invalid Brush Execution Settings",
+        "The selected Brush CLI cannot execute these training settings.",
+    )
+    .with_technical(detail)
+    .with_suggestions(vec![
+        "Recreate the execution profile with compatible resource limits",
+    ])
 }
 
 #[cfg(test)]

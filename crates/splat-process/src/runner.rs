@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::progress::TaskProgress;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::{broadcast, Mutex};
 use tokio_util::sync::CancellationToken;
@@ -92,6 +92,12 @@ impl ProcessRunner {
         // Convert CommandSpec to a tokio::process::Command
         let mut cmd = Command::new(&spec.program);
         configure_background_command(cmd.as_std_mut());
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            cmd.as_std_mut().process_group(0);
+            cmd.kill_on_drop(true);
+        }
         cmd.args(&spec.args)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
@@ -132,10 +138,48 @@ impl ProcessRunner {
         let timeout = spec.timeout;
         let log_path = spec.log_file;
         let process_id = handle.process_id;
+        #[cfg(unix)]
+        let process_group = handle.process_group.clone();
+        #[cfg(unix)]
+        let group_guard = process_group.lifecycle_guard();
 
-        tokio::spawn(async move {
-            run_process(child_arc, event_tx, log_path, parser, timeout, process_id).await;
+        let unscoped_guard = crate::scope::UnscopedCleanupGuard::new(&handle);
+        let lifecycle = tokio::spawn(async move {
+            let mut unscoped_guard = unscoped_guard;
+            // Constructed before spawn: dropping a never-polled future must
+            // still terminate its group when the runtime shuts down.
+            #[cfg(unix)]
+            let mut group_guard = group_guard;
+            let result = run_process(
+                child_arc,
+                event_tx,
+                log_path,
+                parser,
+                timeout,
+                process_id,
+                #[cfg(unix)]
+                process_group,
+            )
+            .await;
+            // A normal return transfers cleanup failure to the scope receipt.
+            // Keep the group identity for retry instead of best-effort dropping
+            // it. Panic/abort still leaves the emergency guard armed.
+            #[cfg(unix)]
+            group_guard.disarm();
+            if result.is_ok() {
+                unscoped_guard.disarm();
+            }
+            result
         });
+
+        // No await between spawn and registration: aborting the caller cannot
+        // leave a child outside the current run's cleanup ownership.
+        handle
+            .lifecycle
+            .try_lock()
+            .expect("new lifecycle receipt")
+            .task = Some(lifecycle);
+        crate::scope::register_process(&handle);
 
         Ok(handle)
     }
@@ -157,7 +201,7 @@ impl ProcessRunner {
         loop {
             tokio::select! {
                 _ = cancellation.cancelled() => {
-                    self.cancel(&mut handle).await?;
+                    self.cancel_and_finish(&mut handle).await?;
                     return Ok(ProcessResult {
                         exit_code: None,
                         cancelled: true,
@@ -174,6 +218,7 @@ impl ProcessRunner {
                             }
                         }
                         Ok(ProcessEvent::Exited { code, .. }) => {
+                            self.await_cleanup(&mut handle).await?;
                             return Ok(ProcessResult {
                                 exit_code: Some(code),
                                 cancelled: false,
@@ -183,6 +228,7 @@ impl ProcessRunner {
                             });
                         }
                         Ok(ProcessEvent::Cancelled { .. }) => {
+                            self.await_cleanup(&mut handle).await?;
                             return Ok(ProcessResult {
                                 exit_code: None,
                                 cancelled: true,
@@ -192,6 +238,7 @@ impl ProcessRunner {
                             });
                         }
                         Ok(ProcessEvent::TimedOut { .. }) => {
+                            self.await_cleanup(&mut handle).await?;
                             return Ok(ProcessResult {
                                 exit_code: None,
                                 cancelled: false,
@@ -205,6 +252,7 @@ impl ProcessRunner {
                             | ProcessEvent::StderrLine { .. }) => {}
                         Err(broadcast::error::RecvError::Lagged(_)) => continue,
                         Err(broadcast::error::RecvError::Closed) => {
+                            self.cancel_and_finish(&mut handle).await?;
                             return Err(AppError::new(
                                 "E-2103",
                                 ErrorCategory::Engine,
@@ -235,7 +283,7 @@ impl ProcessRunner {
         loop {
             tokio::select! {
                 _ = cancellation.cancelled() => {
-                    self.cancel(&mut handle).await?;
+                    self.cancel_and_finish(&mut handle).await?;
                     return Ok(CapturedProcessResult {
                         process: ProcessResult {
                             exit_code: None,
@@ -256,7 +304,7 @@ impl ProcessRunner {
                                 &line,
                                 max_output_bytes.saturating_sub(stderr.len()),
                             ) {
-                                self.cancel(&mut handle).await?;
+                                self.cancel_and_finish(&mut handle).await?;
                                 return Err(error);
                             }
                         }
@@ -266,11 +314,12 @@ impl ProcessRunner {
                                 &line,
                                 max_output_bytes.saturating_sub(stdout.len()),
                             ) {
-                                self.cancel(&mut handle).await?;
+                                self.cancel_and_finish(&mut handle).await?;
                                 return Err(error);
                             }
                         }
                         Ok(ProcessEvent::Exited { code, .. }) => {
+                            self.await_cleanup(&mut handle).await?;
                             return Ok(CapturedProcessResult {
                                 process: ProcessResult {
                                     exit_code: Some(code),
@@ -284,6 +333,7 @@ impl ProcessRunner {
                             });
                         }
                         Ok(ProcessEvent::Cancelled { .. }) => {
+                            self.await_cleanup(&mut handle).await?;
                             return Ok(CapturedProcessResult {
                                 process: ProcessResult {
                                     exit_code: None,
@@ -297,6 +347,7 @@ impl ProcessRunner {
                             });
                         }
                         Ok(ProcessEvent::TimedOut { .. }) => {
+                            self.await_cleanup(&mut handle).await?;
                             return Ok(CapturedProcessResult {
                                 process: ProcessResult {
                                     exit_code: None,
@@ -311,7 +362,7 @@ impl ProcessRunner {
                         }
                         Ok(ProcessEvent::Started { .. } | ProcessEvent::Progress(_)) => {}
                         Err(broadcast::error::RecvError::Lagged(_)) => {
-                            self.cancel(&mut handle).await?;
+                            self.cancel_and_finish(&mut handle).await?;
                             return Err(AppError::new(
                                 "E-2103",
                                 ErrorCategory::Engine,
@@ -320,6 +371,7 @@ impl ProcessRunner {
                             ));
                         }
                         Err(broadcast::error::RecvError::Closed) => {
+                            self.cancel_and_finish(&mut handle).await?;
                             return Err(AppError::new(
                                 "E-2103",
                                 ErrorCategory::Engine,
@@ -333,10 +385,42 @@ impl ProcessRunner {
         }
     }
 
+    async fn cancel_and_finish(&self, handle: &mut ProcessHandle) -> AppResult<()> {
+        let cancellation = self.cancel(handle).await;
+        // Even cancellation failure must not drop standalone ownership before
+        // the lifecycle has either completed or registered its failed receipt.
+        self.await_cleanup(handle).await?;
+        cancellation
+    }
+
+    /// Terminal events describe engine status; only this receipt proves all
+    /// lifecycle cleanup completed. Retain failures for scope/shutdown retry.
+    async fn await_cleanup(&self, handle: &mut ProcessHandle) -> AppResult<()> {
+        let lifecycle = handle.lifecycle.clone();
+        let mut receipt = lifecycle.lock().await;
+        if let Some(error) = &receipt.error {
+            return Err(process_cleanup_error(error.clone()));
+        }
+        if let Some(task) = receipt.task.as_mut() {
+            let outcome = task.await;
+            receipt.task = None;
+            let failure = match outcome {
+                Ok(Ok(())) => None,
+                Ok(Err(error)) => Some(error),
+                Err(error) => Some(error.to_string()),
+            };
+            if let Some(error) = failure {
+                receipt.error = Some(error.clone());
+                return Err(process_cleanup_error(error));
+            }
+        }
+        Ok(())
+    }
+
     /// Cancel a running process.
     ///
     /// On Windows, uses `taskkill /T /F` to terminate the entire process tree.
-    /// On Unix, sends SIGTERM/SIGKILL to the process.
+    /// On Unix, sends SIGTERM then SIGKILL to the owned process group.
     pub async fn cancel(&self, handle: &mut ProcessHandle) -> AppResult<()> {
         let pid = handle.process_id;
         let child = handle.child.clone();
@@ -345,9 +429,12 @@ impl ProcessRunner {
         let _ = self.event_sender.send(ProcessEvent::cancelled());
 
         // Kill the process using platform-specific strategy
+        #[cfg(unix)]
+        let kill_result = handle.process_group.terminate(&child).await;
+        #[cfg(not(unix))]
         let kill_result = kill_process_tree(pid).await;
 
-        if let Err(e) = kill_result {
+        if let Err(ref e) = kill_result {
             tracing::warn!(
                 "Process tree kill failed (pid={}): {}, trying direct kill",
                 pid,
@@ -360,8 +447,17 @@ impl ProcessRunner {
         // Wait for the process to actually exit
         {
             let mut guard = child.lock().await;
+            #[cfg(unix)]
+            tokio::time::timeout(std::time::Duration::from_secs(2), guard.wait())
+                .await
+                .map_err(|error| process_cleanup_error(error.to_string()))?
+                .map_err(|error| process_cleanup_error(error.to_string()))?;
+            #[cfg(not(unix))]
             let _ = guard.wait().await;
         }
+
+        #[cfg(unix)]
+        kill_result.map_err(process_cleanup_error)?;
 
         tracing::info!("Process cancelled: pid={}", pid);
         Ok(())
@@ -371,6 +467,19 @@ impl ProcessRunner {
     pub fn subscribe(&self) -> broadcast::Receiver<ProcessEvent> {
         self.event_sender.subscribe()
     }
+}
+
+fn process_cleanup_error(error: String) -> AppError {
+    AppError::new(
+        "E-2104",
+        ErrorCategory::Engine,
+        "Process Cleanup Failed",
+        "The engine process group could not be fully terminated.",
+    )
+    .with_technical(error)
+    .with_suggestions(vec![
+        "Close the application and check for remaining engine processes before retrying.",
+    ])
 }
 
 fn append_captured_line(buffer: &mut Vec<u8>, line: &str, limit: usize) -> AppResult<()> {
@@ -403,7 +512,8 @@ async fn run_process(
     parser: Arc<CompositeParser>,
     timeout: Option<std::time::Duration>,
     process_id: u32,
-) {
+    #[cfg(unix)] process_group: Arc<crate::unix_group::ProcessGroup>,
+) -> Result<(), String> {
     let start = std::time::Instant::now();
 
     // Open the log file
@@ -417,7 +527,7 @@ async fn run_process(
     drop(guard);
 
     // Spawn concurrent stdout/stderr readers
-    let stdout_task = if let Some(stdout) = stdout {
+    let mut stdout_task = if let Some(stdout) = stdout {
         let tx = event_tx.clone();
         let log = log_writer.clone();
         let p = parser.clone();
@@ -425,10 +535,11 @@ async fn run_process(
             read_stream(BufReader::new(stdout), tx, log, p, "stdout").await;
         })
     } else {
-        return;
+        let _ = event_tx.send(ProcessEvent::exited(-1));
+        return Err("Engine stdout cleanup receipt is unavailable".into());
     };
 
-    let stderr_task = if let Some(stderr) = stderr {
+    let mut stderr_task = if let Some(stderr) = stderr {
         let tx = event_tx.clone();
         let log = log_writer.clone();
         let p = parser.clone();
@@ -436,7 +547,10 @@ async fn run_process(
             read_stream(BufReader::new(stderr), tx, log, p, "stderr").await;
         })
     } else {
-        return;
+        stdout_task.abort();
+        let _ = stdout_task.await;
+        let _ = event_tx.send(ProcessEvent::exited(-1));
+        return Err("Engine stderr cleanup receipt is unavailable".into());
     };
 
     // Poll without holding the child mutex across an await. Cancellation may
@@ -462,8 +576,23 @@ async fn run_process(
         }
     };
 
+    // On Unix, even a successfully exited leader can leave descendants holding
+    // its pipes or writing outputs. Clean up before waiting for stream EOF.
+    #[cfg(unix)]
+    let mut cleanup_failed = if let Err(error) = process_group.terminate(&child).await {
+        tracing::warn!(process_id, %error, "Engine process group cleanup failed");
+        let mut guard = child.lock().await;
+        if let Err(error) = guard.start_kill() {
+            tracing::warn!(process_id, %error, "Direct process cleanup also failed");
+        }
+        true
+    } else {
+        false
+    };
+
     // A timed-out process must be terminated before waiting for EOF from its pipes.
     if wait_result.is_none() {
+        #[cfg(not(unix))]
         if let Err(error) = kill_process_tree(process_id).await {
             tracing::warn!(
                 "Timed-out process tree kill failed (pid={}): {}",
@@ -475,12 +604,42 @@ async fn run_process(
         }
 
         let mut guard = child.lock().await;
+        #[cfg(unix)]
+        match tokio::time::timeout(std::time::Duration::from_secs(2), guard.wait()).await {
+            Ok(Ok(_)) => {}
+            result => {
+                cleanup_failed = true;
+                tracing::warn!(process_id, ?result, "Timed-out engine could not be reaped");
+            }
+        }
+        #[cfg(not(unix))]
         let _ = guard.wait().await;
     }
 
     // Wait for stream readers to finish after the child has exited.
-    let _ = stdout_task.await;
-    let _ = stderr_task.await;
+    #[cfg(unix)]
+    if tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        let _ = tokio::join!(&mut stdout_task, &mut stderr_task);
+    })
+    .await
+    .is_err()
+    {
+        stdout_task.abort();
+        stderr_task.abort();
+        // Do not report a joined lifecycle while aborted readers still own
+        // pipes or logs. Abort is a request; joining proves their drop ran.
+        let _ = tokio::join!(&mut stdout_task, &mut stderr_task);
+        cleanup_failed = true;
+        tracing::warn!(
+            process_id,
+            "Engine output pipes did not close after group cleanup"
+        );
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (&mut stdout_task).await;
+        let _ = (&mut stderr_task).await;
+    }
 
     let elapsed_ms = start.elapsed().as_millis() as u64;
 
@@ -488,6 +647,8 @@ async fn run_process(
     match wait_result {
         Some(Ok(status)) => {
             let code = status.code().unwrap_or(-1);
+            #[cfg(unix)]
+            let code = if cleanup_failed { -1 } else { code };
             // Write separator to log
             {
                 let mut log = log_writer.lock().await;
@@ -526,9 +687,19 @@ async fn run_process(
             );
         }
     }
+    #[cfg(unix)]
+    if cleanup_failed {
+        return Err("Engine process group or output cleanup did not finish; ownership is retained for retry".into());
+    }
+    Ok(())
 }
 
 // ─── Stream reader ────────────────────────────────────────────────────────
+
+// Engines may emit malformed output without any newline. Bound each read and
+// event before decoding/logging so capture limits cannot be bypassed by one
+// indefinitely growing line. Oversized lines are emitted in bounded chunks.
+const MAX_STREAM_LINE_BYTES: usize = 64 * 1024;
 
 async fn read_stream<R>(
     mut reader: R,
@@ -543,7 +714,10 @@ async fn read_stream<R>(
     loop {
         buf.clear();
         // Read until newline as raw bytes (handles non-UTF-8 encodings)
-        let n = reader.read_until(b'\n', &mut buf).await;
+        let n = (&mut reader)
+            .take(MAX_STREAM_LINE_BYTES as u64)
+            .read_until(b'\n', &mut buf)
+            .await;
         match n {
             Ok(0) => break, // EOF
             Ok(_) => {
@@ -596,6 +770,7 @@ async fn read_stream<R>(
 // ─── Platform-specific process termination ───────────────────────────────
 
 /// Terminate a process tree by PID.
+#[cfg(not(unix))]
 async fn kill_process_tree(pid: u32) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -646,12 +821,229 @@ async fn kill_process_tree(pid: u32) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn newline_free_output_is_read_in_bounded_chunks() {
+        let payload = vec![b'x'; super::MAX_STREAM_LINE_BYTES * 3 + 17];
+        let (sender, mut events) = tokio::sync::broadcast::channel(16);
+        super::read_stream(
+            tokio::io::BufReader::new(payload.as_slice()),
+            sender,
+            std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            std::sync::Arc::new(crate::CompositeParser::new()),
+            "stdout",
+        )
+        .await;
+        let mut received = Vec::new();
+        while let Ok(crate::ProcessEvent::StdoutLine { line, .. }) = events.try_recv() {
+            assert!(line.len() <= super::MAX_STREAM_LINE_BYTES);
+            received.extend_from_slice(line.as_bytes());
+        }
+        assert_eq!(received, payload);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn capture_limit_cancels_an_engine_without_waiting_for_a_newline() {
+        let directory = tempfile::tempdir().unwrap();
+        let scope = crate::ProcessScope::default();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            scope.run(crate::ProcessRunner::new().run_to_completion_capture(
+                crate::CommandSpec::new(
+                    "sh",
+                    vec!["-c", "head -c 131072 /dev/zero | tr '\\0' x; sleep 60"],
+                    directory.path().join("oversize.log"),
+                ),
+                tokio_util::sync::CancellationToken::new(),
+                1024,
+            )),
+        )
+        .await
+        .unwrap();
+        assert!(result.is_err());
+        scope.finish().await.unwrap();
+    }
+
     use super::*;
     use crate::parser::PercentageParser;
     use std::path::PathBuf;
 
     fn test_log_path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!("splat-process-test-{}.log", name))
+    }
+
+    #[cfg(unix)]
+    struct DescendantFixture {
+        directory: tempfile::TempDir,
+    }
+
+    #[cfg(unix)]
+    impl DescendantFixture {
+        fn new() -> Self {
+            Self {
+                directory: tempfile::tempdir().unwrap(),
+            }
+        }
+
+        fn spec(&self, parent_exits: bool) -> CommandSpec {
+            // The writer ignores TERM and holds the inherited output pipes.
+            // Its sleep children exercise cleanup beyond the immediate child.
+            let script = format!(
+                "sh -c 'trap \"\" TERM; while :; do printf x >> \"$1\"; sleep 0.05; done' writer \"$1\" & echo $! > \"$2\"; {}",
+                if parent_exits { "while [ ! -s \"$1\" ]; do sleep 0.01; done; exit 0" } else { "wait" }
+            );
+            CommandSpec::new(
+                "sh",
+                vec![
+                    "-c".to_string(),
+                    script,
+                    "parent".to_string(),
+                    self.directory
+                        .path()
+                        .join("writes")
+                        .to_string_lossy()
+                        .into_owned(),
+                    self.directory
+                        .path()
+                        .join("pid")
+                        .to_string_lossy()
+                        .into_owned(),
+                ],
+                self.directory.path().join("output.log"),
+            )
+        }
+
+        async fn wait_for_writer(&self) {
+            tokio::time::timeout(std::time::Duration::from_secs(3), async {
+                while std::fs::metadata(self.directory.path().join("writes"))
+                    .map(|meta| meta.len() == 0)
+                    .unwrap_or(true)
+                {
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("descendant must start writing");
+        }
+
+        async fn assert_writes_stopped(&self) {
+            let path = self.directory.path().join("writes");
+            let before = std::fs::metadata(&path).unwrap().len();
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            assert_eq!(
+                std::fs::metadata(path).unwrap().len(),
+                before,
+                "descendant continued writing after task completion"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for DescendantFixture {
+        fn drop(&mut self) {
+            // Test-only fallback also cleans up after a failed regression test.
+            if let Ok(pid) = std::fs::read_to_string(self.directory.path().join("pid")) {
+                if let Ok(pid) = pid.trim().parse::<u32>() {
+                    let _ = std::process::Command::new("/bin/kill")
+                        .args(["-KILL", &pid.to_string()])
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .status();
+                }
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn unix_cancel_stops_term_ignoring_descendants() {
+        let fixture = DescendantFixture::new();
+        let runner = ProcessRunner::new();
+        let mut handle = runner.execute(fixture.spec(false)).await.unwrap();
+        fixture.wait_for_writer().await;
+        tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            runner.cancel(&mut handle),
+        )
+        .await
+        .expect("group cancellation must be bounded")
+        .unwrap();
+        fixture.assert_writes_stopped().await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn unix_parent_exit_cleans_descendants_before_pipe_eof() {
+        let fixture = DescendantFixture::new();
+        let runner = ProcessRunner::new();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            runner.run_to_completion(fixture.spec(true), CancellationToken::new(), None),
+        )
+        .await
+        .expect("orphaned pipes must not hang a completed command")
+        .unwrap();
+        assert!(result.is_success());
+        fixture.assert_writes_stopped().await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn unix_timeout_stops_term_ignoring_descendants() {
+        let fixture = DescendantFixture::new();
+        let runner = ProcessRunner::new();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            runner.run_to_completion(
+                fixture
+                    .spec(false)
+                    .with_timeout(std::time::Duration::from_millis(300)),
+                CancellationToken::new(),
+                None,
+            ),
+        )
+        .await
+        .expect("timeout cleanup must not hang on descendant pipes")
+        .unwrap();
+        assert!(result.timed_out);
+        fixture.assert_writes_stopped().await;
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_shutdown_before_first_lifecycle_poll_cleans_group() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let runner = ProcessRunner::new();
+        let handle = runtime
+            .block_on(runner.execute(CommandSpec::new(
+                "sleep",
+                vec!["60"],
+                test_log_path("unpolled-shutdown"),
+            )))
+            .unwrap();
+        // execute has spawned the task, but this current-thread runtime has not
+        // polled it. Keep the handle alive across shutdown to exercise the gap.
+        drop(runtime);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                loop {
+                    if let Some(status) = handle.child.lock().await.try_wait().unwrap() {
+                        assert!(!status.success());
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("unpolled lifecycle must still kill its group");
+        });
     }
 
     #[tokio::test]
@@ -916,7 +1308,7 @@ exit 17
             .await
             .unwrap_err();
 
-        assert_eq!(error.code, "E-2106");
+        assert_eq!(error.code, "E-2106", "{error:?}");
     }
 
     #[tokio::test]

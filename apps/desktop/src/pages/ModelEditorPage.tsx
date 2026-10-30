@@ -1,12 +1,14 @@
+import { Button } from "@/components/ui/button";
 import { localizeMessage, t, getLocale } from "../i18n";
 import { useLanguage } from "../hooks/useLanguage";
+import { useTheme } from "../hooks/useTheme";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { confirm } from "@tauri-apps/plugin-dialog";
+import { createPortal } from "react-dom";
 import { ArrowLeft, Save, SpinnerGap } from "../components/primitives/icons";
 import { desktopApi } from "../services/desktop";
 import { createEditorBridge, type EditorBridge } from "../services/editorBridge";
 import type { EditorSession } from "../types";
-import "../styles/model-editor.css";
+
 
 export interface ModelEditorHandle {
   requestLeave: () => Promise<boolean>;
@@ -16,10 +18,14 @@ export interface ModelEditorHandle {
 interface Props {
   session: EditorSession;
   onBack: () => void;
+  headerTarget?: HTMLElement | null;
 }
 
-export default forwardRef<ModelEditorHandle, Props>(function ModelEditorPage({ session, onBack }, ref) {
+export default forwardRef<ModelEditorHandle, Props>(function ModelEditorPage({ session, onBack, headerTarget }, ref) {
   const { locale } = useLanguage();
+  const { resolvedTheme } = useTheme();
+  const currentTheme = useRef(resolvedTheme);
+  currentTheme.current = resolvedTheme;
   // Keep the frame URL stable: reloading it would discard unsaved GPU edits.
   const editorUrl = useRef(`/supersplat/index.html?lng=${getLocale()}`);
   const frame = useRef<HTMLIFrameElement>(null);
@@ -29,16 +35,28 @@ export default forwardRef<ModelEditorHandle, Props>(function ModelEditorPage({ s
   const closing = useRef(false);
   const saveButton = useRef<HTMLButtonElement>(null);
   const [leaving, setLeaving] = useState(false);
-  const [phase, setPhase] = useState<"loading" | "ready" | "saving" | "failed">("loading");
+  const [phase, setPhase] = useState<"loading" | "ready" | "saving" | "exporting" | "failed">("loading");
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("");
+  const [themeError, setThemeError] = useState(false);
+  const themeGeneration = useRef(0);
+  const syncTheme = useCallback(async (client: EditorBridge) => {
+    const generation = ++themeGeneration.current;
+    try {
+      const applied = await client.request("theme", { theme: currentTheme.current, version: "jan-v1" }, [], 3000).result;
+      if (applied !== true) throw new Error("Invalid theme acknowledgement.");
+      if (mounted.current && generation === themeGeneration.current) setThemeError(false);
+    } catch {
+      if (mounted.current && generation === themeGeneration.current) setThemeError(true);
+    }
+  }, []);
   const initialized = useRef(false);
   const cancelLeave = useCallback(() => { closing.current = false; setLeaving(false); }, []);
 
   const requestLeave = useCallback(async () => {
-    if (phaseRef.current === "saving" || closing.current) return false;
+    if (phaseRef.current === "saving" || phaseRef.current === "exporting" || closing.current) return false;
     closing.current = true;
     setLeaving(true);
     saveButton.current?.focus();
@@ -46,7 +64,7 @@ export default forwardRef<ModelEditorHandle, Props>(function ModelEditorPage({ s
     try {
       // Failure to query must never silently discard edits.
       const dirty = phaseRef.current === "loading" ? false : await bridge.current?.request<boolean>("dirty", undefined, [], 3000).result.catch(() => true) ?? true;
-      allowed = !dirty || await confirm(t("当前模型可能有未保存的修改。离开后将丢弃这些修改。"), { title: t("离开模型编辑"), kind: "warning", okLabel: t("丢弃并离开"), cancelLabel: t("继续编辑") });
+      allowed = !dirty || await desktopApi.confirm(t("当前模型可能有未保存的修改。离开后将丢弃这些修改。"), { title: t("离开模型编辑"), kind: "warning", okLabel: t("丢弃并离开"), cancelLabel: t("继续编辑") });
       return allowed;
     } catch (cause) { setError(String(cause)); return false; }
     // Keep the editor frozen through backend session release and unmount.
@@ -68,10 +86,33 @@ export default forwardRef<ModelEditorHandle, Props>(function ModelEditorPage({ s
     return () => { disposed = true; };
   }, [locale, phase]);
 
+  useEffect(() => {
+    if (phase !== "ready" || !bridge.current) return;
+    void syncTheme(bridge.current);
+  }, [resolvedTheme, phase, syncTheme]);
+
   const initialize = async () => {
     if (!frame.current?.contentWindow || initialized.current) return;
     initialized.current = true;
-    const client = createEditorBridge(frame.current.contentWindow, window.location.origin);
+    const client = createEditorBridge(frame.current.contentWindow, window.location.origin, {
+      imageExport: {
+        begin: () => {
+          if (!mounted.current || closing.current || busyRef.current || phaseRef.current !== "ready") {
+            throw new Error(t("编辑器正忙，请稍后导出图像。"));
+          }
+          busyRef.current = true;
+          phaseRef.current = "exporting";
+          setPhase("exporting");
+          setStatus("");
+        },
+        save: (format, bytes) => desktopApi.saveEditorImage(session.session_id, format, bytes),
+        end: () => {
+          busyRef.current = false;
+          phaseRef.current = "ready";
+          if (mounted.current) setPhase("ready");
+        },
+      },
+    });
     bridge.current = client;
     try {
       const current = session;
@@ -81,13 +122,23 @@ export default forwardRef<ModelEditorHandle, Props>(function ModelEditorPage({ s
       let connected = false;
       while (!connected) {
         if (!mounted.current) return;
-        try { await client.request("ping", undefined, [], 1500).result; connected = true; }
+        try { await client.request("ping", { nativeImageSave: true }, [], 1500).result; connected = true; }
         catch { if (Date.now() >= deadline) throw new Error(t("SuperSplat 启动失败。请确认 WebView2 和显卡驱动支持 WebGPU。可返回结果后重试。")); }
       }
-      const bytes = await desktopApi.readGaussianPly(current.project_id, current.project_path, current.source);
+      // Establish paint before revealing the scene. A failed theme update remains
+      // recoverable without treating a loaded model as failed or replacing its frame.
+      await syncTheme(client);
+      const [bytes, camera] = await Promise.all([
+        desktopApi.readGaussianPly(current.project_id, current.project_path, current.source),
+        // A saved model can remain editable without its original SfM metadata.
+        desktopApi.getGaussianCamera(current.project_id, current.project_path).catch(() => null),
+      ]);
       if (!mounted.current) return;
-      await client.request("load", { bytes }, [bytes], 180_000).result;
+      await client.request("load", { bytes, camera }, [bytes], 180_000).result;
       if (!mounted.current) return;
+      await syncTheme(client);
+      if (!mounted.current) return;
+      phaseRef.current = "ready";
       setPhase("ready");
     } catch (cause) {
       if (mounted.current) { setError(String(cause)); setPhase("failed"); }
@@ -95,7 +146,7 @@ export default forwardRef<ModelEditorHandle, Props>(function ModelEditorPage({ s
   };
 
   const save = async () => {
-    if (busyRef.current || closing.current || phase !== "ready" || !bridge.current) return;
+    if (busyRef.current || closing.current || phaseRef.current !== "ready" || !bridge.current) return;
     busyRef.current = true;
     phaseRef.current = "saving";
     setPhase("saving"); setError(null); setStatus("");
@@ -117,22 +168,25 @@ export default forwardRef<ModelEditorHandle, Props>(function ModelEditorPage({ s
     } finally { busyRef.current = false; phaseRef.current = "ready"; setPhase("ready"); }
   };
 
-  return <section className="model-editor-page" aria-label={t("模型编辑工作区")}>
-    <header className="model-editor-header">
-      <div><strong>SuperSplat</strong><span>{t("模型编辑")}</span></div>
-      {status && <span className="model-editor-status" role="status">{localizeMessage(status)}</span>}
-      <div className="model-editor-actions">
-        <button type="button" className="button button-secondary workspace-compact-action" onClick={onBack} disabled={phase === "saving" || leaving}><ArrowLeft size={17} />{t("返回")}</button>
-        <button ref={saveButton} type="button" className="button button-secondary workspace-compact-action" onClick={() => void save()} disabled={phase !== "ready" || leaving} aria-label={phase === "saving" ? t("正在保存") : t("保存")} title={phase === "saving" ? t("正在保存模型") : t("保存模型")}>{phase === "saving" ? <SpinnerGap size={17} className="spin" /> : <Save size={17} />}{t("保存")}</button>
+  const header = <header className={headerTarget ? "model-editor-header flex h-full min-w-0 flex-1 items-center justify-between gap-3 px-2 text-foreground" : "model-editor-header flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3"}>
+      <div className="flex min-w-0 items-baseline gap-3"><strong className="font-semibold">SuperSplat</strong><span className="text-xs text-muted-foreground">{t("模型编辑")}</span></div>
+      {status && <span className="model-editor-status ml-auto text-xs text-muted-foreground" role="status">{localizeMessage(status)}</span>}
+      <div className="model-editor-actions flex shrink-0 gap-2">
+        <Button variant="outline" size="sm" type="button" onClick={onBack} disabled={phase === "saving" || phase === "exporting" || leaving}><ArrowLeft size={17} />{t("返回")}</Button>
+        <Button variant="outline" size="sm" ref={saveButton} type="button" onClick={() => void save()} disabled={phase !== "ready" || leaving} aria-label={phase === "saving" ? t("正在保存") : t("保存")} title={phase === "saving" ? t("正在保存模型") : t("保存模型")}>{phase === "saving" ? <SpinnerGap size={17} className="spin" /> : <Save size={17} />}{t("保存")}</Button>
       </div>
-    </header>
-    {error && <div className="model-editor-error" role="alert">{localizeMessage(error)}</div>}
-    <div className="model-editor-content">
-      <iframe ref={frame} title={t("SuperSplat 模型编辑器")} src={editorUrl.current} onLoad={() => void initialize()} allow="webgpu" />
-      {(phase === "loading" || phase === "saving" || leaving) && <div className="model-editor-busy" role="status">
-        <div className="model-editor-busy-content">
+    </header>;
+
+  return <section className="model-editor-page flex h-full min-h-0 min-w-0 flex-1 flex-col bg-card text-foreground" aria-label={t("模型编辑工作区")}>
+    {headerTarget ? createPortal(header, headerTarget) : header}
+    {error && <div className="model-editor-error shrink-0 border-b border-destructive/30 bg-destructive/10 px-5 py-3 text-sm text-destructive" role="alert">{localizeMessage(error)}</div>}
+    {themeError && <div className="flex shrink-0 items-center gap-3 border-b border-border bg-muted px-5 py-2 text-sm" role="status"><span>{t("编辑器外观未同步，模型修改已保留。")}</span><Button size="sm" variant="outline" onClick={() => { if (bridge.current) void syncTheme(bridge.current); }}>{t("重试")}</Button></div>}
+    <div className="model-editor-content relative min-h-0 flex-1">
+      <iframe className="block size-full border-0" ref={frame} title={t("SuperSplat 模型编辑器")} src={editorUrl.current} onLoad={() => void initialize()} allow="webgpu" />
+      {(phase === "loading" || phase === "saving" || phase === "exporting" || leaving) && <div className="model-editor-busy absolute inset-0 grid place-items-center bg-background/95 text-sm text-foreground" role="status">
+        <div className="model-editor-busy-content flex flex-col items-center gap-3">
           <SpinnerGap size={28} className="spin" aria-hidden="true" />
-          <span>{leaving ? t("正在检查未保存修改…") : phase === "loading" ? t("正在载入") : t("正在保存模型…")}</span>
+          <span>{leaving ? t("正在检查未保存修改…") : phase === "loading" ? t("正在载入") : phase === "exporting" ? t("正在导出图像…") : t("正在保存模型…")}</span>
         </div>
       </div>}
     </div>

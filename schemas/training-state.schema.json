@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metorigin.dev/schemas/training-state.schema.json",
+  "title": "Managed Brush training provenance v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "fingerprint",
+    "completed"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "completed": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "checkpoint",
+            "checkpoint_sha256",
+            "result_sha256",
+            "iterations"
+          ],
+          "properties": {
+            "checkpoint": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[^/\\\\]+$",
+              "not": {
+                "enum": [
+                  ".",
+                  ".."
+                ]
+              }
+            },
+            "checkpoint_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "result_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "iterations": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967295
+            }
+          }
+        }
+      ]
+    }
+  }
+}

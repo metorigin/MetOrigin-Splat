@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-10-27",
+  "scope": "Read-only follow-up for the final pack's two MIT notice blockers; no upstream message was sent.",
+  "components": [
+    {
+      "id": "hex-slice-0.1.4",
+      "license_declared": "MIT",
+      "repository": "https://github.com/cstorey/hex-slice",
+      "github_connector_result": "404 NOT_FOUND",
+      "published_crate_vcs_info": "absent",
+      "published_crate_license_text": "absent",
+      "preserved_evidence": "Checksum-verified .crate source and Cargo.toml author/license declaration in brush/provenance/cargo"
+    },
+    {
+      "id": "indicatif-log-bridge-0.2.3",
+      "license_declared": "MIT",
+      "repository": "https://github.com/djugei/indicatif-log-bridge",
+      "published_git_commit": "03ad701b5b4bf92c03cbcd9ba542b483f5c22f1c",
+      "inspected_url": "https://github.com/djugei/indicatif-log-bridge/tree/03ad701b5b4bf92c03cbcd9ba542b483f5c22f1c",
+      "exact_commit_root_entries": [".gitignore", "Cargo.toml", "README.md", "src"],
+      "published_crate_license_text": "absent",
+      "preserved_evidence": "Checksum-verified .crate source, .cargo_vcs_info.json and Cargo.toml declaration in brush/provenance/cargo"
+    }
+  ],
+  "resolution_required": "Obtain an applicable complete upstream copyright/permission notice, or replace/remove the dependency and rebuild. Do not invent a copyright statement or clear the release flag based on the license identifier alone."
+}

@@ -1,0 +1,405 @@
+diff --git a/apps/brush-cli/src/lib.rs b/apps/brush-cli/src/lib.rs
+index f6b4b1c..9b76fc0 100644
+--- a/apps/brush-cli/src/lib.rs
++++ b/apps/brush-cli/src/lib.rs
+@@ -20,11 +20,19 @@ use tracing::trace_span;
+ #[derive(Parser)]
+ #[command(
+     author,
+-    version,
++    version = brush_process::machine::ENGINE_VERSION,
+     arg_required_else_help = false,
+     about = "Brush - universal splats"
+ )]
+ pub struct Cli {
++    /// Print versioned engine capabilities without initializing a GPU.
++    #[arg(long, exclusive = true)]
++    pub capabilities_json: bool,
++
++    /// Initialize the actual adapter and run Gaussian rendering and backward.
++    #[arg(long, exclusive = true)]
++    pub probe_json: bool,
++
+     /// Source to load from (path or URL).
+     #[arg(value_name = "PATH_OR_URL")]
+     pub source: Option<DataSource>,
+@@ -43,6 +51,9 @@ pub struct Cli {
+ 
+ impl Cli {
+     pub fn validate(self) -> Result<Self, Error> {
++        if self.capabilities_json || self.probe_json {
++            return Ok(self);
++        }
+         if !self.with_viewer && self.source.is_none() {
+             return Err(Error::raw(
+                 ErrorKind::MissingRequiredArgument,
+@@ -68,15 +79,28 @@ pub async fn run_headless(
+     process: RunningProcess,
+     train_stream_config: TrainStreamConfig,
+ ) -> Result<(), anyhow::Error> {
+-    brush_process::burn_init_setup().await;
+-    run_cli_ui(process, train_stream_config).await
++    let (_, adapter_info) = brush_process::burn_init_setup_with_info().await;
++    run_cli_ui_with_adapter_info(
++        process,
++        train_stream_config,
++        Some(format!("{adapter_info:?}")),
++    )
++    .await
+ }
+ 
+ /// Run the CLI: pin the trainer stream to a dedicated [`Actor`] thread,
+ /// drive the indicatif UI on the main task.
+ pub async fn run_cli_ui(
++    process: RunningProcess,
++    train_stream_config: TrainStreamConfig,
++) -> Result<(), anyhow::Error> {
++    run_cli_ui_with_adapter_info(process, train_stream_config, None).await
++}
++
++async fn run_cli_ui_with_adapter_info(
+     mut process: RunningProcess,
+     train_stream_config: TrainStreamConfig,
++    adapter_info: Option<String>,
+ ) -> Result<(), anyhow::Error> {
+     // Pump the trainer stream from a dedicated Actor thread; the
+     // indicatif UI loop below consumes its output on the main task.
+@@ -113,6 +137,9 @@ pub async fn run_cli_ui(
+         multi
+     };
+ 
++    if let Some(info) = adapter_info {
++        log::info!("Initialized compute adapter: {info}");
++    }
+     log::info!("Compute backend: {:?}", process.device);
+ 
+     let main_spinner = ProgressBar::new_spinner().with_style(
+@@ -305,6 +332,29 @@ mod tests {
+     use super::*;
+     use clap::Parser;
+ 
++    #[test]
++    fn reports_metorigin_diagnostics_version() {
++        let Err(error) = Cli::try_parse_from(["brush-cli", "--version"]) else {
++            panic!("version should exit before GPU initialization");
++        };
++        assert_eq!(error.kind(), ErrorKind::DisplayVersion);
++        assert!(
++            error
++                .to_string()
++                .contains(brush_process::machine::ENGINE_VERSION)
++        );
++    }
++
++    #[test]
++    fn machine_modes_need_no_dataset_and_are_exclusive() {
++        for flag in ["--capabilities-json", "--probe-json"] {
++            let cli = Cli::try_parse_from(["brush-cli", flag]).unwrap();
++            assert!(cli.validate().is_ok());
++            assert!(Cli::try_parse_from(["brush-cli", flag, "dataset"]).is_err());
++        }
++        assert!(Cli::try_parse_from(["brush-cli", "--capabilities-json", "--probe-json"]).is_err());
++    }
++
+     #[test]
+     fn parses_source_and_overrides() {
+         let cli = Cli::try_parse_from([
+diff --git a/apps/brush-cli/src/main.rs b/apps/brush-cli/src/main.rs
+index a3e9567..995d652 100644
+--- a/apps/brush-cli/src/main.rs
++++ b/apps/brush-cli/src/main.rs
+@@ -6,9 +6,38 @@
+ fn main() -> anyhow::Result<()> {
+     use brush_cli::{Cli, build_process, run_headless};
+     use clap::Parser;
++    use std::io::Write;
++    use std::panic::{AssertUnwindSafe, catch_unwind};
+ 
+     let args = Cli::parse().validate()?;
+ 
++    if args.capabilities_json {
++        writeln!(
++            std::io::stdout().lock(),
++            "{}",
++            brush_process::machine::capabilities()
++        )?;
++        return Ok(());
++    }
++    if args.probe_json {
++        let outcome = catch_unwind(AssertUnwindSafe(|| -> anyhow::Result<_> {
++            let runtime = tokio::runtime::Builder::new_multi_thread()
++                .enable_all()
++                .build()?;
++            runtime.block_on(brush_process::machine::probe())
++        }));
++        if let Ok(Ok(report)) = outcome {
++            writeln!(std::io::stdout().lock(), "{report}")?;
++            return Ok(());
++        }
++        writeln!(
++            std::io::stdout().lock(),
++            "{}",
++            brush_process::machine::failed_probe()
++        )?;
++        anyhow::bail!("GPU compute probe failed");
++    }
++
+     if args.with_viewer {
+         anyhow::bail!(
+             "brush-cli is headless and can't open a viewer. Pass a source to train, \
+diff --git a/crates/brush-process/src/lib.rs b/crates/brush-process/src/lib.rs
+index 2cac236..66dff87 100644
+--- a/crates/brush-process/src/lib.rs
++++ b/crates/brush-process/src/lib.rs
+@@ -1,5 +1,6 @@
+ pub mod args_file;
+ pub mod config;
++pub mod machine;
+ pub mod message;
+ pub mod slot;
+ pub mod train_stream;
+@@ -35,8 +36,17 @@ fn burn_options() -> RuntimeOptions {
+ }
+ 
+ pub async fn burn_init_setup() -> ProcessDevice {
+-    burn_wgpu::init_setup_async::<AutoGraphicsApi>(&WgpuDevice::default(), burn_options()).await;
+-    default_device()
++    burn_init_setup_with_info().await.0
++}
++
++/// Initialize the compute device and return the adapter that actually backs it.
++/// This is runtime evidence, unlike the requested `WgpuDevice::Auto` selector.
++pub async fn burn_init_setup_with_info() -> (ProcessDevice, wgpu::AdapterInfo) {
++    let setup =
++        burn_wgpu::init_setup_async::<AutoGraphicsApi>(&WgpuDevice::default(), burn_options())
++            .await;
++    let info = setup.adapter.get_info();
++    (default_device(), info)
+ }
+ 
+ pub fn burn_init_device(adapter: Adapter, device: Device, queue: Queue) -> ProcessDevice {
+diff --git a/crates/brush-process/src/machine.rs b/crates/brush-process/src/machine.rs
+new file mode 100644
+index 0000000..14dfe63
+--- /dev/null
++++ b/crates/brush-process/src/machine.rs
+@@ -0,0 +1,219 @@
++//! Versioned headless-machine interfaces; capabilities never initialize a GPU.
++
++use anyhow::{Context, Result, ensure};
++use brush_render::kernels::camera_model::CameraModel;
++use brush_render::{Splats, bwd, camera::Camera, gaussian_splats::SplatRenderMode};
++use burn::{module::Module, tensor::Tensor};
++use serde_json::{Value, json};
++
++pub const ENGINE_VERSION: &str = "1.0.0+metorigin-macos.2";
++pub const SOURCE_COMMIT: &str = "1388f74c6fe0236f68ee4915564bf00e9d2e3747";
++pub const BUILD_ID: &str = "metorigin-macos.2";
++const GAUSSIANS: usize = 8;
++const SIZE: u32 = 32;
++
++fn identity() -> Value {
++    json!({
++        "schema_version": 1,
++        "engine": "brush",
++        "engine_version": ENGINE_VERSION,
++        "source_commit": SOURCE_COMMIT,
++        "build_id": BUILD_ID,
++    })
++}
++
++pub fn capabilities() -> Value {
++    let mut report = identity();
++    report["cli_profile"] = json!("metorigin_1");
++    report["target"] = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
++        json!("aarch64-apple-darwin")
++    } else {
++        json!(format!(
++            "{}-{}",
++            std::env::consts::ARCH,
++            std::env::consts::OS
++        ))
++    };
++    report["supported_features"] = json!([
++        "capabilities_json",
++        "compute_probe",
++        "ply_checkpoint",
++        "ply_warm_start"
++    ]);
++    report["live_protocol"] = json!("disabled");
++    report["resume_mode"] = json!("ply_warm_start_optimizer_reset");
++    report
++}
++
++pub fn failed_probe() -> Value {
++    let mut report = identity();
++    report["probe_kind"] = json!("compute_smoke");
++    report["status"] = json!("failed");
++    report["backend"] = Value::Null;
++    report["device_name"] = Value::Null;
++    report["error"] = json!({
++        "code": "BRUSH_GPU_PROBE_FAILED",
++        "message": "The training GPU could not complete the Gaussian compute check.",
++        "retryable": false,
++    });
++    report
++}
++
++fn validate_compute(pixels: &[f32], gradients: &[f32], loss: f32) -> Result<f64> {
++    ensure!(
++        pixels.len() == (SIZE * SIZE * 4) as usize,
++        "Unexpected rendered image size"
++    );
++    ensure!(
++        pixels.iter().all(|value| value.is_finite()),
++        "Non-finite render output"
++    );
++    ensure!(
++        pixels.iter().any(|value| *value > 0.0),
++        "Empty render output"
++    );
++    ensure!(gradients.len() == GAUSSIANS, "Missing opacity gradients");
++    ensure!(
++        gradients.iter().all(|value| value.is_finite()),
++        "Non-finite backward output"
++    );
++    ensure!(loss.is_finite() && loss > 0.0, "Invalid rendered loss");
++    let gradient_l1 = gradients
++        .iter()
++        .map(|value| f64::from(value.abs()))
++        .sum::<f64>();
++    ensure!(
++        gradient_l1 > 0.0 && gradient_l1.is_finite(),
++        "Empty backward output"
++    );
++    Ok(gradient_l1)
++}
++
++/// Run real projection/rasterization and its Gaussian backward kernels.
++/// The fixed eight visible splats keep this independent of user datasets.
++pub async fn probe() -> Result<Value> {
++    let (device, adapter) = crate::burn_init_setup_with_info().await;
++    ensure!(
++        adapter.backend == wgpu::Backend::Metal,
++        "Expected a Metal compute adapter"
++    );
++    let mut positions = Vec::with_capacity(GAUSSIANS * 3);
++    for index in 0..GAUSSIANS {
++        positions.extend([
++            if index & 1 == 0 { -0.15 } else { 0.15 },
++            if index & 2 == 0 { -0.15 } else { 0.15 },
++            2.0 + if index & 4 == 0 { 0.0 } else { 0.2 },
++        ]);
++    }
++    let splats = Splats::from_raw(
++        positions,
++        [0.0, 0.0, 0.0, 1.0].repeat(GAUSSIANS),
++        vec![-2.0; GAUSSIANS * 3],
++        vec![0.2; GAUSSIANS * 3],
++        vec![0.0; GAUSSIANS],
++        SplatRenderMode::Default,
++        &device,
++    )
++    .train();
++    let camera = Camera::new(
++        glam::Vec3::ZERO,
++        glam::Quat::IDENTITY,
++        0.7,
++        0.7,
++        glam::vec2(0.5, 0.5),
++        CameraModel::Pinhole,
++    );
++    let output = bwd::render_splats(
++        splats.clone(),
++        &camera,
++        glam::uvec2(SIZE, SIZE),
++        glam::Vec3::ZERO,
++    )
++    .await;
++    ensure!(
++        output.num_visible == GAUSSIANS as u32,
++        "Probe scene was not fully visible"
++    );
++    let pixels = output
++        .img
++        .clone()
++        .into_data_async()
++        .await
++        .context("Reading rendered pixels")?
++        .try_to_vec::<f32>()
++        .context("Decoding rendered pixels")?;
++    let loss: Tensor<1> = output.img.mean();
++    let loss_value = loss
++        .clone()
++        .into_scalar_async::<f32>()
++        .await
++        .context("Reading rendered loss")?;
++    let gradients = loss.backward();
++    let opacity_gradients = splats
++        .raw_opacities
++        .grad(&gradients)
++        .context("Gaussian backward did not produce opacity gradients")?
++        .into_data_async()
++        .await
++        .context("Reading Gaussian gradients")?
++        .try_to_vec::<f32>()
++        .context("Decoding Gaussian gradients")?;
++    let gradient_l1 = validate_compute(&pixels, &opacity_gradients, loss_value)?;
++    device.sync().context("Synchronizing GPU probe")?;
++    let mut report = identity();
++    report["probe_kind"] = json!("compute_smoke");
++    report["status"] = json!("supported");
++    report["backend"] = json!("metal");
++    report["device_name"] = json!(adapter.name);
++    report["device_type"] = json!(format!("{:?}", adapter.device_type));
++    report["compute"] = json!({
++        "gaussian_count": GAUSSIANS,
++        "width": SIZE, "height": SIZE,
++        "forward_finite": true, "gradient_finite": true,
++        "loss": loss_value, "gradient_l1": gradient_l1,
++    });
++    Ok(report)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn capabilities_state_only_implemented_contracts() {
++        let report = capabilities();
++        assert_eq!(report["schema_version"], 1);
++        assert_eq!(report["cli_profile"], "metorigin_1");
++        assert_eq!(report["live_protocol"], "disabled");
++        assert_eq!(report["resume_mode"], "ply_warm_start_optimizer_reset");
++        assert_eq!(report["build_id"], BUILD_ID);
++        assert!(!report.to_string().contains("atomic_checkpoint"));
++    }
++
++    #[test]
++    fn failure_is_structured_and_contains_no_raw_cause() {
++        let report = failed_probe();
++        assert_eq!(report["status"], "failed");
++        assert!(report["backend"].is_null());
++        assert_eq!(report["error"]["code"], "BRUSH_GPU_PROBE_FAILED");
++    }
++
++    #[test]
++    fn compute_validation_rejects_noop_nonfinite_or_missing_backward() {
++        let pixels = vec![0.5; (SIZE * SIZE * 4) as usize];
++        assert!(validate_compute(&pixels, &[0.1; GAUSSIANS], 0.5).is_ok());
++        assert!(validate_compute(&pixels, &[0.0; GAUSSIANS], 0.5).is_err());
++        assert!(validate_compute(&pixels, &[f32::NAN; GAUSSIANS], 0.5).is_err());
++        assert!(validate_compute(&pixels, &[], 0.5).is_err());
++        assert!(validate_compute(&pixels, &[0.1; GAUSSIANS], f32::INFINITY).is_err());
++        assert!(validate_compute(&[], &[0.1; GAUSSIANS], 0.5).is_err());
++    }
++
++    #[tokio::test]
++    #[ignore = "requires a real Apple Silicon Metal GPU"]
++    async fn metal_probe_executes_render_and_backward() {
++        let report = probe().await.expect("real GPU compute probe");
++        assert_eq!(report["backend"], "metal");
++        assert!(report["compute"]["gradient_l1"].as_f64().unwrap() > 0.0);
++    }
++}

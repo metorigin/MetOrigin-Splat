@@ -1,0 +1,50 @@
+name: macOS Metal Acceptance (manual dedicated host)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: macos-metal-acceptance
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  real-engines:
+    # Provision this protected runner with licensed fixtures and the verified
+    # engine pack. Never attach it to pull_request or pull_request_target events.
+    runs-on: [self-hosted, macOS, ARM64, metorigin-metal]
+    environment: macos-metal-acceptance
+    timeout-minutes: 90
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "15.0"
+      METORIGIN_TEST_IMAGE_DIR: ${{ vars.METORIGIN_TEST_IMAGE_DIR }}
+      METORIGIN_TEST_VIDEO: ${{ vars.METORIGIN_TEST_VIDEO }}
+      METORIGIN_ENGINE_PACK: ${{ vars.METORIGIN_ENGINE_PACK }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify dedicated host and fixed inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          test -d "$METORIGIN_TEST_IMAGE_DIR"
+          test -f "$METORIGIN_TEST_VIDEO"
+          python3 scripts/macos/verify-pack.py "$METORIGIN_ENGINE_PACK"
+          cargo --version
+      - name: Real photos and video through all production stages
+        shell: bash
+        run: |
+          set -euo pipefail
+          export METORIGIN_TEST_PROJECT_ROOT="$RUNNER_TEMP/metorigin-metal-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir "$METORIGIN_TEST_PROJECT_ROOT"
+          export METORIGIN_TEST_FFMPEG="$METORIGIN_ENGINE_PACK/ffmpeg/bin/ffmpeg"
+          export METORIGIN_TEST_FFPROBE="$METORIGIN_ENGINE_PACK/ffmpeg/bin/ffprobe"
+          export METORIGIN_TEST_COLMAP="$METORIGIN_ENGINE_PACK/colmap/bin/colmap"
+          export METORIGIN_TEST_BRUSH="$METORIGIN_ENGINE_PACK/brush/bin/brush"
+          cargo test --locked -p splat-pipeline --test real_macos_pipeline -- --ignored --test-threads=1
+      # Evidence stays on this host. Native UI, sleep, 16/32 GB datasets and
+      # clean-machine installation are separate acceptance records.

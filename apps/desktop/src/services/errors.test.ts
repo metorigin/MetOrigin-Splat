@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatUiError, normalizeCommandError, redactSensitiveText } from "./errors";
+import { commandErrorSummary, formatUiError, normalizeCommandError, redactSensitiveText } from "./errors";
 
 describe("normalizeCommandError", () => {
   it("preserves safe structured fields and accurate retryability", () => {
@@ -103,5 +103,19 @@ describe("normalizeCommandError", () => {
     expect(defaultAndCopiedText).not.toContain("PrivateUser");
     expect(error.technicalDetails).not.toContain("METORIGIN_TEST_SECRET_DO_NOT_EXPOSE");
     expect(error.technicalDetails).not.toContain("PrivateUser");
+  });
+});
+
+
+describe("commandErrorSummary", () => {
+  it("keeps the safe error message and redacts private paths without the class prefix", () => {
+    const error = new Error("Engine unavailable at /Users/test-user/private/engine");
+    error.name = "DesktopCommandError";
+    expect(commandErrorSummary(error, "check_engines")).toBe("Engine unavailable at [REDACTED_PATH]");
+  });
+
+  it("retains the structured user message and settings fallback", () => {
+    expect(commandErrorSummary({ user_message: "引擎不可用", technical_message: "private detail" }, "check_engines")).toBe("引擎不可用");
+    expect(commandErrorSummary(null, "get_app_settings")).toBe("无法加载设置");
   });
 });

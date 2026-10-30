@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "key": "unicode-data-readme",
+      "repository": "open-i18n/data-unicode-ucd",
+      "commit": "2a2044479b3c4915ef4213adf1dfd6236dba24c8",
+      "path": "data/ReadMe.txt",
+      "url": "https://raw.githubusercontent.com/open-i18n/data-unicode-ucd/2a2044479b3c4915ef4213adf1dfd6236dba24c8/data/ReadMe.txt",
+      "git_blob_sha1": "1ba7a9d9da2fc8f14652468a1a249a24c8bcda7e",
+      "sha256": "7e9ff2ef4828f9119eea17ada0b35697106ed2885521bfa854b126cea910802e",
+      "size_bytes": 507,
+      "local_path": "app-originals/open-i18n__data-unicode-ucd/2a2044479b3c4915ef4213adf1dfd6236dba24c8/data/ReadMe.txt"
+    },
+    {
+      "key": "unicode-data-license",
+      "repository": "unicode-org/cldr",
+      "commit": "5dfac9269ed58eeaeddd6ca887bdc7eb43a481fd",
+      "path": "unicode-license.txt",
+      "url": "https://raw.githubusercontent.com/unicode-org/cldr/5dfac9269ed58eeaeddd6ca887bdc7eb43a481fd/unicode-license.txt",
+      "git_blob_sha1": "31decdfd50549b8119da176348a8db2f3f6066e6",
+      "sha256": "6a6976a5da6ac21a6a001c685c057f4a6e619be11f5465371088ecd80c7fbe06",
+      "size_bytes": 2849,
+      "local_path": "app-originals/unicode-org__cldr/5dfac9269ed58eeaeddd6ca887bdc7eb43a481fd/unicode-license.txt",
+      "kind": "official-historical-unicode-data-license",
+      "source_release": "CLDR release-32",
+      "source_commit_date": "2017-11-01T16:34:09Z"
+    },
+    {
+      "key": "webp-build-recipe",
+      "repository": "playcanvas/splat-transform",
+      "commit": "0cb47cd81023cca117c20ce59a55ba584ee89177",
+      "path": "lib/BUILD.md",
+      "url": "https://raw.githubusercontent.com/playcanvas/splat-transform/0cb47cd81023cca117c20ce59a55ba584ee89177/lib/BUILD.md",
+      "git_blob_sha1": "39f47856978b8bb75b3d39deea58b1360820f72f",
+      "sha256": "e14142cc9eb47a05a427fc22e5fa8b8730946548428946b4dc7a2f9265da5586",
+      "size_bytes": 537,
+      "local_path": "app-originals/playcanvas__splat-transform/0cb47cd81023cca117c20ce59a55ba584ee89177/lib/BUILD.md"
+    },
+    {
+      "key": "webp-wrapper-lib/webp.c",
+      "repository": "playcanvas/splat-transform",
+      "commit": "0cb47cd81023cca117c20ce59a55ba584ee89177",
+      "path": "lib/webp.c",
+      "url": "https://raw.githubusercontent.com/playcanvas/splat-transform/0cb47cd81023cca117c20ce59a55ba584ee89177/lib/webp.c",
+      "git_blob_sha1": "c11561373e21da9744aa77b3f9616ffaf88b4237",
+      "sha256": "32c66c6de02eb30223d629987dfbe885e9f2039a663fe3f9eebd666c0b4d62f9",
+      "size_bytes": 1914,
+      "local_path": "app-originals/playcanvas__splat-transform/0cb47cd81023cca117c20ce59a55ba584ee89177/lib/webp.c"
+    },
+    {
+      "key": "webp-wrapper-LICENSE",
+      "repository": "playcanvas/splat-transform",
+      "commit": "0cb47cd81023cca117c20ce59a55ba584ee89177",
+      "path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/playcanvas/splat-transform/0cb47cd81023cca117c20ce59a55ba584ee89177/LICENSE",
+      "git_blob_sha1": "7f478db6d47a259cd70f74b1e69d8ce407fd0912",
+      "sha256": "42fa51ddd556be151a29f381fb97ee975825dcc454e805ea3ea9c079cca04d34",
+      "size_bytes": 1064,
+      "local_path": "app-originals/playcanvas__splat-transform/0cb47cd81023cca117c20ce59a55ba584ee89177/LICENSE"
+    }
+  ],
+  "current_supersplat": {
+    "upstream": {
+      "repository": "https://github.com/playcanvas/supersplat.git",
+      "version": "3.7.0",
+      "commit": "b89029dd20911fd18905b61de2701094ac390a73"
+    },
+    "transform": {
+      "name": "@playcanvas/splat-transform",
+      "version": "3.10.2",
+      "commit": "e0dab1fa0b7f7546d2b4b197f6294570e53ba3b8"
+    },
+    "overlay_directory": "webp-overlay-3.10.2",
+    "scope": "Current separately verified derivative. The webp record below preserves the historical prebuilt 3.4.2 provenance without rewriting it."
+  },
+  "webp": {
+    "supersplat_commit": "18eccb9742bfbbf728c67f332d6d8215ed556755",
+    "introduced_by": "433f30c6a2c9c7c8f12de1305712332e5b2e03cb",
+    "splat_transform_commit": "0cb47cd81023cca117c20ce59a55ba584ee89177",
+    "splat_transform_version": "3.4.2",
+    "wasm_sha256": "e2c337e1afacf5c9e35f21916b5615fc6c5623074c6e110c07791bd0af071501",
+    "wasm_git_blob_sha1": "4d871b7b80cf9dbdefafa3c94726aa6b58fc7150",
+    "finding": "SuperSplat WASM equals splat-transform 3.4.2 lib/webp.wasm. Original wrapper and build recipe are supplied. Recipe does not pin libwebp, libsharpyuv, Emscripten or their notices; exact compiled version remains unresolved."
+  },
+  "unicode": {
+    "crate": "unic-ucd-ident@0.9.0",
+    "crate_sha256": "e230a37c0381caa9219d67cf063aa3a375ffed5bf541a452db16e744bdab6987",
+    "crate_commit": "8a6ce83063d90b91ae2ce59eddb803edd393fca9",
+    "crate_version_member": "tables/unicode_version.rsv",
+    "crate_version_member_sha256": "a2efcb89606ee821ff9ac5595e5126a65f2b00b70ca1054c1884f741827ab230",
+    "upstream_gitlink": "external/unicode/ucd",
+    "gitlink_commit": "2a2044479b3c4915ef4213adf1dfd6236dba24c8",
+    "version": "10.0.0",
+    "license_key": "unicode-data-license",
+    "readme_key": "unicode-data-readme",
+    "license_scope": "unicode-public-data-excluding-pdf-code-charts",
+    "finding": "The checksum-bound unic-ucd-ident crate version member and pinned UCD submodule ReadMe identify Unicode 10.0.0. Unicode's official CLDR release-32 preserves the complete 1991-2017 data license, explicitly covering data under unicode.org/Public/ except PDF code charts. This is an official historical license distributed with CLDR, not a recovered snapshot of the 2017 Unicode website."
+  }
+}

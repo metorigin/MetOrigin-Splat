@@ -127,6 +127,22 @@ describe("NewProjectPage", () => {
     vi.mocked(desktopApi.getImagePreviews).mockResolvedValue([]);
   });
 
+  it("keeps the labelled name draft across steps and prevents empty-name submission", async () => {
+    render(<AppProvider><NewProjectPage /></AppProvider>);
+    await advanceToConfirmation();
+    const name = screen.getByRole("textbox", { name: "项目名称" });
+    fireEvent.change(name, { target: { value: "  " } });
+    expect(screen.getByRole("button", { name: "仅创建项目" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "创建并开始重建" })).toBeDisabled();
+    fireEvent.change(name, { target: { value: "庭院扫描" } });
+    fireEvent.click(screen.getByRole("button", { name: "上一步" }));
+    expect(screen.getByRole("button", { name: /^快速/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: /下一步/ }));
+    expect(await screen.findByRole("textbox", { name: "项目名称" })).toHaveValue("庭院扫描");
+    fireEvent.click(screen.getByRole("button", { name: "仅创建项目" }));
+    await waitFor(() => expect(desktopApi.createProject).toHaveBeenCalledWith(expect.objectContaining({ name: "庭院扫描", startAfterCreate: false })));
+  });
+
   it("shows real video metadata and Fast estimate after native selection", async () => {
     render(<AppProvider><NewProjectPage /></AppProvider>);
     fireEvent.click(screen.getByRole("button", { name: /选择视频/ }));
@@ -366,7 +382,13 @@ describe("NewProjectPage", () => {
     render(<AppProvider><NewProjectPage /></AppProvider>);
 
     expect(screen.getByText(/当前目标：选择要重建的视频或连续照片/)).toBeVisible();
+    const shootingAdvice = screen.getByRole("button", { name: "拍摄建议" });
+    expect(shootingAdvice).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(/围绕静止主体缓慢移动/)).not.toBeInTheDocument();
+    fireEvent.click(shootingAdvice);
+    expect(shootingAdvice).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText(/围绕静止主体缓慢移动/)).toBeVisible();
+    fireEvent.click(shootingAdvice);
     fireEvent.click(screen.getByRole("button", { name: /选择视频/ }));
 
     expect(await screen.findByRole("region", { name: "可以继续的提醒" })).toHaveTextContent("曝光不一致");
@@ -398,6 +420,7 @@ describe("NewProjectPage", () => {
       const pending = deferred<ProjectPreflight>();
       vi.mocked(desktopApi.preflightProject).mockReturnValueOnce(pending.promise);
       fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${label}`) }));
+      expect(screen.getByRole("button", { name: new RegExp(`^${label}`) })).toHaveAttribute("aria-pressed", "true");
       expect(desktopApi.preflightProject).toHaveBeenLastCalledWith({ sourcePath: base.source_path, projectRoot: null, preset: id });
       expect(screen.getByRole("button", { name: /下一步/ })).toBeDisabled();
       expect(screen.getByText(/正在按当前预设检查/)).toBeVisible();
@@ -519,6 +542,12 @@ describe("NewProjectPage", () => {
     expect(desktopApi.createProject).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("progressbar", { name: "素材复制进度" })).not.toBeInTheDocument();
     expect(screen.getByText("等待首个进度回执")).toBeVisible();
+
+    act(() => eventListeners.get("project://copy-progress")?.({ payload: {
+      project_id: "project-1", copied_bytes: 0, total_bytes: 1024, percent: 0, completed: false,
+    } }));
+    expect(screen.getByRole("progressbar", { name: "素材复制进度" })).toHaveAttribute("aria-valuenow", "0");
+    expect(screen.getByRole("progressbar", { name: "素材复制进度" })).toHaveAttribute("aria-valuetext", "0.0 B / 1.0 KiB");
 
     const progress: ProjectCopyProgress = {
       project_id: "project-1",

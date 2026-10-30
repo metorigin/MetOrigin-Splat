@@ -1,0 +1,31 @@
+{
+  "started_at": "2026-10-27T17:36:57.342496+00:00",
+  "finished_at": "2026-10-27T17:36:57.471518+00:00",
+  "duration_seconds": 0.128929291,
+  "cwd": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+  "argv": [
+    "/usr/bin/python3",
+    "emsdk.py",
+    "activate",
+    "4.0.21"
+  ],
+  "explicit_environment": {
+    "PATH": "${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+    "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+    "EMCC_CORES": "2",
+    "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "EMSDK_KEEP_DOWNLOADS": "1",
+    "EMSDK_NUM_CORES": "2",
+    "EMSDK_NOTTY": "1",
+    "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+    "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/"
+  },
+  "exit_code": 0,
+  "log": {
+    "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/activate-sdk.log",
+    "size_bytes": 849,
+    "sha256": "d8e729a8bd238d63efdecfa1a75a4f62267871712f3bbe198f6a84487fddcb7c"
+  }
+}

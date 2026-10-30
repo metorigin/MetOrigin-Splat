@@ -19,6 +19,8 @@ struct MatchingMetadata {
     source_kind: String,
     strategy: MatchingStrategy,
     options: MatchingOptions,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    execution_fingerprint: Option<colmap_support::ColmapCacheFingerprint>,
 }
 
 /// Matches ordered video frames with COLMAP's sequential matcher.
@@ -79,6 +81,10 @@ impl PipelineStage for ColmapMatchingStage {
                 .map(|metadata| {
                     metadata.strategy_version == 2
                         && metadata.source_kind == source_kind_name(expected_kind)
+                        && colmap_support::profile_fingerprint_matches(
+                            ctx,
+                            metadata.execution_fingerprint.as_ref(),
+                        )
                 })
                 .unwrap_or(false))
     }
@@ -117,6 +123,7 @@ impl PipelineStage for ColmapMatchingStage {
                 source_kind: source_kind_name(source_kind).into(),
                 strategy,
                 options,
+                execution_fingerprint: colmap_support::profile_fingerprint(ctx)?,
             },
             &ctx.paths.colmap_dir.join("matching.json"),
         )?;

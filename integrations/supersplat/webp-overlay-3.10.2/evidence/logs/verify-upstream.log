@@ -1,0 +1,141 @@
+TAP version 13
+# Subtest: HTML Format (Output Only)
+    # Subtest: should write bundled HTML viewer
+    ok 1 - should write bundled HTML viewer
+      ---
+      duration_ms: 53.994083
+      type: 'test'
+      ...
+    # Subtest: should write unbundled HTML viewer with separate files
+    ok 2 - should write unbundled HTML viewer with separate files
+      ---
+      duration_ms: 18.613166
+      type: 'test'
+      ...
+    # Subtest: should accept viewer settings JSON
+    ok 3 - should accept viewer settings JSON
+      ---
+      duration_ms: 24.71025
+      type: 'test'
+      ...
+    # Subtest: should reject viewer settings JSON the viewer cannot read
+    ok 4 - should reject viewer settings JSON the viewer cannot read
+      ---
+      duration_ms: 0.365167
+      type: 'test'
+      ...
+    1..4
+ok 1 - HTML Format (Output Only)
+  ---
+  duration_ms: 98.59575
+  type: 'suite'
+  ...
+# Subtest: WebPCodec
+    # Subtest: shares one wasm module across sequential create() calls
+    ok 1 - shares one wasm module across sequential create() calls
+      ---
+      duration_ms: 11.955542
+      type: 'test'
+      ...
+    # Subtest: shares one wasm module across concurrent create() calls
+    ok 2 - shares one wasm module across concurrent create() calls
+      ---
+      duration_ms: 0.171542
+      type: 'test'
+      ...
+    # Subtest: round-trips RGBA data losslessly
+    ok 3 - round-trips RGBA data losslessly
+      ---
+      duration_ms: 5.392583
+      type: 'test'
+      ...
+    # Subtest: uses the default WebP encoder unless an effort level is explicitly provided
+    ok 4 - uses the default WebP encoder unless an effort level is explicitly provided
+      ---
+      duration_ms: 2.051334
+      type: 'test'
+      ...
+    1..4
+ok 2 - WebPCodec
+  ---
+  duration_ms: 20.249625
+  type: 'suite'
+  ...
+# Subtest: writeSogSource: native SOG from a ChunkSource
+    # Subtest: end-to-end: readPly -> writeSogSource == decode -> writeSog (SH0)
+    ok 1 - end-to-end: readPly -> writeSogSource == decode -> writeSog (SH0)
+      ---
+      duration_ms: 523.143
+      type: 'test'
+      ...
+    # Subtest: reads a small interleaved PLY body once
+    ok 2 - reads a small interleaved PLY body once
+      ---
+      duration_ms: 340.160084
+      type: 'test'
+      ...
+    # Subtest: does not re-read compressed PLY ranges for each SOG layer
+    ok 3 - does not re-read compressed PLY ranges for each SOG layer
+      ---
+      duration_ms: 2169.052167
+      type: 'test'
+      ...
+    # Subtest: SH3 round-trips within tolerance (k-means is non-deterministic)
+    ok 4 - SH3 round-trips within tolerance (k-means is non-deterministic)
+      ---
+      duration_ms: 2730.149375
+      type: 'test'
+      ...
+    # Subtest: flat splats (scale_2 = -Infinity, a valid filterNaN survivor) produce a finite codebook
+    ok 5 - flat splats (scale_2 = -Infinity, a valid filterNaN survivor) produce a finite codebook
+      ---
+      duration_ms: 920.622083
+      type: 'test'
+      ...
+    1..5
+ok 3 - writeSogSource: native SOG from a ChunkSource
+  ---
+  duration_ms: 6683.837625
+  type: 'suite'
+  ...
+# Subtest: readSogSource: native chunked SOG read
+    # Subtest: readRows gathers rows identically to a full read (SH3)
+    ok 1 - readRows gathers rows identically to a full read (SH3)
+      ---
+      duration_ms: 2127.040959
+      type: 'test'
+      ...
+    1..1
+ok 4 - readSogSource: native chunked SOG read
+  ---
+  duration_ms: 2127.239708
+  type: 'suite'
+  ...
+# Subtest: writeSogSource: indices ordering contract
+    # Subtest: rejects a sub-length indices (must be a full-length ordering, not a subset filter)
+    ok 1 - rejects a sub-length indices (must be a full-length ordering, not a subset filter)
+      ---
+      duration_ms: 1.032583
+      type: 'test'
+      ...
+    # Subtest: accepts a full-length ordering (a permutation of all rows)
+    ok 2 - accepts a full-length ordering (a permutation of all rows)
+      ---
+      duration_ms: 351.90475
+      type: 'test'
+      ...
+    1..2
+ok 5 - writeSogSource: indices ordering contract
+  ---
+  duration_ms: 353.179041
+  type: 'suite'
+  ...
+1..5
+# tests 16
+# suites 5
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 10624.767209

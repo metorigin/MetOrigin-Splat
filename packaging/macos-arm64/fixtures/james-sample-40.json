@@ -1,0 +1,266 @@
+{
+  "schema_version": 1,
+  "id": "james-sample-cc0-40-v1",
+  "kind": "real_photographs",
+  "title": "James et al. 2012 sample-scale volcanic bomb (40-photo subset)",
+  "source": "https://doi.org/10.6084/m9.figshare.9120020.v1",
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "license_evidence": "https://api.figshare.com/v2/articles/9120020/versions/1",
+  "authors": [
+    "Mike R. James",
+    "Stuart Robson"
+  ],
+  "archive": {
+    "expected_size": 611535084,
+    "expected_md5": "a62826fd45a89551a548897cf6b62b01",
+    "file_id": 16636739,
+    "url": "https://ndownloader.figshare.com/files/16636739",
+    "whole_archive_verification": "passed",
+    "sha256": "b0d0995be5652d453fdb0d809a364ccd4a8a5040cae35fb6e748f0ff1783d2d1",
+    "expected_sha256": "b0d0995be5652d453fdb0d809a364ccd4a8a5040cae35fb6e748f0ff1783d2d1"
+  },
+  "selection": "Unmodified IMG_1928.jpg through IMG_1967.jpg, inclusive",
+  "images": [
+    {
+      "path": "IMG_1928.jpg",
+      "bytes": 2883208,
+      "zip_crc32": "09997c68",
+      "sha256": "5b09358a5a2e94dd13a469714624fbd559aa1258bdb992b2111740b2614361eb"
+    },
+    {
+      "path": "IMG_1929.jpg",
+      "bytes": 2913979,
+      "zip_crc32": "230073c4",
+      "sha256": "61e550d6b940564d2305b77c66207c766316f83343d3bfa0567e10ee7189be78"
+    },
+    {
+      "path": "IMG_1930.jpg",
+      "bytes": 2951542,
+      "zip_crc32": "f9549084",
+      "sha256": "163278186744f61696ffc04dd1d5f4c83a15f23c0d996cb90f48a0c2a4f9e59f"
+    },
+    {
+      "path": "IMG_1931.jpg",
+      "bytes": 2975538,
+      "zip_crc32": "ccc16b47",
+      "sha256": "22843e46af9fd16907ba709ae26bbf1bc140bd3f29a1469b82366559de589099"
+    },
+    {
+      "path": "IMG_1932.jpg",
+      "bytes": 3002138,
+      "zip_crc32": "473ba632",
+      "sha256": "ab4ec9ef06f3403b4db628878b54528440d77a3b1408103de0d62f61bcba04a6"
+    },
+    {
+      "path": "IMG_1933.jpg",
+      "bytes": 2998601,
+      "zip_crc32": "a0e8a121",
+      "sha256": "e1455ec61b3230ffa3899c3e06426ee19cb2f22b31c803f2895fc788eaa4da4c"
+    },
+    {
+      "path": "IMG_1934.jpg",
+      "bytes": 2995686,
+      "zip_crc32": "ea58676c",
+      "sha256": "94d3884fd69165373bf997beebed08221fee1c18226789f350789419ca9fd5d4"
+    },
+    {
+      "path": "IMG_1935.jpg",
+      "bytes": 2990553,
+      "zip_crc32": "94bb480b",
+      "sha256": "28d8fa0ee93f108ce913f97bdd3ba8f9ea8a712f141023a6625993c00409f459"
+    },
+    {
+      "path": "IMG_1936.jpg",
+      "bytes": 2995192,
+      "zip_crc32": "a4492049",
+      "sha256": "ec468683648eb0b7cc7f5f65c9dc15bebf1e5851c40e6618f354a4b9afd09ba5"
+    },
+    {
+      "path": "IMG_1937.jpg",
+      "bytes": 3000064,
+      "zip_crc32": "f8ad442c",
+      "sha256": "45a459b02170c4bf937a3c75b13ac7d0c6525636eb5c6de48861986dd2d0376b"
+    },
+    {
+      "path": "IMG_1938.jpg",
+      "bytes": 2974978,
+      "zip_crc32": "240ebda1",
+      "sha256": "ea7260f23fdcf3e4650fa9287153943d8f99db34bb7cfbb3596a856ec11f532f"
+    },
+    {
+      "path": "IMG_1939.jpg",
+      "bytes": 2951424,
+      "zip_crc32": "faf42cf1",
+      "sha256": "91d48fec553ed332c077f72be8007e06c6e49592d0fc2e041df2d394350abf27"
+    },
+    {
+      "path": "IMG_1940.jpg",
+      "bytes": 2888976,
+      "zip_crc32": "01e20d3e",
+      "sha256": "8dd99ff4031aa1a9f067469a51cc825b9c5233304a9e568cacc19eb5bf4e9539"
+    },
+    {
+      "path": "IMG_1941.jpg",
+      "bytes": 2839297,
+      "zip_crc32": "ac22c057",
+      "sha256": "8ec5fd7c34ca0fbd470e664804fb1c98196cb722411b7c47ce9a72b30b1a3478"
+    },
+    {
+      "path": "IMG_1942.jpg",
+      "bytes": 2881142,
+      "zip_crc32": "d8790d8c",
+      "sha256": "e3ff262876f857bcdb2638739a8eca22b9bbd5a1a767850ceb6c68a0cf2fb3d5"
+    },
+    {
+      "path": "IMG_1943.jpg",
+      "bytes": 2865494,
+      "zip_crc32": "175323c1",
+      "sha256": "e40e6013bb9650abfaa56f0d030ada9e6bb29b23d586558abbe37a35478e0d7b"
+    },
+    {
+      "path": "IMG_1944.jpg",
+      "bytes": 2954507,
+      "zip_crc32": "b17c6972",
+      "sha256": "bfd64a08fa3c2df5377096bbf0cb3aea3385e3fb186e8241d1411d4214005b27"
+    },
+    {
+      "path": "IMG_1945.jpg",
+      "bytes": 2954193,
+      "zip_crc32": "5f51f102",
+      "sha256": "609d913a9fded78535a5263a52ea14fac66b405360f46c7ce7fb4c7feb09a8a6"
+    },
+    {
+      "path": "IMG_1946.jpg",
+      "bytes": 2991468,
+      "zip_crc32": "f519c1f1",
+      "sha256": "f640bb6e1e85dee11ee0a9a31577103c04bb3a8e8f340625b1d307f9559ff0e5"
+    },
+    {
+      "path": "IMG_1947.jpg",
+      "bytes": 2987102,
+      "zip_crc32": "7ffb842e",
+      "sha256": "a8f61434f75913075f6e927654a9fdcedb618dd82c95d222eb5162aa0241e2b7"
+    },
+    {
+      "path": "IMG_1948.jpg",
+      "bytes": 3060293,
+      "zip_crc32": "c35b6f61",
+      "sha256": "8691be1bcd779171caf093989e6d1ef3beeecf77734d546c3ad76f201566ecdd"
+    },
+    {
+      "path": "IMG_1949.jpg",
+      "bytes": 3086773,
+      "zip_crc32": "f2562db5",
+      "sha256": "25e194072be5bab31eb24b1a8629c6b6c91db9d8f1a749e36ff0cf6ed0f66a45"
+    },
+    {
+      "path": "IMG_1950.jpg",
+      "bytes": 3029870,
+      "zip_crc32": "b4eab1fb",
+      "sha256": "9e37e602926e21bb9f6ddae783c8af93a7909c2ec6b66209ac36619e9121b238"
+    },
+    {
+      "path": "IMG_1951.jpg",
+      "bytes": 3038879,
+      "zip_crc32": "81608f0e",
+      "sha256": "cfa5463009e8b1f8af096d89c0dea17468faa9b1fbf64331854c2d5ddc4b0d05"
+    },
+    {
+      "path": "IMG_1952.jpg",
+      "bytes": 3044015,
+      "zip_crc32": "49f7edf7",
+      "sha256": "694f5254d525a22ee2548a6d05394b5d991f6e8dfa6df6729b5ed16768e275fd"
+    },
+    {
+      "path": "IMG_1953.jpg",
+      "bytes": 2964851,
+      "zip_crc32": "54f65f63",
+      "sha256": "171ee2e281c4a535261f21400965d4e3d39419bf6195e9df854d70d1ca1c27f2"
+    },
+    {
+      "path": "IMG_1954.jpg",
+      "bytes": 2948746,
+      "zip_crc32": "ab4c1e3b",
+      "sha256": "18ebc5bf660bcab81a0c67d313ad55a6ccda5bcb07d22fa7dcec0032aa787695"
+    },
+    {
+      "path": "IMG_1955.jpg",
+      "bytes": 2791748,
+      "zip_crc32": "25bac435",
+      "sha256": "1bfa4fe0f6f8a609c9ed325598141d3ce984dc5e6a83a3c3fd7e92c407f59de3"
+    },
+    {
+      "path": "IMG_1956.jpg",
+      "bytes": 2756191,
+      "zip_crc32": "29dbe599",
+      "sha256": "a115238cc38476e6b269c7ff3979fc1283ed763af9811cbd96a3dcd98b990e2a"
+    },
+    {
+      "path": "IMG_1957.jpg",
+      "bytes": 2856704,
+      "zip_crc32": "454cf25b",
+      "sha256": "e24c69ea99487f0cb3ebbc5d58fe6d83edc6ae837508fdf1fa37f9f2dfd5d4c6"
+    },
+    {
+      "path": "IMG_1958.jpg",
+      "bytes": 2813933,
+      "zip_crc32": "49e8a311",
+      "sha256": "48b46aeb0f39f7cc1d24ec510ac83921469d861b6860b0c30f13af51765ef689"
+    },
+    {
+      "path": "IMG_1959.jpg",
+      "bytes": 2804581,
+      "zip_crc32": "e7e1b3e0",
+      "sha256": "d6f9c5afd6d4737ff5af15e74b83e500d8ddde588e262463ed38028482ff06b8"
+    },
+    {
+      "path": "IMG_1960.jpg",
+      "bytes": 2873068,
+      "zip_crc32": "047a13ef",
+      "sha256": "c1974397e7363a11ad036d4ee6e362ad6eff1b769eaae936b97165b43f827e29"
+    },
+    {
+      "path": "IMG_1961.jpg",
+      "bytes": 2851010,
+      "zip_crc32": "f157a583",
+      "sha256": "8826e9c5059e775009f936e82d8efbfe67d83f99d6b3ad96f7321da705dfc70e"
+    },
+    {
+      "path": "IMG_1962.jpg",
+      "bytes": 2763545,
+      "zip_crc32": "79708ffb",
+      "sha256": "225c8552eb489643c5ece516b3c48ddca428ba7791fbef236dbf625ee8876a59"
+    },
+    {
+      "path": "IMG_1963.jpg",
+      "bytes": 2811573,
+      "zip_crc32": "1c6679de",
+      "sha256": "63a98ce54a5623acd7c3e12261cb59bd4b94f4c392e45b10fec1326ed6b0413c"
+    },
+    {
+      "path": "IMG_1964.jpg",
+      "bytes": 2796270,
+      "zip_crc32": "e7ee2c07",
+      "sha256": "b5858fa6fa077cb2a24fb97607b81c5e0e50470c8d5de5ca4af795a45276347b"
+    },
+    {
+      "path": "IMG_1965.jpg",
+      "bytes": 2809129,
+      "zip_crc32": "9c228ab7",
+      "sha256": "15d39e845f7e01d54f077c70bc662b58be5d9a1693df9cd58adc47ab122065c1"
+    },
+    {
+      "path": "IMG_1966.jpg",
+      "bytes": 2809499,
+      "zip_crc32": "4edbeb4a",
+      "sha256": "c770a6b17eb0c2bfbad3d00517febe4ac6d5135b28b9074eae1a541c3207bf8f"
+    },
+    {
+      "path": "IMG_1967.jpg",
+      "bytes": 2815301,
+      "zip_crc32": "0e16018d",
+      "sha256": "14fc73b0e7cd7f39360289fb49b69f98b4ad26cbef001f3ed7c354a02ef98da4"
+    }
+  ]
+}

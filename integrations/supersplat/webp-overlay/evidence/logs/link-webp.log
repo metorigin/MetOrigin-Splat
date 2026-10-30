@@ -1,0 +1,15 @@
+cache:INFO: generating system library: sysroot/lib/wasm32-emscripten/libstubs.a... (this will be cached in "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libstubs.a" for subsequent builds)
+system_libs:INFO: compiled 2 inputs in 0.19s
+cache:INFO:  - ok
+cache:INFO: generating system library: sysroot/lib/wasm32-emscripten/libc.a... (this will be cached in "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a" for subsequent builds)
+system_libs:INFO: compiled 1045 inputs in 16.10s
+cache:INFO:  - ok
+cache:INFO: generating system library: sysroot/lib/wasm32-emscripten/libdlmalloc.a... (this will be cached in "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libdlmalloc.a" for subsequent builds)
+system_libs:INFO: compiled 2 inputs in 0.28s
+cache:INFO:  - ok
+cache:INFO: generating system library: sysroot/lib/wasm32-emscripten/libc++-noexcept.a... (this will be cached in "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc++-noexcept.a" for subsequent builds)
+system_libs:INFO: compiled 56 inputs in 10.26s
+cache:INFO:  - ok
+cache:INFO: generating system library: sysroot/lib/wasm32-emscripten/libc++abi-noexcept.a... (this will be cached in "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc++abi-noexcept.a" for subsequent builds)
+system_libs:INFO: compiled 17 inputs in 1.40s
+cache:INFO:  - ok

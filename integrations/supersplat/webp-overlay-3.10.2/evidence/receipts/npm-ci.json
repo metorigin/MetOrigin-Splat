@@ -1,0 +1,28 @@
+{
+  "started_at": "2026-10-29T16:42:32.428517+00:00",
+  "finished_at": "2026-10-29T16:43:46.885074+00:00",
+  "duration_seconds": 74.455975583,
+  "cwd": "${REPO_ROOT}/target/supersplat-3.7-webp/sources/splat-transform",
+  "argv": [
+    "${HOME}/.nvm/versions/node/v22.23.2/bin/node",
+    "${HOME}/.nvm/versions/node/v22.23.2/lib/node_modules/npm/bin/npm-cli.js",
+    "ci",
+    "--ignore-scripts",
+    "--legacy-peer-deps",
+    "--no-audit",
+    "--no-fund",
+    "--prefer-offline",
+    "--cache",
+    "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+    "--fetch-retries=1",
+    "--fetch-timeout=30000"
+  ],
+  "explicit_environment": {},
+  "proxy_environment_removed": true,
+  "exit_code": 0,
+  "log": {
+    "path": "logs/npm-ci.log",
+    "size_bytes": 26,
+    "sha256": "4ab1c99b44ecfe563e25f16a058cf43fc588ce235c22096f5e861090831522e4"
+  }
+}

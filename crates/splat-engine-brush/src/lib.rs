@@ -12,14 +12,19 @@ pub mod dataset;
 pub mod export;
 pub mod gpu;
 pub mod live_preview;
+mod ply;
 pub mod progress;
+pub mod runtime;
 pub mod training;
 
-pub use adapter::BrushAdapter;
+pub use adapter::{BrushAdapter, ProfiledTrainingRequest};
 pub use checkpoint::{Checkpoint, CheckpointScanner};
 pub use config::{TrainingConfig, TrainingPreset};
 pub use dataset::{DatasetCheck, DatasetValidationResult, DatasetValidator};
-pub use export::{ExportManager, ExportRequest, ExportResult};
+pub use export::{ExportManager, ExportRequest, ExportResult, PlyHeaderMetadata};
 pub use gpu::{require_nvidia_smi, NvidiaSmiInfo};
 pub use progress::BrushProgressParser;
+pub use runtime::{
+    current_runtime_platform, probe_training_runtime, TrainingRuntimeEvidence, VerifiedBrushRuntime,
+};
 pub use training::TrainingRequest;

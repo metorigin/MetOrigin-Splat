@@ -1,18 +1,16 @@
 <!--
 Sync Impact Report
-- Version change: unratified template -> 1.0.0
-- Modified principles:
-  - Placeholder Principle 1 -> I. Preserve the Existing Layered Architecture
-  - Placeholder Principle 2 -> II. Backward Compatibility Is an Explicit Contract
-  - Placeholder Principle 3 -> III. Test-Backed Changes (NON-NEGOTIABLE)
-  - Placeholder Principle 4 -> IV. Safe Persistence and Database Migrations
-  - Placeholder Principle 5 -> V. Structured and Actionable Error Handling
-  - Added Principle 6 -> VI. Sensitive Information Never Enters the Repository
-- Added sections:
-  - Architecture and Data Constraints
-  - Development Workflow and Quality Gates
-- Removed sections: none
-- Follow-up TODOs: none
+- Version change: 1.0.0 -> 1.1.0
+- Motivation: the maintainer explicitly selected Node 26 for long-term development.
+- Modified section: Architecture and Data Constraints; Node.js baseline 22 -> 26.
+- Core principles, Rust/pnpm versions and persistent application contracts: unchanged.
+- Synchronized: Node version files, package engine ranges, CI workflows,
+  Windows/macOS installer toolchain checks and current development/package guides.
+- Historical Node 22 validation records and completed task evidence: preserved.
+- Migration/recovery: use the Node 26 version files; revert this focused toolchain
+  change to recover the prior baseline. Engine binaries and lockfile contents are unchanged.
+- Verification: Node 26 local test/build results are recorded under
+  .test-results/node26-baseline/; hosted CI and Windows execution remain separate.
 -->
 
 # MetOrigin Splat Constitution
@@ -113,7 +111,7 @@ single accidental commit or diagnostic bundle can permanently expose sensitive m
 - Windows 10/11 x64 remains the validated desktop release target. Cross-platform core improvements
   MAY be accepted, but MUST NOT weaken Windows path, encoding, cancellation, process-tree, or package
   behavior.
-- Rust 1.97.0, Node.js 22, pnpm 11.12.0, Cargo and pnpm lockfiles, and the current workspace layout
+- Rust 1.97.0, Node.js 26, pnpm 11.12.0, Cargo and pnpm lockfiles, and the current workspace layout
   are reproducibility inputs. Toolchain or dependency changes MUST be isolated, reviewed for license
   and supply-chain impact, and verified with the full affected test matrix.
 - User media remains local by default. The project workspace and `project.json` remain the source of
@@ -166,4 +164,4 @@ each public release and whenever architecture, persistent formats, engine distri
 or security posture changes. Unresolved violations block merge or release unless governed by a
 documented temporary exception meeting the requirements above.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-13 | **Last Amended**: 2026-08-13
+**Version**: 1.1.0 | **Ratified**: 2026-08-13 | **Last Amended**: 2026-10-30

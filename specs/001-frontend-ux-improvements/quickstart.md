@@ -7,11 +7,14 @@
 
 - Windows 10/11 x64。
 - Rust 1.97.0（`x86_64-pc-windows-msvc`）。
-- Node.js 22 与 pnpm 11.12.0。
+- 当前工具链统一为 Node.js 26 与 pnpm 11.12.0。
 - Windows SDK、Visual Studio C++ Build Tools 和 Tauri 2 Windows prerequisites。
-- 已按 lockfile 安装依赖：
+- CI 从仓库根目录的 `.node-version` 读取 Node 版本，`.nvmrc` 为 nvm 提供相同版本。使用 nvm 时，可选执行 `nvm install 26` 和 `nvm use 26`；已安装 Node.js 26 时无需使用 nvm。
+- 在随后启动 Tauri 和 Vite 的同一个终端中确认 `node -v` 为 `v26.x`、`pnpm -v` 为 `11.12.0`，再按 lockfile 安装依赖：
 
 ```powershell
+node -v
+pnpm -v
 pnpm install --frozen-lockfile
 ```
 

@@ -13,7 +13,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 serde = { workspace = true }
@@ -27,6 +26,7 @@ splat-engine-ffmpeg = { path = "../../../crates/splat-engine-ffmpeg" }
 splat-engine-colmap = { path = "../../../crates/splat-engine-colmap" }
 splat-engine-brush = { path = "../../../crates/splat-engine-brush" }
 base64 = { workspace = true }
+image = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true }
 tracing.workspace = true
@@ -36,6 +36,14 @@ dirs-next = "2"
 fs2 = "0.4"
 sysinfo = "0.33"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+block2 = { version = "0.6.2", default-features = false, features = ["std"] }
+dispatch2 = "0.3.1"
+objc2 = { version = "0.6.4", default-features = false, features = ["std"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWindow", "NSView", "NSButton", "NSControl", "NSResponder"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSGeometry", "NSNotification", "NSOperation", "NSString", "block2"] }
 
 [features]
 default = ["custom-protocol"]

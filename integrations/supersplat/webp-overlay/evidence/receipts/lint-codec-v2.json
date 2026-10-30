@@ -1,0 +1,33 @@
+{
+  "started_at": "2026-10-27T17:50:14.315088+00:00",
+  "finished_at": "2026-10-27T17:50:15.798222+00:00",
+  "duration_seconds": 1.482980417,
+  "cwd": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/splat-transform-v2",
+  "argv": [
+    "node",
+    "node_modules/eslint/bin/eslint.js",
+    "src/lib/utils/webp-codec.ts"
+  ],
+  "explicit_environment": {
+    "PATH": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin:${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+    "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+    "EMCC_CORES": "2",
+    "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "EMSDK_KEEP_DOWNLOADS": "1",
+    "EMSDK_NUM_CORES": "2",
+    "EMSDK_NOTTY": "1",
+    "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+    "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
+    "EMSDK": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+    "EMSDK_NODE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin/node",
+    "EMSDK_PYTHON": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin/python3"
+  },
+  "exit_code": 0,
+  "log": {
+    "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/lint-codec-v2.log",
+    "size_bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

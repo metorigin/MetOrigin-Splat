@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "three-0.185.1-orbit-controls-root-v1",
+  "package": {
+    "name": "three",
+    "version": "0.185.1",
+    "package_json_sha256": "1d5c438acdc1fe5a52fb8ede2e417afd91fec91d22275c40f7b739591b24e4df"
+  },
+  "patch": {
+    "path": "patches/three@0.185.1.patch",
+    "sha256": "4765f6245907ce0a33d47d041a912c0990b064d6688648d93266369f5cc0f5ef"
+  },
+  "files": [
+    {
+      "path": "examples/jsm/controls/OrbitControls.js",
+      "base_sha256": "faabb4e8dfd9235ee4a9fd7c9a3d75f90f1689dbd4944bd6fd32117dacec5f93",
+      "sha256": "90198b33aff15d9ae8da304dbfe4940d5b85157077ddd2ce1c81cfd06a8805b2",
+      "size_bytes": 40670
+    }
+  ]
+}

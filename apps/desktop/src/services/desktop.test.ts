@@ -39,6 +39,27 @@ describe("image folder selection", () => {
 describe("desktop invoke boundary", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it("binds frame thumbnails to the requested project identity", async () => {
+    vi.mocked(invoke).mockResolvedValue({ items: [], total_frames: 0 });
+    await desktopApi.getFramePreview("D:\\projects\\one", "project-1");
+    expect(invoke).toHaveBeenCalledWith("get_frame_preview", {
+      projectPath: "D:\\projects\\one",
+      projectId: "project-1",
+    });
+  });
+
+  it("reads one project thumbnail with its identity and preserves an absent input image", async () => {
+    vi.mocked(invoke).mockResolvedValue(null);
+
+    await expect(desktopApi.getProjectThumbnail("D:\\projects\\one", "project-1")).resolves.toBeNull();
+
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenCalledWith("get_project_thumbnail", {
+      projectPath: "D:\\projects\\one",
+      projectId: "project-1",
+    });
+  });
+
   it("normalizes structured and legacy command failures once", async () => {
     vi.mocked(invoke).mockRejectedValue(JSON.stringify({
       code: "E-ENGINES",
@@ -54,6 +75,45 @@ describe("desktop invoke boundary", () => {
 
     vi.mocked(invoke).mockRejectedValue("legacy failure");
     await expect(desktopApi.appVersion()).rejects.toBeInstanceOf(DesktopCommandError);
+  });
+
+  it.each(["png", "jpeg", "webp"] as const)("saves %s image bytes through raw IPC bound to the editor session", async (format) => {
+    const bytes = new Uint8Array([0, 1, 127, 128, 255]).buffer;
+    const destination = `/captures/editor.${format}`;
+    vi.mocked(invoke).mockResolvedValue(destination);
+
+    await expect(desktopApi.saveEditorImage("editor-session-1", format, bytes)).resolves.toBe(destination);
+
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenCalledWith("save_editor_image", new Uint8Array(bytes), {
+      headers: { "x-editor-session": "editor-session-1", "x-image-format": format },
+    });
+    const payload = vi.mocked(invoke).mock.calls[0][1];
+    expect(payload).toBeInstanceOf(Uint8Array);
+    expect((payload as Uint8Array).buffer).toBe(bytes);
+  });
+
+  it("returns null when the native image save dialog is cancelled", async () => {
+    vi.mocked(invoke).mockResolvedValue(null);
+
+    await expect(desktopApi.saveEditorImage("editor-session-1", "png", new ArrayBuffer(0))).resolves.toBeNull();
+  });
+
+  it.each([
+    JSON.stringify({ code: "E-IMAGE-SAVE", title: "保存失败", message: "目标不可写", retryable: false }),
+    "legacy image save failure",
+  ])("normalizes image save failures: %s", async (cause) => {
+    vi.mocked(invoke).mockRejectedValue(cause);
+
+    await expect(desktopApi.saveEditorImage("editor-session-1", "webp", new ArrayBuffer(0)))
+      .rejects.toMatchObject(new DesktopCommandError("save_editor_image", cause));
+  });
+
+  it("preserves an already normalized image save error", async () => {
+    const error = new DesktopCommandError("save_editor_image", "image save failure");
+    vi.mocked(invoke).mockRejectedValue(error);
+
+    await expect(desktopApi.saveEditorImage("editor-session-1", "jpeg", new ArrayBuffer(0))).rejects.toBe(error);
   });
 
   it("keeps raw Tauri invoke imports out of pages, components, and hooks", () => {

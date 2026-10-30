@@ -55,10 +55,10 @@ describe("ModalSurface", () => {
 
     const confirm = screen.getByRole("button", { name: "确认" });
     confirm.focus();
-    fireEvent.keyDown(window, { key: "Tab" });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Tab" });
     expect(screen.getByRole("button", { name: "取消" })).toHaveFocus();
 
-    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Tab", shiftKey: true });
     expect(confirm).toHaveFocus();
   });
 
@@ -70,7 +70,7 @@ describe("ModalSurface", () => {
     fireEvent.click(opener);
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
 
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(opener).toHaveFocus());
   });
@@ -82,7 +82,7 @@ describe("ModalSurface", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveAttribute("aria-busy", "true");
 
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
     expect(dialog).toBeInTheDocument();
   });
@@ -103,7 +103,7 @@ describe("ModalSurface", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开外层" }));
     fireEvent.click(await screen.findByRole("button", { name: "打开内层" }));
     expect(await screen.findByRole("dialog", { name: "内层" })).toBeInTheDocument();
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
     expect(innerClose).toHaveBeenCalledTimes(1);
     expect(outerClose).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog", { name: "外层" })).toBeInTheDocument();

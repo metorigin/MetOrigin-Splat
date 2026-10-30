@@ -1,0 +1,26 @@
+{
+  "started_at": "2026-10-29T16:41:37.891725+00:00",
+  "finished_at": "2026-10-29T16:41:40.503902+00:00",
+  "duration_seconds": 2.612002875,
+  "cwd": "${REPO_ROOT}",
+  "argv": [
+    "/usr/bin/curl",
+    "--fail",
+    "--location",
+    "--connect-timeout",
+    "15",
+    "--max-time",
+    "120",
+    "https://registry.npmjs.org/@playcanvas/splat-transform/-/splat-transform-3.10.2.tgz",
+    "-o",
+    "target/supersplat-3.7-webp/downloads/splat-transform-3.10.2.tgz"
+  ],
+  "explicit_environment": {},
+  "proxy_environment_removed": true,
+  "exit_code": 0,
+  "log": {
+    "path": "logs/download-npm.log",
+    "size_bytes": 554,
+    "sha256": "6cde34816b0cbe27ca498e8d85138d005f12b28e613a82ebaad9581dcff1f5c9"
+  }
+}

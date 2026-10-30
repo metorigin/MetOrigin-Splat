@@ -96,8 +96,15 @@ export interface ColmapAttemptResult {
   error: string | null;
 }
 
+export interface FramePreviewItem {
+  relative_path: string;
+  data_url: string;
+  width: number;
+  height: number;
+}
+
 export interface FramePreview {
-  items: string[];
+  items: FramePreviewItem[];
   total_frames: number;
 }
 
@@ -178,6 +185,7 @@ export interface LivePreviewStatus {
   running: boolean;
   revision: number;
   frame: GaussianPreviewSource | null;
+  resource_policy?: import("./system").PreviewResourcePolicy;
 }
 
 export type ProjectLocationTarget = "project_root" | "output_directory" | "artifact";

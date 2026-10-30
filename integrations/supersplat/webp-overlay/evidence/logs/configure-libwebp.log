@@ -1,0 +1,34 @@
+emcmake: cmake -S target/macos-m4/webp-rebuild-20261028/sources/libwebp -B target/macos-m4/webp-rebuild-20261028/build-libwebp -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DWEBP_USE_THREAD=OFF -DWEBP_ENABLE_SIMD=OFF -DWEBP_BUILD_ANIM_UTILS=OFF -DWEBP_BUILD_CWEBP=OFF -DWEBP_BUILD_DWEBP=OFF -DWEBP_BUILD_GIF2WEBP=OFF -DWEBP_BUILD_IMG2WEBP=OFF -DWEBP_BUILD_VWEBP=OFF -DWEBP_BUILD_WEBPINFO=OFF -DWEBP_BUILD_LIBWEBPMUX=OFF -DWEBP_BUILD_WEBPMUX=OFF -DWEBP_BUILD_EXTRAS=OFF -DWEBP_BUILD_WEBP_JS=OFF -DWEBP_BUILD_FUZZTEST=OFF -DCMAKE_TOOLCHAIN_FILE=${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake -DCMAKE_CROSSCOMPILING_EMULATOR=${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin/node in directory ${REPO_ROOT}
+-- Performing Test HAVE_BUILTIN_BSWAP16
+-- Performing Test HAVE_BUILTIN_BSWAP16 - Success
+-- Performing Test HAVE_BUILTIN_BSWAP32
+-- Performing Test HAVE_BUILTIN_BSWAP32 - Success
+-- Performing Test HAVE_BUILTIN_BSWAP64
+-- Performing Test HAVE_BUILTIN_BSWAP64 - Success
+-- Performing Test HAVE_MATH_LIBRARY
+-- Performing Test HAVE_MATH_LIBRARY - Success
+-- Looking for include file GLUT/glut.h
+-- Looking for include file GLUT/glut.h - not found
+-- Looking for include file GL/glut.h
+-- Looking for include file GL/glut.h - found
+-- Looking for include file OpenGL/glut.h
+-- Looking for include file OpenGL/glut.h - not found
+-- Looking for include file shlwapi.h
+-- Looking for include file shlwapi.h - not found
+-- Looking for include file unistd.h
+-- Looking for include file unistd.h - found
+-- Looking for include file wincodec.h
+-- Looking for include file wincodec.h - not found
+-- Looking for include file windows.h
+-- Looking for include file windows.h - not found
+-- Disabling AVX2 optimization.
+-- Disabling AVX2 optimization.
+-- Performing Test HAS_COMPILE_FLAG
+-- Performing Test HAS_COMPILE_FLAG - Failed
+-- Disabling SSE41 optimization.
+-- Disabling SSE41 optimization.
+-- Performing Test HAS_COMPILE_FLAG
+-- Performing Test HAS_COMPILE_FLAG - Failed
+-- Configuring done (47.9s)
+-- Generating done (0.0s)
+-- Build files have been written to: ${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/build-libwebp
