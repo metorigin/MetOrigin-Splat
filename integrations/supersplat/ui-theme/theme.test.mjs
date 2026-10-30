@@ -157,7 +157,7 @@ test('3.10.2 loader and fixed evidence profile changes invalidate the preparatio
   t.after(() => rm(temporary, { recursive: true, force: true }));
   const local = join(temporary, 'integrations/supersplat');
   await mkdir(local, { recursive: true });
-  for (const name of ['prepare.mjs', 'prepared-assets.mjs', 'webp-overlay.mjs', 'webp-evidence.mjs', 'ui-theme']) {
+  for (const name of ['prepare.mjs', 'source-checkout.mjs', 'prepared-assets.mjs', 'webp-overlay.mjs', 'webp-evidence.mjs', 'ui-theme']) {
     await cp(join(integration, name), join(local, name), { recursive: true });
   }
   for (const input of (await themeInputs(integration)).filter((entry) => !entry.path.startsWith('integrations/supersplat/'))) {
@@ -188,7 +188,7 @@ test('all theme, paint, font and helper inputs change the preparation identity; 
   t.after(() => rm(temporary, { recursive: true, force: true }));
   const local = join(temporary, 'integrations/supersplat');
   await mkdir(local, { recursive: true });
-  for (const name of ['prepare.mjs', 'prepared-assets.mjs', 'webp-overlay.mjs', 'webp-evidence.mjs', 'ui-theme']) {
+  for (const name of ['prepare.mjs', 'source-checkout.mjs', 'prepared-assets.mjs', 'webp-overlay.mjs', 'webp-evidence.mjs', 'ui-theme']) {
     await cp(join(integration, name), join(local, name), { recursive: true });
   }
   const inputs = await themeInputs(integration);
@@ -200,7 +200,7 @@ test('all theme, paint, font and helper inputs change the preparation identity; 
   const overlay = { manifest: { id: 'theme-test', build_evidence_sha256: 'e'.repeat(64) }, digest: 'a'.repeat(64) };
   const signature = () => preparationSignature(local, { commit: 'fixed' }, 'bridge', overlay);
   const baseline = await signature();
-  for (const path of ['integrations/jan/theme.json', 'integrations/supersplat/ui-theme/runtime.ts',
+  for (const path of ['integrations/jan/theme.json', 'integrations/supersplat/source-checkout.mjs', 'integrations/supersplat/ui-theme/runtime.ts',
     'integrations/supersplat/ui-theme/controls.css', 'integrations/supersplat/ui-theme/apply.mjs',
     'apps/desktop/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2']) {
     const original = await readFile(join(temporary, path));

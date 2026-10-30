@@ -1,26 +1,30 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import test from 'node:test';
 import { inventoryPreparedAssets, overlayIdentity, verifyPreparedAssets, verifyPreparedCodec } from './prepared-assets.mjs';
 import { themeInputs } from './ui-theme/apply.mjs';
+import { ensureSourceRepository, sourceGitEnvironment } from './source-checkout.mjs';
 import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const integration = dirname(fileURLToPath(import.meta.url));
 
 test('fixed source preparation repairs a CRLF cache without deleting installed dependencies', async t => {
-  const source = await mkdtemp(join(tmpdir(), 'supersplat-git-bytes-'));
-  t.after(() => rm(source, { recursive: true, force: true }));
+  const root = await mkdtemp(join(tmpdir(), 'supersplat-git-bytes-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const source = join(root, 'target/supersplat-source/upstream');
+  await mkdir(source, { recursive: true });
   const globalConfig = join(source, 'fixture-global.gitconfig');
   await writeFile(globalConfig, '');
   const execute = promisify(execFile);
+  const environment = sourceGitEnvironment({ ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: globalConfig, GIT_TERMINAL_PROMPT: '0' });
   const run = (command, args) => execute(command, args, {
     cwd: source,
-    env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: globalConfig, GIT_TERMINAL_PROMPT: '0' },
+    env: environment,
     windowsHide: true,
   });
   const rawGit = (...args) => run('git', args);
@@ -38,7 +42,8 @@ test('fixed source preparation repairs a CRLF cache without deleting installed d
   await rawGit('-c', 'core.autocrlf=false', 'add', '--', ...files.keys());
   await rawGit('-c', 'user.name=Synthetic Fixture', '-c', 'user.email=fixture@example.invalid',
     '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'Fixed LF fixture');
-  const upstream = { commit: (await rawGit('rev-parse', 'HEAD')).stdout.trim() };
+  const upstream = { repository: pathToFileURL(source).href, commit: (await rawGit('rev-parse', 'HEAD')).stdout.trim() };
+  await rawGit('remote', 'add', 'origin', upstream.repository);
   await rawGit('config', 'core.autocrlf', 'true');
   await rawGit('config', 'core.eol', 'crlf');
   for (const name of files.keys()) await rm(join(source, name));
@@ -48,18 +53,119 @@ test('fixed source preparation repairs a CRLF cache without deleting installed d
   await writeFile(join(source, 'node_modules/installed-marker'), 'keep dependencies');
   await writeFile(join(source, 'src/generated-bridge.ts'), 'keep generated input');
 
-  // Exercise the production Git invocation and restore operation against an
-  // independent cache with Windows EOL settings, without preparing the editor.
-  const preparation = await readFile(join(integration, 'prepare.mjs'), 'utf8');
-  const definition = preparation.split('\n').find(line => line.startsWith('const git = '));
-  const restore = preparation.split('\n').find(line => line.startsWith("await git('-C', source, 'restore'"));
-  assert(definition && restore, 'Missing fixed-source Git preparation operations.');
-  const git = new Function('run', 'source', `${definition}\nreturn git;`)(run, source);
-  await git('-C', source, 'checkout', '--detach', upstream.commit);
-  await new Function('git', 'source', 'upstream', `return (async () => { ${restore} })();`)(git, source, upstream);
+  const repository = await ensureSourceRepository({ root, upstream, environment });
+  await repository.restore();
   for (const [name, bytes] of files) assert((await readFile(join(source, name))).equals(Buffer.from(bytes)), `Changed upstream bytes: ${name}`);
   assert.equal(await readFile(join(source, 'node_modules/installed-marker'), 'utf8'), 'keep dependencies');
   assert.equal(await readFile(join(source, 'src/generated-bridge.ts'), 'utf8'), 'keep generated input');
+});
+
+async function sourceFixture(t) {
+  const temporary = await mkdtemp(join(tmpdir(), 'supersplat-independent-git-'));
+  t.after(() => rm(temporary, { recursive: true, force: true }));
+  const root = join(temporary, 'host');
+  const remote = join(temporary, 'upstream');
+  const source = join(root, 'target/supersplat-source/upstream');
+  const globalConfig = join(temporary, 'global.gitconfig');
+  await writeFile(globalConfig, '');
+  const environment = sourceGitEnvironment({ ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: globalConfig, GIT_TERMINAL_PROMPT: '0' });
+  const execute = promisify(execFile);
+  const git = (cwd, ...args) => execute('git', args, { cwd, env: environment, encoding: 'utf8', windowsHide: true });
+  const create = async (directory, files) => {
+    await mkdir(directory, { recursive: true });
+    await git(directory, 'init', '--quiet', '--initial-branch=fixture', '--template=');
+    for (const [name, bytes] of Object.entries(files)) {
+      await mkdir(dirname(join(directory, name)), { recursive: true });
+      await writeFile(join(directory, name), bytes);
+    }
+    await git(directory, '-c', 'core.autocrlf=false', 'add', '--', ...Object.keys(files));
+    await git(directory, '-c', 'user.name=Synthetic Fixture', '-c', 'user.email=fixture@example.invalid',
+      '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'Fixture');
+    return (await git(directory, 'rev-parse', 'HEAD')).stdout.trim();
+  };
+  await create(root, { 'host.txt': 'host repository must not change\n', '.gitignore': 'target/\n' });
+  const files = { 'src/main.ts': 'fixed upstream source\n', 'package-lock.json': '{"lockfileVersion":3}\n' };
+  const upstream = { repository: pathToFileURL(remote).href, commit: await create(remote, files) };
+  const host = new Map(await Promise.all(['HEAD', 'config', 'index'].map(async name => [name, await readFile(join(root, '.git', name))])));
+  const hostUnchanged = async () => {
+    for (const [name, bytes] of host) assert((await readFile(join(root, '.git', name))).equals(bytes), `Host Git ${name} changed.`);
+  };
+  const markers = async () => {
+    await mkdir(join(source, 'node_modules'), { recursive: true });
+    await writeFile(join(source, 'node_modules/installed-marker'), 'keep dependencies');
+    await writeFile(join(source, 'generated-marker'), 'keep generated cache');
+  };
+  const ensure = (extra = {}) => ensureSourceRepository({ root, upstream, environment, ...extra });
+  return { root, remote, source, environment, upstream, files, hostUnchanged, markers, ensure };
+}
+
+test('repository environment isolation also removes mixed-case Windows overrides', () => {
+  const environment = { PATH: 'keep tools', GIT_CONFIG_GLOBAL: 'keep explicit fixture config',
+    git_dir: 'host', Git_Work_Tree: 'host', git_common_dir: 'host', git_index_file: 'host',
+    Git_Object_Directory: 'host', git_alternate_object_directories: 'host', Git_Namespace: 'host',
+    git_config_count: '1', Git_Config_Key_0: 'core.worktree', Git_Config_Value_0: 'host' };
+  assert.deepEqual(sourceGitEnvironment(environment), { PATH: environment.PATH, GIT_CONFIG_GLOBAL: environment.GIT_CONFIG_GLOBAL });
+});
+
+test('invalid generated Git caches are repaired without using the host repository', async t => {
+  for (const kind of ['missing', 'partial', 'git-file', 'git-symlink', 'wrong-origin', 'commondir', 'gitdir', 'missing-objects', 'attached-head', 'host-environment']) {
+    await t.test(kind, async t => {
+      const fixture = await sourceFixture(t);
+      const { root, source, markers, ensure, upstream, hostUnchanged } = fixture;
+      await markers();
+      if (['wrong-origin', 'commondir', 'gitdir', 'missing-objects', 'attached-head'].includes(kind)) await ensure();
+      if (kind === 'partial') {
+        await mkdir(join(source, '.git'));
+        await writeFile(join(source, '.git/HEAD'), `ref: refs/heads/missing\n`);
+      }
+      if (kind === 'git-file') await writeFile(join(source, '.git'), `gitdir: ${join(root, '.git')}\n`);
+      if (kind === 'git-symlink') await symlink(join(root, '.git'), join(source, '.git'), process.platform === 'win32' ? 'junction' : 'dir');
+      if (kind === 'wrong-origin') await (await ensure()).git('remote', 'set-url', 'origin', pathToFileURL(root).href);
+      if (kind === 'attached-head') await (await ensure()).git('checkout', '-b', 'cached-branch');
+      if (kind === 'commondir' || kind === 'gitdir') await writeFile(join(source, '.git', kind), `${join(root, '.git')}\n`);
+      if (kind === 'missing-objects') {
+        await rm(join(source, '.git/objects'), { recursive: true });
+        await mkdir(join(source, '.git/objects'));
+      }
+      const environment = kind === 'host-environment' ? { ...fixture.environment,
+        GIT_DIR: join(root, '.git'), Git_Work_Tree: root, git_common_dir: join(root, '.git'),
+        GIT_INDEX_FILE: join(root, '.git/index'), git_object_directory: join(root, '.git/objects'),
+        GIT_ALTERNATE_OBJECT_DIRECTORIES: join(root, '.git/objects'), Git_Namespace: 'unrelated',
+        git_config_count: '1', Git_Config_Key_0: 'core.worktree', Git_Config_Value_0: root } : fixture.environment;
+      const repository = await ensure({ environment });
+      assert.equal((await repository.git('rev-parse', 'HEAD')).stdout.trim(), upstream.commit);
+      assert.equal((await readFile(join(source, '.git/HEAD'), 'utf8')).trim(), upstream.commit);
+      assert.equal((await repository.git('remote', 'get-url', 'origin')).stdout.trim(), upstream.repository);
+      for (const [name, bytes] of Object.entries(fixture.files)) assert.equal(await readFile(join(source, name), 'utf8'), bytes);
+      assert.equal(await readFile(join(source, 'node_modules/installed-marker'), 'utf8'), 'keep dependencies');
+      assert.equal(await readFile(join(source, 'generated-marker'), 'utf8'), 'keep generated cache');
+      await hostUnchanged();
+    });
+  }
+});
+
+test('valid fixed source caches need no network and retain prepared source changes', async t => {
+  const fixture = await sourceFixture(t);
+  await fixture.ensure();
+  await writeFile(join(fixture.source, 'src/main.ts'), 'already prepared source\n');
+  await rename(fixture.remote, `${fixture.remote}-offline`);
+  const messages = [];
+  const repository = await fixture.ensure({ log: message => messages.push(message) });
+  assert.equal(repository.changed, false);
+  assert.deepEqual(messages, []);
+  assert.equal(await readFile(join(fixture.source, 'src/main.ts'), 'utf8'), 'already prepared source\n');
+  await fixture.hostUnchanged();
+});
+
+test('source and cache ancestors cannot redirect repair through directory links', async t => {
+  for (const ancestor of ['target', 'source']) await t.test(ancestor, async t => {
+    const fixture = await sourceFixture(t);
+    const path = ancestor === 'target' ? join(fixture.root, 'target') : fixture.source;
+    await mkdir(dirname(path), { recursive: true });
+    await symlink(fixture.root, path, process.platform === 'win32' ? 'junction' : 'dir');
+    await assert.rejects(fixture.ensure(), /physical directories/);
+    await fixture.hostUnchanged();
+  });
 });
 
 async function fixture(t) {

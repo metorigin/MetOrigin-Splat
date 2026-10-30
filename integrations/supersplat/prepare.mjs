@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { cp, mkdir, readFile, writeFile, access, readdir, rm } from 'node:fs/promises';
+import { cp, readFile, writeFile, access, readdir, rm } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyWebpOverlay, loadWebpOverlay, verifyWebpOverlayInstalled } from './webp-overlay-3.10.2/overlay.mjs';
 import { inventoryPreparedAssets, overlayIdentity, preparationSignature, verifyPreparedAssets, verifyPreparedCodec } from './prepared-assets.mjs';
 import { verifyWebpBuildEvidence } from './webp-evidence.mjs';
 import { applyThemeSources, finishThemeAssets } from './ui-theme/apply.mjs';
+import { ensureSourceRepository } from './source-checkout.mjs';
 
 const integration = dirname(fileURLToPath(import.meta.url));
 const root = resolve(integration, '../..');
@@ -20,7 +21,9 @@ const webpEvidence = await verifyWebpBuildEvidence(overlayRoot, overlay);
 const signature = await preparationSignature(integration, upstream, bridge, overlay);
 const transformPackage = join(source, 'node_modules/@playcanvas/splat-transform');
 const exists = (path) => access(path).then(() => true, () => false);
-if (await exists(join(destination, 'build.json'))) {
+// Validate the independent source repository even on the prepared-asset fast path.
+const sourceRepository = await ensureSourceRepository({ root, upstream, log: console.log });
+if (!sourceRepository.changed && await exists(join(destination, 'build.json'))) {
   try {
     await verifyPreparedAssets(destination, signature, overlay);
     await verifyWebpOverlayInstalled(transformPackage, overlay);
@@ -34,19 +37,7 @@ const run = (command, args, cwd = root, env = process.env) => new Promise((resol
   child.once('error', reject);
   child.once('exit', (code) => code === 0 ? resolveRun() : reject(new Error(`${command} failed (${code})`)));
 });
-// This separate checkout has no root attributes; preserve the fixed LF blobs
-// even when Git for Windows inherits core.autocrlf=true from its global config.
-const git = (...args) => run('git', ['-c', 'core.autocrlf=false', '-c', 'core.eol=lf', '-c', 'http.sslBackend=openssl', '-c', `safe.directory=${source.replaceAll('\\', '/')}`, ...args]);
-await mkdir(dirname(source), { recursive: true });
-if (!await exists(join(source, '.git'))) await git('clone', '--no-checkout', '--filter=blob:none', upstream.repository, source);
-// A fixed commit already available locally needs no network access to rebuild.
-await git('-C', source, 'cat-file', '-e', `${upstream.commit}^{commit}`)
-  .catch(() => git('-C', source, 'fetch', '--depth', '1', 'origin', upstream.commit));
-await git('-C', source, 'checkout', '--detach', upstream.commit);
-// Restore every tracked blob in this generated target/ checkout: changing Git's
-// EOL policy alone does not rewrite a cached checkout of the same commit.
-// Untracked node_modules and generated files are preserved.
-await git('-C', source, 'restore', '--source', upstream.commit, '--', '.');
+await sourceRepository.restore();
 await applyThemeSources(integration, source);
 await writeFile(join(source, 'src/metorigin-bridge.ts'), bridge);
 const mainPath = join(source, 'src/main.ts');

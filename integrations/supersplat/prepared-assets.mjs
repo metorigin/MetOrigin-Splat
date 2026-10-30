@@ -18,7 +18,7 @@ export function overlayIdentity(overlay) {
 export async function preparationSignature(integration, upstream, bridge, overlay) {
   const hash = createHash('sha256');
   hash.update(JSON.stringify({ upstream, bridge, overlay: overlayIdentity(overlay) }));
-  for (const name of ['prepare.mjs', 'prepared-assets.mjs', 'webp-overlay.mjs', 'webp-evidence.mjs']) {
+  for (const name of ['prepare.mjs', 'source-checkout.mjs', 'prepared-assets.mjs', 'webp-overlay.mjs', 'webp-evidence.mjs']) {
     hash.update('\0' + name + '\0').update(await readFile(join(integration, name)));
   }
   if (overlay.manifest.base?.version === '3.10.2') {

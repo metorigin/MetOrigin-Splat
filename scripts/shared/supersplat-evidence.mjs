@@ -5,6 +5,7 @@ import { lstat, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { overlayIdentity, preparationSignature, verifyPreparedAssets } from '../../integrations/supersplat/prepared-assets.mjs';
 import { verifyWebpBuildEvidence } from '../../integrations/supersplat/webp-evidence.mjs';
+import { sourceGitEnvironment } from '../../integrations/supersplat/source-checkout.mjs';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 export const CURRENT_SUPERSPLAT = Object.freeze({
@@ -73,7 +74,8 @@ export async function currentSupersplatEvidenceInputs(root) {
   const overlay = await loadWebpOverlay(overlayRoot);
   const upstream = JSON.parse(await readFile(join(integration, 'upstream.json'), 'utf8'));
   verifyCurrentSupersplatPins(upstream, overlay.manifest.base);
-  const head = execFileSync('git', ['-C', source, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const head = execFileSync('git', ['--git-dir', join(source, '.git'), '--work-tree', source,
+    'rev-parse', 'HEAD'], { encoding: 'utf8', env: sourceGitEnvironment(process.env) }).trim();
   assert.equal(head, upstream.commit, 'SuperSplat checkout differs from the current source pin.');
   const sourcePackage = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'));
   assert.equal(sourcePackage.version, upstream.version, 'SuperSplat package version differs from its source pin.');
