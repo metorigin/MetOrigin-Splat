@@ -14,6 +14,13 @@ const GIB: u64 = 1024 * 1024 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum MemoryPressure {
+    #[cfg_attr(
+        not(any(target_os = "macos", test)),
+        allow(
+            dead_code,
+            reason = "Keep the portable normal wire value; only macOS currently produces native pressure observations"
+        )
+    )]
     Normal,
     Warning,
     Critical,
