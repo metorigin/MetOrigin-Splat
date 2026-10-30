@@ -1,0 +1,1979 @@
+diff --git a/apps/brush-app/src/bin.rs b/apps/brush-app/src/bin.rs
+index 1eb8325..f7a9b08 100644
+--- a/apps/brush-app/src/bin.rs
++++ b/apps/brush-app/src/bin.rs
+@@ -9,9 +9,11 @@ mod ui;
+ #[allow(clippy::unnecessary_wraps)]
+ fn main() -> Result<(), anyhow::Error> {
+     use brush_cli::Cli;
+-    use clap::Parser;
+ 
+     let args = Cli::parse().validate()?;
++    if brush_cli::handle_machine_mode(&args)? {
++        return Ok(());
++    }
+ 
+     #[cfg(target_family = "windows")]
+     {
+diff --git a/apps/brush-app/src/ui/settings_panel.rs b/apps/brush-app/src/ui/settings_panel.rs
+index 1f8108e..58c2f3c 100644
+--- a/apps/brush-app/src/ui/settings_panel.rs
++++ b/apps/brush-app/src/ui/settings_panel.rs
+@@ -78,7 +78,7 @@ impl AppPane for SettingsPanel {
+             let args_path = save_dir.join("args.txt");
+             let args = brush_process::args_file::config_to_args(config);
+ 
+-            match std::fs::write(&args_path, args.join(" ")) {
++            match std::fs::write(&args_path, brush_process::args_file::format_args(&args)) {
+                 Ok(()) => {
+                     self.save_status = Some((
+                         format!("Saved to {}", args_path.display()),
+diff --git a/apps/brush-app/src/ui/settings_popup.rs b/apps/brush-app/src/ui/settings_popup.rs
+index 9575e89..8b8acbf 100644
+--- a/apps/brush-app/src/ui/settings_popup.rs
++++ b/apps/brush-app/src/ui/settings_popup.rs
+@@ -590,7 +590,10 @@ impl SettingsPopup {
+                                 let config: &TrainStreamConfig = &self.args;
+                                 let args = brush_process::args_file::config_to_args(config);
+ 
+-                                match std::fs::write(&args_path, args.join(" ")) {
++                                match std::fs::write(
++                                    &args_path,
++                                    brush_process::args_file::format_args(&args),
++                                ) {
+                                     Ok(()) => {
+                                         self.save_status = Some((
+                                             format!("Saved to {}", args_path.display()),
+diff --git a/apps/brush-cli/src/lib.rs b/apps/brush-cli/src/lib.rs
+index f6b4b1c..757026b 100644
+--- a/apps/brush-cli/src/lib.rs
++++ b/apps/brush-cli/src/lib.rs
+@@ -9,10 +9,14 @@ use brush_process::create_process;
+ use brush_process::message::ProcessMessage;
+ use brush_process::message::TrainMessage;
+ 
+-use clap::{Error, Parser, builder::ArgPredicate, error::ErrorKind};
++use clap::{
++    CommandFactory, Error, FromArgMatches, Parser, builder::ArgPredicate, error::ErrorKind,
++    parser::ValueSource,
++};
+ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+ use indicatif_log_bridge::LogWrapper;
+ use std::time::Duration;
++use std::{collections::BTreeSet, ffi::OsString};
+ use tokio::sync::mpsc;
+ use tokio_stream::StreamExt;
+ use tracing::trace_span;
+@@ -20,11 +24,21 @@ use tracing::trace_span;
+ #[derive(Parser)]
+ #[command(
+     author,
+-    version,
++    version = brush_process::machine::ENGINE_VERSION,
+     arg_required_else_help = false,
+     about = "Brush - universal splats"
+ )]
+ pub struct Cli {
++    #[arg(skip)]
++    explicit_args: BTreeSet<String>,
++    /// Print versioned engine capabilities without initializing a GPU.
++    #[arg(long, exclusive = true)]
++    pub capabilities_json: bool,
++
++    /// Initialize the actual adapter and run Gaussian rendering and backward.
++    #[arg(long, exclusive = true)]
++    pub probe_json: bool,
++
+     /// Source to load from (path or URL).
+     #[arg(value_name = "PATH_OR_URL")]
+     pub source: Option<DataSource>,
+@@ -42,7 +56,34 @@ pub struct Cli {
+ }
+ 
+ impl Cli {
++    /// Preserve Clap provenance while parsing original OS argument tokens.
++    pub fn try_parse_from<I, T>(args: I) -> Result<Self, Error>
++    where
++        I: IntoIterator<Item = T>,
++        T: Into<OsString> + Clone,
++    {
++        let command = Self::command();
++        let matches = command.clone().try_get_matches_from(args)?;
++        let explicit_args = command
++            .get_arguments()
++            .filter(|arg| {
++                matches.value_source(arg.get_id().as_str()) == Some(ValueSource::CommandLine)
++            })
++            .filter_map(|arg| arg.get_long().map(str::to_owned))
++            .collect();
++        let mut cli = Self::from_arg_matches(&matches)?;
++        cli.explicit_args = explicit_args;
++        Ok(cli)
++    }
++
++    pub fn parse() -> Self {
++        Self::try_parse_from(std::env::args_os()).unwrap_or_else(|error| error.exit())
++    }
++
+     pub fn validate(self) -> Result<Self, Error> {
++        if self.capabilities_json || self.probe_json {
++            return Ok(self);
++        }
+         if !self.with_viewer && self.source.is_none() {
+             return Err(Error::raw(
+                 ErrorKind::MissingRequiredArgument,
+@@ -53,13 +94,46 @@ impl Cli {
+     }
+ }
+ 
++/// Handle machine modes before constructing either the viewer or training runtime.
++pub fn handle_machine_mode(args: &Cli) -> anyhow::Result<bool> {
++    use std::io::Write;
++    use std::panic::{AssertUnwindSafe, catch_unwind};
++    if args.capabilities_json {
++        writeln!(
++            std::io::stdout().lock(),
++            "{}",
++            brush_process::machine::capabilities()
++        )?;
++        return Ok(true);
++    }
++    if args.probe_json {
++        let outcome = catch_unwind(AssertUnwindSafe(|| -> anyhow::Result<_> {
++            let runtime = tokio::runtime::Builder::new_multi_thread()
++                .enable_all()
++                .build()?;
++            runtime.block_on(brush_process::machine::probe())
++        }))
++        .unwrap_or_else(|_| Err(anyhow::anyhow!("Compute probe panicked")));
++        let (report, success) = brush_process::machine::probe_outcome(outcome);
++        writeln!(std::io::stdout().lock(), "{report}")?;
++        anyhow::ensure!(success, "GPU compute probe failed");
++        return Ok(true);
++    }
++    Ok(false)
++}
++
+ /// Build the training process described by `args`, or `None` if no source was
+ /// given. Shared by the standalone CLI binary and brush-app's headless path.
+ pub fn build_process(args: &Cli) -> Option<RunningProcess> {
+     let source = args.source.clone()?;
+     let cli_config = args.train_stream.clone();
++    let explicit_args = args.explicit_args.clone();
+     Some(create_process(source, async move |init| {
+-        Some(brush_process::args_file::merge_configs(&init, &cli_config))
++        Some(brush_process::args_file::merge_configs(
++            &init,
++            &cli_config,
++            &explicit_args,
++        ))
+     }))
+ }
+ 
+@@ -68,18 +142,32 @@ pub async fn run_headless(
+     process: RunningProcess,
+     train_stream_config: TrainStreamConfig,
+ ) -> Result<(), anyhow::Error> {
+-    brush_process::burn_init_setup().await;
+-    run_cli_ui(process, train_stream_config).await
++    let (_, adapter_info) = brush_process::burn_init_setup_with_info().await;
++    run_cli_ui_with_adapter_info(
++        process,
++        train_stream_config,
++        Some(format!("{adapter_info:?}")),
++    )
++    .await
+ }
+ 
+ /// Run the CLI: pin the trainer stream to a dedicated [`Actor`] thread,
+ /// drive the indicatif UI on the main task.
+ pub async fn run_cli_ui(
++    process: RunningProcess,
++    train_stream_config: TrainStreamConfig,
++) -> Result<(), anyhow::Error> {
++    run_cli_ui_with_adapter_info(process, train_stream_config, None).await
++}
++
++async fn run_cli_ui_with_adapter_info(
+     mut process: RunningProcess,
+     train_stream_config: TrainStreamConfig,
++    adapter_info: Option<String>,
+ ) -> Result<(), anyhow::Error> {
+     // Pump the trainer stream from a dedicated Actor thread; the
+     // indicatif UI loop below consumes its output on the main task.
++    let snapshots = process.training_snapshots.clone();
+     let (tx, mut messages) = mpsc::unbounded_channel();
+     let trainer = Actor::new("cli-trainer");
+     trainer
+@@ -113,6 +201,17 @@ pub async fn run_cli_ui(
+         multi
+     };
+ 
++    let mut live_bridge = match brush_process::live_preview::LiveBridge::from_env(snapshots) {
++        Ok(bridge) => bridge,
++        Err(error) => {
++            log::warn!("Live preview unavailable: {error:#}");
++            None
++        }
++    };
++
++    if let Some(info) = adapter_info {
++        log::info!("Initialized compute adapter: {info}");
++    }
+     log::info!("Compute backend: {:?}", process.device);
+ 
+     let main_spinner = ProgressBar::new_spinner().with_style(
+@@ -286,6 +385,10 @@ pub async fn run_cli_ui(
+         }
+     }
+ 
++    if let Some(bridge) = &mut live_bridge {
++        bridge.finish().await;
++    }
++
+     let duration_secs = Duration::from_secs(duration.as_secs());
+     let _ = sp.println(format!(
+         "Training took {}",
+@@ -303,7 +406,29 @@ pub async fn run_cli_ui(
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use clap::Parser;
++
++    #[test]
++    fn reports_metorigin_diagnostics_version() {
++        let Err(error) = Cli::try_parse_from(["brush-cli", "--version"]) else {
++            panic!("version should exit before GPU initialization");
++        };
++        assert_eq!(error.kind(), ErrorKind::DisplayVersion);
++        assert!(
++            error
++                .to_string()
++                .contains(brush_process::machine::ENGINE_VERSION)
++        );
++    }
++
++    #[test]
++    fn machine_modes_need_no_dataset_and_are_exclusive() {
++        for flag in ["--capabilities-json", "--probe-json"] {
++            let cli = Cli::try_parse_from(["brush-cli", flag]).unwrap();
++            assert!(cli.validate().is_ok());
++            assert!(Cli::try_parse_from(["brush-cli", flag, "dataset"]).is_err());
++        }
++        assert!(Cli::try_parse_from(["brush-cli", "--capabilities-json", "--probe-json"]).is_err());
++    }
+ 
+     #[test]
+     fn parses_source_and_overrides() {
+@@ -378,6 +503,45 @@ mod tests {
+         assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
+     }
+ 
++    #[test]
++    fn explicit_default_provenance_and_os_tokens_are_preserved() {
++        let cli = Cli::try_parse_from([
++            OsString::from("brush-cli"),
++            OsString::from("我的 数据集"),
++            OsString::from("--start-iter"),
++            OsString::from("0"),
++            OsString::from("--export-path"),
++            OsString::from("我的 输出/with spaces"),
++            OsString::from("--num-loader-threads"),
++            OsString::from("2"),
++        ])
++        .unwrap();
++        let mut file = TrainStreamConfig::default();
++        file.process_config.start_iter = 500;
++        file.load_config.max_resolution = 640;
++        let merged =
++            brush_process::args_file::merge_configs(&file, &cli.train_stream, &cli.explicit_args);
++        assert_eq!(merged.process_config.start_iter, 0);
++        assert_eq!(merged.load_config.max_resolution, 640);
++        assert_eq!(merged.process_config.export_path, "我的 输出/with spaces");
++        assert_eq!(merged.load_config.num_loader_threads.unwrap().get(), 2);
++        assert!(matches!(&cli.source, Some(DataSource::Path(path)) if path == "我的 数据集"));
++        assert!(
++            Cli::try_parse_from(["brush-cli", "dataset", "--num-loader-threads", "0"]).is_err()
++        );
++        assert!(
++            Cli::try_parse_from(["brush-cli", "dataset", "--num-loader-threads", "-1"]).is_err()
++        );
++        assert!(
++            Cli::try_parse_from(["brush-cli", "dataset"])
++                .unwrap()
++                .train_stream
++                .load_config
++                .num_loader_threads
++                .is_none()
++        );
++    }
++
+     #[test]
+     fn rejects_unknown_flag() {
+         assert!(Cli::try_parse_from(["brush-cli", "--not-a-real-flag"]).is_err());
+diff --git a/apps/brush-cli/src/main.rs b/apps/brush-cli/src/main.rs
+index a3e9567..063e2fc 100644
+--- a/apps/brush-cli/src/main.rs
++++ b/apps/brush-cli/src/main.rs
+@@ -5,9 +5,10 @@
+ #[cfg(not(target_family = "wasm"))]
+ fn main() -> anyhow::Result<()> {
+     use brush_cli::{Cli, build_process, run_headless};
+-    use clap::Parser;
+-
+     let args = Cli::parse().validate()?;
++    if brush_cli::handle_machine_mode(&args)? {
++        return Ok(());
++    }
+ 
+     if args.with_viewer {
+         anyhow::bail!(
+diff --git a/crates/brush-dataset/src/config.rs b/crates/brush-dataset/src/config.rs
+index 9c8c65f..05e1308 100644
+--- a/crates/brush-dataset/src/config.rs
++++ b/crates/brush-dataset/src/config.rs
+@@ -25,6 +25,9 @@ pub struct ModelConfig {
+ #[derive(Clone, Debug, Args, Serialize, Deserialize)]
+ #[serde(rename_all = "kebab-case")]
+ pub struct LoadDatasetConfig {
++    /// Number of dataset loader actor threads. Omit to use available parallelism.
++    #[arg(long, help_heading = "Dataset Options")]
++    pub num_loader_threads: Option<std::num::NonZeroUsize>,
+     /// Max nr. of frames of dataset to load
+     #[arg(long, help_heading = "Dataset Options")]
+     pub max_frames: Option<usize>,
+diff --git a/crates/brush-dataset/src/formats/colmap.rs b/crates/brush-dataset/src/formats/colmap.rs
+index 04627ec..855b4a0 100644
+--- a/crates/brush-dataset/src/formats/colmap.rs
++++ b/crates/brush-dataset/src/formats/colmap.rs
+@@ -465,6 +465,7 @@ mod tests {
+ 
+     fn test_config(eval_split_every: Option<usize>) -> LoadDatasetConfig {
+         LoadDatasetConfig {
++            num_loader_threads: None,
+             max_frames: None,
+             max_resolution: 1920,
+             eval_split_every,
+diff --git a/crates/brush-dataset/src/formats/nerfstudio.rs b/crates/brush-dataset/src/formats/nerfstudio.rs
+index 7d6a769..8e6194f 100644
+--- a/crates/brush-dataset/src/formats/nerfstudio.rs
++++ b/crates/brush-dataset/src/formats/nerfstudio.rs
+@@ -438,6 +438,7 @@ mod tests {
+ 
+         let vfs = Arc::new(BrushVfs::from_path(dir).await.unwrap());
+         let config = LoadDatasetConfig {
++            num_loader_threads: None,
+             max_frames: None,
+             max_resolution: 1920,
+             eval_split_every: None,
+diff --git a/crates/brush-dataset/src/scene_loader.rs b/crates/brush-dataset/src/scene_loader.rs
+index 7d23af0..b6f4846 100644
+--- a/crates/brush-dataset/src/scene_loader.rs
++++ b/crates/brush-dataset/src/scene_loader.rs
+@@ -76,8 +76,12 @@ impl SceneLoader {
+         let n_actors = if cfg!(target_family = "wasm") {
+             1
+         } else {
+-            std::thread::available_parallelism().map_or(8, |p| p.get())
++            config.num_loader_threads.map_or_else(
++                || std::thread::available_parallelism().map_or(8, |p| p.get()),
++                std::num::NonZeroUsize::get,
++            )
+         };
++        log::info!("Dataset loader actor threads: {n_actors}");
+         const TASKS_PER_ACTOR: usize = 2;
+ 
+         let views = scene.views.clone();
+diff --git a/crates/brush-process/src/args_file.rs b/crates/brush-process/src/args_file.rs
+index ff85a46..5c60ce4 100644
+--- a/crates/brush-process/src/args_file.rs
++++ b/crates/brush-process/src/args_file.rs
+@@ -1,4 +1,4 @@
+-use std::path::Path;
++use std::{collections::BTreeSet, path::Path};
+ 
+ use brush_vfs::BrushVfs;
+ use clap::Parser;
+@@ -6,135 +6,154 @@ use tokio::io::AsyncReadExt;
+ 
+ use crate::config::TrainStreamConfig;
+ 
+-pub fn split_args_str(content: &str) -> Vec<String> {
+-    content.split_whitespace().map(|s| s.to_owned()).collect()
++/// Tokenize args.txt without shell expansion. Quotes preserve whitespace and
++/// backslash escapes the next character outside single quotes.
++pub fn split_args_str(content: &str) -> Result<Vec<String>, &'static str> {
++    let mut args = Vec::new();
++    let mut token = String::new();
++    let mut quote = None;
++    let mut escaped = false;
++    let mut started = false;
++    for ch in content.chars() {
++        if escaped {
++            token.push(ch);
++            escaped = false;
++        } else if ch == '\\' && quote != Some('\'') {
++            escaped = true;
++            started = true;
++        } else if quote == Some(ch) {
++            quote = None;
++        } else if quote.is_none() && (ch == '\'' || ch == '"') {
++            quote = Some(ch);
++            started = true;
++        } else if quote.is_none() && ch.is_whitespace() {
++            if started {
++                args.push(std::mem::take(&mut token));
++                started = false;
++            }
++        } else {
++            token.push(ch);
++            started = true;
++        }
++    }
++    if escaped || quote.is_some() {
++        return Err("Unterminated quote or escape in args.txt");
++    }
++    if started {
++        args.push(token);
++    }
++    Ok(args)
++}
++
++/// Inverse of `split_args_str`, including empty values, quotes and Unicode paths.
++pub fn format_args(args: &[String]) -> String {
++    args.iter()
++        .map(|arg| {
++            if !arg.is_empty()
++                && arg
++                    .chars()
++                    .all(|c| !c.is_whitespace() && !['\'', '"', '\\'].contains(&c))
++            {
++                arg.clone()
++            } else {
++                format!("'{}'", arg.replace('\'', "'\\''"))
++            }
++        })
++        .collect::<Vec<_>>()
++        .join(" ")
+ }
+ 
+ /// Load `TrainStreamConfig` from args.txt via VFS.
+ pub async fn load_config_from_vfs(vfs: &BrushVfs) -> Option<TrainStreamConfig> {
+     let args_path = Path::new("args.txt");
+-
+-    // Check if args.txt exists in the VFS
+     if !vfs
+         .file_paths()
+         .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("args.txt"))
+     {
+         return None;
+     }
+-
+     let mut reader = match vfs.reader_at_path(args_path).await {
+-        Ok(r) => r,
+-        Err(e) => {
+-            log::warn!("Failed to open args: {e}");
++        Ok(reader) => reader,
++        Err(error) => {
++            log::warn!("Failed to open args: {error}");
+             return None;
+         }
+     };
+-
+     let mut content = String::new();
+-    if let Err(e) = reader.read_to_string(&mut content).await {
+-        log::warn!("Failed to read args: {e}");
++    if let Err(error) = reader.read_to_string(&mut content).await {
++        log::warn!("Failed to read args: {error}");
+         return None;
+     }
+-
+-    let file_args = split_args_str(&content);
++    let file_args = match split_args_str(&content) {
++        Ok(args) => args,
++        Err(error) => {
++            log::warn!("Failed to parse args: {error}");
++            return None;
++        }
++    };
+     if file_args.is_empty() {
+         return None;
+     }
+-
+-    log::info!("Loaded settings from args");
+-    let mut all_args = vec!["brush".to_owned()];
+-    all_args.extend(file_args);
+-
+-    TrainStreamConfig::try_parse_from(&all_args).ok()
++    let all_args = std::iter::once("brush".to_owned()).chain(file_args);
++    match TrainStreamConfig::try_parse_from(all_args) {
++        Ok(config) => {
++            log::info!("Loaded settings from args");
++            Some(config)
++        }
++        Err(error) => {
++            log::warn!("Failed to parse args: {error}");
++            None
++        }
++    }
+ }
+ 
+-/// Convert a `TrainStreamConfig` back to command-line argument format for saving.
+-/// Only includes values that differ from the defaults.
++/// Return separate argument tokens for non-default settings. Never combine a
++/// flag and its value, or split a path on whitespace. Use `format_args` to save.
+ pub fn config_to_args(config: &TrainStreamConfig) -> Vec<String> {
+     use serde_json::Value;
+-
+-    let config_json = serde_json::to_value(config).unwrap_or(Value::Null);
+-    let default_json = serde_json::to_value(TrainStreamConfig::default()).unwrap_or(Value::Null);
+-
++    let config_json = serde_json::to_value(config).expect("serializable config");
++    let default_json =
++        serde_json::to_value(TrainStreamConfig::default()).expect("serializable defaults");
+     let mut args = Vec::new();
+-
+     if let (Value::Object(config_map), Value::Object(default_map)) = (config_json, default_json) {
+         for (key, value) in config_map {
+-            // Skip if value equals default
+-            if default_map.get(&key) == Some(&value) {
++            if default_map.get(&key) == Some(&value) || value.is_null() {
+                 continue;
+             }
+-
+-            // Skip null values (None options that are also None by default would be caught above)
+-            if value.is_null() {
+-                continue;
+-            }
+-
+-            // Format the argument
+             let arg_name = format!("--{key}");
+             match value {
+-                Value::Bool(b) => {
+-                    // For booleans, only output flag if true (and different from default)
+-                    if b {
+-                        args.push(arg_name);
+-                    }
+-                }
+-                Value::String(s) => {
+-                    args.push(format!("{arg_name} {s}"));
+-                }
+-                Value::Number(n) => {
+-                    args.push(format!("{arg_name} {n}"));
+-                }
++                Value::Bool(true) => args.push(arg_name),
++                Value::Bool(false) => {}
++                Value::String(value) => args.extend([arg_name, value]),
+                 Value::Array(items) => {
+-                    // Multi-value clap args (e.g. `num_args = 3`) need each element
+-                    // as its own whitespace-separated token, since downstream parsing
+-                    // splits on whitespace.
+-                    let joined = items
+-                        .iter()
+-                        .map(|v| match v {
+-                            Value::String(s) => s.clone(),
+-                            other => other.to_string(),
+-                        })
+-                        .collect::<Vec<_>>()
+-                        .join(" ");
+-                    args.push(format!("{arg_name} {joined}"));
+-                }
+-                _ => {
+-                    args.push(format!("{arg_name} {value}"));
++                    args.push(arg_name);
++                    args.extend(items.into_iter().map(|value| match value {
++                        Value::String(value) => value,
++                        other => other.to_string(),
++                    }));
+                 }
++                value => args.extend([arg_name, value.to_string()]),
+             }
+         }
+     }
+-
+     args
+ }
+ 
+-/// Merge an initial config (e.g., from args.txt) with CLI arguments.
+-/// CLI arguments take precedence over the initial config values.
++/// Overlay only arguments that Clap identified as `CommandLine` values. This
++/// preserves explicit defaults (e.g. --start-iter 0) and complete path tokens.
+ pub fn merge_configs(
+     initial_config: &TrainStreamConfig,
+     cli_config: &TrainStreamConfig,
++    explicit_args: &BTreeSet<String>,
+ ) -> TrainStreamConfig {
+-    let initial_args = config_to_args(initial_config);
+-    let cli_args = config_to_args(cli_config);
+-
+-    // Combine: initial first, then CLI
+-    let mut all_args = vec!["brush".to_owned()];
+-    for arg in &initial_args {
+-        all_args.extend(arg.split_whitespace().map(|s| s.to_owned()));
+-    }
+-    for arg in &cli_args {
+-        all_args.extend(arg.split_whitespace().map(|s| s.to_owned()));
+-    }
+-
+-    // Parse the combined arguments
+-    match TrainStreamConfig::try_parse_from(&all_args) {
+-        Ok(config) => config,
+-        Err(e) => {
+-            log::warn!("Failed to parse merged config: {e}");
+-            cli_config.clone()
++    let mut merged = serde_json::to_value(initial_config).expect("serializable config");
++    let cli = serde_json::to_value(cli_config).expect("serializable CLI config");
++    for key in explicit_args {
++        if let Some(value) = cli.get(key) {
++            merged[key] = value.clone();
+         }
+     }
++    serde_json::from_value(merged).expect("merge preserves validated config types")
+ }
+ 
+ #[cfg(test)]
+@@ -143,54 +162,55 @@ mod tests {
+     use wasm_bindgen_test::wasm_bindgen_test;
+ 
+     #[wasm_bindgen_test(unsupported = test)]
+-    fn test_config_to_args_only_includes_changes() {
+-        let mut config = TrainStreamConfig::default();
+-        config.train_config.total_train_iters = 5000;
+-        config.model_config.sh_degree = 2;
+-        config.load_config.max_frames = Some(10);
+-        let args = config_to_args(&config);
+-
+-        // Should have exactly 3 args for the 3 changes
+-        assert_eq!(args.len(), 3, "Should have 3 args, got: {args:?}");
+-        // Verify they contain the right values
+-        let args_str = args.join(" ");
+-        assert!(
+-            args_str.contains("--total-train-iters 5000"),
+-            "Missing total-train-iters"
+-        );
+-        assert!(args_str.contains("--sh-degree 2"), "Missing sh-degree");
+-        assert!(args_str.contains("--max-frames 10"), "Missing max-frames");
+-    }
+-
+-    #[wasm_bindgen_test(unsupported = test)]
+-    fn test_config_to_args_vec_round_trip() {
+-        let mut config = TrainStreamConfig::default();
+-        config.train_config.background_color = vec![1.0, 0.5, 0.25];
+-        let merged = merge_configs(&config, &TrainStreamConfig::default());
+-        assert_eq!(merged.train_config.background_color, vec![1.0, 0.5, 0.25]);
++    fn tokens_round_trip_whitespace_quotes_unicode_and_empty_values() {
++        let args = [
++            "--export-path",
++            "我的 项目/it's \\\"fine",
++            "",
++            "--background-color",
++            "1",
++            "0.5",
++            "0.25",
++        ]
++        .map(str::to_owned);
++        assert_eq!(split_args_str(&format_args(&args)).unwrap(), args);
++        assert!(split_args_str("'unclosed").is_err());
++        assert!(split_args_str("trailing\\").is_err());
+     }
+ 
+     #[wasm_bindgen_test(unsupported = test)]
+-    fn test_config_round_trip() {
++    fn config_round_trip_preserves_vectors_and_paths() {
+         let mut original = TrainStreamConfig::default();
+         original.train_config.total_train_iters = 5000;
++        original.train_config.background_color = vec![1.0, 0.5, 0.25];
+         original.model_config.sh_degree = 2;
+-        original.load_config.max_frames = Some(10);
+-        original.process_config.seed = 123;
+-
+-        // Convert to args
++        original.process_config.export_path = "我的 项目/a 'quoted' path".into();
+         let args = config_to_args(&original);
++        let saved = format_args(&args);
++        let parsed = TrainStreamConfig::try_parse_from(
++            std::iter::once("brush".to_owned()).chain(split_args_str(&saved).unwrap()),
++        )
++        .unwrap();
++        assert_eq!(
++            serde_json::to_value(&parsed).unwrap(),
++            serde_json::to_value(&original).unwrap()
++        );
++    }
+ 
+-        // Parse args back
+-        let mut cli_args = vec!["brush".to_owned()];
+-        for arg in &args {
+-            cli_args.extend(arg.split_whitespace().map(|s| s.to_owned()));
+-        }
+-
+-        let parsed = TrainStreamConfig::try_parse_from(&cli_args).expect("Should parse");
+-        assert_eq!(parsed.train_config.total_train_iters, 5000);
+-        assert_eq!(parsed.model_config.sh_degree, 2);
+-        assert_eq!(parsed.load_config.max_frames, Some(10));
+-        assert_eq!(parsed.process_config.seed, 123);
++    #[wasm_bindgen_test(unsupported = test)]
++    fn explicit_defaults_override_file_but_omitted_values_survive() {
++        let mut file = TrainStreamConfig::default();
++        file.process_config.start_iter = 400;
++        file.load_config.max_resolution = 800;
++        file.process_config.export_path = "dataset settings/输出".into();
++        let cli = TrainStreamConfig::default();
++        let explicit = BTreeSet::from(["start-iter".to_owned()]);
++        let merged = merge_configs(&file, &cli, &explicit);
++        assert_eq!(merged.process_config.start_iter, 0);
++        assert_eq!(merged.load_config.max_resolution, 800);
++        assert_eq!(
++            merged.process_config.export_path,
++            file.process_config.export_path
++        );
+     }
+ }
+diff --git a/crates/brush-process/src/checkpoint.rs b/crates/brush-process/src/checkpoint.rs
+new file mode 100644
+index 0000000..9b72c42
+--- /dev/null
++++ b/crates/brush-process/src/checkpoint.rs
+@@ -0,0 +1,205 @@
++//! Commit complete, validated PLY checkpoints with an atomic same-directory rename.
++
++use std::{
++    fs::{File, OpenOptions},
++    io::{self, Write},
++    path::{Path, PathBuf},
++    sync::atomic::{AtomicU64, Ordering},
++};
++
++use anyhow::{Context, Result, ensure};
++
++static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
++const CORE_FIELDS: [&str; 14] = [
++    "x", "y", "z", "scale_0", "scale_1", "scale_2", "opacity", "rot_0", "rot_1", "rot_2", "rot_3",
++    "f_dc_0", "f_dc_1", "f_dc_2",
++];
++
++/// Validate the exact binary schema emitted by Brush's official serializer,
++/// including the full payload. A finite prefix or a valid header is insufficient.
++fn validate_ply(bytes: &[u8]) -> Result<()> {
++    let marker = b"end_header\n";
++    let header_end = bytes
++        .windows(marker.len())
++        .position(|w| w == marker)
++        .context("Missing PLY header terminator")?
++        + marker.len();
++    ensure!(header_end <= 65_536, "Oversized PLY header");
++    let header = std::str::from_utf8(&bytes[..header_end]).context("Invalid PLY header")?;
++    let mut lines = header.lines();
++    ensure!(lines.next() == Some("ply"), "Missing PLY magic");
++    ensure!(
++        lines.next() == Some("format binary_little_endian 1.0"),
++        "Unexpected PLY encoding"
++    );
++    let mut count = None;
++    let mut fields = Vec::new();
++    for line in lines {
++        let words = line.split_whitespace().collect::<Vec<_>>();
++        match words.as_slice() {
++            ["comment", ..] | ["end_header"] => {}
++            ["element", "vertex", n] if count.is_none() => count = Some(n.parse::<usize>()?),
++            ["property", "float", name] if count.is_some() => fields.push(*name),
++            _ => anyhow::bail!("Unexpected PLY declaration"),
++        }
++    }
++    let count = count.context("Missing PLY vertex count")?;
++    ensure!(count > 0, "Empty checkpoint");
++    ensure!(fields.starts_with(&CORE_FIELDS), "Missing Gaussian fields");
++    let rest = fields.len() - CORE_FIELDS.len();
++    ensure!(
++        [0, 9, 24, 45, 72].contains(&rest),
++        "Incomplete spherical harmonics"
++    );
++    for (index, field) in fields[CORE_FIELDS.len()..].iter().enumerate() {
++        ensure!(
++            *field == format!("f_rest_{index}"),
++            "Invalid spherical harmonic fields"
++        );
++    }
++    let payload_len = count
++        .checked_mul(fields.len())
++        .and_then(|n| n.checked_mul(4))
++        .context("PLY payload length overflow")?;
++    let payload = &bytes[header_end..];
++    ensure!(payload.len() == payload_len, "Incomplete PLY payload");
++    for scalar in payload.chunks_exact(4) {
++        let value = f32::from_le_bytes(scalar.try_into().expect("four-byte scalar"));
++        ensure!(value.is_finite(), "Non-finite Gaussian value");
++    }
++    Ok(())
++}
++
++struct PendingCheckpoint {
++    path: PathBuf,
++    file: File,
++}
++
++impl PendingCheckpoint {
++    fn create(parent: &Path) -> io::Result<Self> {
++        loop {
++            let serial = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
++            let path = parent.join(format!(
++                ".brush-checkpoint-{}-{serial}.part",
++                std::process::id()
++            ));
++            match OpenOptions::new().write(true).create_new(true).open(&path) {
++                Ok(file) => return Ok(Self { path, file }),
++                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
++                Err(error) => return Err(error),
++            }
++        }
++    }
++}
++
++impl Drop for PendingCheckpoint {
++    fn drop(&mut self) {
++        // SIGKILL can leave a .part file; it is never named as a checkpoint.
++        let _ = std::fs::remove_file(&self.path);
++    }
++}
++
++fn write_checkpoint_with(
++    path: &Path,
++    bytes: &[u8],
++    write: impl FnOnce(&mut File, &[u8]) -> io::Result<()>,
++) -> Result<()> {
++    validate_ply(bytes).context("Refusing invalid checkpoint")?;
++    let parent = path
++        .parent()
++        .context("Checkpoint has no parent directory")?;
++    let mut pending =
++        PendingCheckpoint::create(parent).context("Creating checkpoint temporary file")?;
++    write(&mut pending.file, bytes).context("Writing checkpoint")?;
++    pending.file.sync_all().context("Syncing checkpoint")?;
++    std::fs::rename(&pending.path, path).context("Committing checkpoint")?;
++    #[cfg(unix)]
++    File::open(parent)?
++        .sync_all()
++        .context("Syncing checkpoint directory")?;
++    Ok(())
++}
++
++pub(crate) fn write_checkpoint_sync(path: &Path, bytes: &[u8]) -> Result<()> {
++    write_checkpoint_with(path, bytes, |file, data| file.write_all(data))
++}
++
++pub async fn write_checkpoint(path: PathBuf, bytes: Vec<u8>) -> Result<()> {
++    tokio::task::spawn_blocking(move || write_checkpoint_sync(&path, &bytes))
++        .await
++        .context("Checkpoint writer task failed")?
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn payload(value: f32) -> Vec<u8> {
++        let mut header = "ply\nformat binary_little_endian 1.0\nelement vertex 1\n".to_owned();
++        for field in CORE_FIELDS {
++            header.push_str(&format!("property float {field}\n"));
++        }
++        header.push_str("end_header\n");
++        let mut bytes = header.into_bytes();
++        for _ in CORE_FIELDS {
++            bytes.extend(value.to_le_bytes());
++        }
++        bytes
++    }
++
++    fn test_directory() -> PathBuf {
++        let serial = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
++        let path = std::env::temp_dir().join(format!(
++            "brush-checkpoint-test-{}-{serial}",
++            std::process::id()
++        ));
++        std::fs::create_dir(&path).unwrap();
++        path
++    }
++
++    #[test]
++    fn validates_whole_payload_and_gaussian_schema() {
++        assert!(validate_ply(&payload(0.5)).is_ok());
++        let mut truncated = payload(0.5);
++        truncated.pop();
++        assert!(validate_ply(&truncated).is_err());
++        assert!(validate_ply(&payload(f32::NAN)).is_err());
++        let mut trailing_nan = payload(0.5);
++        let length = trailing_nan.len();
++        trailing_nan[length - 4..].copy_from_slice(&f32::NAN.to_le_bytes());
++        assert!(validate_ply(&trailing_nan).is_err());
++        assert!(validate_ply(b"ply\nformat binary_little_endian 1.0\nelement vertex 1\nproperty float x\nend_header\n").is_err());
++    }
++
++    #[test]
++    fn commits_atomically_and_preserves_previous_on_partial_write_or_panic() {
++        let directory = test_directory();
++        let path = directory.join("checkpoint.ply");
++        let old = payload(0.25);
++        let new = payload(0.75);
++        write_checkpoint_with(&path, &old, |file, data| file.write_all(data)).unwrap();
++        let result = write_checkpoint_with(&path, &new, |file, data| {
++            file.write_all(&data[..data.len() / 2])?;
++            Err(io::Error::other("injected disk full"))
++        });
++        assert!(result.is_err());
++        assert_eq!(std::fs::read(&path).unwrap(), old);
++        let interrupted = std::panic::catch_unwind(|| {
++            let _ = write_checkpoint_with(&path, &new, |file, data| {
++                file.write_all(&data[..data.len() / 2])?;
++                panic!("interrupted writer");
++            });
++        });
++        assert!(interrupted.is_err());
++        assert_eq!(std::fs::read(&path).unwrap(), old);
++        assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 1);
++        write_checkpoint_with(&path, &new, |file, data| file.write_all(data)).unwrap();
++        assert_eq!(std::fs::read(&path).unwrap(), new);
++        assert!(
++            write_checkpoint_with(&path, &payload(f32::NAN), |file, data| file.write_all(data))
++                .is_err()
++        );
++        assert_eq!(std::fs::read(&path).unwrap(), new);
++        std::fs::remove_dir_all(directory).unwrap();
++    }
++}
+diff --git a/crates/brush-process/src/lib.rs b/crates/brush-process/src/lib.rs
+index 2cac236..69f1a5d 100644
+--- a/crates/brush-process/src/lib.rs
++++ b/crates/brush-process/src/lib.rs
+@@ -1,7 +1,13 @@
+ pub mod args_file;
++#[cfg(not(target_family = "wasm"))]
++mod checkpoint;
+ pub mod config;
++#[cfg(not(target_family = "wasm"))]
++pub mod live_preview;
++pub mod machine;
+ pub mod message;
+ pub mod slot;
++pub mod snapshot;
+ pub mod train_stream;
+ 
+ pub use brush_vfs::DataSource;
+@@ -35,8 +41,17 @@ fn burn_options() -> RuntimeOptions {
+ }
+ 
+ pub async fn burn_init_setup() -> ProcessDevice {
+-    burn_wgpu::init_setup_async::<AutoGraphicsApi>(&WgpuDevice::default(), burn_options()).await;
+-    default_device()
++    burn_init_setup_with_info().await.0
++}
++
++/// Initialize the compute device and return the adapter that actually backs it.
++/// This is runtime evidence, unlike the requested `WgpuDevice::Auto` selector.
++pub async fn burn_init_setup_with_info() -> (ProcessDevice, wgpu::AdapterInfo) {
++    let setup =
++        burn_wgpu::init_setup_async::<AutoGraphicsApi>(&WgpuDevice::default(), burn_options())
++            .await;
++    let info = setup.adapter.get_info();
++    (default_device(), info)
+ }
+ 
+ pub fn burn_init_device(adapter: Adapter, device: Device, queue: Queue) -> ProcessDevice {
+@@ -63,6 +78,7 @@ impl<T> ProcessStream for T where T: Stream<Item = Result<ProcessMessage, Error>
+ pub struct RunningProcess {
+     pub stream: Pin<Box<dyn ProcessStream>>,
+     pub splat_view: Slot<Splats>,
++    pub training_snapshots: Slot<snapshot::TrainingSnapshot>,
+     pub device: ProcessDevice,
+ }
+ 
+@@ -96,14 +112,24 @@ pub fn create_process_with_device<
+     config_fn: Fun,
+ ) -> RunningProcess {
+     let (splat_tx, splat_view) = crate::slot::channel();
++    let (snapshot_tx, training_snapshots) = crate::slot::channel();
+     let process_device = device.clone();
+     let stream = try_fn_stream(|emitter| async move {
+-        run_process(source, config_fn, &emitter, splat_tx, &process_device).await
++        run_process(
++            source,
++            config_fn,
++            &emitter,
++            splat_tx,
++            snapshot_tx,
++            &process_device,
++        )
++        .await
+     });
+ 
+     RunningProcess {
+         stream: Box::pin(stream),
+         splat_view,
++        training_snapshots,
+         device,
+     }
+ }
+@@ -116,6 +142,7 @@ async fn run_process<
+     config_fn: Fun,
+     emitter: &Emitter,
+     splat_view: SlotSender<Splats>,
++    snapshots: SlotSender<snapshot::TrainingSnapshot>,
+     device: &ProcessDevice,
+ ) -> Result<(), Error> {
+     log::info!("Starting process with source {source:?}");
+@@ -230,7 +257,7 @@ async fn run_process<
+             log::info!("config_fn returned None — aborting before training");
+             return Ok(());
+         };
+-        train_stream(vfs, config, emitter, splat_view, device).await?;
++        train_stream(vfs, config, emitter, splat_view, snapshots, device).await?;
+     };
+ 
+     Ok(())
+diff --git a/crates/brush-process/src/live_preview.rs b/crates/brush-process/src/live_preview.rs
+new file mode 100644
+index 0000000..cf8b893
+--- /dev/null
++++ b/crates/brush-process/src/live_preview.rs
+@@ -0,0 +1,567 @@
++//! Demand-driven protocol-1 PLY bridge, independent of the training stream.
++
++use std::{
++    fs::{File, OpenOptions},
++    future::Future,
++    io::Write,
++    path::{Path, PathBuf},
++    sync::{
++        Arc,
++        atomic::{AtomicBool, Ordering},
++    },
++    time::{Duration, SystemTime, UNIX_EPOCH},
++};
++
++use anyhow::{Context, Result, ensure};
++use brush_async::Actor;
++use serde::{Deserialize, Serialize};
++use tokio::sync::oneshot;
++
++use crate::{slot::Slot, snapshot::TrainingSnapshot};
++
++const PROTOCOL: u32 = 1;
++
++#[derive(Deserialize)]
++struct Session {
++    protocol: u32,
++    session_id: String,
++    available: bool,
++    running: bool,
++}
++
++#[derive(Deserialize)]
++struct Request {
++    session_id: String,
++    after_revision: u64,
++    mode: String,
++    expires_at_ms: u64,
++}
++
++#[derive(Serialize, Deserialize)]
++struct Frame {
++    protocol: u32,
++    session_id: String,
++    revision: u64,
++    iteration: u32,
++    splat_count: u32,
++    relative_path: String,
++    created_at_ms: u64,
++}
++
++struct Producer {
++    directory: PathBuf,
++    session_id: String,
++    revision: u64,
++    last_iteration: Option<u32>,
++    finishing: bool,
++}
++
++impl Producer {
++    fn new(directory: &Path, session_id: String) -> Result<Self> {
++        ensure!(
++            !session_id.is_empty()
++                && session_id.len() <= 128
++                && session_id
++                    .chars()
++                    .all(|ch| ch.is_ascii_hexdigit() || ch == '-'),
++            "Invalid live preview session ID"
++        );
++        let directory = directory
++            .canonicalize()
++            .context("Opening live preview directory")?;
++        ensure!(
++            directory.file_name().and_then(|s| s.to_str()) == Some(&session_id),
++            "Live preview directory must belong to the session"
++        );
++        ensure!(
++            !directory.join("latest.json").exists(),
++            "Live preview session was already used"
++        );
++        Ok(Self {
++            directory,
++            session_id,
++            revision: 0,
++            last_iteration: None,
++            finishing: false,
++        })
++    }
++
++    fn request(&self, now: u64) -> Option<Request> {
++        let session: Session = read_small_json(&self.directory.parent()?.join("session.json"))?;
++        if session.protocol != PROTOCOL
++            || session.session_id != self.session_id
++            || !session.running
++            || !session.available
++        {
++            return None;
++        }
++        let request: Request = read_small_json(&self.directory.join("request.json"))?;
++        (request.session_id == self.session_id
++            && request.expires_at_ms > now
++            && request.after_revision == self.revision
++            && matches!(request.mode.as_str(), "live" | "low"))
++        .then_some(request)
++    }
++
++    fn ready(&self, request: &Request, iteration: u32) -> bool {
++        let interval = if request.mode == "live" { 5 } else { 100 };
++        self.last_iteration.is_none_or(|last| {
++            iteration > last && (self.finishing || iteration.saturating_sub(last) >= interval)
++        })
++    }
++
++    /// Request validation precedes snapshot acquisition and encoding. The
++    /// closure boundary lets tests prove disabled/expired demand performs no readback.
++    async fn update_with<T, Snapshot, Encode, Encoded>(
++        &mut self,
++        snapshot: Snapshot,
++        encode: Encode,
++        cancelled: &AtomicBool,
++    ) -> Result<bool>
++    where
++        Snapshot: FnOnce() -> Option<(u32, u32, T)>,
++        Encode: FnOnce(T) -> Encoded,
++        Encoded: Future<Output = Result<Vec<u8>>>,
++    {
++        if cancelled.load(Ordering::Acquire) {
++            return Ok(false);
++        }
++        let Some(request) = self.request(now_ms()) else {
++            return Ok(false);
++        };
++        let Some((iteration, splat_count, model)) = snapshot() else {
++            return Ok(false);
++        };
++        if !self.ready(&request, iteration) {
++            return Ok(false);
++        }
++        // Exactly one immutable shallow snapshot is held during encoding.
++        let bytes = encode(model).await?;
++        if cancelled.load(Ordering::Acquire)
++            || !self
++                .request(now_ms())
++                .is_some_and(|request| self.ready(&request, iteration))
++        {
++            return Ok(false);
++        }
++        let revision = self
++            .revision
++            .checked_add(1)
++            .context("Live revision overflow")?;
++        let relative_path = format!("frame-{revision}.ply");
++        let path = self.directory.join(&relative_path);
++        // This dedicated actor can perform blocking disk I/O without blocking
++        // the trainer. No detached write can publish after actor cancellation.
++        crate::checkpoint::write_checkpoint_sync(&path, &bytes)?;
++        if cancelled.load(Ordering::Acquire) || self.request(now_ms()).is_none() {
++            let _ = std::fs::remove_file(path);
++            return Ok(false);
++        }
++        let frame = Frame {
++            protocol: PROTOCOL,
++            session_id: self.session_id.clone(),
++            revision,
++            iteration,
++            splat_count,
++            relative_path,
++            created_at_ms: now_ms(),
++        };
++        if let Err(error) = write_latest(&self.directory, &frame) {
++            let _ = std::fs::remove_file(path);
++            return Err(error);
++        }
++        self.revision = revision;
++        self.last_iteration = Some(iteration);
++        // Keep the previous acknowledged frame during a viewer swap.
++        if revision > 2 {
++            let _ =
++                std::fs::remove_file(self.directory.join(format!("frame-{}.ply", revision - 2)));
++        }
++        log::info!(
++            "MetOrigin live preview: iteration {iteration}, revision {revision}, {splat_count} splats"
++        );
++        Ok(true)
++    }
++
++    async fn update(
++        &mut self,
++        snapshots: &Slot<TrainingSnapshot>,
++        cancelled: &AtomicBool,
++    ) -> Result<bool> {
++        self.update_with(
++            || {
++                snapshots
++                    .latest()
++                    .map(|snapshot| (snapshot.iteration, snapshot.splats.num_splats(), snapshot))
++            },
++            |snapshot| async move {
++                // Match checkpoint semantics exactly: convert metres once and
++                // use the official serializer for Mip floor, rotation and SH.
++                brush_serde::splat_to_ply(
++                    snapshot.splats.scaled(snapshot.units_per_meter),
++                    snapshot.up_axis,
++                )
++                .await
++                .context("Serializing live Gaussian snapshot")
++            },
++            cancelled,
++        )
++        .await
++    }
++}
++
++fn read_small_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
++    if std::fs::metadata(path).ok()?.len() > 4096 {
++        return None;
++    }
++    serde_json::from_slice(&std::fs::read(path).ok()?).ok()
++}
++
++struct TemporaryMetadata(PathBuf);
++impl Drop for TemporaryMetadata {
++    fn drop(&mut self) {
++        let _ = std::fs::remove_file(&self.0);
++    }
++}
++
++fn write_latest(directory: &Path, frame: &Frame) -> Result<()> {
++    let temporary = TemporaryMetadata(directory.join(format!("latest-{}.tmp", frame.revision)));
++    let mut file = OpenOptions::new()
++        .write(true)
++        .create_new(true)
++        .open(&temporary.0)?;
++    file.write_all(&serde_json::to_vec(frame)?)?;
++    file.sync_all()?;
++    std::fs::rename(&temporary.0, directory.join("latest.json"))?;
++    #[cfg(unix)]
++    File::open(directory)?.sync_all()?;
++    Ok(())
++}
++
++fn now_ms() -> u64 {
++    SystemTime::now()
++        .duration_since(UNIX_EPOCH)
++        .unwrap_or_default()
++        .as_millis() as u64
++}
++
++/// Owns an independent actor and a single in-flight snapshot. Dropping cancels
++/// readback/publication; normal completion checks the final slot once for demand.
++pub struct LiveBridge {
++    _actor: Actor,
++    shutdown: Option<oneshot::Sender<()>>,
++    done: Option<oneshot::Receiver<()>>,
++    cancelled: Arc<AtomicBool>,
++}
++
++impl LiveBridge {
++    pub fn from_env(snapshots: Slot<TrainingSnapshot>) -> Result<Option<Self>> {
++        let Some(directory) = std::env::var_os("METORIGIN_BRUSH_LIVE_DIR") else {
++            return Ok(None);
++        };
++        let session_id =
++            std::env::var("METORIGIN_BRUSH_LIVE_SESSION").context("Missing live session")?;
++        let mut producer = Producer::new(Path::new(&directory), session_id)?;
++        let actor = Actor::new("metorigin-live-preview");
++        let cancelled = Arc::new(AtomicBool::new(false));
++        let worker_cancelled = cancelled.clone();
++        let (shutdown, mut shutdown_rx) = oneshot::channel();
++        let (done_tx, done) = oneshot::channel();
++        actor
++            .run(move || async move {
++                loop {
++                    let finishing = tokio::select! {
++                        _ = &mut shutdown_rx => true,
++                        _ = tokio::time::sleep(Duration::from_millis(100)) => false,
++                    };
++                    if worker_cancelled.load(Ordering::Acquire) {
++                        break;
++                    }
++                    producer.finishing = finishing;
++                    if let Err(error) = producer.update(&snapshots, &worker_cancelled).await {
++                        log::warn!("Live preview disabled after export failure: {error:#}");
++                        break;
++                    }
++                    if finishing {
++                        break;
++                    }
++                }
++                let _ = done_tx.send(());
++            })
++            .detach();
++        Ok(Some(Self {
++            _actor: actor,
++            shutdown: Some(shutdown),
++            done: Some(done),
++            cancelled,
++        }))
++    }
++
++    pub async fn finish(&mut self) {
++        if let Some(shutdown) = self.shutdown.take() {
++            let _ = shutdown.send(());
++        }
++        if let Some(done) = self.done.take()
++            && tokio::time::timeout(Duration::from_secs(30), done)
++                .await
++                .is_err()
++        {
++            log::warn!("Live preview final snapshot timed out");
++        }
++        self.cancelled.store(true, Ordering::Release);
++    }
++}
++
++impl Drop for LiveBridge {
++    fn drop(&mut self) {
++        self.cancelled.store(true, Ordering::Release);
++        if let Some(shutdown) = self.shutdown.take() {
++            let _ = shutdown.send(());
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use serde_json::json;
++    use std::{cell::Cell, sync::atomic::AtomicU64};
++
++    static NEXT_TEST: AtomicU64 = AtomicU64::new(0);
++    struct Fixture {
++        root: PathBuf,
++        producer: Producer,
++    }
++    impl Fixture {
++        fn new() -> Self {
++            let number = NEXT_TEST.fetch_add(1, Ordering::Relaxed);
++            let root =
++                std::env::temp_dir().join(format!("brush-live-{}-{number}", std::process::id()));
++            let directory = root.join("abcd-1234");
++            std::fs::create_dir_all(&directory).unwrap();
++            std::fs::write(
++                root.join("session.json"),
++                json!({
++                    "protocol":1, "session_id":"abcd-1234", "available":true, "running":true
++                })
++                .to_string(),
++            )
++            .unwrap();
++            Self {
++                root,
++                producer: Producer::new(&directory, "abcd-1234".into()).unwrap(),
++            }
++        }
++        fn request(&self, after_revision: u64, mode: &str, expires_at_ms: u64) {
++            std::fs::write(
++                self.producer.directory.join("request.json"),
++                json!({
++                    "session_id":"abcd-1234", "after_revision":after_revision,
++                    "mode":mode, "expires_at_ms":expires_at_ms
++                })
++                .to_string(),
++            )
++            .unwrap();
++        }
++    }
++    impl Drop for Fixture {
++        fn drop(&mut self) {
++            let _ = std::fs::remove_dir_all(&self.root);
++        }
++    }
++
++    fn small_ply() -> Vec<u8> {
++        let mut bytes = b"ply\nformat binary_little_endian 1.0\nelement vertex 1\n".to_vec();
++        for field in [
++            "x", "y", "z", "scale_0", "scale_1", "scale_2", "opacity", "rot_0", "rot_1", "rot_2",
++            "rot_3", "f_dc_0", "f_dc_1", "f_dc_2",
++        ] {
++            bytes.extend(format!("property float {field}\n").as_bytes());
++        }
++        bytes.extend(b"end_header\n");
++        bytes.extend([0u8; 14 * 4]);
++        bytes
++    }
++
++    async fn fake_update(producer: &mut Producer, iteration: u32, reads: &Cell<u32>) -> bool {
++        producer
++            .update_with(
++                || Some((iteration, 1, ())),
++                |()| async {
++                    reads.set(reads.get() + 1);
++                    Ok(small_ply())
++                },
++                &AtomicBool::new(false),
++            )
++            .await
++            .unwrap()
++    }
++
++    #[tokio::test]
++    async fn empty_slot_and_invalid_demand_never_read_back() {
++        let mut fixture = Fixture::new();
++        let reads = Cell::new(0);
++        assert!(!fake_update(&mut fixture.producer, 1, &reads).await);
++        fixture.request(0, "off", now_ms() + 10_000);
++        assert!(!fake_update(&mut fixture.producer, 1, &reads).await);
++        fixture.request(0, "live", now_ms().saturating_sub(1));
++        assert!(!fake_update(&mut fixture.producer, 1, &reads).await);
++        fixture.request(1, "live", now_ms() + 10_000);
++        assert!(!fake_update(&mut fixture.producer, 1, &reads).await);
++        fixture.request(0, "live", now_ms() + 10_000);
++        let empty: Slot<TrainingSnapshot> = Slot::empty();
++        assert!(
++            !fixture
++                .producer
++                .update(&empty, &AtomicBool::new(false))
++                .await
++                .unwrap()
++        );
++        assert!(
++            !fixture
++                .producer
++                .update_with(
++                    || -> Option<(u32, u32, ())> { panic!("cancelled bridge accessed snapshot") },
++                    |()| async { panic!("cancelled bridge read GPU") },
++                    &AtomicBool::new(true),
++                )
++                .await
++                .unwrap()
++        );
++        std::fs::write(
++            fixture.root.join("session.json"),
++            json!({
++                "protocol":1, "session_id":"ffff-9999", "available":true, "running":true
++            })
++            .to_string(),
++        )
++        .unwrap();
++        assert!(!fake_update(&mut fixture.producer, 1, &reads).await);
++        assert_eq!(reads.get(), 0);
++        assert_eq!(fixture.producer.revision, 0);
++        assert!(!fixture.producer.directory.join("latest.json").exists());
++    }
++
++    #[tokio::test]
++    async fn one_frame_per_ack_and_expired_or_stale_ack_does_not_advance() {
++        let mut fixture = Fixture::new();
++        let reads = Cell::new(0);
++        fixture.request(0, "live", now_ms() + 10_000);
++        assert!(fake_update(&mut fixture.producer, 10, &reads).await);
++        assert!(!fake_update(&mut fixture.producer, 20, &reads).await);
++        fixture.request(1, "live", now_ms() + 10_000);
++        assert!(!fake_update(&mut fixture.producer, 12, &reads).await);
++        assert!(fake_update(&mut fixture.producer, 20, &reads).await);
++        fixture.request(1, "live", now_ms() + 10_000);
++        assert!(!fake_update(&mut fixture.producer, 30, &reads).await);
++        fixture.request(2, "live", now_ms().saturating_sub(1));
++        assert!(!fake_update(&mut fixture.producer, 30, &reads).await);
++        fixture.request(2, "low", now_ms() + 10_000);
++        assert!(!fake_update(&mut fixture.producer, 30, &reads).await);
++        assert!(fake_update(&mut fixture.producer, 120, &reads).await);
++        assert_eq!(reads.get(), 3);
++        assert_eq!(fixture.producer.revision, 3);
++        assert!(!fixture.producer.directory.join("frame-1.ply").exists());
++        assert!(fixture.producer.directory.join("frame-2.ply").exists());
++        assert!(fixture.producer.directory.join("frame-3.ply").exists());
++        let frame: Frame =
++            read_small_json(&fixture.producer.directory.join("latest.json")).unwrap();
++        assert_eq!(frame.iteration, 120);
++        assert_eq!(frame.revision, 3);
++    }
++
++    #[tokio::test]
++    async fn normal_finish_can_publish_requested_final_iteration_before_interval() {
++        let mut fixture = Fixture::new();
++        let reads = Cell::new(0);
++        fixture.request(0, "low", now_ms() + 10_000);
++        assert!(fake_update(&mut fixture.producer, 10, &reads).await);
++        fixture.request(1, "low", now_ms() + 10_000);
++        assert!(!fake_update(&mut fixture.producer, 11, &reads).await);
++        fixture.producer.finishing = true;
++        assert!(fake_update(&mut fixture.producer, 11, &reads).await);
++        fixture.request(2, "low", now_ms() + 10_000);
++        assert!(!fake_update(&mut fixture.producer, 11, &reads).await);
++        assert_eq!(reads.get(), 2);
++    }
++
++    #[tokio::test]
++    async fn closing_preview_during_encode_cannot_publish() {
++        let mut fixture = Fixture::new();
++        fixture.request(0, "live", now_ms() + 10_000);
++        let request_path = fixture.producer.directory.join("request.json");
++        assert!(
++            !fixture
++                .producer
++                .update_with(
++                    || Some((10, 1, ())),
++                    |()| async move {
++                        std::fs::write(
++                            request_path,
++                            json!({
++                                "session_id":"abcd-1234", "after_revision":0,
++                                "mode":"off", "expires_at_ms":now_ms()+10_000
++                            })
++                            .to_string(),
++                        )?;
++                        Ok(small_ply())
++                    },
++                    &AtomicBool::new(false)
++                )
++                .await
++                .unwrap()
++        );
++        assert_eq!(fixture.producer.revision, 0);
++        assert!(!fixture.producer.directory.join("latest.json").exists());
++        assert!(!fixture.producer.directory.join("frame-1.ply").exists());
++    }
++
++    #[tokio::test]
++    #[ignore = "requires Metal and METORIGIN_BRUSH_TEST_DATASET with a normalized local fixture"]
++    async fn actual_snapshot_equals_same_iteration_checkpoint_with_nonunit_scale_and_sh() {
++        use clap::Parser;
++        use tokio_stream::StreamExt;
++        let fixture_path = std::env::var("METORIGIN_BRUSH_TEST_DATASET").expect("fixture path");
++        let (_, adapter) = crate::burn_init_setup_with_info().await;
++        assert_eq!(adapter.backend, wgpu::Backend::Metal);
++        let mut fixture = Fixture::new();
++        let export_dir = fixture.root.join("checkpoints");
++        let mut config = crate::config::TrainStreamConfig::parse_from(["brush"]);
++        config.train_config.total_train_iters = 10;
++        config.train_config.max_splats = 50_000;
++        config.model_config.sh_degree = 2;
++        config.load_config.max_resolution = 160;
++        config.load_config.max_scene_batch_cache_size = 16 * 1024 * 1024;
++        config.load_config.num_loader_threads = std::num::NonZeroUsize::new(2);
++        config.load_config.units_per_meter = 1000.0;
++        config.process_config.export_path = export_dir.to_str().unwrap().into();
++        config.process_config.export_name = "checkpoint_{iter}.ply".into();
++        let mut process =
++            crate::create_process(crate::DataSource::Path(fixture_path), async move |_| {
++                Some(config)
++            });
++        while let Some(message) = process.stream.next().await {
++            message.unwrap();
++        }
++        let snapshot = process.training_snapshots.latest().unwrap();
++        assert_eq!(snapshot.iteration, 10);
++        assert_eq!(snapshot.units_per_meter, 1000.0);
++        assert_eq!(snapshot.splats.sh_degree(), 2);
++        fixture.request(0, "live", now_ms() + 10_000);
++        assert!(
++            fixture
++                .producer
++                .update(&process.training_snapshots, &AtomicBool::new(false))
++                .await
++                .unwrap()
++        );
++        let frame: Frame =
++            read_small_json(&fixture.producer.directory.join("latest.json")).unwrap();
++        assert_eq!(frame.iteration, snapshot.iteration);
++        assert_eq!(frame.splat_count, snapshot.splats.num_splats());
++        assert_eq!(
++            std::fs::read(export_dir.join("checkpoint_10.ply")).unwrap(),
++            std::fs::read(fixture.producer.directory.join(frame.relative_path)).unwrap()
++        );
++    }
++}
+diff --git a/crates/brush-process/src/machine.rs b/crates/brush-process/src/machine.rs
+new file mode 100644
+index 0000000..f99be8a
+--- /dev/null
++++ b/crates/brush-process/src/machine.rs
+@@ -0,0 +1,233 @@
++//! Versioned headless-machine interfaces; capabilities never initialize a GPU.
++
++use anyhow::{Context, Result, ensure};
++use brush_render::kernels::camera_model::CameraModel;
++use brush_render::{Splats, bwd, camera::Camera, gaussian_splats::SplatRenderMode};
++use burn::{module::Module, tensor::Tensor};
++use serde_json::{Value, json};
++
++pub const ENGINE_VERSION: &str = "1.0.0+metorigin-macos.4";
++pub const SOURCE_COMMIT: &str = "1388f74c6fe0236f68ee4915564bf00e9d2e3747";
++pub const BUILD_ID: &str = "metorigin-macos.4";
++const GAUSSIANS: usize = 8;
++const SIZE: u32 = 32;
++
++fn identity() -> Value {
++    json!({
++        "schema_version": 1,
++        "engine": "brush",
++        "engine_version": ENGINE_VERSION,
++        "source_commit": SOURCE_COMMIT,
++        "build_id": BUILD_ID,
++    })
++}
++
++pub fn capabilities() -> Value {
++    let mut report = identity();
++    report["cli_profile"] = json!("metorigin_1");
++    report["target"] = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
++        json!("aarch64-apple-darwin")
++    } else {
++        json!(format!(
++            "{}-{}",
++            std::env::consts::ARCH,
++            std::env::consts::OS
++        ))
++    };
++    report["supported_features"] = json!([
++        "capabilities_json",
++        "compute_probe",
++        "ply_checkpoint",
++        "ply_warm_start",
++        "loader_thread_limit",
++        "atomic_checkpoint",
++        "explicit_cli_overrides",
++        "live_preview"
++    ]);
++    report["live_protocol"] = json!("ply_request_ack_v1");
++    report["resume_mode"] = json!("ply_warm_start_optimizer_reset");
++    report
++}
++
++pub fn failed_probe() -> Value {
++    let mut report = identity();
++    report["probe_kind"] = json!("compute_smoke");
++    report["status"] = json!("failed");
++    report["backend"] = Value::Null;
++    report["device_name"] = Value::Null;
++    report["error"] = json!({
++        "code": "BRUSH_GPU_PROBE_FAILED",
++        "message": "The training GPU could not complete the Gaussian compute check.",
++        "retryable": false,
++    });
++    report
++}
++
++/// Keep the report and exit decision together for all machine-command consumers.
++pub fn probe_outcome(outcome: Result<Value>) -> (Value, bool) {
++    match outcome {
++        Ok(report) => (report, true),
++        Err(_) => (failed_probe(), false),
++    }
++}
++
++fn validate_compute(pixels: &[f32], gradients: &[f32], loss: f32) -> Result<f64> {
++    ensure!(
++        pixels.len() == (SIZE * SIZE * 4) as usize,
++        "Unexpected rendered image size"
++    );
++    ensure!(
++        pixels.iter().all(|value| value.is_finite()),
++        "Non-finite render output"
++    );
++    ensure!(
++        pixels.iter().any(|value| *value > 0.0),
++        "Empty render output"
++    );
++    ensure!(gradients.len() == GAUSSIANS, "Missing opacity gradients");
++    ensure!(
++        gradients.iter().all(|value| value.is_finite()),
++        "Non-finite backward output"
++    );
++    ensure!(loss.is_finite() && loss > 0.0, "Invalid rendered loss");
++    let gradient_l1 = gradients
++        .iter()
++        .map(|value| f64::from(value.abs()))
++        .sum::<f64>();
++    ensure!(
++        gradient_l1 > 0.0 && gradient_l1.is_finite(),
++        "Empty backward output"
++    );
++    Ok(gradient_l1)
++}
++
++/// Run real projection/rasterization and its Gaussian backward kernels.
++/// The fixed eight visible splats keep this independent of user datasets.
++pub async fn probe() -> Result<Value> {
++    let (device, adapter) = crate::burn_init_setup_with_info().await;
++    ensure!(
++        adapter.backend == wgpu::Backend::Metal,
++        "Expected a Metal compute adapter"
++    );
++    let mut positions = Vec::with_capacity(GAUSSIANS * 3);
++    for index in 0..GAUSSIANS {
++        positions.extend([
++            if index & 1 == 0 { -0.15 } else { 0.15 },
++            if index & 2 == 0 { -0.15 } else { 0.15 },
++            2.0 + if index & 4 == 0 { 0.0 } else { 0.2 },
++        ]);
++    }
++    let splats = Splats::from_raw(
++        positions,
++        [0.0, 0.0, 0.0, 1.0].repeat(GAUSSIANS),
++        vec![-2.0; GAUSSIANS * 3],
++        vec![0.2; GAUSSIANS * 3],
++        vec![0.0; GAUSSIANS],
++        SplatRenderMode::Default,
++        &device,
++    )
++    .train();
++    let camera = Camera::new(
++        glam::Vec3::ZERO,
++        glam::Quat::IDENTITY,
++        0.7,
++        0.7,
++        glam::vec2(0.5, 0.5),
++        CameraModel::Pinhole,
++    );
++    let output = bwd::render_splats(
++        splats.clone(),
++        &camera,
++        glam::uvec2(SIZE, SIZE),
++        glam::Vec3::ZERO,
++    )
++    .await;
++    ensure!(
++        output.num_visible == GAUSSIANS as u32,
++        "Probe scene was not fully visible"
++    );
++    let pixels = output
++        .img
++        .clone()
++        .into_data_async()
++        .await
++        .context("Reading rendered pixels")?
++        .try_to_vec::<f32>()
++        .context("Decoding rendered pixels")?;
++    let loss: Tensor<1> = output.img.mean();
++    let loss_value = loss
++        .clone()
++        .into_scalar_async::<f32>()
++        .await
++        .context("Reading rendered loss")?;
++    let gradients = loss.backward();
++    let opacity_gradients = splats
++        .raw_opacities
++        .grad(&gradients)
++        .context("Gaussian backward did not produce opacity gradients")?
++        .into_data_async()
++        .await
++        .context("Reading Gaussian gradients")?
++        .try_to_vec::<f32>()
++        .context("Decoding Gaussian gradients")?;
++    let gradient_l1 = validate_compute(&pixels, &opacity_gradients, loss_value)?;
++    device.sync().context("Synchronizing GPU probe")?;
++    let mut report = identity();
++    report["probe_kind"] = json!("compute_smoke");
++    report["status"] = json!("supported");
++    report["backend"] = json!("metal");
++    report["device_name"] = json!(adapter.name);
++    report["device_type"] = json!(format!("{:?}", adapter.device_type));
++    report["compute"] = json!({
++        "gaussian_count": GAUSSIANS,
++        "width": SIZE, "height": SIZE,
++        "forward_finite": true, "gradient_finite": true,
++        "loss": loss_value, "gradient_l1": gradient_l1,
++    });
++    Ok(report)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn capabilities_state_only_implemented_contracts() {
++        let report = capabilities();
++        assert_eq!(report["schema_version"], 1);
++        assert_eq!(report["cli_profile"], "metorigin_1");
++        assert_eq!(report["live_protocol"], "ply_request_ack_v1");
++        assert_eq!(report["resume_mode"], "ply_warm_start_optimizer_reset");
++        assert_eq!(report["build_id"], BUILD_ID);
++        assert!(report.to_string().contains("atomic_checkpoint"));
++    }
++
++    #[test]
++    fn failure_is_structured_and_contains_no_raw_cause() {
++        let (report, success) = probe_outcome(Err(anyhow::anyhow!("private GPU error")));
++        assert!(!success);
++        assert!(!report.to_string().contains("private GPU error"));
++        assert_eq!(report["status"], "failed");
++        assert!(report["backend"].is_null());
++        assert_eq!(report["error"]["code"], "BRUSH_GPU_PROBE_FAILED");
++    }
++
++    #[test]
++    fn compute_validation_rejects_noop_nonfinite_or_missing_backward() {
++        let pixels = vec![0.5; (SIZE * SIZE * 4) as usize];
++        assert!(validate_compute(&pixels, &[0.1; GAUSSIANS], 0.5).is_ok());
++        assert!(validate_compute(&pixels, &[0.0; GAUSSIANS], 0.5).is_err());
++        assert!(validate_compute(&pixels, &[f32::NAN; GAUSSIANS], 0.5).is_err());
++        assert!(validate_compute(&pixels, &[], 0.5).is_err());
++        assert!(validate_compute(&pixels, &[0.1; GAUSSIANS], f32::INFINITY).is_err());
++        assert!(validate_compute(&[], &[0.1; GAUSSIANS], 0.5).is_err());
++    }
++
++    #[tokio::test]
++    #[ignore = "requires a real Apple Silicon Metal GPU"]
++    async fn metal_probe_executes_render_and_backward() {
++        let report = probe().await.expect("real GPU compute probe");
++        assert_eq!(report["backend"], "metal");
++        assert!(report["compute"]["gradient_l1"].as_f64().unwrap() > 0.0);
++    }
++}
+diff --git a/crates/brush-process/src/snapshot.rs b/crates/brush-process/src/snapshot.rs
+new file mode 100644
+index 0000000..b7d3aca
+--- /dev/null
++++ b/crates/brush-process/src/snapshot.rs
+@@ -0,0 +1,11 @@
++use brush_render::Splats;
++
++/// Immutable shallow model clone and its export semantics, captured by the
++/// training actor together. The slot retains only the most recent snapshot.
++#[derive(Clone)]
++pub struct TrainingSnapshot {
++    pub iteration: u32,
++    pub splats: Splats,
++    pub units_per_meter: f32,
++    pub up_axis: Option<glam::Vec3>,
++}
+diff --git a/crates/brush-process/src/train_stream.rs b/crates/brush-process/src/train_stream.rs
+index abf9c0a..a2f8c90 100644
+--- a/crates/brush-process/src/train_stream.rs
++++ b/crates/brush-process/src/train_stream.rs
+@@ -3,6 +3,7 @@ use crate::{
+     config::TrainStreamConfig,
+     message::{ProcessMessage, TrainMessage},
+     slot::SlotSender,
++    snapshot::TrainingSnapshot,
+ };
+ use anyhow::Context;
+ use brush_dataset::{load_dataset, scene::Scene, scene_loader::SceneLoader};
+@@ -33,6 +34,7 @@ pub(crate) async fn train_stream(
+     train_stream_config: TrainStreamConfig,
+     emitter: &Emitter,
+     slot: SlotSender<Splats>,
++    snapshots: SlotSender<TrainingSnapshot>,
+     device: &crate::ProcessDevice,
+ ) -> anyhow::Result<()> {
+     log::info!("Start of training stream");
+@@ -100,6 +102,13 @@ pub(crate) async fn train_stream(
+             .unwrap_or(SplatRenderMode::Default);
+         let max_splats = train_stream_config.train_config.max_splats as usize;
+         let original = msg.data.num_splats();
++        let learned_gaussians = msg.data.rotations.is_some()
++            && msg.data.log_scales.is_some()
++            && msg.data.raw_opacities.is_some();
++        anyhow::ensure!(
++            !learned_gaussians || original <= max_splats,
++            "Checkpoint has {original} Gaussians, exceeding --max-splats ({max_splats}); use a sufficient memory profile or start a new run. Warm start will not discard Gaussians."
++        );
+         let data = msg.data.subsample(max_splats);
+         if data.num_splats() < original {
+             emitter
+@@ -145,6 +154,15 @@ pub(crate) async fn train_stream(
+     let mut splats: Splats = init_splats.clone();
+     let bounds = get_splat_bounds(init_splats.clone(), BOUND_PERCENTILE).await;
+     slot.set(0, splats.clone());
++    snapshots.set(
++        0,
++        TrainingSnapshot {
++            iteration: process_config.start_iter,
++            splats: splats.clone(),
++            units_per_meter: train_stream_config.load_config.units_per_meter,
++            up_axis,
++        },
++    );
+     emitter
+         .emit(ProcessMessage::SplatsUpdated {
+             up_axis,
+@@ -235,7 +253,7 @@ pub(crate) async fn train_stream(
+                         .replace(".ply", &format!("_lod{current_lod}.ply"));
+                     (lod_name, lod_refine_steps, lod_refine_steps)
+                 };
+-                let res = export_checkpoint(
++                export_checkpoint(
+                     splats.clone(),
+                     &export_path,
+                     &name,
+@@ -245,11 +263,7 @@ pub(crate) async fn train_stream(
+                     train_stream_config.load_config.units_per_meter,
+                 )
+                 .await
+-                .with_context(|| "Export at LOD boundary failed");
+-
+-                if let Err(error) = res {
+-                    emitter.emit(ProcessMessage::Warning { error }).await;
+-                }
++                .with_context(|| "Export at LOD boundary failed")?;
+             }
+ 
+             current_lod = target_lod;
+@@ -346,6 +360,15 @@ pub(crate) async fn train_stream(
+             }
+         };
+         slot.set(0, splats.clone());
++        snapshots.set(
++            0,
++            TrainingSnapshot {
++                iteration: iter + 1,
++                splats: splats.clone(),
++                units_per_meter: train_stream_config.load_config.units_per_meter,
++                up_axis,
++            },
++        );
+         let refine_dur = refine_start.elapsed();
+ 
+         // We just finished iter 'iter', now starting iter + 1.
+@@ -401,7 +424,7 @@ pub(crate) async fn train_stream(
+                         .replace(".ply", &format!("_lod{current_lod}.ply"));
+                     (lod_name, lod_refine_steps, lod_refine_steps)
+                 };
+-                let res = export_checkpoint(
++                export_checkpoint(
+                     splats.clone(),
+                     &export_path,
+                     &name,
+@@ -411,11 +434,7 @@ pub(crate) async fn train_stream(
+                     train_stream_config.load_config.units_per_meter,
+                 )
+                 .await
+-                .with_context(|| format!("Export at iteration {iter} failed"));
+-
+-                if let Err(error) = res {
+-                    emitter.emit(ProcessMessage::Warning { error }).await;
+-                }
++                .with_context(|| format!("Export at iteration {iter} failed"))?;
+             }
+         }
+ 
+@@ -644,7 +663,7 @@ async fn export_checkpoint(
+     let splat_data = brush_serde::splat_to_ply(splats.scaled(units_per_meter), up_axis)
+         .await
+         .context("Serializing splat data")?;
+-    tokio::fs::write(export_path.join(&export_name), splat_data)
++    crate::checkpoint::write_checkpoint(export_path.join(&export_name), splat_data)
+         .await
+         .context(format!("Failed to export ply {export_path:?}"))?;
+     Ok(())

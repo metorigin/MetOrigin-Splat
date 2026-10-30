@@ -18,6 +18,7 @@ async fn extracts_real_video_with_fast_preset() {
     let had_valid_manifest = project_dir.join("frames").join("frames.json").exists();
 
     let config = PipelineConfig {
+        execution_profile: None,
         preset: "fast".to_string(),
         engine_paths: EnginePaths {
             ffmpeg: Some(ffmpeg),
@@ -69,6 +70,7 @@ async fn cancels_real_ffmpeg_and_releases_project_lock() {
     prepare_project(&project_dir, &video);
 
     let config = PipelineConfig {
+        execution_profile: None,
         preset: "fast".to_string(),
         engine_paths: EnginePaths {
             ffmpeg: Some(ffmpeg),

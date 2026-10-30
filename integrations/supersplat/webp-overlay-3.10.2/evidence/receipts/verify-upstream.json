@@ -1,0 +1,23 @@
+{
+  "started_at": "2026-10-29T16:45:56.741025+00:00",
+  "finished_at": "2026-10-29T16:46:07.401893+00:00",
+  "duration_seconds": 10.660767459,
+  "cwd": "${REPO_ROOT}/target/supersplat-3.7-webp/sources/splat-transform",
+  "argv": [
+    "${HOME}/.nvm/versions/node/v22.23.2/bin/node",
+    "--import",
+    "tsx",
+    "--test",
+    "test/webp-codec.test.mjs",
+    "test/write-sog.test.mjs",
+    "test/html-output.test.mjs"
+  ],
+  "explicit_environment": {},
+  "proxy_environment_removed": true,
+  "exit_code": 0,
+  "log": {
+    "path": "logs/verify-upstream.log",
+    "size_bytes": 4187,
+    "sha256": "c404daba9cc750d3df516a26009af0cf2f85eb9b18624e1cd435c4695d8bfa4b"
+  }
+}

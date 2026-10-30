@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "run_id": "01900000-0000-7000-8000-000000000001",
+  "platform": "windows",
+  "architecture": "x86_64",
+  "os_version": "10.0.26100",
+  "engine_pack_id": "windows-x64-legacy-example",
+  "engines": {
+    "ffmpeg": {
+      "version": "8.1.2",
+      "binary_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "ffprobe": {
+      "version": "8.1.2",
+      "binary_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "colmap": {
+      "version": "4.1.0",
+      "binary_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    "brush": {
+      "version": "0.3.0",
+      "binary_sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+    }
+  },
+  "colmap": {
+    "cli_profile": "colmap_4_1",
+    "database_schema_profile": "colmap_4_1",
+    "feature_backend": "cuda",
+    "matching_backend": "cuda",
+    "ba_backend": "ceres_cpu",
+    "global_positioning_backend": "cuda"
+  },
+  "brush": {
+    "cli_profile": "legacy_0_3",
+    "backend": "legacy_default",
+    "probe_result": {
+      "kind": "legacy_nvidia_driver",
+      "status": "supported"
+    },
+    "live_preview": "unknown",
+    "ply_warm_start": "unknown"
+  },
+  "memory": {
+    "kind": "dedicated",
+    "physical_memory_bytes": 17179869184,
+    "training_budget_bytes": 21474836480,
+    "available_working_set_bytes": 25769803776
+  },
+  "effective_training": {
+    "iterations": 7000,
+    "sh_degree": 1,
+    "threads": 4
+  },
+  "live_protocol": "disabled",
+  "resume_mode": "disabled"
+}

@@ -2,10 +2,10 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
+use base64::Engine;
 use chrono::{DateTime, Utc};
-use splat_domain::project::ProjectStatus;
-use splat_domain::{PipelineStageId, StageStatus};
 use splat_engine_brush::{CheckpointScanner, ExportManager};
+use splat_pipeline::image_input::{encode_preview, uniform_sample_indices};
 use splat_project::ProjectManager;
 use tauri_plugin_opener::OpenerExt;
 
@@ -121,8 +121,16 @@ pub struct ArtifactSummary {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+pub struct FramePreviewItem {
+    relative_path: String,
+    data_url: String,
+    width: u32,
+    height: u32,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct FramePreview {
-    items: Vec<String>,
+    items: Vec<FramePreviewItem>,
     total_frames: usize,
 }
 
@@ -376,7 +384,9 @@ pub(crate) fn delete_checkpoint_inner(project_path: String, iteration: u32) -> R
 pub fn restore_checkpoint(
     project_path: String,
     iteration: u32,
+    state: tauri::State<'_, crate::state::AppState>,
 ) -> Result<Vec<CheckpointSummary>, String> {
+    let _pending = crate::lifecycle::PendingWork::begin(state.inner())?;
     restore_checkpoint_inner(project_path, iteration)
 }
 
@@ -385,26 +395,8 @@ pub(crate) fn restore_checkpoint_inner(
     iteration: u32,
 ) -> Result<Vec<CheckpointSummary>, String> {
     let project_dir = valid_project_dir(&project_path)?;
-    let checkpoints = checkpoint_summaries(&project_dir)?;
-    let selected = checkpoints
-        .iter()
-        .find(|checkpoint| checkpoint.iteration == iteration && checkpoint.valid)
-        .ok_or_else(|| "指定 Checkpoint 不存在或未通过验证。".to_string())?;
-    let invalidated_dir = project_dir
-        .join("training/checkpoints/invalidated")
-        .join(Utc::now().format("%Y%m%d-%H%M%S").to_string());
-    for checkpoint in checkpoints
-        .iter()
-        .filter(|checkpoint| checkpoint.iteration > selected.iteration)
-    {
-        std::fs::create_dir_all(&invalidated_dir)
-            .map_err(|_| "创建失效 Checkpoint 目录失败。".to_string())?;
-        let source = secure_relative(&project_dir, &checkpoint.relative_path)?;
-        let destination = invalidated_dir.join(source.file_name().unwrap_or_default());
-        std::fs::rename(source, destination)
-            .map_err(|_| "移动下游 Checkpoint 失败，请检查文件占用。".to_string())?;
-    }
-    invalidate_training_from(&project_dir, PipelineStageId::BrushTraining)?;
+    splat_pipeline::stages::brush_training::restore_checkpoint(&project_dir, iteration)
+        .map_err(|error| error.user_message_zh())?;
     checkpoint_summaries(&project_dir)
 }
 
@@ -532,38 +524,274 @@ fn open_project_location_with(
     })
 }
 
+const FRAME_PREVIEW_LIMIT: usize = 12;
+const FRAME_PREVIEW_LONG_EDGE: u32 = 360;
+const FRAME_PREVIEW_MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
+const FRAME_PREVIEW_MAX_PIXELS: u64 = 64 * 1024 * 1024;
+const PROJECT_THUMBNAIL_MAX_ENTRIES: usize = 50_000;
+const PROJECT_THUMBNAIL_MAX_DEPTH: usize = 16;
+
+/// One representative input image for the project library. Unlike the workspace
+/// frame strip this never decodes twelve samples, invokes an engine, or writes a cache.
 #[tauri::command]
-pub fn get_frame_preview(project_path: String) -> Result<FramePreview, String> {
-    let project_dir = valid_project_dir(&project_path)?;
-    let mut frames = std::fs::read_dir(project_dir.join("frames"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension()
-                .and_then(|extension| extension.to_str())
-                .map(|extension| {
-                    matches!(extension.to_lowercase().as_str(), "jpg" | "jpeg" | "png")
-                })
-                .unwrap_or(false)
-        })
-        .collect::<Vec<_>>();
-    frames.sort();
-    let total = frames.len();
-    let indexes = if total <= 12 {
-        (0..total).collect::<Vec<_>>()
-    } else {
-        (0..12)
-            .map(|index| index * (total - 1) / 11)
-            .collect::<Vec<_>>()
+pub async fn get_project_thumbnail(
+    project_id: String,
+    project_path: String,
+) -> Result<Option<FramePreviewItem>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        build_project_thumbnail(&project_path, &project_id)
+    })
+    .await
+    .map_err(|_| "项目缩略图任务失败，请重试。".to_string())?
+}
+
+fn build_project_thumbnail(
+    project_path: &str,
+    project_id: &str,
+) -> Result<Option<FramePreviewItem>, String> {
+    let metadata = std::fs::symlink_metadata(project_path)
+        .map_err(|_| "项目目录不存在或无法读取。".to_string())?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err("项目缩略图需要有效的项目目录。".into());
+    }
+    let manifest = Path::new(project_path).join("project.json");
+    let metadata = std::fs::symlink_metadata(&manifest)
+        .map_err(|_| "项目记录不存在或无法读取。".to_string())?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err("项目记录必须是项目内的普通文件。".into());
+    }
+    let root = super::preview::project_root(project_path, project_id)?;
+    // Imported source images have already been copied into this directory.
+    // Deliberately do not follow any original source path from project metadata.
+    let relative = match first_project_thumbnail(&root, "frames", false)? {
+        Some(frame) => Some(frame),
+        None => first_project_thumbnail(&root, "source", true)?,
     };
+    let thumbnail = relative
+        .map(|relative| encode_project_preview(&root, &relative))
+        .transpose()?;
+    // Relinking or replacing a project while decoding must not publish an image
+    // for a different project identity under the old library card.
+    if super::preview::project_root(project_path, project_id)? != root {
+        return Err("项目位置已更新，请刷新后重试。".into());
+    }
+    Ok(thumbnail)
+}
+
+fn first_project_thumbnail(
+    root: &Path,
+    directory: &str,
+    recursive: bool,
+) -> Result<Option<String>, String> {
+    let path = root.join(directory);
+    let metadata = match std::fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err("无法读取项目图片目录。".into()),
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err("项目图片目录必须是项目内的普通目录。".into());
+    }
+    let path = super::preview::safe_path(root, directory)?;
+    let mut remaining = PROJECT_THUMBNAIL_MAX_ENTRIES;
+    let mut first = None;
+    find_project_thumbnail(
+        root,
+        &path,
+        Path::new(directory),
+        recursive,
+        0,
+        &mut remaining,
+        &mut first,
+    )?;
+    Ok(first)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn find_project_thumbnail(
+    root: &Path,
+    directory: &Path,
+    relative: &Path,
+    recursive: bool,
+    depth: usize,
+    remaining: &mut usize,
+    first: &mut Option<String>,
+) -> Result<(), String> {
+    if depth > PROJECT_THUMBNAIL_MAX_DEPTH {
+        return Err("项目图片目录层级超出缩略图限制。".into());
+    }
+    for entry in std::fs::read_dir(directory).map_err(|_| "无法读取项目图片目录。".to_string())?
+    {
+        if *remaining == 0 {
+            return Err("项目图片条目超出缩略图扫描限制。".into());
+        }
+        *remaining -= 1;
+        let entry = entry.map_err(|_| "无法读取项目图片条目。".to_string())?;
+        let file_type = entry
+            .file_type()
+            .map_err(|_| "无法读取项目图片类型。".to_string())?;
+        if file_type.is_symlink() {
+            return Err("项目缩略图不读取符号链接。".into());
+        }
+        let relative = relative.join(entry.file_name());
+        if recursive && file_type.is_dir() {
+            let resolved = super::preview::safe_path(
+                root,
+                relative
+                    .to_str()
+                    .ok_or_else(|| "项目图片路径无效。".to_string())?,
+            )?;
+            find_project_thumbnail(
+                root,
+                &resolved,
+                &relative,
+                recursive,
+                depth + 1,
+                remaining,
+                first,
+            )?;
+        } else if file_type.is_file() && is_preview_image(&relative) {
+            let candidate = relative
+                .to_str()
+                .ok_or_else(|| "项目图片路径无效。".to_string())?
+                .replace('\\', "/");
+            if first.as_ref().is_none_or(|current| &candidate < current) {
+                *first = Some(candidate);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn is_preview_image(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "jpg" | "jpeg" | "png"
+            )
+        })
+}
+
+fn encode_project_preview(root: &Path, relative_path: &str) -> Result<FramePreviewItem, String> {
+    let requested = root.join(relative_path);
+    let requested_metadata = std::fs::symlink_metadata(&requested)
+        .map_err(|_| "图片已被移除，请刷新后重试。".to_string())?;
+    if !requested_metadata.is_file() || requested_metadata.file_type().is_symlink() {
+        return Err("缩略图必须来自项目内的普通图片文件。".into());
+    }
+    let path = super::preview::safe_path(root, relative_path)?;
+    let before =
+        std::fs::symlink_metadata(&path).map_err(|_| "图片已被移除，请刷新后重试。".to_string())?;
+    if !before.is_file()
+        || before.file_type().is_symlink()
+        || before.len() > FRAME_PREVIEW_MAX_FILE_BYTES
+    {
+        return Err("图片无效或超过缩略图的 64 MiB 文件上限。".into());
+    }
+    let (width, height) = image::image_dimensions(&path)
+        .map_err(|_| "无法读取缩略图图片尺寸，请重试。".to_string())?;
+    if width == 0 || height == 0 || u64::from(width) * u64::from(height) > FRAME_PREVIEW_MAX_PIXELS
+    {
+        return Err("图片尺寸超出缩略图限制。".into());
+    }
+    let encoded = encode_preview(&path, FRAME_PREVIEW_LONG_EDGE, 82)
+        .map_err(|error| error.user_message_zh())?;
+    let after = std::fs::symlink_metadata(&requested)
+        .map_err(|_| "图片已被移除，请刷新后重试。".to_string())?;
+    if !after.is_file()
+        || after.file_type().is_symlink()
+        || requested.canonicalize().ok().as_ref() != Some(&path)
+        || before.len() != after.len()
+        || before.modified().ok() != after.modified().ok()
+    {
+        return Err("图片已更新，请刷新后重试。".into());
+    }
+    Ok(FramePreviewItem {
+        relative_path: relative_path.into(),
+        width: encoded.width,
+        height: encoded.height,
+        data_url: format!(
+            "data:image/jpeg;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(encoded.bytes)
+        ),
+    })
+}
+
+#[tauri::command]
+pub async fn get_frame_preview(
+    project_id: String,
+    project_path: String,
+) -> Result<FramePreview, String> {
+    tauri::async_runtime::spawn_blocking(move || build_frame_preview(&project_path, &project_id))
+        .await
+        .map_err(|_| "抽取帧缩略图任务失败，请重试。".to_string())?
+}
+
+fn build_frame_preview(project_path: &str, project_id: &str) -> Result<FramePreview, String> {
+    let project_dir = super::preview::project_root(project_path, project_id)?;
+    let frames_path = project_dir.join("frames");
+    let frames_metadata = match std::fs::symlink_metadata(&frames_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(FramePreview {
+                items: Vec::new(),
+                total_frames: 0,
+            });
+        }
+        Err(_) => return Err("无法读取抽取帧目录，请重试。".into()),
+    };
+    if !frames_metadata.is_dir() || frames_metadata.file_type().is_symlink() {
+        return Err("抽取帧目录不是有效的项目目录。".into());
+    }
+    let frames_dir = super::preview::safe_path(&project_dir, "frames")?;
+    let mut frames = Vec::new();
+    for entry in
+        std::fs::read_dir(&frames_dir).map_err(|_| "无法读取抽取帧目录，请重试。".to_string())?
+    {
+        let entry = entry.map_err(|_| "无法读取抽取帧条目，请重试。".to_string())?;
+        let path = entry.path();
+        if !path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| {
+                matches!(
+                    extension.to_ascii_lowercase().as_str(),
+                    "jpg" | "jpeg" | "png"
+                )
+            })
+        {
+            continue;
+        }
+        let file_type = entry
+            .file_type()
+            .map_err(|_| "无法读取抽取帧类型，请重试。".to_string())?;
+        if file_type.is_symlink() || !file_type.is_file() {
+            return Err("抽取帧必须是项目内的普通图片文件。".into());
+        }
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| "抽取帧文件名无效。".to_string())?;
+        frames.push(name);
+    }
+    frames.sort();
+    let total_frames = frames.len();
+    let items = uniform_sample_indices(total_frames, FRAME_PREVIEW_LIMIT)
+        .into_iter()
+        .map(|index| {
+            let relative_path = format!("frames/{}", frames[index]);
+            let path = super::preview::safe_path(&project_dir, &relative_path)?;
+            if path.parent() != Some(frames_dir.as_path()) {
+                return Err("抽取帧路径超出帧目录。".to_string());
+            }
+            encode_project_preview(&project_dir, &relative_path)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     Ok(FramePreview {
-        items: indexes
-            .into_iter()
-            .map(|index| frames[index].to_string_lossy().to_string())
-            .collect(),
-        total_frames: total,
+        items,
+        total_frames,
     })
 }
 
@@ -612,6 +840,7 @@ pub(crate) fn checkpoint_summaries(project_dir: &Path) -> Result<Vec<CheckpointS
     let checkpoints =
         CheckpointScanner::scan(&directory).map_err(|error| error.user_message_zh())?;
     let latest = checkpoints.last().map(|checkpoint| checkpoint.iteration);
+    let brush_version = recorded_brush_version(project_dir);
     Ok(checkpoints
         .into_iter()
         .map(|checkpoint| {
@@ -629,10 +858,37 @@ pub(crate) fn checkpoint_summaries(project_dir: &Path) -> Result<Vec<CheckpointS
                 vertex_count,
                 valid: vertex_count > 0 && checkpoint.size_bytes > 0,
                 current: latest == Some(checkpoint.iteration),
-                brush_version: "0.3.0".into(),
+                brush_version: brush_version.clone(),
             }
         })
         .collect())
+}
+
+fn recorded_brush_version(project_dir: &Path) -> String {
+    #[derive(serde::Deserialize)]
+    struct RecordedVersion {
+        brush_version: String,
+    }
+    let result = File::open(project_dir.join("training/result.json"))
+        .ok()
+        .and_then(|file| serde_json::from_reader::<_, RecordedVersion>(file.take(64 * 1024)).ok())
+        .map(|result| result.brush_version)
+        .filter(|version| !version.trim().is_empty() && version.len() < 256);
+    result
+        .or_else(|| {
+            splat_project::load_execution_profile(project_dir)
+                .ok()
+                .flatten()
+                .map(|profile| profile.engines.brush.version)
+        })
+        .map(|version| {
+            version
+                .strip_prefix("brush-cli ")
+                .or_else(|| version.strip_prefix("brush_app "))
+                .unwrap_or(&version)
+                .to_owned()
+        })
+        .unwrap_or_else(|| "unknown".into())
 }
 
 fn valid_project_dir(project_path: &str) -> Result<PathBuf, String> {
@@ -728,37 +984,6 @@ fn read_json(path: &Path) -> Option<serde_json::Value> {
     std::fs::read_to_string(path)
         .ok()
         .and_then(|content| serde_json::from_str(&content).ok())
-}
-
-fn invalidate_training_from(project_dir: &Path, selected: PipelineStageId) -> Result<(), String> {
-    let manager = ProjectManager::new(project_dir.parent().unwrap_or(project_dir).to_path_buf());
-    let mut project = manager
-        .open_project(project_dir)
-        .map_err(|error| error.user_message_zh())?;
-    let index = PipelineStageId::all()
-        .iter()
-        .position(|stage| *stage == selected)
-        .unwrap_or(0);
-    for stage in &PipelineStageId::all()[index..] {
-        if let Some(state) = project.pipeline_state.stages.get_mut(stage) {
-            state.status = if *stage == selected {
-                StageStatus::Paused
-            } else {
-                StageStatus::Pending
-            };
-            state.progress = 0.0;
-            state.started_at = None;
-            state.ended_at = None;
-            state.error = None;
-        }
-    }
-    project.pipeline_state.current_stage = None;
-    project.current_stage = None;
-    project.status = ProjectStatus::Paused;
-    project.touch();
-    manager
-        .save_project(&project, project_dir)
-        .map_err(|error| error.user_message_zh())
 }
 
 fn read_u64(reader: &mut impl Read) -> Result<u64, String> {
@@ -967,6 +1192,321 @@ fn parse_ply_preview(path: &Path, relative: &str, limit: usize) -> Result<PlyPre
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn frame_preview_transport_returns_inline_thumbnail_data() {
+        use base64::Engine as _;
+        let (root, project) = location_test_project("frame-preview-red-transport");
+        std::fs::create_dir(root.join("frames")).unwrap();
+        let bytes = base64::engine::general_purpose::STANDARD.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNQLTgCAAIXAVpmh0X/AAAAAElFTkSuQmCC").unwrap();
+        std::fs::write(root.join("frames/frame.png"), bytes).unwrap();
+        let preview = get_frame_preview(project.id.to_string(), root.to_string_lossy().to_string())
+            .await
+            .unwrap();
+        let value = serde_json::to_value(preview).unwrap();
+        std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+        assert!(
+            value["items"][0]["data_url"]
+                .as_str()
+                .is_some_and(|url| url.starts_with("data:image/jpeg;base64,")),
+            "Frame IPC must return a bounded JPEG data URL, not a local filesystem path: {value}"
+        );
+    }
+
+    fn write_preview_image(path: &Path, width: u32, height: u32) {
+        image::RgbImage::from_pixel(width, height, image::Rgb([37, 112, 196]))
+            .save(path)
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn project_thumbnail_prefers_first_frame_and_returns_one_bounded_image_without_writes() {
+        let (root, project) = location_test_project("project-thumbnail-frames");
+        std::fs::create_dir_all(root.join("frames")).unwrap();
+        std::fs::create_dir_all(root.join("source")).unwrap();
+        write_preview_image(&root.join("frames/002.jpg"), 30, 20);
+        write_preview_image(&root.join("frames/001.jpg"), 120, 480);
+        write_preview_image(&root.join("source/000.png"), 20, 30);
+        let frame_before = std::fs::read(root.join("frames/001.jpg")).unwrap();
+        let project_before = std::fs::read(root.join("project.json")).unwrap();
+
+        let thumbnail =
+            get_project_thumbnail(project.id.to_string(), root.to_string_lossy().to_string())
+                .await
+                .unwrap()
+                .unwrap();
+
+        assert_eq!(thumbnail.relative_path, "frames/001.jpg");
+        assert_eq!((thumbnail.width, thumbnail.height), (90, 360));
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(
+                thumbnail
+                    .data_url
+                    .strip_prefix("data:image/jpeg;base64,")
+                    .unwrap(),
+            )
+            .unwrap();
+        let decoded = image::load_from_memory(&bytes).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (90, 360));
+        assert_eq!(
+            std::fs::read(root.join("frames/001.jpg")).unwrap(),
+            frame_before
+        );
+        assert_eq!(
+            std::fs::read(root.join("project.json")).unwrap(),
+            project_before
+        );
+        assert!(!root.join("cache").exists());
+        std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn project_thumbnail_falls_back_to_copied_source_in_deterministic_nested_order() {
+        let (root, project) = location_test_project("project-thumbnail-source");
+        std::fs::create_dir_all(root.join("source/中文 素材")).unwrap();
+        write_preview_image(&root.join("source/中文 素材/Z.PNG"), 24, 16);
+        write_preview_image(&root.join("source/中文 素材/A.PNG"), 30, 20);
+        std::fs::write(root.join("source/notes.txt"), "ignored").unwrap();
+
+        let thumbnail = build_project_thumbnail(root.to_str().unwrap(), &project.id.to_string())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(thumbnail.relative_path, "source/中文 素材/A.PNG");
+        assert_eq!((thumbnail.width, thumbnail.height), (30, 20));
+        std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn project_thumbnail_without_project_owned_images_is_none_and_never_extracts_video() {
+        let (root, project) = location_test_project("project-thumbnail-empty");
+        assert!(
+            build_project_thumbnail(root.to_str().unwrap(), &project.id.to_string())
+                .unwrap()
+                .is_none()
+        );
+        std::fs::create_dir(root.join("source")).unwrap();
+        std::fs::write(root.join("source/capture.mp4"), "not a decoded image").unwrap();
+        write_preview_image(&root.parent().unwrap().join("outside.png"), 20, 20);
+
+        assert!(
+            build_project_thumbnail(root.to_str().unwrap(), &project.id.to_string())
+                .unwrap()
+                .is_none()
+        );
+        assert!(!root.join("frames").exists());
+        assert!(!root.join("cache").exists());
+        std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn project_thumbnail_rejects_wrong_identity_and_corrupt_input() {
+        let (root, project) = location_test_project("project-thumbnail-invalid");
+        std::fs::create_dir(root.join("source")).unwrap();
+        write_preview_image(&root.join("source/photo.png"), 20, 20);
+        assert!(build_project_thumbnail(root.to_str().unwrap(), "another-project").is_err());
+        std::fs::write(root.join("source/photo.png"), "not an image").unwrap();
+        assert!(build_project_thumbnail(root.to_str().unwrap(), &project.id.to_string()).is_err());
+        std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn project_thumbnail_checks_file_and_pixel_budgets_before_decode() {
+        let (root, project) = location_test_project("project-thumbnail-budgets");
+        std::fs::create_dir(root.join("frames")).unwrap();
+        let path = root.join("frames/photo.jpg");
+        let file = File::create(&path).unwrap();
+        file.set_len(FRAME_PREVIEW_MAX_FILE_BYTES + 1).unwrap();
+        drop(file);
+        let error =
+            build_project_thumbnail(root.to_str().unwrap(), &project.id.to_string()).unwrap_err();
+        assert!(error.contains("64 MiB"));
+
+        write_preview_image(&path, 1, 1);
+        let mut bytes = std::fs::read(&path).unwrap();
+        let start = bytes
+            .windows(2)
+            .position(|bytes| bytes == [0xff, 0xc0])
+            .unwrap();
+        // JPEG SOF dimensions have no checksum. This remains a small header,
+        // but declares 4.2 billion pixels that must be rejected before decode.
+        bytes[start + 5..start + 9].fill(0xff);
+        std::fs::write(&path, bytes).unwrap();
+        let error =
+            build_project_thumbnail(root.to_str().unwrap(), &project.id.to_string()).unwrap_err();
+        assert!(error.contains("尺寸超出"), "unexpected error: {error}");
+        std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn project_thumbnail_directory_walk_is_bounded() {
+        let (root, _) = location_test_project("project-thumbnail-walk");
+        std::fs::create_dir(root.join("source")).unwrap();
+        write_preview_image(&root.join("source/photo.png"), 20, 20);
+        let mut remaining = 0;
+        assert!(find_project_thumbnail(
+            &root,
+            &root.join("source"),
+            Path::new("source"),
+            true,
+            0,
+            &mut remaining,
+            &mut None,
+        )
+        .unwrap_err()
+        .contains("扫描限制"));
+        assert!(find_project_thumbnail(
+            &root,
+            &root.join("source"),
+            Path::new("source"),
+            true,
+            PROJECT_THUMBNAIL_MAX_DEPTH + 1,
+            &mut 1,
+            &mut None,
+        )
+        .unwrap_err()
+        .contains("层级"));
+        std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn project_thumbnail_rejects_linked_directories_images_and_manifest() {
+        use std::os::unix::fs::symlink;
+        let (root, project) = location_test_project("project-thumbnail-links");
+        let outside = root.parent().unwrap().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        write_preview_image(&outside.join("private.png"), 20, 20);
+        symlink(&outside, root.join("frames")).unwrap();
+        assert!(build_project_thumbnail(root.to_str().unwrap(), &project.id.to_string()).is_err());
+        std::fs::remove_file(root.join("frames")).unwrap();
+
+        std::fs::create_dir(root.join("source")).unwrap();
+        symlink(&outside, root.join("source/nested")).unwrap();
+        assert!(build_project_thumbnail(root.to_str().unwrap(), &project.id.to_string()).is_err());
+        std::fs::remove_file(root.join("source/nested")).unwrap();
+        symlink(outside.join("private.png"), root.join("source/photo.png")).unwrap();
+        assert!(build_project_thumbnail(root.to_str().unwrap(), &project.id.to_string()).is_err());
+        std::fs::remove_file(root.join("source/photo.png")).unwrap();
+
+        std::fs::rename(root.join("project.json"), outside.join("project.json")).unwrap();
+        symlink(outside.join("project.json"), root.join("project.json")).unwrap();
+        assert!(build_project_thumbnail(root.to_str().unwrap(), &project.id.to_string()).is_err());
+        std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn frame_preview_returns_bounded_jpeg_samples_with_real_dimensions() {
+        let (root, project) = location_test_project("frame-preview-jpeg");
+        let frames = root.join("frames");
+        std::fs::create_dir(&frames).unwrap();
+        for index in 0..15 {
+            write_preview_image(&frames.join(format!("frame-{index:03}.jpg")), 120, 480);
+        }
+        std::fs::write(frames.join("frames.json"), "{}").unwrap();
+        let first_before = std::fs::read(frames.join("frame-000.jpg")).unwrap();
+        let preview = build_frame_preview(root.to_str().unwrap(), &project.id.to_string()).unwrap();
+        assert_eq!(preview.total_frames, 15);
+        assert_eq!(preview.items.len(), 12);
+        assert_eq!(preview.items[0].relative_path, "frames/frame-000.jpg");
+        assert_eq!(preview.items[11].relative_path, "frames/frame-014.jpg");
+        for item in preview.items {
+            let data = item
+                .data_url
+                .strip_prefix("data:image/jpeg;base64,")
+                .unwrap();
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(data)
+                .unwrap();
+            assert!(bytes.starts_with(&[0xff, 0xd8]));
+            let decoded = image::load_from_memory(&bytes).unwrap();
+            assert_eq!(
+                (item.width, item.height),
+                (decoded.width(), decoded.height())
+            );
+            assert_eq!((item.width, item.height), (90, 360));
+        }
+        assert_eq!(
+            std::fs::read(frames.join("frame-000.jpg")).unwrap(),
+            first_before
+        );
+        std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn frame_preview_missing_frames_are_empty_but_corrupt_frames_fail() {
+        let (root, project) = location_test_project("frame-preview-errors");
+        let preview = build_frame_preview(root.to_str().unwrap(), &project.id.to_string()).unwrap();
+        assert_eq!(preview.total_frames, 0);
+        assert!(preview.items.is_empty());
+        assert!(build_frame_preview(root.to_str().unwrap(), "another-project").is_err());
+        std::fs::create_dir(root.join("frames")).unwrap();
+        std::fs::write(root.join("frames/broken.jpg"), "not an image").unwrap();
+        assert!(build_frame_preview(root.to_str().unwrap(), &project.id.to_string()).is_err());
+        std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn frame_preview_rejects_large_input_before_decode() {
+        let (root, project) = location_test_project("frame-preview-large");
+        std::fs::create_dir(root.join("frames")).unwrap();
+        let file = File::create(root.join("frames/oversized.png")).unwrap();
+        file.set_len(FRAME_PREVIEW_MAX_FILE_BYTES + 1).unwrap();
+        let error =
+            build_frame_preview(root.to_str().unwrap(), &project.id.to_string()).unwrap_err();
+        assert!(error.contains("64 MiB"));
+        std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn frame_preview_rejects_linked_frames_and_frame_directory() {
+        use std::os::unix::fs::symlink;
+        let (root, project) = location_test_project("frame-preview-links");
+        let outside = root.parent().unwrap().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        write_preview_image(&outside.join("private.png"), 10, 10);
+        std::fs::create_dir(root.join("frames")).unwrap();
+        symlink(outside.join("private.png"), root.join("frames/frame.png")).unwrap();
+        assert!(build_frame_preview(root.to_str().unwrap(), &project.id.to_string()).is_err());
+        std::fs::remove_file(root.join("frames/frame.png")).unwrap();
+        std::fs::remove_dir(root.join("frames")).unwrap();
+        symlink(&outside, root.join("frames")).unwrap();
+        assert!(build_frame_preview(root.to_str().unwrap(), &project.id.to_string()).is_err());
+        std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn checkpoint_version_uses_recorded_engine_and_never_assumes_legacy_brush() {
+        let (root, _) = location_test_project("checkpoint-version");
+        assert_eq!(recorded_brush_version(&root), "unknown");
+        std::fs::create_dir_all(root.join("runtime")).unwrap();
+        std::fs::write(
+            root.join("runtime/execution-profile.json"),
+            include_str!(
+                "../../../../../schemas/examples/execution-profile/macos-patched.valid.json"
+            ),
+        )
+        .unwrap();
+        let profile = splat_project::load_execution_profile(&root)
+            .unwrap()
+            .unwrap();
+        assert_eq!(recorded_brush_version(&root), profile.engines.brush.version);
+        std::fs::create_dir_all(root.join("training")).unwrap();
+        std::fs::write(
+            root.join("training/result.json"),
+            r#"{"brush_version":"brush_app 0.3.0"}"#,
+        )
+        .unwrap();
+        assert_eq!(recorded_brush_version(&root), "0.3.0");
+        std::fs::write(
+            root.join("training/result.json"),
+            r#"{"brush_version":"brush-cli 1.0.0+metorigin-macos.5"}"#,
+        )
+        .unwrap();
+        assert_eq!(recorded_brush_version(&root), "1.0.0+metorigin-macos.5");
+        std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
 
     #[test]
     fn jsonl_retention_keeps_only_complete_tail_records() {

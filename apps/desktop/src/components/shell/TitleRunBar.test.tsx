@@ -7,18 +7,19 @@ const project = { id: "p", name: "自行车街景测试", path: "p", status: "ru
 const state = { stages: {}, current_stage: null, overall_progress: 0.58 };
 
 describe("TitleRunBar", () => {
-  it("puts the compact edit action with an icon next to the completed status", () => {
+  it("keeps completed editing without the redundant title status and project-files action", () => {
     const edit = vi.fn();
-    const props = { project: { ...project, status: "completed" as const }, pipelineSnapshot: null, onStart: vi.fn(), onPause: vi.fn(), onResume: vi.fn(), onCancel: vi.fn(), onRevealProject: vi.fn(), onRemoveProject: vi.fn(), onDeleteProject: vi.fn(), onEdit: edit };
-    const { rerender } = render(<TitleRunBar {...props} />);
+    const props = { project: { ...project, status: "completed" as const }, pipelineSnapshot: null, onStart: vi.fn(), onPause: vi.fn(), onResume: vi.fn(), onCancel: vi.fn(), onRevealProject: vi.fn(), onDeleteProject: vi.fn(), onEdit: edit };
+    const { rerender } = render(<TitleRunBar compact {...props} />);
     const button = screen.getByRole("button", { name: "编辑" });
-    expect(button.previousElementSibling).toHaveTextContent("已完成");
+    expect(screen.queryByRole("button", { name: "整体进度" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "查看项目文件" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     fireEvent.click(button);
     expect(edit).toHaveBeenCalledOnce();
     expect(screen.queryByText("正在统计")).not.toBeInTheDocument();
     expect(screen.queryByText("正在准备")).not.toBeInTheDocument();
     expect(button.querySelector("svg")).toBeInTheDocument();
-    expect(button).toHaveClass("workspace-compact-action");
     rerender(<TitleRunBar {...props} project={{ ...project, status: "running" }} />);
     expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
   });
@@ -32,7 +33,6 @@ describe("TitleRunBar", () => {
         onResume={vi.fn()}
         onCancel={vi.fn()}
         onRevealProject={vi.fn()}
-        onRemoveProject={vi.fn()}
         onDeleteProject={vi.fn()}
       />,
     );
@@ -51,7 +51,6 @@ describe("TitleRunBar", () => {
         onResume={vi.fn()}
         onCancel={vi.fn()}
         onRevealProject={vi.fn()}
-        onRemoveProject={vi.fn()}
         onDeleteProject={vi.fn()}
       />,
     );
@@ -83,7 +82,6 @@ describe("TitleRunBar", () => {
         onResume={vi.fn()}
         onCancel={vi.fn()}
         onRevealProject={vi.fn()}
-        onRemoveProject={vi.fn()}
         onDeleteProject={vi.fn()}
       />,
     );
@@ -104,7 +102,7 @@ describe("TitleRunBar", () => {
   it("routes running and paused states to the correct controls", () => {
     const pause = vi.fn();
     const resume = vi.fn();
-    const props = { project, onStart: vi.fn(), onPause: pause, onResume: resume, onCancel: vi.fn(), onRevealProject: vi.fn(), onRemoveProject: vi.fn(), onDeleteProject: vi.fn() };
+    const props = { project, onStart: vi.fn(), onPause: pause, onResume: resume, onCancel: vi.fn(), onRevealProject: vi.fn(), onDeleteProject: vi.fn() };
     const { rerender } = render(<TitleRunBar {...props} pipelineSnapshot={{ project_id: "p", project_path: "p", status: "running", state, sequence: 1, accepted_at: null, started_at: null, control_intent: "none" }} />);
     fireEvent.click(screen.getByRole("button", { name: "暂停" }));
     expect(pause).toHaveBeenCalledOnce();
@@ -115,7 +113,7 @@ describe("TitleRunBar", () => {
 
   it("blocks repeated controls while cancellation is in progress", () => {
     const cancel = vi.fn();
-    render(<TitleRunBar project={project} pipelineSnapshot={{ project_id: "p", project_path: "p", status: "cancelling", state, sequence: 3, accepted_at: null, started_at: null, control_intent: "cancel" }} onStart={vi.fn()} onPause={vi.fn()} onResume={vi.fn()} onCancel={cancel} onRevealProject={vi.fn()} onRemoveProject={vi.fn()} onDeleteProject={vi.fn()} />);
+    render(<TitleRunBar project={project} pipelineSnapshot={{ project_id: "p", project_path: "p", status: "cancelling", state, sequence: 3, accepted_at: null, started_at: null, control_intent: "cancel" }} onStart={vi.fn()} onPause={vi.fn()} onResume={vi.fn()} onCancel={cancel} onRevealProject={vi.fn()} onDeleteProject={vi.fn()} />);
     const cancelling = screen.getByRole("button", { name: "正在取消…" });
     expect(cancelling).toBeDisabled();
     fireEvent.click(cancelling);
@@ -132,7 +130,6 @@ describe("TitleRunBar", () => {
         onResume={vi.fn()}
         onCancel={vi.fn()}
         onRevealProject={vi.fn()}
-        onRemoveProject={vi.fn()}
         onDeleteProject={vi.fn()}
       />,
     );
@@ -146,11 +143,10 @@ describe("TitleRunBar", () => {
     expect(trigger).toHaveAttribute("aria-controls", screen.getByRole("menu").id);
 
     fireEvent.keyDown(first, { key: "ArrowDown" });
-    expect(screen.getByRole("menuitem", { name: "从最近项目移除" })).toHaveFocus();
-    fireEvent.keyDown(screen.getByRole("menuitem", { name: "从最近项目移除" }), { key: "End" });
-    expect(screen.getByRole("menuitem", { name: /永久删除项目/ })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole("menuitem", { name: /永久删除项目/ })).toHaveFocus());
+    expect(screen.queryByRole("menuitem", { name: "从最近项目移除" })).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole("menuitem", { name: /永久删除项目/ }), { key: "Home" });
-    expect(first).toHaveFocus();
+    await waitFor(() => expect(first).toHaveFocus());
     fireEvent.keyDown(first, { key: "Escape" });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     await waitFor(() => expect(trigger).toHaveFocus());
@@ -162,10 +158,21 @@ describe("TitleRunBar", () => {
   });
 
   it("skips disabled destructive items while a project is running", async () => {
-    render(<TitleRunBar project={project} pipelineSnapshot={null} onStart={vi.fn()} onPause={vi.fn()} onResume={vi.fn()} onCancel={vi.fn()} onRevealProject={vi.fn()} onRemoveProject={vi.fn()} onDeleteProject={vi.fn()} />);
+    render(<TitleRunBar project={project} pipelineSnapshot={null} onStart={vi.fn()} onPause={vi.fn()} onResume={vi.fn()} onCancel={vi.fn()} onRevealProject={vi.fn()} onDeleteProject={vi.fn()} />);
     const trigger = screen.getByRole("button", { name: "操作" });
     fireEvent.keyDown(trigger, { key: "ArrowUp" });
     await waitFor(() => expect(screen.getByRole("menuitem", { name: /在资源管理器中显示/ })).toHaveFocus());
-    expect(screen.getByRole("menuitem", { name: /永久删除项目/ })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: /永久删除项目/ })).toHaveAttribute("aria-disabled", "true");
   });
+  it("keeps compact title and task controls without a duplicate progress disclosure", () => {
+    const pause = vi.fn();
+    render(<TitleRunBar compact project={project} pipelineSnapshot={{ project_id: "p", project_path: "p", status: "running", state, sequence: 1, accepted_at: null, started_at: null, control_intent: "none" }} onStart={vi.fn()} onPause={pause} onResume={vi.fn()} onCancel={vi.fn()} onRevealProject={vi.fn()} onDeleteProject={vi.fn()} />);
+    expect(screen.getByRole("heading", { name: project.name })).toBeVisible();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "整体进度" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "操作" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "暂停" }));
+    expect(pause).toHaveBeenCalledOnce();
+  });
+
 });

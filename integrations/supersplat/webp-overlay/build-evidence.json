@@ -1,0 +1,1763 @@
+{
+  "schema_version": 1,
+  "kind": "MetOrigin independently rebuilt WebP and derived splat-transform overlay v2 with exception-safe codec cleanup",
+  "status": "isolated-build-and-compatibility-passed-with-recorded-baseline-CJS-limitation",
+  "completed_at": "2026-10-27T17:54:39.391550+00:00",
+  "sources": [
+    {
+      "name": "libwebp",
+      "version": "1.6.0",
+      "repository": "https://github.com/webmproject/libwebp",
+      "commit": "4fa21912338357f89e4fd51cf2368325b59e9bd9",
+      "download_url": "https://codeload.github.com/webmproject/libwebp/tar.gz/4fa21912338357f89e4fd51cf2368325b59e9bd9",
+      "archive": {
+        "path": "downloads/libwebp-4fa21912338357f89e4fd51cf2368325b59e9bd9.tar.gz",
+        "size_bytes": 3834766,
+        "sha256": "923f3382a47a2af185c3240c954cf004428b237bd7317413a95146d01eb4b94b"
+      }
+    },
+    {
+      "name": "emsdk",
+      "version": "4.0.21",
+      "repository": "https://github.com/emscripten-core/emsdk",
+      "commit": "b2436aafa7351ee1b581f15841f1b45ed716a279",
+      "download_url": "https://codeload.github.com/emscripten-core/emsdk/tar.gz/b2436aafa7351ee1b581f15841f1b45ed716a279",
+      "archive": {
+        "path": "downloads/emsdk-b2436aafa7351ee1b581f15841f1b45ed716a279.tar.gz",
+        "size_bytes": 207827,
+        "sha256": "0279973682a9830976256cd5b28692c4ea7931f2a47baf2d0b3e22e31b6d3741"
+      }
+    },
+    {
+      "name": "splat-transform",
+      "version": "3.4.2",
+      "repository": "https://github.com/playcanvas/splat-transform",
+      "commit": "0cb47cd81023cca117c20ce59a55ba584ee89177",
+      "download_url": "https://codeload.github.com/playcanvas/splat-transform/tar.gz/0cb47cd81023cca117c20ce59a55ba584ee89177",
+      "archive": {
+        "path": "downloads/splat-transform-0cb47cd81023cca117c20ce59a55ba584ee89177.tar.gz",
+        "size_bytes": 1188144,
+        "sha256": "a8753ef7c53f7138f6552c4b81e8f4703060aecda0b93d2b807a4602e4d1c0d6"
+      },
+      "wrapper": {
+        "path": "sources/splat-transform/lib/webp.c",
+        "size_bytes": 1914,
+        "sha256": "32c66c6de02eb30223d629987dfbe885e9f2039a663fe3f9eebd666c0b4d62f9"
+      },
+      "wrapper_unchanged_from_pinned_source": true
+    },
+    {
+      "name": "sharpyuv",
+      "version": "0.4.2",
+      "source": "same libwebp source tree, not an independently downloaded revision",
+      "commit": "4fa21912338357f89e4fd51cf2368325b59e9bd9",
+      "version_header": {
+        "path": "sources/libwebp/sharpyuv/sharpyuv.h",
+        "size_bytes": 7669,
+        "sha256": "4fcb150246232b0e8e605752deb66ca861872f86dd692308d9f854e10ad964ee"
+      }
+    }
+  ],
+  "toolchain": {
+    "emscripten_version": "4.0.21",
+    "emscripten_commit": "d6f42310010ddec0753a69bab01a4b33aae255b7",
+    "release_selector": "d70a5da89b3e673bf6a482724478fc17e81e575e",
+    "host": "macOS arm64",
+    "archives": [
+      {
+        "path": "sources/emsdk/downloads/d70a5da89b3e673bf6a482724478fc17e81e575e-wasm-binaries-arm64.tar.xz",
+        "size_bytes": 297503416,
+        "sha256": "7960d8d33243f2f7acdac157136c6e93680550361ed71bb225fcfa25b6bbb2fb",
+        "download_url": "https://storage.googleapis.com/webassembly/emscripten-releases-builds/mac/d70a5da89b3e673bf6a482724478fc17e81e575e/wasm-binaries-arm64.tar.xz"
+      },
+      {
+        "path": "sources/emsdk/downloads/node-v22.16.0-darwin-arm64.tar.gz",
+        "size_bytes": 47716750,
+        "sha256": "1d7f34ec4c03e12d8b33481e5c4560432d7dc31a0ef3ff5a4d9a8ada7cf6ecc9",
+        "download_url": "https://storage.googleapis.com/webassembly/emscripten-releases-builds/deps/node-v22.16.0-darwin-arm64.tar.gz"
+      },
+      {
+        "path": "sources/emsdk/downloads/python-3.13.3-0-macos-arm64.tar.gz",
+        "size_bytes": 44280478,
+        "sha256": "2b0899d7ade9463b0c909ef23aeea27546a4f412637998d817a49718bc2bac19",
+        "download_url": "https://storage.googleapis.com/webassembly/emscripten-releases-builds/deps/python-3.13.3-0-macos-arm64.tar.gz"
+      }
+    ],
+    "actual_versions": {
+      "emcc": {
+        "argv": [
+          "emcc",
+          "--version"
+        ],
+        "exit_code": 0,
+        "stdout": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 4.0.21 (d6f42310010ddec0753a69bab01a4b33aae255b7)\nCopyright (C) 2025 the Emscripten authors (see AUTHORS.txt)\nThis is free and open source software under the MIT license.\nThere is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+        "stderr": ""
+      },
+      "clang": {
+        "argv": [
+          "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin/clang",
+          "--version"
+        ],
+        "exit_code": 0,
+        "stdout": "clang version 22.0.0git (https:/github.com/llvm/llvm-project 60513b8d6ebacde46e8fbe4faf1319ac87e990e3)\nTarget: unknown\nThread model: posix\nInstalledDir: ${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin\n",
+        "stderr": ""
+      },
+      "wasm-opt": {
+        "argv": [
+          "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin/wasm-opt",
+          "--version"
+        ],
+        "exit_code": 0,
+        "stdout": "wasm-opt version 125 (version_125-6-gf03355bd6)\n",
+        "stderr": ""
+      },
+      "node": {
+        "argv": [
+          "node",
+          "--version"
+        ],
+        "exit_code": 0,
+        "stdout": "v22.16.0\n",
+        "stderr": ""
+      },
+      "cmake": {
+        "argv": [
+          "cmake",
+          "--version"
+        ],
+        "exit_code": 0,
+        "stdout": "cmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
+        "stderr": ""
+      },
+      "ninja": {
+        "argv": [
+          "ninja",
+          "--version"
+        ],
+        "exit_code": 0,
+        "stdout": "1.13.2\n",
+        "stderr": ""
+      }
+    },
+    "signature_verification": "official fixed repository/archive identities and retained hashes; no independent signature verification claimed"
+  },
+  "configuration": {
+    "environment": {
+      "path": "build-environment.json",
+      "size_bytes": 1273,
+      "sha256": "7785e0ab4ab725a22ed029af84cf69a72f4104f82e64e16b51d4def19a67b889"
+    },
+    "emsdk_config": {
+      "path": "sources/emsdk/.emscripten",
+      "size_bytes": 329,
+      "sha256": "b6fb54bdf3679a42441619c1bf348b99fb7c8e877c4d7fecbac75d4844bdc58f"
+    },
+    "cmake_cache": {
+      "path": "build-libwebp/CMakeCache.txt",
+      "size_bytes": 19125,
+      "sha256": "2a43c1170b280e6e571ca2c8596ee12d24af3bb2d1ecddc062e901954a3495ec"
+    },
+    "static_libraries": [
+      {
+        "path": "build-libwebp/libwebp.a",
+        "size_bytes": 504710,
+        "sha256": "9f13951a3f97af7da304543988d3afec5d1e4569ee7f0ced355241e99d11e8d3"
+      },
+      {
+        "path": "build-libwebp/libsharpyuv.a",
+        "size_bytes": 22012,
+        "sha256": "969f51b18202d9791ff01b949a23d30eb16bbda83b35268fd0def051e1bbf4f3"
+      }
+    ],
+    "simd": false,
+    "threads": false,
+    "allocator": "dlmalloc",
+    "source_changes": [
+      {
+        "path": "rollup-pin-source-revision.patch",
+        "size_bytes": 488,
+        "sha256": "a11d45f1b98e1cabd35b8d5a3332cb61056f4bd9e8c2eac42a1d12518d1bb727"
+      },
+      {
+        "path": "v2/webp-codec-cleanup.patch",
+        "size_bytes": 5094,
+        "sha256": "384f41b65020d7e84317fbbe4b4b9f5bdd6e644ad71abbc4b8d688c65dba77fe"
+      }
+    ],
+    "source_change_reason": "Pin archive-build revision to 0cb47cd; wrap codec encode/decode allocations and copies in try/finally, initialize output-pointer slot, and clean partial allocations and library-owned output on failures. C wrapper and libwebp/WASM/glue are unchanged from v1.",
+    "build_driver": {
+      "path": "build-distributions-v2.mjs",
+      "size_bytes": 1094,
+      "sha256": "84ab0ba784e15cae4ef99cec601a30ee1370c8ac6864abe2e4c4c89cf02105f1"
+    },
+    "codec_source_change": {
+      "original": {
+        "path": "sources/splat-transform/src/lib/utils/webp-codec.ts",
+        "size_bytes": 4474,
+        "sha256": "1cfb3c675343af986f57eae3b66b1763008548eb2364dd6972a352958c2ed225"
+      },
+      "modified": {
+        "path": "sources/splat-transform-v2/src/lib/utils/webp-codec.ts",
+        "size_bytes": 5711,
+        "sha256": "93b36f2b4ce70c2980b321ff2c947ae84ed019e0fade3ced9a2d3bc7d7b2f594"
+      },
+      "patch_record": {
+        "path": "v2/source-patch.json",
+        "size_bytes": 669,
+        "sha256": "4e44e01a92104512efcc32fdfcbfab5ed7a1dff29a6468476a1cbe69c7aa7e94"
+      }
+    },
+    "dependency_clone": {
+      "path": "v2/dependency-clone.json",
+      "size_bytes": 413,
+      "sha256": "fba43afd45bcd4d505d165640535e2b29081eb0a8b961413bf7ed41af0350f85"
+    },
+    "rebuild_recipe": {
+      "path": "v2/rebuild-recipe.json",
+      "size_bytes": 8604,
+      "sha256": "565c7a85ab08ee26363d15d5781f1d0dc391734949b9cd66fb016f3682e05491"
+    }
+  },
+  "successful_steps": [
+    {
+      "path": "receipts/install-sdk.json",
+      "size_bytes": 1205,
+      "sha256": "39e4c27c83192034e93fd9774502f6fd3467f8b3429cfccb16ba9cc3b9336969",
+      "command": {
+        "started_at": "2026-10-27T17:35:27.615999+00:00",
+        "finished_at": "2026-10-27T17:36:15.867337+00:00",
+        "duration_seconds": 48.251132,
+        "cwd": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+        "argv": [
+          "/usr/bin/python3",
+          "emsdk.py",
+          "install",
+          "4.0.21"
+        ],
+        "explicit_environment": {
+          "PATH": "${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+          "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+          "EMCC_CORES": "2",
+          "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "EMSDK_KEEP_DOWNLOADS": "1",
+          "EMSDK_NUM_CORES": "2",
+          "EMSDK_NOTTY": "1",
+          "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/"
+        },
+        "exit_code": 0,
+        "log": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/install-sdk.log",
+          "size_bytes": 18816,
+          "sha256": "6ad33f9fd5ad368d4e2851effcbc8725f269d7e94ba0971798599803b634665d"
+        }
+      }
+    },
+    {
+      "path": "receipts/activate-sdk.json",
+      "size_bytes": 1207,
+      "sha256": "a4c48f1ed2ae77641ab5641a76fc4081d017747912e196a03348138be6d94210",
+      "command": {
+        "started_at": "2026-10-27T17:36:57.342496+00:00",
+        "finished_at": "2026-10-27T17:36:57.471518+00:00",
+        "duration_seconds": 0.128929291,
+        "cwd": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+        "argv": [
+          "/usr/bin/python3",
+          "emsdk.py",
+          "activate",
+          "4.0.21"
+        ],
+        "explicit_environment": {
+          "PATH": "${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+          "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+          "EMCC_CORES": "2",
+          "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "EMSDK_KEEP_DOWNLOADS": "1",
+          "EMSDK_NUM_CORES": "2",
+          "EMSDK_NOTTY": "1",
+          "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/"
+        },
+        "exit_code": 0,
+        "log": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/activate-sdk.log",
+          "size_bytes": 849,
+          "sha256": "d8e729a8bd238d63efdecfa1a75a4f62267871712f3bbe198f6a84487fddcb7c"
+        }
+      }
+    },
+    {
+      "path": "receipts/configure-libwebp.json",
+      "size_bytes": 2449,
+      "sha256": "aa80380817de1bd59ebd43d648c56761e1be947bf1ee3cf583e70f3739eeb523",
+      "command": {
+        "started_at": "2026-10-27T17:38:53.965664+00:00",
+        "finished_at": "2026-10-27T17:39:44.332786+00:00",
+        "duration_seconds": 50.367000209,
+        "cwd": "${REPO_ROOT}",
+        "argv": [
+          "emcmake",
+          "cmake",
+          "-S",
+          "target/macos-m4/webp-rebuild-20261028/sources/libwebp",
+          "-B",
+          "target/macos-m4/webp-rebuild-20261028/build-libwebp",
+          "-G",
+          "Ninja",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DBUILD_SHARED_LIBS=OFF",
+          "-DWEBP_USE_THREAD=OFF",
+          "-DWEBP_ENABLE_SIMD=OFF",
+          "-DWEBP_BUILD_ANIM_UTILS=OFF",
+          "-DWEBP_BUILD_CWEBP=OFF",
+          "-DWEBP_BUILD_DWEBP=OFF",
+          "-DWEBP_BUILD_GIF2WEBP=OFF",
+          "-DWEBP_BUILD_IMG2WEBP=OFF",
+          "-DWEBP_BUILD_VWEBP=OFF",
+          "-DWEBP_BUILD_WEBPINFO=OFF",
+          "-DWEBP_BUILD_LIBWEBPMUX=OFF",
+          "-DWEBP_BUILD_WEBPMUX=OFF",
+          "-DWEBP_BUILD_EXTRAS=OFF",
+          "-DWEBP_BUILD_WEBP_JS=OFF",
+          "-DWEBP_BUILD_FUZZTEST=OFF"
+        ],
+        "explicit_environment": {
+          "PATH": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin:${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+          "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+          "EMCC_CORES": "2",
+          "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "EMSDK_KEEP_DOWNLOADS": "1",
+          "EMSDK_NUM_CORES": "2",
+          "EMSDK_NOTTY": "1",
+          "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
+          "EMSDK": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+          "EMSDK_NODE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin/node",
+          "EMSDK_PYTHON": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin/python3"
+        },
+        "exit_code": 0,
+        "log": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/configure-libwebp.log",
+          "size_bytes": 2256,
+          "sha256": "0a057f915e4b62928bd1dc128d4b5c9ba6ec7cb75b0d584270fa950f43b60be9"
+        }
+      }
+    },
+    {
+      "path": "receipts/build-libwebp.json",
+      "size_bytes": 1900,
+      "sha256": "c60ad6948637ca36d8650a51a9f0d9a7324554d64e8bdcc2426fb6293332fee4",
+      "command": {
+        "started_at": "2026-10-27T17:40:00.433399+00:00",
+        "finished_at": "2026-10-27T17:40:09.881744+00:00",
+        "duration_seconds": 9.448214958,
+        "cwd": "${REPO_ROOT}",
+        "argv": [
+          "cmake",
+          "--build",
+          "target/macos-m4/webp-rebuild-20261028/build-libwebp",
+          "--target",
+          "webp",
+          "sharpyuv",
+          "--parallel",
+          "2"
+        ],
+        "explicit_environment": {
+          "PATH": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin:${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+          "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+          "EMCC_CORES": "2",
+          "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "EMSDK_KEEP_DOWNLOADS": "1",
+          "EMSDK_NUM_CORES": "2",
+          "EMSDK_NOTTY": "1",
+          "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
+          "EMSDK": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+          "EMSDK_NODE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin/node",
+          "EMSDK_PYTHON": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin/python3"
+        },
+        "exit_code": 0,
+        "log": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/build-libwebp.log",
+          "size_bytes": 9240,
+          "sha256": "63750b1889b167653ae8f7b022b47fbbcab0d208e57f1f0e1a38d6610d78ec7f"
+        }
+      }
+    },
+    {
+      "path": "receipts/link-webp.json",
+      "size_bytes": 2544,
+      "sha256": "81ba550b1c3da8eecdbf699f3336a4f3eb59ba5822e7c0b52b126b5c30dc6681",
+      "command": {
+        "started_at": "2026-10-27T17:40:17.716569+00:00",
+        "finished_at": "2026-10-27T17:40:48.499374+00:00",
+        "duration_seconds": 30.782707375,
+        "cwd": "${REPO_ROOT}",
+        "argv": [
+          "emcc",
+          "-O3",
+          "-Itarget/macos-m4/webp-rebuild-20261028/sources/libwebp",
+          "target/macos-m4/webp-rebuild-20261028/sources/splat-transform/lib/webp.c",
+          "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a",
+          "target/macos-m4/webp-rebuild-20261028/build-libwebp/libsharpyuv.a",
+          "-sENVIRONMENT=node,web,worker",
+          "-sMODULARIZE=1",
+          "-sEXPORT_ES6=1",
+          "-sALLOW_MEMORY_GROWTH=1",
+          "-sEXPORTED_FUNCTIONS=[\"_webp_encode_rgba\",\"_webp_encode_lossless_rgba\",\"_webp_decode_rgba\",\"_webp_free\",\"_malloc\",\"_free\"]",
+          "-sEXPORTED_RUNTIME_METHODS=[\"cwrap\",\"HEAPU8\",\"HEAPU32\"]",
+          "-Wl,--Map=target/macos-m4/webp-rebuild-20261028/outputs/webp-link.map",
+          "--emit-symbol-map",
+          "-o",
+          "target/macos-m4/webp-rebuild-20261028/outputs/webp.mjs"
+        ],
+        "explicit_environment": {
+          "PATH": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin:${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+          "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+          "EMCC_CORES": "2",
+          "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "EMSDK_KEEP_DOWNLOADS": "1",
+          "EMSDK_NUM_CORES": "2",
+          "EMSDK_NOTTY": "1",
+          "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
+          "EMSDK": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+          "EMSDK_NODE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin/node",
+          "EMSDK_PYTHON": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin/python3"
+        },
+        "exit_code": 0,
+        "log": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/link-webp.log",
+          "size_bytes": 1559,
+          "sha256": "74a764e40dbbb8489130cac65805601d284d9467b9b9ff3434d8f82eefa897d5"
+        }
+      }
+    },
+    {
+      "path": "receipts/install-splat-dependencies.json",
+      "size_bytes": 1894,
+      "sha256": "87e75931b9d8fccc140d8f8a4c71f4b7c7d0b28ec8859c3e5c34d04977616fff",
+      "command": {
+        "started_at": "2026-10-27T17:41:42.194492+00:00",
+        "finished_at": "2026-10-27T17:41:48.921619+00:00",
+        "duration_seconds": 6.7269865,
+        "cwd": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/splat-transform",
+        "argv": [
+          "npm",
+          "ci",
+          "--ignore-scripts",
+          "--no-audit",
+          "--no-fund"
+        ],
+        "explicit_environment": {
+          "PATH": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin:${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+          "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+          "EMCC_CORES": "2",
+          "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "EMSDK_KEEP_DOWNLOADS": "1",
+          "EMSDK_NUM_CORES": "2",
+          "EMSDK_NOTTY": "1",
+          "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
+          "EMSDK": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+          "EMSDK_NODE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin/node",
+          "EMSDK_PYTHON": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin/python3"
+        },
+        "exit_code": 0,
+        "log": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/install-splat-dependencies.log",
+          "size_bytes": 234,
+          "sha256": "e3b11543f9a2778a071a61af2fa0d26c912d76d19a6fd8341cf27b24aebad317"
+        }
+      }
+    },
+    {
+      "path": "receipts/build-splat-api-v2-canonical-paths.json",
+      "size_bytes": 1848,
+      "sha256": "de91df52d7ccf8e01d1e44dcb472d6fb2eea2c7072256b79a7acfbc4a06eae6d",
+      "command": {
+        "started_at": "2026-10-27T17:51:34.509073+00:00",
+        "finished_at": "2026-10-27T17:51:55.091819+00:00",
+        "duration_seconds": 20.582655708,
+        "cwd": "${REPO_ROOT}",
+        "argv": [
+          "node",
+          "target/macos-m4/webp-rebuild-20261028/build-distributions-v2.mjs"
+        ],
+        "explicit_environment": {
+          "PATH": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin:${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+          "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+          "EMCC_CORES": "2",
+          "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "EMSDK_KEEP_DOWNLOADS": "1",
+          "EMSDK_NUM_CORES": "2",
+          "EMSDK_NOTTY": "1",
+          "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
+          "EMSDK": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+          "EMSDK_NODE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin/node",
+          "EMSDK_PYTHON": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin/python3"
+        },
+        "exit_code": 0,
+        "log": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/build-splat-api-v2-canonical-paths.log",
+          "size_bytes": 6889,
+          "sha256": "feb5348232bc5507b7e4ac2a8d387ba9f9d305d75fd4845d5847b1cc6f90e6bf"
+        }
+      }
+    },
+    {
+      "path": "receipts/lint-codec-v2.json",
+      "size_bytes": 1892,
+      "sha256": "20cb907f5aef0f584adf35687db48927e4ce4fa658568fab6ecbe317903227ff",
+      "command": {
+        "started_at": "2026-10-27T17:50:14.315088+00:00",
+        "finished_at": "2026-10-27T17:50:15.798222+00:00",
+        "duration_seconds": 1.482980417,
+        "cwd": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/splat-transform-v2",
+        "argv": [
+          "node",
+          "node_modules/eslint/bin/eslint.js",
+          "src/lib/utils/webp-codec.ts"
+        ],
+        "explicit_environment": {
+          "PATH": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin:${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+          "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+          "EMCC_CORES": "2",
+          "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "EMSDK_KEEP_DOWNLOADS": "1",
+          "EMSDK_NUM_CORES": "2",
+          "EMSDK_NOTTY": "1",
+          "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
+          "EMSDK": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+          "EMSDK_NODE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin/node",
+          "EMSDK_PYTHON": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin/python3"
+        },
+        "exit_code": 0,
+        "log": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/lint-codec-v2.log",
+          "size_bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "path": "receipts/verify-codec.json",
+      "size_bytes": 1816,
+      "sha256": "749c47336c654fa5eb67a06bb9d3dbbed57826ae680f36cd1a8967abe3299674",
+      "command": {
+        "started_at": "2026-10-27T17:45:50.624820+00:00",
+        "finished_at": "2026-10-27T17:45:51.161308+00:00",
+        "duration_seconds": 0.536407833,
+        "cwd": "${REPO_ROOT}",
+        "argv": [
+          "node",
+          "target/macos-m4/webp-rebuild-20261028/verify-codec.mjs"
+        ],
+        "explicit_environment": {
+          "PATH": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin:${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+          "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+          "EMCC_CORES": "2",
+          "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "EMSDK_KEEP_DOWNLOADS": "1",
+          "EMSDK_NUM_CORES": "2",
+          "EMSDK_NOTTY": "1",
+          "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
+          "EMSDK": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+          "EMSDK_NODE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin/node",
+          "EMSDK_PYTHON": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin/python3"
+        },
+        "exit_code": 0,
+        "log": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/verify-codec.log",
+          "size_bytes": 46610,
+          "sha256": "c952113d967ec43b828009b0c3309fd7a5247b99b0307609bc31363de3111a27"
+        }
+      }
+    },
+    {
+      "path": "receipts/verify-codec-cleanup-v2.json",
+      "size_bytes": 1833,
+      "sha256": "8ec6d253dfe9885d99aa2dbfb9524e49b02ede4f7e82a9795d97fc4707ab6e98",
+      "command": {
+        "started_at": "2026-10-27T17:53:41.078537+00:00",
+        "finished_at": "2026-10-27T17:53:41.314209+00:00",
+        "duration_seconds": 0.235592,
+        "cwd": "${REPO_ROOT}",
+        "argv": [
+          "node",
+          "target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs"
+        ],
+        "explicit_environment": {
+          "PATH": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin:${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+          "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+          "EMCC_CORES": "2",
+          "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "EMSDK_KEEP_DOWNLOADS": "1",
+          "EMSDK_NUM_CORES": "2",
+          "EMSDK_NOTTY": "1",
+          "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
+          "EMSDK": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+          "EMSDK_NODE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin/node",
+          "EMSDK_PYTHON": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin/python3"
+        },
+        "exit_code": 0,
+        "log": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/verify-codec-cleanup-v2.log",
+          "size_bytes": 138126,
+          "sha256": "abd85b26441e35738638c136ac19a85c23410a5668b5b4e2669456a72aed9e01"
+        }
+      }
+    },
+    {
+      "path": "receipts/verify-distributions-v2-bound.json",
+      "size_bytes": 1856,
+      "sha256": "3b24fd105f9b8f2f7ed6c2ba8eea38c5337b3ec20b937be251a2d7b384ed30d1",
+      "command": {
+        "started_at": "2026-10-27T17:52:18.927808+00:00",
+        "finished_at": "2026-10-27T17:52:19.952762+00:00",
+        "duration_seconds": 1.0248371250000001,
+        "cwd": "${REPO_ROOT}",
+        "argv": [
+          "node",
+          "target/macos-m4/webp-rebuild-20261028/verify-distributions-v2-bound.mjs"
+        ],
+        "explicit_environment": {
+          "PATH": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin:${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+          "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+          "EMCC_CORES": "2",
+          "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "EMSDK_KEEP_DOWNLOADS": "1",
+          "EMSDK_NUM_CORES": "2",
+          "EMSDK_NOTTY": "1",
+          "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
+          "EMSDK": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+          "EMSDK_NODE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin/node",
+          "EMSDK_PYTHON": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin/python3"
+        },
+        "exit_code": 0,
+        "log": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/verify-distributions-v2-bound.log",
+          "size_bytes": 2349,
+          "sha256": "94fe5428ee79a564db23857021498b71686b30abbbdeebe3a7a93a295da79f34"
+        }
+      }
+    },
+    {
+      "path": "receipts/verify-upstream-webp-exports-v2.json",
+      "size_bytes": 2061,
+      "sha256": "b9348b79376a67ac73090a5915c739189918212ae729a295124e02c34d41f5bf",
+      "command": {
+        "started_at": "2026-10-27T17:52:20.029992+00:00",
+        "finished_at": "2026-10-27T17:52:27.530716+00:00",
+        "duration_seconds": 7.500640417,
+        "cwd": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/splat-transform-v2",
+        "argv": [
+          "node",
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "--test-force-exit",
+          "test/webp-codec.test.mjs",
+          "test/worker-queue.test.mjs",
+          "test/html-output.test.mjs",
+          "test/write-sog.test.mjs"
+        ],
+        "explicit_environment": {
+          "PATH": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin:${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+          "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+          "EMCC_CORES": "2",
+          "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "EMSDK_KEEP_DOWNLOADS": "1",
+          "EMSDK_NUM_CORES": "2",
+          "EMSDK_NOTTY": "1",
+          "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
+          "EMSDK": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+          "EMSDK_NODE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin/node",
+          "EMSDK_PYTHON": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin/python3"
+        },
+        "exit_code": 0,
+        "log": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/verify-upstream-webp-exports-v2.log",
+          "size_bytes": 4551,
+          "sha256": "bea4182c88a092edc3d5f46984040784ae1227c33f3195f828bbc30134582fc6"
+        }
+      }
+    },
+    {
+      "path": "receipts/repeat-link-webp.json",
+      "size_bytes": 2561,
+      "sha256": "f80e7dfcc2ab4fc239b22dca59765c5c5a07bf8cd4acc77a298a819fa582975d",
+      "command": {
+        "started_at": "2026-10-27T17:47:08.014130+00:00",
+        "finished_at": "2026-10-27T17:47:09.424051+00:00",
+        "duration_seconds": 1.409838792,
+        "cwd": "${REPO_ROOT}",
+        "argv": [
+          "emcc",
+          "-O3",
+          "-Itarget/macos-m4/webp-rebuild-20261028/sources/libwebp",
+          "target/macos-m4/webp-rebuild-20261028/sources/splat-transform/lib/webp.c",
+          "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a",
+          "target/macos-m4/webp-rebuild-20261028/build-libwebp/libsharpyuv.a",
+          "-sENVIRONMENT=node,web,worker",
+          "-sMODULARIZE=1",
+          "-sEXPORT_ES6=1",
+          "-sALLOW_MEMORY_GROWTH=1",
+          "-sEXPORTED_FUNCTIONS=[\"_webp_encode_rgba\",\"_webp_encode_lossless_rgba\",\"_webp_decode_rgba\",\"_webp_free\",\"_malloc\",\"_free\"]",
+          "-sEXPORTED_RUNTIME_METHODS=[\"cwrap\",\"HEAPU8\",\"HEAPU32\"]",
+          "-Wl,--Map=target/macos-m4/webp-rebuild-20261028/repeat-outputs/webp-link.map",
+          "--emit-symbol-map",
+          "-o",
+          "target/macos-m4/webp-rebuild-20261028/repeat-outputs/webp.mjs"
+        ],
+        "explicit_environment": {
+          "PATH": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin:${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+          "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+          "EMCC_CORES": "2",
+          "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "EMSDK_KEEP_DOWNLOADS": "1",
+          "EMSDK_NUM_CORES": "2",
+          "EMSDK_NOTTY": "1",
+          "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
+          "EMSDK": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+          "EMSDK_NODE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin/node",
+          "EMSDK_PYTHON": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin/python3"
+        },
+        "exit_code": 0,
+        "log": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/repeat-link-webp.log",
+          "size_bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "path": "receipts/verify-cli-help-v2.json",
+      "size_bytes": 1854,
+      "sha256": "81ef4206bc8b1f9e0d8ab4934e608427759b8d3e43b11734ce04c75f041e32ba",
+      "command": {
+        "started_at": "2026-10-27T17:53:24.946731+00:00",
+        "finished_at": "2026-10-27T17:53:25.900983+00:00",
+        "duration_seconds": 0.954182,
+        "cwd": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/splat-transform-v2",
+        "argv": [
+          "node",
+          "bin/cli.mjs",
+          "--help"
+        ],
+        "explicit_environment": {
+          "PATH": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin:${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin:${REPO_ROOT}/target/macos-m0/colmap-deps/bin:${HOME}/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          "EM_CONFIG": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/.emscripten",
+          "EM_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache",
+          "EMCC_CORES": "2",
+          "CMAKE_BUILD_PARALLEL_LEVEL": "2",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "EMSDK_KEEP_DOWNLOADS": "1",
+          "EMSDK_NUM_CORES": "2",
+          "EMSDK_NOTTY": "1",
+          "NPM_CONFIG_CACHE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/npm-cache",
+          "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
+          "EMSDK": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk",
+          "EMSDK_NODE": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/node/22.16.0_64bit/bin/node",
+          "EMSDK_PYTHON": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/python/3.13.3_64bit/bin/python3"
+        },
+        "exit_code": 0,
+        "log": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/logs/verify-cli-help-v2.log",
+          "size_bytes": 9325,
+          "sha256": "bd7e646b906fd461adfce00bdd2d288c1803d73fcd88e1dd7036e6af622c13bd"
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "paired_codec": [
+      {
+        "path": "outputs/webp.mjs",
+        "size_bytes": 11523,
+        "sha256": "4fb1318061392a7f0c3668add77dc13677d40ff93bc84ad2b8493be7965e20cf"
+      },
+      {
+        "path": "outputs/webp.wasm",
+        "size_bytes": 346456,
+        "sha256": "72cd94e42bce159f10ce49bb41a17f725b8a0d165f496548a5775fec267a519c"
+      }
+    ],
+    "link_map": {
+      "path": "outputs/webp-link.map",
+      "size_bytes": 158413,
+      "sha256": "f2f7a00a76c0feef0cf663ab4ddaadad1552562a8d2900a3e5b6fd281f2afe26"
+    },
+    "symbol_map": {
+      "path": "outputs/webp.mjs.symbols",
+      "size_bytes": 8302,
+      "sha256": "82794e0a679c5aa8249039cd21753112e3637f0af41be2f363a1692be8ec2492"
+    },
+    "derived_files": [
+      {
+        "file": {
+          "path": "sources/splat-transform-v2/dist/cli.mjs",
+          "size_bytes": 5406076,
+          "sha256": "63d1a657de5aae97fe57144a0eff5daf1464fc3d16e657d358cad301446af11a"
+        },
+        "original_sha256": "ea20640a6b3fe3a256ebf25e14d87bb4793f85e01dadd99eddbfbd3c57230e12"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform-v2/dist/cli.mjs.map",
+          "size_bytes": 7902886,
+          "sha256": "3b494ad22d6b092038f5fedcb9f2aeef2ed8978fd0c0bf29911588e4aad20572"
+        },
+        "original_sha256": "8447c1cb4f846def09bbeb5680b4570fb7997cf957c34518c1547a57cffa6da9"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform-v2/dist/index.cjs",
+          "size_bytes": 4925192,
+          "sha256": "08ac5264eabfea40b28d0a5d7ab522fccf070fa523982fc97eed456ca63abaa2"
+        },
+        "original_sha256": "0cd8ae69fc13ae8c43cae1de4493773fb75862c0ecd0aa5c558a94feef29fa60"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform-v2/dist/index.cjs.map",
+          "size_bytes": 6751345,
+          "sha256": "2f968893bad69fa39d36e42678dd240b12e5b010d4a3d0c7dc9accd03ff76ea7"
+        },
+        "original_sha256": "fe2d88eae42c7cc70b6f2c9f04b93c0219a339093747839fee9b0fe041879799"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform-v2/dist/index.mjs",
+          "size_bytes": 4915885,
+          "sha256": "ad48a3b211ecf6f8d5e386eac1ea6926db3fa9f091e182ec453262722adebc93"
+        },
+        "original_sha256": "569e7d7e1edcb006d88ca7274ac18589d96d08b3af8c492326a63f9585ce82bc"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform-v2/dist/index.mjs.map",
+          "size_bytes": 6750187,
+          "sha256": "9c2b18b3b9275868007c30954a44510049437d1bd46344e8b755192401910c3c"
+        },
+        "original_sha256": "09095309b6dfd91c152741ae1c1b58ebc95a5c2999fc617e0d44677e1b099044"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform-v2/dist/worker.mjs",
+          "size_bytes": 64795,
+          "sha256": "98f38d9b4e73255bae4a72bebf397546a19f6159ab1faae5c3f8b42c0efa09b9"
+        },
+        "original_sha256": "c552a34b1a6e97d19e921de0bd375ab54f11899da81bbe87468b00a57b0ba6ea"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform-v2/dist/worker.mjs.map",
+          "size_bytes": 144620,
+          "sha256": "04ed53a168c76d7d7e83db0e0d4d64067f3d5a5707e416bcea1bbac982243363"
+        },
+        "original_sha256": "62f3eefa50c8d46548db3e58962f5a2168d279f1b07f97d79ac2f38766b5c6de"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform-v2/lib/webp.mjs",
+          "size_bytes": 11523,
+          "sha256": "4fb1318061392a7f0c3668add77dc13677d40ff93bc84ad2b8493be7965e20cf"
+        },
+        "original_sha256": "96bdc7e19889af61457bdb386c729a30bd29a8961a0187918b07a4b1f0a82dca"
+      },
+      {
+        "file": {
+          "path": "sources/splat-transform-v2/lib/webp.wasm",
+          "size_bytes": 346456,
+          "sha256": "72cd94e42bce159f10ce49bb41a17f725b8a0d165f496548a5775fec267a519c"
+        },
+        "original_sha256": "e2c337e1afacf5c9e35f21916b5615fc6c5623074c6e110c07791bd0af071501"
+      }
+    ],
+    "overlay_candidate": {
+      "path": "v2/overlay/candidate-manifest.json",
+      "size_bytes": 5096,
+      "sha256": "bdddb14b14d0842afd297dff92105c8d65bda4bdf4651ff048a1abfad6bb790e"
+    },
+    "overlay_total_payload_bytes": 7742580,
+    "overlay_total_decoded_bytes": 37218965
+  },
+  "runtime_evidence": {
+    "linked_members": [
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__errno_location.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_divzero.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_divzerof.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_invalid.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_invalidf.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_oflow.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_oflowf.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_uflow.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_uflowf.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_xflow.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_xflowf.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(emscripten_get_heap_size.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(emscripten_memcpy.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(emscripten_memcpy_bulkmem.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(emscripten_memset.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(exp2f_data.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(exp_data.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(expf.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(fabs.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(log.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(log10.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(log_data.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(logf.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(logf_data.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(memcmp.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(pow.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(pow_data.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(qsort.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(qsort_nr.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libcompiler_rt.a(stack_ops.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libdlmalloc.a(dlmalloc.o)",
+      "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libdlmalloc.a(sbrk.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libsharpyuv.a(sharpyuv.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libsharpyuv.a(sharpyuv_cpu.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libsharpyuv.a(sharpyuv_csp.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libsharpyuv.a(sharpyuv_dsp.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libsharpyuv.a(sharpyuv_gamma.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(alpha_dec.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(alpha_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(alpha_processing.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(analysis_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(backward_references_cost_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(backward_references_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(bit_reader_utils.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(bit_writer_utils.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(buffer_dec.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(color_cache_utils.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(config_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(cost.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(cost_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(cpu.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(dec.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(dec_clip_tables.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(filter_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(filters.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(filters_utils.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(frame_dec.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(frame_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(histogram_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(huffman_encode_utils.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(huffman_utils.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(io_dec.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(iterator_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(lossless.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(lossless_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(near_lossless_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(palette.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(picture_csp_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(picture_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(picture_rescale_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(picture_tools_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(predictor_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(quant_dec.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(quant_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(quant_levels_dec_utils.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(quant_levels_utils.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(random_utils.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(rescaler.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(rescaler_utils.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(ssim.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(syntax_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(thread_utils.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(token_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(tree_dec.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(tree_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(upsampling.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(utils.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(vp8_dec.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(vp8l_dec.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(vp8l_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(webp_dec.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(webp_enc.c.o)",
+      "target/macos-m4/webp-rebuild-20261028/build-libwebp/libwebp.a(yuv.c.o)"
+    ],
+    "source_mapping": [
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__errno_location.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/errno/__errno_location.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_divzero.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_divzero.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_divzerof.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_divzerof.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_invalid.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_invalid.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_invalidf.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_invalidf.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_oflow.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_oflow.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_oflowf.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_oflowf.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_uflow.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_uflow.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_uflowf.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_uflowf.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_xflow.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_xflow.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(__math_xflowf.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_xflowf.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(emscripten_get_heap_size.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_get_heap_size.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(emscripten_memcpy.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_memcpy.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(emscripten_memcpy_bulkmem.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_memcpy_bulkmem.S"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(emscripten_memset.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_memset.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(exp2f_data.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp2f_data.c",
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp2f_data.h"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(exp_data.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp_data.c",
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp_data.h"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(expf.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/expf.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(fabs.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/fabs.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(log.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(log10.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log10.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(log_data.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log_data.c",
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log_data.h"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(logf.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/logf.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(logf_data.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/logf_data.c",
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/logf_data.h"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(memcmp.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/string/memcmp.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(pow.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/pow.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(pow_data.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/pow_data.c",
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/pow_data.h"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(qsort.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/stdlib/qsort.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libc.a(qsort_nr.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/stdlib/qsort_nr.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libcompiler_rt.a(stack_ops.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/compiler-rt/stack_ops.S"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libdlmalloc.a(dlmalloc.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/dlmalloc.c"
+        ]
+      },
+      {
+        "archive_member": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/emscripten-cache/sysroot/lib/wasm32-emscripten/libdlmalloc.a(sbrk.o)",
+        "source_paths": [
+          "sources/emsdk/upstream/emscripten/system/lib/libc/sbrk.c"
+        ]
+      }
+    ],
+    "original_notices_and_linked_sources": [
+      {
+        "path": "licenses/libwebp/COPYING",
+        "source_path": "sources/libwebp/COPYING",
+        "origin": "libwebp commit 4fa21912338357f89e4fd51cf2368325b59e9bd9",
+        "reason": "libwebp 1.6.0 and bundled sharpyuv 0.4.2 notices",
+        "size_bytes": 1496,
+        "sha256": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf"
+      },
+      {
+        "path": "licenses/libwebp/PATENTS",
+        "source_path": "sources/libwebp/PATENTS",
+        "origin": "libwebp commit 4fa21912338357f89e4fd51cf2368325b59e9bd9",
+        "reason": "libwebp 1.6.0 and bundled sharpyuv 0.4.2 notices",
+        "size_bytes": 1436,
+        "sha256": "cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c"
+      },
+      {
+        "path": "licenses/libwebp/AUTHORS",
+        "source_path": "sources/libwebp/AUTHORS",
+        "origin": "libwebp commit 4fa21912338357f89e4fd51cf2368325b59e9bd9",
+        "reason": "libwebp 1.6.0 and bundled sharpyuv 0.4.2 notices",
+        "size_bytes": 3279,
+        "sha256": "f251be89fd442bd9d701360730aea163cc8e2076ff03528f59267dc2c4f8b60a"
+      },
+      {
+        "path": "licenses/splat-transform/LICENSE",
+        "source_path": "sources/splat-transform/LICENSE",
+        "origin": "splat-transform commit 0cb47cd81023cca117c20ce59a55ba584ee89177",
+        "reason": "unchanged C and TypeScript wrappers plus derived distributions",
+        "size_bytes": 1064,
+        "sha256": "42fa51ddd556be151a29f381fb97ee975825dcc454e805ea3ea9c079cca04d34"
+      },
+      {
+        "path": "licenses/toolchain/emsdk-LICENSE",
+        "source_path": "sources/emsdk/LICENSE",
+        "origin": "emsdk commit b2436aafa7351ee1b581f15841f1b45ed716a279",
+        "reason": "build tool source notice; not substituted for linked runtime notices",
+        "size_bytes": 1326,
+        "sha256": "99d9a9616fbde3f5ee22a71d8645799a8522d48526130c5ba6dc27ad15ce01f1"
+      },
+      {
+        "path": "licenses/emscripten/LICENSE",
+        "source_path": "sources/emsdk/upstream/emscripten/LICENSE",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "runtime or linked system library original notice",
+        "size_bytes": 5093,
+        "sha256": "620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86"
+      },
+      {
+        "path": "licenses/emscripten/AUTHORS",
+        "source_path": "sources/emsdk/upstream/emscripten/AUTHORS",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "runtime or linked system library original notice",
+        "size_bytes": 29004,
+        "sha256": "8585fa1b981f576f52806833481323007ccac5c00f31a873215e31c0f42820f0"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/COPYRIGHT",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/COPYRIGHT",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "runtime or linked system library original notice",
+        "size_bytes": 6204,
+        "sha256": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/compiler-rt/LICENSE.TXT",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/compiler-rt/LICENSE.TXT",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "runtime or linked system library original notice",
+        "size_bytes": 16708,
+        "sha256": "1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/errno/__errno_location.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/errno/__errno_location.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __errno_location.o; preserve full file including original notices",
+        "size_bytes": 447,
+        "sha256": "167fe0721c519c40c6d674db4a3a7c042e54140be230b876024e999660424878"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_divzero.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_divzero.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_divzero.o; preserve full file including original notices",
+        "size_bytes": 105,
+        "sha256": "84aa910bdc5e7ccfed42098c37c44e278aa942d46e5a51d5ee8273336c79e719"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_divzerof.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_divzerof.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_divzerof.o; preserve full file including original notices",
+        "size_bytes": 109,
+        "sha256": "194c95f6cd238ffa14e78087b9acffca3a064f2fe46320d67b090bb7a559b1ca"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_invalid.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_invalid.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_invalid.o; preserve full file including original notices",
+        "size_bytes": 82,
+        "sha256": "b56440ed59fa1e1aaaf6bf8b672c8bb71eaf844457906f7773da1d67d7ef013b"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_invalidf.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_invalidf.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_invalidf.o; preserve full file including original notices",
+        "size_bytes": 81,
+        "sha256": "d2af8360271109d77dfab3c538eb158e34633454707dea4efa9f2f1e7e2bd0c7"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_oflow.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_oflow.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_oflow.o; preserve full file including original notices",
+        "size_bytes": 95,
+        "sha256": "74669de53bc4b250183cfa262a8a03ee8106f33a83e3aca6b217bafc7363b83c"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_oflowf.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_oflowf.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_oflowf.o; preserve full file including original notices",
+        "size_bytes": 96,
+        "sha256": "69414934bb798f5261e2d80f4b878e2bbe4dfa6025adbd06586195ba5554b04a"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_uflow.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_uflow.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_uflow.o; preserve full file including original notices",
+        "size_bytes": 96,
+        "sha256": "9a841197bbe9ade9bbd684f8bc65424a97c481d37dabb9fa1790bafe7959034a"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_uflowf.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_uflowf.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_uflowf.o; preserve full file including original notices",
+        "size_bytes": 97,
+        "sha256": "2371ed08fc95e48833a67122b5ef538ce7fc87f40fc7a4df451d71e1787d1d42"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_xflow.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_xflow.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_xflow.o; preserve full file including original notices",
+        "size_bytes": 123,
+        "sha256": "5feafe10347636884a071a5096f912d5ca4a0939844804ca09b88241405648ad"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/__math_xflowf.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/__math_xflowf.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member __math_xflowf.o; preserve full file including original notices",
+        "size_bytes": 122,
+        "sha256": "38da031cfed0ba90e68a14dfbc57404ebcb827c9ac34648161c7d11cb212c9ba"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/emscripten_get_heap_size.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_get_heap_size.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member emscripten_get_heap_size.o; preserve full file including original notices",
+        "size_bytes": 396,
+        "sha256": "f642e9c8e89121b3c379535996cb78d8a7fa0626ef8351d7b00c1824dcdb1dbe"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/emscripten_memcpy.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_memcpy.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member emscripten_memcpy.o; preserve full file including original notices",
+        "size_bytes": 3185,
+        "sha256": "1eed22a14ee2143283ad19a0494355734bd9d48a19b318b605c86f274642afa0"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/emscripten_memcpy_bulkmem.S",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_memcpy_bulkmem.S",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member emscripten_memcpy_bulkmem.o; preserve full file including original notices",
+        "size_bytes": 521,
+        "sha256": "39af87c7ef0479fa2c4863838b4012a8ed86e89d6e37035c1054666731ffc016"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/emscripten_memset.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/emscripten_memset.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member emscripten_memset.o; preserve full file including original notices",
+        "size_bytes": 804,
+        "sha256": "7f345bf7ffbb49e3d7e1691538a243471e67e0e11c9e06b518c2b691295b1cdf"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/exp2f_data.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp2f_data.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member exp2f_data.o; preserve full file including original notices",
+        "size_bytes": 1323,
+        "sha256": "3da38c471cc5eb8dc1c2e283c6c00a36b1d353ba5c8ca1e82d95180948e26bd5"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/exp2f_data.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp2f_data.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member exp2f_data.o; preserve full file including original notices",
+        "size_bytes": 499,
+        "sha256": "fb52b690bef63df2e8996f2d2b3fd77f9ea08795863e73afdc882df04460e850"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/exp_data.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp_data.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member exp_data.o; preserve full file including original notices",
+        "size_bytes": 6347,
+        "sha256": "c55dff64e369fe816cd8ce367064989bb119f85783599680d1a329031c660689"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/exp_data.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/exp_data.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member exp_data.o; preserve full file including original notices",
+        "size_bytes": 540,
+        "sha256": "df77fca837edd02b260dd09a2914202775909ae67a059218ae38cfab104e6d16"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/expf.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/expf.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member expf.o; preserve full file including original notices",
+        "size_bytes": 1895,
+        "sha256": "225123b9b3a47a083c06f2580c6b73d5cadae5cec545f9e928f7041ff837b4b4"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/fabs.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/fabs.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member fabs.o; preserve full file including original notices",
+        "size_bytes": 318,
+        "sha256": "f6387612e1f879cac47fa71a808b584c76d78c23df4e44274ed9c7b1ddf24eff"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/log.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member log.o; preserve full file including original notices",
+        "size_bytes": 3030,
+        "sha256": "a0694d8587a0d145d0f8ae87cbffba014d7988bc2ebcbfad94cea73b394c9ecc"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/log10.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log10.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member log10.o; preserve full file including original notices",
+        "size_bytes": 2968,
+        "sha256": "ef9b4b1f0918cf1fcb797f9fa4d4ffe177bfa27f668d74a41d613bfbcd83850a"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/log_data.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log_data.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member log_data.o; preserve full file including original notices",
+        "size_bytes": 13927,
+        "sha256": "e96bcd99d88fc57e0f3686299014f4b949a6212603ce237f39e16cedc155617a"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/log_data.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/log_data.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member log_data.o; preserve full file including original notices",
+        "size_bytes": 552,
+        "sha256": "a8dced6f0821f30cad040ba326b03e419fbe0a750ed8f3b0d7145992bee4bccc"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/logf.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/logf.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member logf.o; preserve full file including original notices",
+        "size_bytes": 1732,
+        "sha256": "eecf8e5dd0afd5f64f938ccae07c85b0a8e82919f5d4269936a3b8493fb64e47"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/logf_data.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/logf_data.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member logf_data.o; preserve full file including original notices",
+        "size_bytes": 1087,
+        "sha256": "60b08342fcef877b393a76fc36d92c576d6340ce153459aad03aad3d4716f9b5"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/logf_data.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/logf_data.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member logf_data.o; preserve full file including original notices",
+        "size_bytes": 406,
+        "sha256": "80176d1f045f162e917ca5c2879994ab0ed9e27b479086d752e5793c91135adf"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/string/memcmp.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/string/memcmp.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member memcmp.o; preserve full file including original notices",
+        "size_bytes": 782,
+        "sha256": "2514492fc7e9249713857dfd12c1a3630661aa163f16bc40a6f59f8cd8e76aeb"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/pow.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/pow.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member pow.o; preserve full file including original notices",
+        "size_bytes": 10817,
+        "sha256": "b06f0a08d74fcff8cced7afa2c0e47e301e3e8a19c0de5becdec28cd7b014027"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/pow_data.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/pow_data.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member pow_data.o; preserve full file including original notices",
+        "size_bytes": 10455,
+        "sha256": "2052ec913f9b4a2170a98a6fcbcd7694f5dec220036b00c36106a2b4b65a4c55"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/math/pow_data.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/math/pow_data.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member pow_data.o; preserve full file including original notices",
+        "size_bytes": 519,
+        "sha256": "5014345a7958adcf6ff835b5e96afa99dd5a98c40dfe968442288e002b8e01a3"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/stdlib/qsort.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/stdlib/qsort.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member qsort.o; preserve full file including original notices",
+        "size_bytes": 5131,
+        "sha256": "3a838cc7f83f4746df6063f567be1ebb2f7d204243342122acd43f44d2434ec6"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/stdlib/qsort_nr.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/stdlib/qsort_nr.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member qsort_nr.o; preserve full file including original notices",
+        "size_bytes": 316,
+        "sha256": "ba6ce7460e7b4b22d70c8d7acab2bdb5d3916f428d50b42bb29e4da5eec484d9"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/compiler-rt/stack_ops.S",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/compiler-rt/stack_ops.S",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member stack_ops.o; preserve full file including original notices",
+        "size_bytes": 902,
+        "sha256": "f99c53c18be77b978f2255c5ef9c1c31798fe17dea87ca87f34ae39a2f237045"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/dlmalloc.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/dlmalloc.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member dlmalloc.o; preserve full file including original notices",
+        "size_bytes": 236568,
+        "sha256": "c008dc3c2b005ba822efb1bf6187a9d7a6aecd096826c6f28c6f5ee62885053d"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/sbrk.c",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/sbrk.c",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "actual linked archive member sbrk.o; preserve full file including original notices",
+        "size_bytes": 4507,
+        "sha256": "7a348606c92e9e5311ed307bbfba0b4a6a56692ff4005d440cb3a9e983fed7c9"
+      },
+      {
+        "path": "licenses/emscripten/tools/system_libs.py",
+        "source_path": "sources/emsdk/upstream/emscripten/tools/system_libs.py",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "source selection or included header evidence; retained unmodified",
+        "size_bytes": 85800,
+        "sha256": "3bb9a723b089a3b466a4bef6ed32327e9a8c225a700778f2bd25dd74c3253ac6"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/internal/libm.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/internal/libm.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "source selection or included header evidence; retained unmodified",
+        "size_bytes": 7666,
+        "sha256": "8cb6cc4af4b96b92f5af9d4e20609c8b8456bded8908c3d58f5b8e8f37620f67"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/internal/atomic.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/internal/atomic.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "source selection or included header evidence; retained unmodified",
+        "size_bytes": 5800,
+        "sha256": "7564773807b69ceeb5542882ab20e92253ded8289d8944eafe7208903aaa2e18"
+      },
+      {
+        "path": "licenses/emscripten/system/lib/libc/musl/src/internal/pthread_impl.h",
+        "source_path": "sources/emsdk/upstream/emscripten/system/lib/libc/musl/src/internal/pthread_impl.h",
+        "origin": "Emscripten d6f42310010ddec0753a69bab01a4b33aae255b7",
+        "reason": "source selection or included header evidence; retained unmodified",
+        "size_bytes": 8312,
+        "sha256": "9c0917012766522e7465195774c7ea766366e567a64f62df9535b1ae7d60b07d"
+      }
+    ],
+    "note": "Actual link map includes libc, libdlmalloc, compiler_rt stack_ops; generated JS runtime covered by complete Emscripten LICENSE including third-party text. C++ libraries generated in cache but no linked members observed; not claimed as linked."
+  },
+  "verification": {
+    "codec": {
+      "path": "receipts/codec-acceptance.json",
+      "size_bytes": 46610,
+      "sha256": "c952113d967ec43b828009b0c3309fd7a5247b99b0307609bc31363de3111a27"
+    },
+    "distributions": {
+      "path": "v2/distribution-acceptance.json",
+      "size_bytes": 2349,
+      "sha256": "94fe5428ee79a564db23857021498b71686b30abbbdeebe3a7a93a295da79f34"
+    },
+    "upstream_sog_html_webp_tests": {
+      "tests": 18,
+      "passed": 18,
+      "failed": 0,
+      "receipt": {
+        "path": "receipts/verify-upstream-webp-exports-v2.json",
+        "size_bytes": 2061,
+        "sha256": "b9348b79376a67ac73090a5915c739189918212ae729a295124e02c34d41f5bf"
+      }
+    },
+    "repeat_link": {
+      "path": "receipts/repeat-link-comparison.json",
+      "size_bytes": 1398,
+      "sha256": "6ef24233b40ded7ac4cd72eca52a6476ce63a0d2b5f5bb28b9614e6ff997afa0"
+    },
+    "cli_api_output_comparison": {
+      "path": "receipts/cli-api-comparison.json",
+      "size_bytes": 108,
+      "sha256": "7b953010bdc643234d588884fe29932c50862898e549123ad39984bc29e5344e"
+    },
+    "scripts": [
+      {
+        "path": "verify-codec.mjs",
+        "size_bytes": 28293,
+        "sha256": "0ef2f629e1779436aa5830679deb254733609340a7ef800b44af6aebf9d009d9"
+      },
+      {
+        "path": "verify-distributions.mjs",
+        "size_bytes": 4560,
+        "sha256": "aec186bf50e6b7eb4a2530ea5eacf44d585975004dfe0270dbc6522f830fe933"
+      },
+      {
+        "path": "run-step.py",
+        "size_bytes": 1725,
+        "sha256": "57fc8a48875792adc436b5f0054b3af7fb73c613ea0318243dff958f85bd1b3e"
+      },
+      {
+        "path": "verify-codec-cleanup.mjs",
+        "size_bytes": 19250,
+        "sha256": "613e5d53ed81177276dd6676dea977d8be407da1163fa12c71d120f524982c3d"
+      },
+      {
+        "path": "verify-distributions-v2-bound.mjs",
+        "size_bytes": 4987,
+        "sha256": "23ce6d97b3e3befb1cf5f54de2c3c16a198c18e01e248fff2be273f4bccf73ee"
+      }
+    ],
+    "codec_note": "V1 binary/ABI tests retained because the paired C/WASM/glue are unchanged. Its recorded source-TS encode-failure leak is fixed in v2; see cleanup acceptance.",
+    "cleanup": {
+      "path": "v2/cleanup-acceptance.json",
+      "size_bytes": 138126,
+      "sha256": "abd85b26441e35738638c136ac19a85c23410a5668b5b4e2669456a72aed9e01"
+    },
+    "cleanup_counts": {
+      "primary_cases": 22,
+      "recovery_cases": 44,
+      "successful_output_comparisons": 5,
+      "failed_case_groups": 0
+    },
+    "v2_unchanged_outputs": "All 207 other dist files match original npm package byte-for-byte; only 8 WebP-dependent dist JS/map files plus paired lib/webp.mjs/wasm are replaced."
+  },
+  "recorded_non_success_attempts": [
+    {
+      "path": "receipts/build-splat-transform.json",
+      "size_bytes": 1850,
+      "sha256": "2e1b36f9d28a1ccc5f2eaac1e310c3fc21bcc26ae227297a878bd9edc213e07f"
+    },
+    {
+      "path": "receipts/verify-distributions.json",
+      "size_bytes": 1831,
+      "sha256": "bd0e803dea6d3b4b637285be76bfd0fc093a22436412e8b965efbe23c6fcfa7e"
+    }
+  ],
+  "limits": [
+    "No production/public/default license collection modified; whole app not rebuilt.",
+    "Historical original npm WebP binary provenance remains unresolved. These are independently derived artifacts, not original npm bytes.",
+    "Transparent alpha=0 hidden RGB may change with unchanged simple libwebp API; opaque/nonzero-alpha RGBA assertions are byte exact.",
+    "Ordinary Node CJS require fails with playcanvas.Vec3 is not a constructor in both original and candidate. Actual ESM external-adapted CJS path passes; no upstream fix or broader CJS support claimed.",
+    "Initial Rollup CLI wrote all files then retained idle handles and was terminated exit143; API driver wrote and closed every bundle successfully exit0 with identical files, then explicitly exited after declaration copy.",
+    "Browser worker, WKWebView/native UI and full-application exported-format acceptance remain integration work."
+  ],
+  "integration_requirements": [
+    "Apply all ten checksum-bound overlay files after npm ci; never only replace WASM.",
+    "Bind base package manifest, original-file hashes, compressed and decompressed payload hashes/sizes, and this build-evidence file hash.",
+    "Include overlay/build identity in prepare cache signature and verify cached files.",
+    "Preserve old license collection; create a new collection with these exact originals and source/runtime bindings.",
+    "Retain source/SDK download URLs and hashes for rebuild; do not put ~297MB SDK in the app.",
+    "Use native Node gzip decompression for normal cross-platform prepare; no SDK required for consumption."
+  ],
+  "path_base": "Every relative path in this document is relative to the webp-rebuild-20261028 evidence staging root; v2/ is a versioned subdirectory.",
+  "prior_version_evidence": {
+    "path": "build-evidence.json",
+    "size_bytes": 94990,
+    "sha256": "fe29cd1692e7fabddb63092fffbd46c3f76ede7a454fb93a05881ad351cf10f8"
+  },
+  "cleanup_fix_scope": "Verified 22 primary cases, 44 recovery calls and 5 exact v1/v2 successful-output comparisons. Includes C false returns, input/output copy JS exceptions, exception immediately after real C output, partial malloc exceptions and safely mocked malloc null. No real OOM or arbitrary-pointer safety claim.",
+  "path_normalization": {
+    "schema_version": 1,
+    "scope": "Publication copy: only machine-specific repository, home and temporary directory path prefixes are replaced by ${REPO_ROOT}, ${HOME} and ${TMPDIR}; metadata hashes are rebound to the normalized retained files. Original source, license, archive and runtime bytes, tool versions, commands, times and acceptance results are preserved.",
+    "original_build_evidence_sha256": "d5b9bb0d38bb3f611656455a2853651469e5ed1f5c02cae965396630c873ecaa",
+    "original_file_sha256": {
+      "build-environment.json": "5df6e10469684d8f87c555ec4e1138bb8cfe67bbe4f14500c9b7b6d2dfa5e36b",
+      "build-libwebp/CMakeCache.txt": "ae1d45a4b64b2cc7eb6dd2d5f3158a46765fc833d1bc03931e4aca3942f82e6d",
+      "logs/activate-sdk.log": "01f2bba3825e1b09cf29f7daca3bcb63e4dc6b27fffd25e7cf347a588930bb97",
+      "logs/configure-libwebp.log": "6ee2ac3694b9bec2555e9e95bcaa79056267034611bd488e08156bbab1a186e9",
+      "logs/install-sdk.log": "4a4f642daf025750e583124e6e942f3deab8ad422c4bfaa113fe27a933c1b046",
+      "logs/link-webp.log": "85073aa566dc00c67daf0d14cd8c4b3b2a6a550ea6297437a8047b17ce9fb0e9",
+      "logs/verify-codec-cleanup-v2.log": "b3e78b95841d2724ebc1b98cfdcc9c3716c4ea17ed97496d2488baba9c07cf32",
+      "logs/verify-codec.log": "240d32d15217c9bf828016d95e909d81f518d170e7e9ff3839debbfe284323f8",
+      "outputs/webp-link.map": "b0bcbb6b619e565dc2c966305c6596e37a5801dc3ba7f71cfeaf961392705c0e",
+      "receipts/activate-sdk.json": "fbb7394a3d9b4a5d9d6df96a7f55c29b48ab57e207b022ad4aba930ba20d0f17",
+      "receipts/build-libwebp.json": "752922db4a7239100c0200c75624ba7045aa28ca68fad6b824b3238ef734d060",
+      "receipts/build-splat-api-v2-canonical-paths.json": "8536196af69b60f0f38b8f75b094646ce6ac0109bfc32c010a7899fe911aa1f6",
+      "receipts/build-splat-transform.json": "535874eebc95917b6c8d83b360d72619745adac215c448d58c07bafea724e75d",
+      "receipts/codec-acceptance.json": "240d32d15217c9bf828016d95e909d81f518d170e7e9ff3839debbfe284323f8",
+      "receipts/configure-libwebp.json": "bd01b94290f3d0db156d11a25f1635e4b6736ade8cc1dc3889d5091ede9f457f",
+      "receipts/install-sdk.json": "b465e43b6c7a0bb4fd207f6c3bc7549effdf52cb41d55851e188ce90c86101c7",
+      "receipts/install-splat-dependencies.json": "1403e513034b8a05671efe520dde6b4098b9f0bc6ed3764d4d5d62a9659f9752",
+      "receipts/link-webp.json": "004da011216fe07d18ccde9a133a8dda5c518ba2d6b64ae894f8b53fa91bb959",
+      "receipts/lint-codec-v2.json": "02fde62ab2a583321e0a050097a24191877275ce3d58c69162af3691fdd33033",
+      "receipts/repeat-link-webp.json": "f9fceb1da9bf3e14e4f415aecc1b7166dd536911beeffc6059ec9d19e92dc3f2",
+      "receipts/verify-cli-help-v2.json": "c16b80ba4df4040e42200159f0d851d1746ad5071ab4ab9f232e3413b7674938",
+      "receipts/verify-codec-cleanup-v2.json": "915d872b0553cc65f22bda56edfbebff15a3868d465ccf26e9de3dd44123dd5d",
+      "receipts/verify-codec.json": "087f1db51fc612a7ab7da1879a4e69503933b834b62cf94508f8945fb1c1af3e",
+      "receipts/verify-distributions-v2-bound.json": "26d0341a16c0af80109631a9fb297eedcf7feedb721e556dcfc2034d1f60628f",
+      "receipts/verify-distributions.json": "9d492051ff19174bd7ebd6292e0812120e89a4b7e13f70154b92473eb0aceb1a",
+      "receipts/verify-upstream-webp-exports-v2.json": "639725a1835dd95a62fa64776ce513f4d9df60201e10f0c901c820b56452a8b1",
+      "v2/cleanup-acceptance.json": "b3e78b95841d2724ebc1b98cfdcc9c3716c4ea17ed97496d2488baba9c07cf32",
+      "v2/rebuild-recipe.json": "006ffd11a44171bf7cf87bf58bc4efcf8fc8f7f3dfbb217fe7e8e11405285746"
+    }
+  }
+}

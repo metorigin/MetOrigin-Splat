@@ -1,0 +1,18 @@
+{
+  "started_at": "2026-10-29T16:44:31.351179+00:00",
+  "finished_at": "2026-10-29T16:44:53.794514+00:00",
+  "duration_seconds": 22.443038375,
+  "cwd": "${REPO_ROOT}",
+  "argv": [
+    "${HOME}/.nvm/versions/node/v22.23.2/bin/node",
+    "target/supersplat-3.7-webp/build-distributions.mjs"
+  ],
+  "explicit_environment": {},
+  "proxy_environment_removed": true,
+  "exit_code": 0,
+  "log": {
+    "path": "logs/build-distributions.log",
+    "size_bytes": 7104,
+    "sha256": "1f2b3a6149f414b7ab4dbd31f159a89d2418786464961ac895c9a102e8134779"
+  }
+}

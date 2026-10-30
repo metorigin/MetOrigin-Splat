@@ -8,6 +8,7 @@ import {
   selectPipelineConflict,
   selectProjectPipelineSnapshot,
 } from "./appContextValue";
+import type { Page } from "./appContextValue";
 
 function snapshot(sequence: number, status: PipelineSnapshot["status"]): PipelineSnapshot {
   return {
@@ -31,6 +32,147 @@ function project(id = "project-1", path = "D:\\projects\\project-1"): ProjectInf
     updated_at: "2026-08-14T00:00:00Z",
   };
 }
+
+function projectPage(id: string, path = `D:\\projects\\${id}`): Page {
+  return { type: "project-detail", projectId: id, projectPath: path };
+}
+
+describe("recent project visits", () => {
+  it("promotes a successfully opened sixth project while ordinary status updates preserve visit order", () => {
+    const projects = Array.from({ length: 6 }, (_, index) => project(`project-${index + 1}`, `D:\\projects\\${index + 1}`));
+    const listed = reducer(initialState, { type: "SET_RECENT_PROJECTS", projects });
+    const opened = reducer(listed, { type: "ADD_RECENT_PROJECT", project: projects[5], recentlyOpened: true });
+    const expectedOrder = ["project-6", "project-1", "project-2", "project-3", "project-4", "project-5"];
+    expect(opened.recentProjects.map((entry) => entry.id)).toEqual(expectedOrder);
+
+    const refreshed = reducer(opened, {
+      type: "ADD_RECENT_PROJECT",
+      project: { ...projects[2], status: "running" },
+    });
+    expect(refreshed.recentProjects.map((entry) => entry.id)).toEqual(expectedOrder);
+    expect(refreshed.recentProjects.find((entry) => entry.id === "project-3")?.status).toBe("running");
+  });
+
+  it("keeps fresher project data and its checked path when a stale successful open changes visit order", () => {
+    const original = project("project-6", "D:\\projects\\old");
+    const fresh = { ...original, path: "E:\\projects\\current", name: "较新的项目", status: "running" as const, updated_at: "2026-08-14T00:03:00Z" };
+    const listed = reducer(initialState, { type: "SET_RECENT_PROJECTS", projects: [project("project-1"), fresh] });
+    const availability = { status: "available" as const, checkedPath: fresh.path, checkedAt: "2026-08-14T00:03:01Z", reasonCode: null, generation: 4 };
+    const checked = { ...listed, projectAvailability: { ...listed.projectAvailability, [fresh.id]: availability } };
+    const reopened = reducer(checked, { type: "ADD_RECENT_PROJECT", project: original, recentlyOpened: true });
+
+    expect(reopened.recentProjects.map((entry) => entry.id)).toEqual([fresh.id, "project-1"]);
+    expect(reopened.recentProjects[0]).toBe(fresh);
+    expect(reopened.recentProjects[0].updated_at).toBe("2026-08-14T00:03:00Z");
+    expect(reopened.projectAvailability[fresh.id]).toBe(availability);
+  });
+});
+
+describe("page navigation history", () => {
+  it("navigates backward and forward without adding visits and stops at both ends", () => {
+    expect(reducer(initialState, { type: "NAVIGATE_BACK" })).toBe(initialState);
+    expect(reducer(initialState, { type: "NAVIGATE_FORWARD" })).toBe(initialState);
+    const first = reducer(initialState, { type: "NAVIGATE", page: projectPage("a") });
+    const second = reducer(first, { type: "NAVIGATE", page: projectPage("b") });
+    const back = reducer({ ...second, error: "old error" }, { type: "NAVIGATE_BACK" });
+    expect(back.page).toEqual(projectPage("a"));
+    expect(back.navigationIndex).toBe(1);
+    expect(back.navigationHistory).toBe(second.navigationHistory);
+    expect(back.error).toBeNull();
+    const forward = reducer(back, { type: "NAVIGATE_FORWARD" });
+    expect(forward.page).toEqual(projectPage("b"));
+    expect(forward.navigationIndex).toBe(2);
+    expect(reducer(forward, { type: "NAVIGATE_FORWARD" })).toBe(forward);
+  });
+
+  it("deduplicates the same destination without losing forward history, then replaces a forward branch", () => {
+    const first = reducer(initialState, { type: "NAVIGATE", page: projectPage("a") });
+    const second = reducer(first, { type: "NAVIGATE", page: projectPage("b") });
+    const back = reducer(second, { type: "NAVIGATE_BACK" });
+    const sameDestination = reducer(back, { type: "NAVIGATE", page: projectPage("a") });
+    expect(sameDestination.navigationHistory).toBe(second.navigationHistory);
+    expect(sameDestination.navigationIndex).toBe(1);
+    const branch = reducer(sameDestination, { type: "NAVIGATE", page: projectPage("c") });
+    expect(branch.navigationHistory).toEqual([{ type: "home" }, projectPage("a"), projectPage("c")]);
+    expect(reducer(branch, { type: "NAVIGATE_FORWARD" })).toBe(branch);
+  });
+
+  it("includes project identity and full path when comparing destinations", () => {
+    const first = reducer(initialState, { type: "NAVIGATE", page: projectPage("a", "D:\\projects\\old") });
+    const second = reducer(first, { type: "NAVIGATE", page: projectPage("a", "D:\\projects\\new") });
+    const third = reducer(second, { type: "NAVIGATE", page: projectPage("b", "D:\\projects\\new") });
+    expect(third.navigationHistory).toHaveLength(4);
+    expect(reducer(third, { type: "NAVIGATE_BACK" }).page).toEqual(projectPage("a", "D:\\projects\\new"));
+  });
+
+  it("keeps creation transient and preserves forward visits when safely exiting back to the same page", () => {
+    const visited = reducer(initialState, { type: "NAVIGATE", page: projectPage("a") });
+    const home = reducer(visited, { type: "NAVIGATE_BACK" });
+    const creating = reducer(home, { type: "NAVIGATE", page: { type: "new-project" } });
+    expect(creating.page).toEqual({ type: "new-project" });
+    expect(creating.navigationHistory).toBe(home.navigationHistory);
+    expect(reducer(creating, { type: "NAVIGATE_BACK" })).toBe(creating);
+    expect(reducer(creating, { type: "NAVIGATE_FORWARD" })).toBe(creating);
+    const safelyExited = reducer(creating, { type: "NAVIGATE", page: { type: "home" } });
+    expect(safelyExited.page).toEqual({ type: "home" });
+    expect(safelyExited.navigationHistory).toBe(home.navigationHistory);
+    expect(reducer(safelyExited, { type: "NAVIGATE_FORWARD" }).page).toEqual(projectPage("a"));
+  });
+
+  it("records a newly created project without leaving an empty wizard in back history", () => {
+    const visited = reducer(initialState, { type: "NAVIGATE", page: projectPage("a") });
+    const home = reducer(visited, { type: "NAVIGATE_BACK" });
+    const creating = reducer(home, { type: "NAVIGATE", page: { type: "new-project" } });
+    const created = reducer(creating, { type: "NAVIGATE", page: projectPage("new") });
+    expect(created.navigationHistory).toEqual([{ type: "home" }, projectPage("new")]);
+    expect(reducer(created, { type: "NAVIGATE_BACK" }).page).toEqual({ type: "home" });
+    expect(reducer(created, { type: "NAVIGATE_FORWARD" })).toBe(created);
+  });
+
+  it("bounds memory to the last fifty visits while retaining a valid current index", () => {
+    let state = initialState;
+    for (let index = 0; index < 60; index += 1) {
+      state = reducer(state, { type: "NAVIGATE", page: projectPage(String(index)) });
+    }
+    expect(state.navigationHistory).toHaveLength(50);
+    expect(state.navigationHistory[0]).toEqual(projectPage("10"));
+    expect(state.navigationIndex).toBe(49);
+    expect(state.page).toEqual(projectPage("59"));
+    for (let index = 0; index < 50; index += 1) state = reducer(state, { type: "NAVIGATE_BACK" });
+    expect(state.page).toEqual(projectPage("10"));
+    expect(state.navigationIndex).toBe(0);
+  });
+
+  it("removes all visits to removed projects and keeps remaining navigation usable", () => {
+    let state = initialState;
+    for (const id of ["a", "b", "a", "b"]) state = reducer(state, { type: "NAVIGATE", page: projectPage(id) });
+    const withoutA = reducer(state, { type: "REMOVE_RECENT_PROJECT", projectId: "a" });
+    expect(withoutA.navigationHistory).toEqual([{ type: "home" }, projectPage("b")]);
+    expect(withoutA.navigationIndex).toBe(1);
+    expect(withoutA.page).toEqual(projectPage("b"));
+    const back = reducer(withoutA, { type: "NAVIGATE_BACK" });
+    expect(reducer(back, { type: "NAVIGATE_FORWARD" }).page).toEqual(projectPage("b"));
+    const withoutCurrent = reducer(withoutA, { type: "REMOVE_RECENT_PROJECT", projectId: "b" });
+    expect(withoutCurrent.navigationHistory).toEqual([{ type: "home" }]);
+    expect(withoutCurrent.page).toEqual({ type: "home" });
+    expect(withoutCurrent.navigationIndex).toBe(0);
+  });
+
+  it("rewrites relocated paths in both current and prior visits without adding a navigation", () => {
+    const oldPath = "D:\\projects\\old";
+    const newPath = "E:\\工程 中文\\new";
+    let state = reducer(initialState, { type: "SET_RECENT_PROJECTS", projects: [project("a", oldPath)] });
+    state = reducer(state, { type: "NAVIGATE", page: projectPage("a", oldPath) });
+    state = reducer(state, { type: "NAVIGATE", page: projectPage("b") });
+    state = reducer(state, { type: "NAVIGATE", page: projectPage("a", oldPath) });
+    const relinked = reducer(state, { type: "RELINK_RECENT_PROJECT", previousPath: oldPath, project: project("a", newPath) });
+    expect(relinked.navigationHistory).toEqual([{ type: "home" }, projectPage("a", newPath), projectPage("b"), projectPage("a", newPath)]);
+    expect(relinked.page).toEqual(projectPage("a", newPath));
+    expect(relinked.navigationIndex).toBe(3);
+    const previousVisit = reducer(reducer(relinked, { type: "NAVIGATE_BACK" }), { type: "NAVIGATE_BACK" });
+    expect(previousVisit.page).toEqual(projectPage("a", newPath));
+  });
+});
 
 describe("pipeline snapshot reducer", () => {
   it("rejects an older active snapshot for the same project", () => {

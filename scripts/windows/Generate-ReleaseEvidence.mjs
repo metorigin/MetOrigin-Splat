@@ -1,4 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { collectCopiedUiEvidence } from '../shared/copied-ui-evidence.mjs';
+import { findVerifiedNpmNotices } from '../shared/npm-notice-evidence.mjs';
+import { currentSupersplatEvidenceInputs, verifyCurrentVendoredIdentity } from '../shared/supersplat-evidence.mjs';
+import { overlayIdentity } from '../../integrations/supersplat/prepared-assets.mjs';
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -53,6 +57,25 @@ function collectLicenses(directory, packageRef, label) {
     mkdirSync(dirname(destination), { recursive: true });
     copyFileSync(source, destination);
     licenseRecords.push({ component: packageRef, path: slash(relative(output, destination)), sha256: hash(destination) });
+  }
+  if (!files.length && packageRef.startsWith('pkg:npm/')) {
+    const notices = findVerifiedNpmNotices(root, directory);
+    for (const notice of notices) {
+      const { sourcePath, metadataPath, upstreamManifestPath, ...identity } = notice;
+      const folder = `dependencies/${label}/fixed-publication`;
+      const copyEvidence = (source, name) => {
+        const destination = join(output, name);
+        mkdirSync(dirname(destination), { recursive: true });
+        copyFileSync(source, destination);
+        return { path: slash(name), sha256: hash(destination) };
+      };
+      licenseRecords.push({ ...identity, component: packageRef,
+        ...copyEvidence(sourcePath, `${folder}/${notice.noticePath}`),
+        publication_evidence: copyEvidence(metadataPath, `${folder}/registry-metadata.json`),
+        source_manifest: copyEvidence(upstreamManifestPath, `${folder}/upstream-package.json`),
+        notice_index: copyEvidence(join(root, 'packaging/shared/licenses/npm-notice-index.json'), 'sources/npm-notice-index.json') });
+    }
+    if (notices.length) return;
   }
   if (!files.length) missing.push({ component: packageRef, reason: 'No license/notice text found in installed package; manual review required.' });
 }
@@ -127,6 +150,83 @@ for (const name of Object.keys(desktop.dependencies)) {
   collectNpm(manifest, applicationRef);
 }
 
+// The embedded editor is separately built and is not in desktop.dependencies.
+// Inventory only its verified current source, paired derivative and actual map roots.
+const editor = await currentSupersplatEvidenceInputs(root);
+const { source: editorSource, publicRoot: editorPublic, upstream: editorPin, overlay, overlayRoot, webpEvidence } = editor;
+const copyEditorEvidence = (source, path) => {
+  const bytes = readFileSync(source);
+  write(join(output, path), bytes);
+  return { path, sha256: createHash('sha256').update(bytes).digest('hex'), size_bytes: bytes.length };
+};
+collectNpm(join(editorSource, 'package.json'), applicationRef);
+const editorRef = `pkg:npm/${editor.sourcePackage.name.replace('@', '%40')}@${editor.sourcePackage.version}`;
+for (const name of editor.bundledPackages) collectNpm(join(editorSource, name, 'package.json'), editorRef);
+for (const name of ['LICENSE', 'THIRD_PARTY_NOTICES.txt', 'build.json']) copyEditorEvidence(join(editorPublic, name), `supersplat/${name}`);
+const editorLicense = execFileSync('git', ['-C', editorSource, 'show', `${editorPin.commit}:LICENSE`]);
+if (!editorLicense.equals(readFileSync(join(editorPublic, 'LICENSE'))) || editor.sourcePackage.license !== 'MIT') throw new Error('Pinned SuperSplat MIT notice mismatch.');
+const editorStatic = editor.built.assets.filter(file => file.path.startsWith('static/'));
+const editorOrigins = editorStatic.filter(file => /^static\/(icons|images|locales)\//.test(file.path)).map(file => {
+  const bytes = execFileSync('git', ['-C', editorSource, 'show', `${editorPin.commit}:${file.path}`], { maxBuffer: 16 * 1024 * 1024 });
+  if (createHash('sha256').update(bytes).digest('hex') !== file.sha256) throw new Error(`Pinned static asset mismatch: ${file.path}`);
+  return { ...file, git_blob_sha1: createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') };
+});
+write(join(output, 'supersplat/static-payload-inventory.json'), JSON.stringify(editorStatic, null, 2) + '\n');
+write(join(output, 'supersplat/static-origin-evidence.json'), JSON.stringify({ upstream: editorPin, license: 'MIT',
+  license_sha256: createHash('sha256').update(editorLicense).digest('hex'), assets: editorOrigins,
+  scope: 'Repository-authored static assets and original MIT notice; no trademark or endorsement claim.' }, null, 2) + '\n');
+write(join(output, 'supersplat/source-map-package-evidence.json'), JSON.stringify(editor.sourceMapEvidence, null, 2) + '\n');
+const derivedComponent = components.get(editor.splatRef);
+if (!derivedComponent) throw new Error('Derived transform is absent from the Windows source inventory.');
+derivedComponent.properties.push({ name: 'metorigin:distribution-kind', value: 'derived-fixed-webp-overlay' },
+  { name: 'metorigin:webp-overlay-id', value: overlay.manifest.id },
+  { name: 'metorigin:webp-overlay-manifest-sha256', value: overlay.digest });
+const wasm = overlay.manifest.files.find(file => file.path === 'lib/webp.wasm');
+const wasmRef = add({ type: 'library', 'bom-ref': `webp-wasm:sha256:${wasm.sha256}`, name: 'SuperSplat derived WebP WASM',
+  hashes: [{ alg: 'SHA-256', content: wasm.sha256 }], properties: [{ name: 'metorigin:build-evidence', value: 'vendored/webp/build-evidence.json' }] });
+link(editorRef, wasmRef);
+link(editor.splatRef, wasmRef);
+const runtimeComponents = { 'splat-transform': editor.splatRef };
+for (const [name, runtimeVersion, license] of [
+  ['libwebp', '1.6.0', 'BSD-3-Clause'], ['sharpyuv', '0.4.2', 'BSD-3-Clause'],
+  ['emscripten-runtime', '4.0.21', 'MIT and original third-party notices'],
+  ['musl', 'emscripten-d6f4231', 'MIT and individual original notices'],
+  ['dlmalloc', 'emscripten-d6f4231', 'Public domain/CC0'], ['compiler-rt', 'emscripten-d6f4231', 'Apache-2.0 WITH LLVM-exception'],
+]) {
+  runtimeComponents[name] = add({ type: 'library', 'bom-ref': `pkg:generic/${name}@${runtimeVersion}`, name, version: runtimeVersion,
+    licenses: [{ license: { name: license } }], properties: [{ name: 'metorigin:runtime-evidence', value: 'vendored/webp/evidence.json' }] });
+  link(wasmRef, runtimeComponents[name]);
+}
+const copiedWebp = webpEvidence.files.map(file => copyEditorEvidence(join(overlayRoot, file.path), `vendored/webp/${file.path}`));
+for (const name of ['manifest.json', 'build-evidence.json']) copyEditorEvidence(join(overlayRoot, name), `vendored/webp/${name}`);
+const webpNotices = webpEvidence.notices.map(({ bytes: _bytes, component, ...notice }) => ({ ...notice,
+  path: `vendored/webp/${notice.path}`, component: runtimeComponents[component], runtime_component: component }));
+for (const notice of webpNotices) {
+  if (!notice.component) throw new Error('WebP notice has no runtime owner.');
+  licenseRecords.push({ ...notice, kind: 'verbatim-fixed-source-runtime-notice' });
+  if (notice.runtime_component === 'libwebp') licenseRecords.push({ ...notice, component: runtimeComponents.sharpyuv,
+    runtime_component: 'sharpyuv', kind: 'verbatim-shared-libwebp-tree-notice' });
+}
+const historicalIndex = readJson(join(root, 'packaging/macos-arm64/licenses/app-vendored-evidence.json'));
+verifyCurrentVendoredIdentity(historicalIndex);
+write(join(output, 'vendored/webp/evidence.json'), JSON.stringify({ schema_version: 1, status: 'verified-derived-replacement',
+  overlay: overlayIdentity(overlay), base: overlay.manifest.base, files: copiedWebp, notices: webpNotices,
+  runtime: { linked_members: webpEvidence.linked_members, sources: webpEvidence.sources },
+  historical_prebuilt: { wasm_sha256: historicalIndex.webp.wasm_sha256, status: 'provenance-unresolved' }, scope: webpEvidence.scope }, null, 2) + '\n');
+copyEditorEvidence(join(root, 'packaging/macos-arm64/licenses/app-vendored-evidence.json'), 'build-inputs/app-vendored-evidence.json');
+copyEditorEvidence(join(root, 'integrations/supersplat/upstream.json'), 'build-inputs/supersplat-upstream.json');
+copyEditorEvidence(join(editorSource, 'package-lock.json'), 'build-inputs/supersplat-package-lock.json');
+
+// The same verified copied-source closure is used on macOS and Windows.
+const uiCollection = collectCopiedUiEvidence(root, output);
+for (const record of uiCollection.components) {
+  const ref = add({ type: 'library', 'bom-ref': record.component, name: `${record.project} copied UI sources`,
+    licenses: [{ license: { id: record.declared_license } }],
+    properties: [{ name: 'metorigin:inventory-evidence', value: 'ui/source-evidence.json' }] });
+  link(applicationRef, ref);
+  licenseRecords.push(...record.notices.map(notice => ({ component: ref, ...notice })));
+}
+
 const lock = readJson(join(root, 'packaging/windows-x64/engine-lock.json'));
 for (const [id, component] of Object.entries(lock.components)) {
   const ref = add({ type: 'application', 'bom-ref': `engine:${id}`, name: id, version: component.version,
@@ -185,6 +285,8 @@ const report = {
     { id: 'security-review', detail: 'Review Tauri capabilities and production content security policy; current configuration has csp=null.' },
   ],
   packages_needing_license_text_review: missing,
+  resolved_findings: [{ id: 'supersplat-webp-provenance', evidence: 'vendored/webp/evidence.json', resolution: 'replaced-with-fixed-source-build',
+    detail: 'Current fixed-source derivative replaces the historical prebuilt; original prebuilt provenance remains unresolved.' }],
   limitations: ['Source graphs conservatively include build dependencies and pre-tree-shaking frontend dependencies.', 'Native hashes identify staged payloads, not their license grants.', 'The final installer hash and signature result must be supplied by build metadata.'],
 };
 if (missing.length) report.blockers.push({ id: 'dependency-license-texts', detail: `${missing.length} source packages need manual license-text review; see packages_needing_license_text_review.` });

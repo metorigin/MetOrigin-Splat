@@ -81,10 +81,16 @@ impl PipelineStage for ColmapMappingStage {
             Err(_) => return Ok(false),
         };
         let model_path = colmap_support::model_path(&ctx.project_dir, &result.model_path);
+        let fingerprint = std::fs::read(ctx.paths.colmap_dir.join("mapping-fingerprint.json"))
+            .ok()
+            .and_then(|bytes| {
+                serde_json::from_slice::<colmap_support::ColmapCacheFingerprint>(&bytes).ok()
+            });
         Ok(result.strategy_version == STRATEGY_VERSION
             && colmap_support::has_complete_model(&model_path)
             && result.registered_images >= 3
-            && result.point_count >= 100)
+            && result.point_count >= 100
+            && colmap_support::profile_fingerprint_matches(ctx, fingerprint.as_ref()))
     }
 
     async fn execute(
@@ -270,6 +276,12 @@ impl PipelineStage for ColmapMappingStage {
             automatic_fallbacks_exhausted: !stopped_after_recommended_model,
         };
         write_colmap_result_atomic(&result, &ctx.paths.colmap_result)?;
+        let fingerprint_path = ctx.paths.colmap_dir.join("mapping-fingerprint.json");
+        if let Some(fingerprint) = colmap_support::profile_fingerprint(ctx)? {
+            colmap_support::write_json_atomic(&fingerprint, &fingerprint_path)?;
+        } else if fingerprint_path.exists() {
+            std::fs::remove_file(fingerprint_path).map_err(mapping_filesystem_error)?;
+        }
         let _ = progress_tx.send(
             TaskProgress::new(
                 "ColmapMapping",

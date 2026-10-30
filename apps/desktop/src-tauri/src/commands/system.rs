@@ -16,6 +16,10 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::state::AppState;
 
+#[cfg(target_os = "macos")]
+mod cpu;
+pub(super) mod resources;
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
@@ -24,6 +28,7 @@ pub struct AppSettings {
     default_project_root: Option<String>,
     default_preset: String,
     create_and_start: bool,
+    prevent_idle_sleep: bool,
     log_retention_mb: u64,
     thumbnail_cache_mb: u64,
 }
@@ -36,6 +41,7 @@ impl Default for AppSettings {
             default_project_root: None,
             default_preset: "fast".into(),
             create_and_start: true,
+            prevent_idle_sleep: false,
             log_retention_mb: 512,
             thumbnail_cache_mb: 256,
         }
@@ -46,8 +52,8 @@ impl Default for AppSettings {
 pub struct GpuMetrics {
     name: String,
     driver_version: Option<String>,
-    memory_total_bytes: u64,
-    memory_used_bytes: u64,
+    memory_total_bytes: Option<u64>,
+    memory_used_bytes: Option<u64>,
     utilization_percent: Option<f64>,
     temperature_celsius: Option<f64>,
 }
@@ -57,12 +63,16 @@ pub struct ResourceMetrics {
     timestamp: String,
     operating_system: String,
     cpu_name: Option<String>,
-    cpu_usage_percent: f32,
+    cpu_usage_percent: Option<f32>,
     memory_total_bytes: u64,
     memory_used_bytes: u64,
     project_disk_available_bytes: Option<u64>,
     disk_path: Option<String>,
     gpu: Option<GpuMetrics>,
+    memory: resources::MemoryObservation,
+    processes: Vec<resources::ProcessMemory>,
+    runtime: Option<resources::RuntimeResourceSummary>,
+    preview_policy: resources::PreviewResourcePolicy,
     warnings: Vec<String>,
 }
 
@@ -172,27 +182,48 @@ pub async fn check_engines(app_handle: tauri::AppHandle) -> Result<Vec<serde_jso
 /// guards. Keep it off Tauri's command dispatcher because first launch hashes
 /// the complete embedded engine pack.
 pub(crate) fn check_engines_blocking(app_handle: tauri::AppHandle) -> Vec<serde_json::Value> {
-    let resolution = resolve_engine_resolution(&app_handle);
+    check_engines_with_resolution(app_handle.state::<AppState>().inner(), || {
+        resolve_engine_resolution(&app_handle)
+    })
+}
+
+fn check_engines_with_resolution(
+    state: &AppState,
+    resolve: impl FnOnce() -> EngineResolution,
+) -> Vec<serde_json::Value> {
+    // The blocking worker owns this receipt even when its IPC await is dropped.
+    let _pending = match crate::lifecycle::PendingWork::begin(state) {
+        Ok(pending) => pending,
+        Err(error) => {
+            return vec![
+                serde_json::json!({"name": "runtime", "available": false, "diagnostic": error}),
+            ]
+        }
+    };
+    let resolution = resolve();
     let paths = &resolution.paths;
 
-    let (mut ffmpeg, mut ffmpeg_diagnostic) = match (&paths.ffmpeg, &paths.ffprobe) {
+    let (mut ffmpeg, mut ffmpeg_diagnostic, ffprobe_version) = match (&paths.ffmpeg, &paths.ffprobe)
+    {
         (Some(ffmpeg), Some(ffprobe)) => {
             match splat_engine_ffmpeg::FfmpegAdapter::from_paths(ffmpeg.clone(), ffprobe.clone()) {
-                Ok(adapter) => (adapter.engine_info(), None),
+                Ok(adapter) => (adapter.engine_info(), None, Some(adapter.ffprobe_version())),
                 Err(error) => (
                     unavailable_engine("ffmpeg", Some(ffmpeg)),
                     Some(format!("FFmpeg 启动检查失败：{error}")),
+                    None,
                 ),
             }
         }
         _ => (
             unavailable_engine("ffmpeg", paths.ffmpeg.as_ref()),
             Some("FFmpeg 或 FFprobe 未定位。".into()),
+            None,
         ),
     };
-    if let Some(ffprobe) = paths.ffprobe.as_deref() {
-        match probe_version(ffprobe, "-version") {
-            Ok(actual) => {
+    if let Some(version) = ffprobe_version {
+        match version {
+            Ok(actual) if !actual.trim().is_empty() && actual != "unknown" => {
                 if let Some(expected) = resolution
                     .status("ffprobe")
                     .and_then(|status| status.expected_version.as_deref())
@@ -207,6 +238,13 @@ pub(crate) fn check_engines_blocking(app_handle: tauri::AppHandle) -> Vec<serde_
                         );
                     }
                 }
+            }
+            Ok(_) => {
+                ffmpeg.available = false;
+                append_diagnostic(
+                    &mut ffmpeg_diagnostic,
+                    "FFprobe 未报告可识别的版本。请重新安装或修复应用。".into(),
+                );
             }
             Err(error) => {
                 ffmpeg.available = false;
@@ -299,6 +337,17 @@ pub fn save_app_settings(
     settings.thumbnail_cache_mb = settings.thumbnail_cache_mb.clamp(64, 4096);
     write_settings(&app_handle, &settings)?;
     Ok(settings)
+}
+
+/// Capture this opt-in once when accepting a run; never enable it on a read error.
+pub(crate) fn prevent_idle_sleep_enabled(app_handle: &tauri::AppHandle) -> bool {
+    match read_settings(app_handle) {
+        Ok(settings) => settings.prevent_idle_sleep,
+        Err(error) => {
+            tracing::warn!(%error, "idle-sleep setting unavailable; leaving system sleep unchanged");
+            false
+        }
+    }
 }
 
 pub fn log_retention_bytes(app_handle: &tauri::AppHandle) -> u64 {
@@ -418,12 +467,8 @@ pub fn export_diagnostics(
     let metrics = collect_resource_metrics(Some(&project_dir));
     zip.start_file("system.json", options)
         .map_err(|_| "写入诊断包失败。".to_string())?;
-    zip.write_all(
-        serde_json::to_string_pretty(&metrics)
-            .unwrap_or_default()
-            .as_bytes(),
-    )
-    .map_err(|_| "写入诊断包失败。".to_string())?;
+    zip.write_all(serialize_diagnostic_system_metrics(&metrics, &redact).as_bytes())
+        .map_err(|_| "写入诊断包失败。".to_string())?;
     let engines = check_engines_blocking(app_handle);
     zip.start_file("engines.json", options)
         .map_err(|_| "写入诊断包失败。".to_string())?;
@@ -460,7 +505,10 @@ fn settings_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 fn read_settings(app_handle: &tauri::AppHandle) -> Result<AppSettings, String> {
-    let path = settings_path(app_handle)?;
+    read_settings_at(&settings_path(app_handle)?)
+}
+
+fn read_settings_at(path: &Path) -> Result<AppSettings, String> {
     if !path.exists() {
         return Ok(AppSettings::default());
     }
@@ -469,7 +517,10 @@ fn read_settings(app_handle: &tauri::AppHandle) -> Result<AppSettings, String> {
 }
 
 fn write_settings(app_handle: &tauri::AppHandle, settings: &AppSettings) -> Result<(), String> {
-    let path = settings_path(app_handle)?;
+    write_settings_at(&settings_path(app_handle)?, settings)
+}
+
+fn write_settings_at(path: &Path, settings: &AppSettings) -> Result<(), String> {
     std::fs::create_dir_all(path.parent().unwrap_or(Path::new(".")))
         .map_err(|_| "创建应用设置目录失败。".to_string())?;
     let temporary = path.with_extension("json.tmp");
@@ -479,7 +530,7 @@ fn write_settings(app_handle: &tauri::AppHandle, settings: &AppSettings) -> Resu
     )
     .map_err(|_| "写入应用设置失败。".to_string())?;
     if path.exists() {
-        std::fs::remove_file(&path).map_err(|_| "更新应用设置失败。".to_string())?;
+        std::fs::remove_file(path).map_err(|_| "更新应用设置失败。".to_string())?;
     }
     std::fs::rename(temporary, path).map_err(|_| "保存应用设置失败。".to_string())
 }
@@ -542,40 +593,6 @@ fn engine_check_json(
     })
 }
 
-fn probe_version(path: &Path, argument: &str) -> Result<String, String> {
-    let output = background_command(path)
-        .arg(argument)
-        .output()
-        .map_err(|error| format!("无法运行 '{}': {error}", path.display()))?;
-    if !output.status.success() {
-        return Err(format!(
-            "'{} {argument}' 退出码为 {}",
-            path.display(),
-            output
-                .status
-                .code()
-                .map(|code| code.to_string())
-                .unwrap_or_else(|| "terminated".into())
-        ));
-    }
-    let text = format!(
-        "{}\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    text.split(|character: char| !(character.is_ascii_alphanumeric() || character == '.'))
-        .map(|token| token.trim_start_matches(['v', 'V']))
-        .find(|token| {
-            token
-                .chars()
-                .next()
-                .is_some_and(|first| first.is_ascii_digit())
-                && token.contains('.')
-        })
-        .map(str::to_string)
-        .ok_or_else(|| format!("'{} {argument}' 未报告可识别的版本", path.display()))
-}
-
 fn append_diagnostic(target: &mut Option<String>, message: String) {
     match target {
         Some(existing) if !existing.contains(&message) => {
@@ -607,15 +624,61 @@ fn collect_disk_metrics(project_path: Option<&Path>) -> (Option<String>, Option<
 fn collect_resource_metrics(project_path: Option<&Path>) -> ResourceMetrics {
     let mut system = System::new_all();
     system.refresh_all();
+    #[cfg(target_os = "macos")]
+    let cpu_usage_percent = cpu::observe_cpu_usage();
+    #[cfg(not(target_os = "macos"))]
+    let cpu_usage_percent = Some(system.global_cpu_usage());
     let (disk_path, project_disk_available_bytes) = collect_disk_metrics(project_path);
-    let gpu = query_nvidia_gpu();
     let mut warnings = Vec::new();
+    let runtime = match resources::runtime_summary(project_path) {
+        Ok(runtime) => runtime,
+        Err(warning) => {
+            warnings.push(warning);
+            None
+        }
+    };
+    let gpu = if cfg!(target_os = "macos") {
+        runtime
+            .as_ref()
+            .and_then(|runtime| runtime.device_name.as_ref())
+            .map(|name| GpuMetrics {
+                name: name.clone(),
+                driver_version: None,
+                memory_total_bytes: None,
+                memory_used_bytes: None,
+                utilization_percent: None,
+                temperature_celsius: None,
+            })
+    } else {
+        query_nvidia_gpu()
+    };
+    let memory = resources::observe_memory(&system);
+    let preview_policy = resources::preview_policy(
+        cfg!(target_os = "macos"),
+        system.total_memory(),
+        memory.available_bytes,
+        memory.pressure,
+    );
+    match preview_policy.action {
+        resources::PreviewAction::Pause => warnings.push(
+            if preview_policy.reason == Some("low_available_memory") {
+                "可用内存偏低，已暂停新预览帧，训练继续。"
+            } else {
+                "内存压力升高，已暂停新预览帧，训练继续。"
+            }
+            .into(),
+        ),
+        resources::PreviewAction::Release => {
+            warnings.push("可用内存不足，已释放预览模型，训练与检查点保持不变。".into())
+        }
+        resources::PreviewAction::Allow => {}
+    }
     if let Some(gpu) = &gpu {
-        let ratio = if gpu.memory_total_bytes == 0 {
-            0.0
-        } else {
-            gpu.memory_used_bytes as f64 / gpu.memory_total_bytes as f64
-        };
+        let ratio = gpu
+            .memory_total_bytes
+            .zip(gpu.memory_used_bytes)
+            .filter(|(total, _)| *total > 0)
+            .map_or(0.0, |(total, used)| used as f64 / total as f64);
         if ratio >= 0.95 {
             warnings.push("VRAM 使用率已超过 95%。".into());
         } else if ratio >= 0.85 {
@@ -630,20 +693,26 @@ fn collect_resource_metrics(project_path: Option<&Path>) -> ResourceMetrics {
             .first()
             .map(|cpu| cpu.brand().to_string())
             .filter(|name| !name.is_empty()),
-        cpu_usage_percent: system.global_cpu_usage(),
+        cpu_usage_percent,
         memory_total_bytes: system.total_memory(),
         memory_used_bytes: system.used_memory(),
         project_disk_available_bytes,
         disk_path,
         gpu,
+        memory,
+        processes: resources::process_memory(&system, std::process::id()),
+        runtime,
+        preview_policy,
         warnings,
     }
 }
 
 fn query_nvidia_gpu() -> Option<GpuMetrics> {
-    let output = background_command("nvidia-smi")
-        .args(["--query-gpu=name,driver_version,memory.total,memory.used,utilization.gpu,temperature.gpu", "--format=csv,noheader,nounits"])
-        .output().ok()?;
+    let output = splat_process::probe_output_sync(background_command("nvidia-smi").args([
+        "--query-gpu=name,driver_version,memory.total,memory.used,utilization.gpu,temperature.gpu",
+        "--format=csv,noheader,nounits",
+    ]))
+    .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -658,8 +727,8 @@ fn query_nvidia_gpu() -> Option<GpuMetrics> {
     Some(GpuMetrics {
         name: values[0].into(),
         driver_version: Some(values[1].into()),
-        memory_total_bytes: values[2].parse::<u64>().ok()?.saturating_mul(1024 * 1024),
-        memory_used_bytes: values[3].parse::<u64>().ok()?.saturating_mul(1024 * 1024),
+        memory_total_bytes: Some(values[2].parse::<u64>().ok()?.saturating_mul(1024 * 1024)),
+        memory_used_bytes: Some(values[3].parse::<u64>().ok()?.saturating_mul(1024 * 1024)),
         utilization_percent: values[4].parse().ok(),
         temperature_celsius: values[5].parse().ok(),
     })
@@ -677,6 +746,14 @@ fn tail_file(path: &Path, max_bytes: u64) -> Result<String, String> {
     file.read_to_string(&mut content)
         .map_err(|_| "读取日志失败。".to_string())?;
     Ok(content)
+}
+
+fn serialize_diagnostic_system_metrics<F>(metrics: &ResourceMetrics, redact: &F) -> String
+where
+    F: Fn(String) -> String,
+{
+    let content = serde_json::to_string_pretty(metrics).unwrap_or_default();
+    sanitize_json_document(&content, redact, false).unwrap_or_else(|| "{}".into())
 }
 
 fn sanitize_json_document<F>(content: &str, redact: &F, redact_identity: bool) -> Option<String>
@@ -831,6 +908,224 @@ fn redact_text(
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    struct VersionFixture(PathBuf);
+
+    #[cfg(unix)]
+    impl VersionFixture {
+        fn new(ffprobe_exit: i32) -> Self {
+            use std::os::unix::fs::PermissionsExt;
+            let root = std::env::temp_dir()
+                .join(format!("engine-version-中文 空格-{}", uuid::Uuid::now_v7()));
+            std::fs::create_dir(&root).unwrap();
+            // Captured release output: the compiler and library versions must
+            // never replace the n8.1.2 version on the program's first line.
+            let output = "ffprobe version n8.1.2 Copyright (c) 2007-2026 the FFmpeg developers\n\
+                built with Apple clang version 21.0.0 (clang-2100.3.34.2)\n\
+                configuration: --arch=arm64 --target-os=darwin --disable-network\n\
+                libavutil      60. 26.102 / 60. 26.102\n\
+                libavcodec     62. 28.102 / 62. 28.102\n";
+            for (name, code) in [("ffmpeg", 0), ("ffprobe", ffprobe_exit)] {
+                let program = root.join(name);
+                let output = output.replacen("ffprobe version", &format!("{name} version"), 1);
+                std::fs::write(
+                    &program,
+                    format!(
+                        "#!/bin/sh\n[ \"$1\" = -version ] || exit 64\ncat <<'VERSION'\n{output}VERSION\nexit {code}\n"
+                    ),
+                )
+                .unwrap();
+                std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            Self(root)
+        }
+
+        fn check(&self, expected_ffprobe: &str) -> serde_json::Value {
+            self.check_with_expected(Some(expected_ffprobe))
+        }
+
+        fn check_with_expected(&self, expected_ffprobe: Option<&str>) -> serde_json::Value {
+            let state = AppState::new();
+            let checks = check_engines_with_resolution(&state, || {
+                assert_eq!(state.0.lock().unwrap().pending_work, 1);
+                let status = |version: Option<&str>| EnginePackStatus {
+                    source: EnginePackSource::Resource,
+                    pack_version: Some("0.1.0-alpha.6".into()),
+                    integrity_status: IntegrityStatus::Valid,
+                    expected_version: version.map(str::to_owned),
+                    actual_version: None,
+                    diagnostic: None,
+                };
+                EngineResolution {
+                    paths: EnginePaths {
+                        ffmpeg: Some(self.0.join("ffmpeg")),
+                        ffprobe: Some(self.0.join("ffprobe")),
+                        ..Default::default()
+                    },
+                    statuses: BTreeMap::from([
+                        ("ffmpeg".into(), status(Some("8.1.2"))),
+                        ("ffprobe".into(), status(expected_ffprobe)),
+                    ]),
+                    pack_error: None,
+                }
+            });
+            assert_eq!(state.0.lock().unwrap().pending_work, 0);
+            checks
+                .into_iter()
+                .find(|check| check["name"] == "ffmpeg")
+                .unwrap()
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for VersionFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ffprobe_release_version_uses_adapter_instead_of_compiler_version() {
+        let check = VersionFixture::new(0).check("8.1.2");
+        assert_eq!(check["available"], true, "{check}");
+        assert_eq!(check["actual_version"], "8.1.2");
+        assert!(check["diagnostic"].is_null(), "{check}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ffprobe_mismatch_reports_companion_version_and_nonzero_exit_is_rejected() {
+        let check = VersionFixture::new(0).check("8.1.1");
+        assert_eq!(check["available"], false);
+        let diagnostic = check["diagnostic"].as_str().unwrap();
+        assert!(
+            diagnostic.contains("期望 8.1.1，实际 8.1.2"),
+            "{diagnostic}"
+        );
+        assert!(!diagnostic.contains("21.0.0"), "{diagnostic}");
+
+        let failed = VersionFixture::new(7).check("8.1.2");
+        assert_eq!(failed["available"], false);
+        assert!(failed["diagnostic"]
+            .as_str()
+            .unwrap()
+            .contains("启动检查失败"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ffprobe_missing_banner_is_unavailable_without_a_pinned_version() {
+        let fixture = VersionFixture::new(0);
+        std::fs::write(
+            fixture.0.join("ffprobe"),
+            "#!/bin/sh\nprintf 'built with Apple clang version 21.0.0\\n'\n",
+        )
+        .unwrap();
+        let check = fixture.check_with_expected(None);
+        assert_eq!(check["available"], false, "{check}");
+        assert!(check["diagnostic"]
+            .as_str()
+            .unwrap()
+            .contains("FFprobe 未报告可识别的版本"));
+    }
+
+    /// The startup/preflight body, including its pending-work receipt, against
+    /// an explicit frozen pack. Only version/help probes run; no Metal or training.
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[test]
+    #[ignore = "requires METORIGIN_TEST_ENGINE_PACK and METORIGIN_TEST_ENGINE_MANIFEST_SHA256"]
+    fn frozen_macos_engine_pack_passes_application_version_checks() {
+        let root = PathBuf::from(
+            std::env::var_os("METORIGIN_TEST_ENGINE_PACK")
+                .expect("set METORIGIN_TEST_ENGINE_PACK to the frozen engine pack"),
+        );
+        let expected_digest = std::env::var("METORIGIN_TEST_ENGINE_MANIFEST_SHA256")
+            .expect("set METORIGIN_TEST_ENGINE_MANIFEST_SHA256 to the selected manifest digest");
+        let manifest = splat_hardware::EnginePackManifest::load(&root).unwrap();
+        let hash_output = splat_process::probe_output_sync(
+            background_command("/usr/bin/shasum")
+                .args(["-a", "256"])
+                .arg(root.join("engine-manifest.json")),
+        )
+        .unwrap();
+        assert!(hash_output.status.success());
+        let digest = String::from_utf8(hash_output.stdout)
+            .unwrap()
+            .split_whitespace()
+            .next()
+            .unwrap()
+            .to_owned();
+        assert!(digest.eq_ignore_ascii_case(&expected_digest));
+        let state = AppState::new();
+        let checks = check_engines_with_resolution(&state, || {
+            assert_eq!(state.0.lock().unwrap().pending_work, 1);
+            let resolution = EngineLocator::resolve_detailed(EngineLocatorOptions {
+                resource_dir: Some(root.clone()),
+                mode: splat_hardware::EngineResolutionMode::Release,
+                ..Default::default()
+            });
+            assert!(
+                resolution.pack_error.is_none() && resolution.bundled_pack_is_valid(),
+                "frozen pack rejected: {:?}",
+                resolution.pack_error
+            );
+            resolution
+        });
+        assert_eq!(state.0.lock().unwrap().pending_work, 0);
+        assert_eq!(checks.len(), 3);
+        for name in ["ffmpeg", "colmap", "brush"] {
+            let check = checks.iter().find(|check| check["name"] == name).unwrap();
+            assert_eq!(check["available"], true, "{check}");
+            assert_eq!(check["source"], "resource");
+            assert_eq!(check["integrity_status"], "valid");
+            assert!(check["diagnostic"].is_null(), "{check}");
+            assert_eq!(
+                PathBuf::from(check["path"].as_str().unwrap()),
+                std::fs::canonicalize(root.join(&manifest.engines[name].executables[name]))
+                    .unwrap()
+            );
+        }
+        println!(
+            "{}",
+            serde_json::json!({
+                "engine_pack": root,
+                "manifest_sha256": digest,
+                "declared_file_count": manifest.engines.values().map(|engine| engine.files.len()).sum::<usize>(),
+                "mode": "release", "integrity_cache": false,
+                "application_version_checks": "passed", "pending_work_after": 0,
+                "engine_version_help_probes_executed": true, "gpu_or_training_executed": false,
+                "checks": checks,
+            })
+        );
+    }
+
+    #[test]
+    fn idle_sleep_setting_defaults_off_for_new_and_legacy_settings() {
+        assert!(!AppSettings::default().prevent_idle_sleep);
+        let legacy: AppSettings = serde_json::from_str(r#"{"create_and_start":true}"#).unwrap();
+        assert!(!legacy.prevent_idle_sleep);
+        assert!(legacy.create_and_start);
+        assert!(serde_json::from_str::<AppSettings>(r#"{"prevent_idle_sleep":"true"}"#).is_err());
+    }
+
+    #[test]
+    fn idle_sleep_opt_in_round_trips_through_local_settings_file() {
+        let dir = std::env::temp_dir().join(format!("settings-sleep-{}", uuid::Uuid::now_v7()));
+        let path = dir.join("settings.json");
+        assert!(!read_settings_at(&path).unwrap().prevent_idle_sleep);
+        let mut settings = AppSettings {
+            prevent_idle_sleep: true,
+            ..Default::default()
+        };
+        write_settings_at(&path, &settings).unwrap();
+        assert!(read_settings_at(&path).unwrap().prevent_idle_sleep);
+        settings.prevent_idle_sleep = false;
+        write_settings_at(&path, &settings).unwrap();
+        assert!(!read_settings_at(&path).unwrap().prevent_idle_sleep);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn disk_metrics_default_to_the_application_directory() {
         let executable = std::env::current_exe().unwrap();
@@ -858,6 +1153,103 @@ mod tests {
         let (path, available) = collect_disk_metrics(Some(&missing));
         assert_eq!(path.as_deref(), missing.to_str());
         assert_eq!(available, None);
+    }
+
+    #[test]
+    fn diagnostic_system_metrics_redact_paths_and_secrets_without_changing_observations() {
+        let project_root = Path::new("/Users/DiagnosticUser/projects/private-project");
+        let engine_root = Path::new("/Users/DiagnosticUser/engines/private-pack");
+        let home = Path::new("/Users/DiagnosticUser");
+        let redact =
+            |content: String| redact_text(content, project_root, Some(engine_root), Some(home));
+        let metrics = ResourceMetrics {
+            timestamp: "2026-10-28T18:16:26Z".into(),
+            operating_system: "macOS 27.0.1".into(),
+            cpu_name: Some("Apple M1 Pro".into()),
+            cpu_usage_percent: Some(21.5),
+            memory_total_bytes: 32 * 1024 * 1024 * 1024,
+            memory_used_bytes: 18 * 1024 * 1024 * 1024,
+            project_disk_available_bytes: None,
+            disk_path: Some(project_root.to_string_lossy().into_owned()),
+            gpu: Some(GpuMetrics {
+                name: "Apple M1 Pro".into(),
+                driver_version: None,
+                memory_total_bytes: None,
+                memory_used_bytes: None,
+                utilization_percent: None,
+                temperature_celsius: None,
+            }),
+            memory: resources::MemoryObservation {
+                kind: "unified",
+                available_bytes: Some(12 * 1024 * 1024 * 1024),
+                available_source: Some("mach_host_statistics64_free_plus_inactive"),
+                available_is_estimate: true,
+                free_bytes: Some(4 * 1024 * 1024 * 1024),
+                inactive_bytes: Some(8 * 1024 * 1024 * 1024),
+                compressed_bytes: None,
+                pressure: Some(resources::MemoryPressure::Normal),
+                pressure_source: Some("kern.memorystatus_vm_pressure_level"),
+                swap_total_bytes: Some(2 * 1024 * 1024 * 1024),
+                swap_used_bytes: Some(0),
+            },
+            processes: vec![resources::ProcessMemory {
+                pid: 287,
+                role: "application",
+                resident_bytes: 175_898_624,
+            }],
+            runtime: Some(resources::RuntimeResourceSummary {
+                requested_preset: Some("fast".into()),
+                colmap_backend: "CPU".into(),
+                brush_backend: "Metal".into(),
+                device_name: Some("Apple M1 Pro".into()),
+                training_budget_bytes: Some(16 * 1024 * 1024 * 1024),
+                recommended_working_set_bytes: None,
+                effective_training: splat_domain::runtime::EffectiveTraining {
+                    iterations: 3_000,
+                    sh_degree: 0,
+                    resolution: Some(1_280),
+                    image_cache_budget_bytes: Some(1024 * 1024 * 1024),
+                    max_splats: Some(1_500_000),
+                    threads: 6,
+                    lod_levels: Some(0),
+                },
+            }),
+            preview_policy: resources::PreviewResourcePolicy {
+                action: resources::PreviewAction::Allow,
+                reason: None,
+                memory_pressure: Some(resources::MemoryPressure::Normal),
+                poll_interval_ms: 2_000,
+                max_snapshot_bytes: 1024 * 1024 * 1024,
+            },
+            warnings: vec![format!(
+                "Read {} with {} using {}/settings token=SYSTEM_DIAGNOSTIC_SECRET",
+                project_root.display(),
+                engine_root.display(),
+                home.display(),
+            )],
+        };
+
+        // Exercise the same ResourceMetrics serialization used by the ZIP entry.
+        let content = serialize_diagnostic_system_metrics(&metrics, &redact);
+        let actual: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert_eq!(actual["disk_path"], "[REDACTED_PATH]");
+        for canary in [
+            "DiagnosticUser",
+            "private-project",
+            "private-pack",
+            "SYSTEM_DIAGNOSTIC_SECRET",
+        ] {
+            assert!(!content.contains(canary), "system.json leaked {canary}");
+        }
+        let mut expected = serde_json::to_value(&metrics).unwrap();
+        expected["disk_path"] = serde_json::json!("[REDACTED_PATH]");
+        expected["warnings"] = serde_json::json!([
+            "Read <PROJECT_ROOT> with <ENGINE_ROOT> using <USER_HOME>/settings token=[REDACTED]"
+        ]);
+        assert_eq!(
+            actual, expected,
+            "non-sensitive observations must be preserved"
+        );
     }
 
     #[test]

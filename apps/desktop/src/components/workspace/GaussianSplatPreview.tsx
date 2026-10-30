@@ -1,3 +1,5 @@
+import { Button } from "@/components/ui/button";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { localizeMessage, t, getLocale } from "../../i18n";
 import { useEffect, useRef, useState } from "react";
 import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
@@ -5,7 +7,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { ArrowsOut, ArrowClockwise, Eye, GridFour, SpinnerGap } from "../primitives/icons";
 import { desktopApi } from "../../services/desktop";
-import type { GaussianCamera, GaussianPreviewSource, LivePreviewMode } from "../../types";
+import type { GaussianCamera, GaussianPreviewSource, LivePreviewMode, PreviewResourcePolicy } from "../../types";
+import { canUseCaptureCamera, getCaptureOrientation, sampleFramingBounds } from "./gaussianFraming";
 
 interface Viewer {
   scene: THREE.Scene;
@@ -27,24 +30,6 @@ interface Props {
   running: boolean;
 }
 
-// Ignore a small tail of distant floaters when framing the subject. This only
-// affects the initial camera, never removes splats from rendering.
-function robustBounds(mesh: SplatMesh): THREE.Box3 {
-  const axes: number[][] = [[], [], []];
-  const stride = Math.max(1, Math.floor(mesh.numSplats / 10_000));
-  mesh.forEachSplat((index, center, _scales, _rotation, opacity) => {
-    if (index % stride !== 0 || opacity < 0.05) return;
-    if ([center.x, center.y, center.z].every(Number.isFinite)) {
-      axes[0].push(center.x); axes[1].push(center.y); axes[2].push(center.z);
-    }
-  });
-  if (axes[0].length < 10) return mesh.getBoundingBox();
-  axes.forEach((axis) => axis.sort((a, b) => a - b));
-  const low = axes.map((axis) => axis[Math.floor((axis.length - 1) * 0.02)]);
-  const high = axes.map((axis) => axis[Math.ceil((axis.length - 1) * 0.98)]);
-  return new THREE.Box3(new THREE.Vector3(...low), new THREE.Vector3(...high));
-}
-
 export function GaussianSplatPreview({ projectId, projectPath, relativePath, live, running }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Viewer | null>(null);
@@ -59,12 +44,14 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
   const [liveSessionKnown, setLiveSessionKnown] = useState(false);
   const [liveStreamRunning, setLiveStreamRunning] = useState(false);
   const [hasCurrentLiveFrame, setHasCurrentLiveFrame] = useState(false);
+  const [resourceReason, setResourceReason] = useState<string | null>(null);
+  const [resourceAction, setResourceAction] = useState<"allow" | "pause" | "release">("allow");
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    let renderer: THREE.WebGLRenderer;
+    let renderer: THREE.WebGLRenderer | null = null;
     let spark: SparkRenderer;
     try {
       renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
@@ -74,6 +61,7 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
       // Brush sorts projected splats by depth. Keep full SH and full model resolution.
       spark = new SparkRenderer({ renderer, sortRadial: false, enableLod: false, accumExtSplats: true, maxStdDev: 3, preBlurAmount: 0.3, blurAmount: 0 });
     } catch (cause) {
+      renderer?.dispose();
       setError(t("无法启动高斯渲染：{0}", String(cause)));
       setLoading(false);
       return;
@@ -91,8 +79,13 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
     const viewer: Viewer = { scene, camera, controls, spark, mesh: null, grid, sourceKey: null, initialCamera: null, fit: () => {} };
     viewer.fit = (overview = false) => {
       if (!viewer.mesh) return;
-      const bounds = robustBounds(viewer.mesh);
+      const framing = sampleFramingBounds(viewer.mesh);
+      const { bounds } = framing;
       if (bounds.isEmpty()) return;
+      const orientation = !overview ? getCaptureOrientation(viewer.initialCamera) : null;
+      const pose = !overview && viewer.initialCamera && canUseCaptureCamera(viewer.initialCamera, framing, camera.aspect)
+        ? viewer.initialCamera : null;
+      camera.fov = pose?.fov_y_degrees ?? 52;
       const center = bounds.getCenter(new THREE.Vector3());
       const radius = Math.max(bounds.getSize(new THREE.Vector3()).length() / 2, 0.01);
       const halfFov = Math.min(THREE.MathUtils.degToRad(camera.fov / 2), Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect));
@@ -102,15 +95,15 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
       camera.far = Math.max(radius * 1000, 100);
       camera.updateProjectionMatrix();
       controls.target.copy(center);
-      const pose = viewer.initialCamera;
-      if (pose && !overview) {
+      if (pose && orientation) {
         camera.position.fromArray(pose.position);
-        camera.up.fromArray(pose.up).normalize();
-        camera.fov = pose.fov_y_degrees;
-        camera.updateProjectionMatrix();
-        const direction = new THREE.Vector3().fromArray(pose.forward).normalize();
-        const depth = Math.max(center.clone().sub(camera.position).dot(direction), radius * 0.25);
-        controls.target.copy(camera.position).addScaledVector(direction, depth);
+        camera.up.copy(orientation.up);
+        const depth = Math.max(center.clone().sub(camera.position).dot(orientation.forward), radius * 0.25);
+        controls.target.copy(camera.position).addScaledVector(orientation.forward, depth);
+      } else if (orientation) {
+        // Reframe the current geometry from the original viewing direction.
+        camera.position.copy(center).addScaledVector(orientation.forward, -distance);
+        camera.up.copy(orientation.up);
       } else {
         camera.up.set(0, 1, 0);
       }
@@ -180,22 +173,62 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
     let sessionId: string | null = null;
     let revision = 0;
     let busy = false;
+    let resourceInterval = 500;
+    let pressureTimer: ReturnType<typeof setTimeout> | undefined;
+    let currentResourceAction: PreviewResourcePolicy["action"] = "allow";
+    let resourceEpoch = 0;
+    let needsReload = false;
+    const acceptPolicy = (policy: PreviewResourcePolicy | undefined, allowRecovery: boolean) => {
+      if (!policy) return;
+      const severity = { allow: 0, pause: 1, release: 2 };
+      if (!allowRecovery && severity[policy.action] < severity[currentResourceAction]) return;
+      currentResourceAction = policy.action;
+      resourceInterval = policy.poll_interval_ms;
+      setResourceAction(policy.action); setResourceReason(policy.reason);
+      if (policy.action !== "allow") resourceEpoch += 1;
+      if (policy.action === "release") {
+        const viewer = viewerRef.current;
+        if (viewer?.mesh) { viewer.scene.remove(viewer.mesh); viewer.mesh.dispose(); viewer.mesh = null; viewer.sourceKey = null; }
+        setDisplayed(null); setHasCurrentLiveFrame(false); setLastUpdated(null);
+        revision = 0;
+        needsReload = true;
+      }
+    };
+    // Independent from the serialized frame loop: pressure can arrive while
+    // IPC is reading bytes or a new mesh is initializing on the GPU.
+    const watchPressure = async () => {
+      try {
+        const policy = await desktopApi.getPreviewResourcePolicy();
+        if (disposed) return;
+        const recovered = currentResourceAction !== "allow" && policy.action === "allow";
+        acceptPolicy(policy, true);
+        if ((recovered || (!live && policy.action !== "allow")) && !busy) {
+          if (timer) clearTimeout(timer);
+          void tick();
+        }
+        if (policy.action !== "allow" && live) {
+          await desktopApi.pollLivePreview(projectId, projectPath, "off", revision, sessionId);
+        }
+      } catch { /* Unknown observations retain the last safe policy. */ }
+      finally { if (!disposed) pressureTimer = setTimeout(() => void watchPressure(), 1000); }
+    };
 
     const apply = async (source: GaussianPreviewSource) => {
       const viewer = viewerRef.current;
-      if (!viewer || disposed) return;
+      if (!viewer || disposed || currentResourceAction !== "allow") return false;
+      const epoch = resourceEpoch;
       const sourceKey = `${source.relative_path}:${source.revision}`;
-      if (viewer.sourceKey === sourceKey) { setError(null); return; }
+      if (viewer.sourceKey === sourceKey) { setError(null); return true; }
       setLoading(true);
       const [bytes, initialCamera] = await Promise.all([
         desktopApi.readGaussianPly(projectId, projectPath, source),
         viewer.mesh ? Promise.resolve(viewer.initialCamera) : desktopApi.getGaussianCamera(projectId, projectPath).catch(() => null),
       ]);
-      if (disposed || viewerRef.current !== viewer) return;
+      if (disposed || viewerRef.current !== viewer || currentResourceAction !== "allow" || resourceEpoch !== epoch) return false;
       const mesh = new SplatMesh({ fileBytes: bytes, fileName: "scene.ply", extSplats: true, lod: false, enableLod: false });
       try {
         await mesh.initialized;
-        if (disposed || viewerRef.current !== viewer) { mesh.dispose(); return; }
+        if (disposed || viewerRef.current !== viewer || currentResourceAction !== "allow" || resourceEpoch !== epoch) { mesh.dispose(); return false; }
         if (mesh.numSplats !== source.vertex_count) throw new Error(t("高斯模型读取不完整。"));
         const previous = viewer.mesh;
         viewer.initialCamera = initialCamera;
@@ -207,6 +240,8 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
         setDisplayed(source);
         setLastUpdated(Date.now());
         setError(null);
+        needsReload = false;
+        return true;
       } catch (cause) {
         mesh.dispose();
         throw cause;
@@ -218,49 +253,67 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
       busy = true;
       try {
         if (live) {
-          const effectiveMode = document.hidden || !running ? "off" : mode;
+          const effectiveMode = document.hidden || !running || currentResourceAction !== "allow" ? "off" : mode;
           const status = await desktopApi.pollLivePreview(projectId, projectPath, effectiveMode, revision, sessionId);
           if (disposed) return;
+          acceptPolicy(status.resource_policy, false);
           setLiveAvailable(status.available);
           setLiveSessionKnown(status.session_id !== null);
           setLiveStreamRunning(status.running);
           if (sessionId !== status.session_id) { sessionId = status.session_id; revision = 0; setHasCurrentLiveFrame(false); }
-          if (!document.hidden && (mode !== "off" || !viewerRef.current?.mesh)) {
-            if (status.frame) {
-              await apply(status.frame);
-              if (!disposed) setHasCurrentLiveFrame(true);
-              // Acknowledge only after decoding and installing the model have succeeded.
-              revision = status.revision;
-            } else if (relativePath) {
+          if (currentResourceAction === "allow" && !document.hidden && (mode !== "off" || !viewerRef.current?.mesh)) {
+            if (!running && relativePath) {
+              await apply(await desktopApi.getGaussianPreview(projectId, projectPath, relativePath));
+              if (!disposed) setHasCurrentLiveFrame(false);
+            } else if (status.frame) {
+              if (await apply(status.frame)) {
+                if (!disposed) setHasCurrentLiveFrame(true);
+                // ACK only a model installed before any intervening pressure event.
+                revision = status.revision;
+              }
+            } else if (relativePath && revision === 0) {
               await apply(await desktopApi.getGaussianPreview(projectId, projectPath, relativePath));
             }
           }
         } else if (!document.hidden) {
+          // Metadata, file decoding and GPU initialization can all take time.
+          // Keep the installed model visible, but label it as the previous source
+          // until the requested static model has actually been installed.
+          setLoading(true);
           await apply(await desktopApi.getGaussianPreview(projectId, projectPath, relativePath));
         }
       } catch (cause) {
-        if (!disposed) setError(cause instanceof Error ? cause.message : String(cause));
+        if (!disposed && currentResourceAction === "allow") setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
         busy = false;
         if (!disposed) {
           setLoading(false);
-          if (live || running) timer = setTimeout(() => void tick(), document.hidden ? 4000 : mode === "low" ? 1500 : 500);
+          if (live || running || needsReload) timer = setTimeout(() => void tick(), document.hidden ? Math.max(4000, resourceInterval) : Math.max(resourceInterval, mode === "low" ? 1500 : 500));
         }
       }
     };
     const onVisibility = () => { if (timer) clearTimeout(timer); void tick(); };
     document.addEventListener("visibilitychange", onVisibility);
     void tick();
+    void watchPressure();
     return () => {
       disposed = true;
       if (timer) clearTimeout(timer);
+      if (pressureTimer) clearTimeout(pressureTimer);
       document.removeEventListener("visibilitychange", onVisibility);
       // Requests also expire after 10 seconds if the window or process disappears.
       if (live) void desktopApi.pollLivePreview(projectId, projectPath, "off", revision, sessionId).catch(() => {});
     };
   }, [ready, projectId, projectPath, relativePath, live, running, mode, retry]);
 
-  const statusText = !live ? t("高斯渲染")
+  const previousSourceShown = !live && displayed !== null
+    && displayed.relative_path !== (relativePath?.replaceAll("\\", "/") ?? "output/scene.ply");
+  const staticStatus = previousSourceShown
+    ? loading ? t("正在加载所选模型 · 暂时显示上一帧") : t("所选模型尚未显示 · 保留上一帧")
+    : loading ? t("正在加载高斯模型") : t("高斯渲染");
+  const statusText = resourceAction === "release" ? running ? t("内存不足 · 已释放预览 · 训练继续") : t("内存不足 · 预览已释放")
+    : resourceAction === "pause" ? !running ? t("内存压力升高 · 预览暂停") : resourceReason === "snapshot_budget" ? t("预览超出内存预算 · 训练继续") : resourceReason === "low_available_memory" ? t("内存余量不足 · 预览暂停 · 训练继续") : t("内存压力升高 · 预览暂停 · 训练继续")
+    : !live ? staticStatus
     : !running ? t("训练未运行 · 保留最近画面")
       : mode === "off" ? t("预览已暂停 · 训练继续")
         : !liveSessionKnown ? t("等待训练预览")
@@ -272,15 +325,15 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
     <div className="preview-toolbar gaussian-toolbar">
       <span className="gaussian-preview-label"><Eye size={15} />{displayed ? t("{0} 高斯", displayed.vertex_count.toLocaleString(getLocale())) : t("高斯模型")}<small>{statusText}</small></span>
       {displayed?.iteration != null && <span className="gaussian-iteration">{displayed.iteration.toLocaleString(getLocale())} step</span>}
-      {live && <select aria-label={t("训练预览刷新")} value={mode} onChange={(event) => setMode(event.target.value as LivePreviewMode)}><option value="live">{t("实时")}</option><option value="low">{t("低频")}</option><option value="off">{t("暂停预览")}</option></select>}
-      <button className="icon-button" type="button" onClick={() => viewerRef.current?.fit()} aria-label={t("重置高斯视角")} title={t("重置视角")}><ArrowsOut size={16} /></button>
-      <button className="icon-button" type="button" onClick={() => viewerRef.current?.fit(true)} aria-label={t("查看模型整体")} title={t("查看模型整体")}><Eye size={16} /></button>
-      <button className={`icon-button ${gridVisible ? "is-active" : ""}`} type="button" onClick={() => setGridVisible((value) => !value)} aria-label={t("切换高斯地面网格")} title={t("切换地面网格")}><GridFour size={16} /></button>
+      {live && <NativeSelect aria-label={t("训练预览刷新")} value={mode} onChange={(event) => setMode(event.target.value as LivePreviewMode)}><NativeSelectOption value="live">{t("实时")}</NativeSelectOption><NativeSelectOption value="low">{t("低频")}</NativeSelectOption><NativeSelectOption value="off">{t("暂停预览")}</NativeSelectOption></NativeSelect>}
+      <Button variant="ghost" size="icon-sm"  type="button" onClick={() => viewerRef.current?.fit()} aria-label={t("重置高斯视角")} title={t("重置视角")}><ArrowsOut size={16} /></Button>
+      <Button variant="ghost" size="icon-sm"  type="button" onClick={() => viewerRef.current?.fit(true)} aria-label={t("查看模型整体")} title={t("查看模型整体")}><Eye size={16} /></Button>
+      <Button variant="ghost" size="icon-sm" aria-pressed={gridVisible} className={gridVisible ? "bg-white/10 text-white" : "text-slate-300"} type="button" onClick={() => setGridVisible((value) => !value)} aria-label={t("切换高斯地面网格")} title={t("切换地面网格")}><GridFour size={16} /></Button>
     </div>
     <div className="gaussian-canvas-wrapper">
       <div className="point-cloud-canvas" ref={hostRef} tabIndex={0} role="application" aria-label={t("三维高斯预览。拖动旋转，滚轮缩放，右键平移，R 重置视角。")} />
       {!displayed && <div className="gaussian-empty"><SpinnerGap size={30} className={loading || (live && running) ? "spin" : ""} /><strong>{loading ? t("正在加载高斯模型") : live ? t("等待训练模型") : t("暂无可显示模型")}</strong><span>{live ? t("模型准备好后会自动显示，可在训练过程中旋转和缩放。") : t("读取完整高斯参数后显示重建场景。")}</span></div>}
-      {error && <div className="gaussian-error" role="alert"><span>{localizeMessage(error)}{displayed ? t(" 已保留上一帧。") : ""}</span><button type="button" className="button button-secondary" onClick={() => setRetry((value) => value + 1)}><ArrowClockwise size={15} />{t("重试")}</button></div>}
+      {error && <div className="gaussian-error" role="alert"><span>{localizeMessage(error)}{displayed ? t(" 已保留上一帧。") : ""}</span><Button variant="outline" type="button" onClick={() => setRetry((value) => value + 1)}><ArrowClockwise size={15} />{t("重试")}</Button></div>}
       {loading && displayed && <div className="gaussian-updating"><SpinnerGap size={13} className="spin" />{t("更新模型")}</div>}
       {lastUpdated && displayed && <span className="gaussian-updated">{new Date(lastUpdated).toLocaleTimeString(getLocale())} {t("更新")}</span>}
     </div>

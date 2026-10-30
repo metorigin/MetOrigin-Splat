@@ -15,6 +15,8 @@ use tauri::{Emitter, Manager};
 
 use crate::state::{ActiveProjectCreation, AppState, ProjectInfo};
 
+mod destination;
+
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 struct PresetEstimate {
@@ -95,6 +97,7 @@ pub struct ProjectPreflight {
     recommended_preset: String,
     warnings: Vec<String>,
     blockers: Vec<String>,
+    effective_training: Option<splat_domain::runtime::EffectiveTraining>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -164,6 +167,8 @@ pub async fn analyze_media(
     path: String,
     app_handle: tauri::AppHandle,
 ) -> Result<MediaAnalysis, String> {
+    let _pending_work =
+        crate::lifecycle::PendingWork::begin(app_handle.state::<AppState>().inner())?;
     let path = PathBuf::from(&path);
 
     if !path.exists() {
@@ -199,13 +204,21 @@ pub async fn analyze_media(
             });
         };
 
-        match splat_engine_ffmpeg::probe::probe_video_with_async(
-            &ffprobe,
-            &path,
-            tokio_util::sync::CancellationToken::new(),
-        )
+        let probe_pending =
+            crate::lifecycle::PendingWork::begin(app_handle.state::<AppState>().inner())?;
+        let probe_path = path.clone();
+        let probe = tokio::spawn(async move {
+            let _pending = probe_pending;
+            splat_engine_ffmpeg::probe::probe_video_with_async(
+                &ffprobe,
+                &probe_path,
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+        })
         .await
-        {
+        .map_err(|_| "素材检查后台任务异常终止，请重试。".to_string())?;
+        match probe {
             Ok(meta) => Ok(MediaAnalysis {
                 source_kind: "video".into(),
                 source_path: path.to_string_lossy().to_string(),
@@ -338,6 +351,7 @@ pub async fn preflight_project(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<ProjectPreflight, String> {
+    let _pending_work = crate::lifecycle::PendingWork::begin(state.inner())?;
     build_project_preflight(request, &app_handle, state.inner()).await
 }
 
@@ -352,14 +366,15 @@ async fn build_project_preflight(
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(default_projects_dir);
-    let existing_root = existing_ancestor(&root);
-    let available_disk_bytes = existing_root
-        .as_deref()
+    let destination_check = destination::check_project_destination(&root);
+    let available_disk_bytes = destination_check
+        .as_ref()
+        .ok()
         .and_then(|path| fs2::available_space(path).ok())
         .unwrap_or(0);
-    let include_ffmpeg = analysis.source_kind == "video";
+    let include_ffmpeg = analysis.source_kind == "video" || cfg!(target_os = "macos");
     let check_handle = app_handle.clone();
-    let engine_checks = tokio::task::spawn_blocking(move || {
+    let mut engine_checks = tokio::task::spawn_blocking(move || {
         let mut checks = crate::commands::system::check_engines_blocking(check_handle)
             .into_iter()
             .map(|value| {
@@ -377,7 +392,6 @@ async fn build_project_preflight(
             }
             .into();
         }
-        checks.push(check_nvidia_runtime());
         Ok::<_, String>(checks)
     })
     .await
@@ -386,6 +400,21 @@ async fn build_project_preflight(
         .preset_estimates
         .iter()
         .find(|preset| preset.id == request.preset);
+    let engine_paths = crate::commands::system::resolve_engine_paths(app_handle);
+    let runtime = crate::commands::runtime::check_training_runtime(app_handle, &engine_paths).await;
+    engine_checks.push(training_runtime_check(&runtime));
+    let frozen = if let (Ok(runtime), Some(selected)) = (&runtime, selected) {
+        crate::commands::runtime::execution_profile(
+            state,
+            engine_paths,
+            request.preset.clone(),
+            selected.target_long_edge,
+            runtime,
+        )
+        .await
+    } else {
+        Ok(None)
+    };
     let estimated_frames = selected.map(|preset| preset.estimated_frames).unwrap_or(0);
     let estimated_disk_bytes = selected
         .map(|preset| preset.estimated_disk_bytes)
@@ -394,6 +423,28 @@ async fn build_project_preflight(
         .saturating_add(5 * 1024 * 1024 * 1024);
     let mut blockers = analysis.blockers;
     let mut warnings = analysis.warnings;
+    let effective_training = match frozen {
+        Ok(Some(profile)) => {
+            let preview =
+                if profile.live_protocol == splat_domain::runtime::LiveProtocol::PlyRequestAckV1 {
+                    "支持实时预览"
+                } else {
+                    "使用检查点预览"
+                };
+            let training = profile.effective_training;
+            warnings.push(format!(
+                "本次 Mac 执行参数：{} 步，SH{}，训练长边 {} px，最多 {} 个高斯，图像缓存 {} MiB，{} 个加载线程；{preview}。",
+                training.iterations, training.sh_degree, training.resolution.unwrap_or(0),
+                training.max_splats.unwrap_or(0), training.image_cache_budget_bytes.unwrap_or(0) / (1024 * 1024), training.threads,
+            ));
+            Some(training)
+        }
+        Ok(None) => None,
+        Err(error) => {
+            blockers.push(error.user_message_zh());
+            None
+        }
+    };
     if analysis.source_kind == "images" {
         if let (Some(metadata), Some(preset)) = (&analysis.image_set_metadata, selected) {
             if metadata.image_count > preset.max_frames as usize {
@@ -407,8 +458,10 @@ async fn build_project_preflight(
     if selected.is_none() {
         blockers.push("所选质量预设无效，请重新选择后再试。".into());
     }
-    if !root.exists() && existing_root.is_none() {
-        blockers.push("无法定位项目目标目录所在磁盘。".into());
+    if let Err(error) = destination_check {
+        tracing::warn!(code = error.code(), path = %error.path.display(), source = %error.source,
+            "Project destination preflight failed");
+        blockers.push(error.user_message());
     }
     for engine in &engine_checks {
         if !engine.available {
@@ -440,6 +493,7 @@ async fn build_project_preflight(
         recommended_preset: "fast".into(),
         warnings,
         blockers,
+        effective_training,
     })
 }
 
@@ -453,6 +507,30 @@ fn disk_space_blocker(available_disk_bytes: u64, estimated_disk_bytes: u64) -> O
     ))
 }
 
+/// The blocking importer may outlive its awaiting IPC future. Keep its owner
+/// and pending-work slot until the worker itself exits, including panic unwind.
+struct CreationCleanup {
+    state: AppState,
+    id: String,
+}
+
+impl Drop for CreationCleanup {
+    fn drop(&mut self) {
+        let mut inner = self
+            .state
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if inner
+            .active_creation
+            .as_ref()
+            .is_some_and(|active| active.id == self.id)
+        {
+            inner.active_creation = None;
+        }
+    }
+}
+
 /// Create a new project.
 #[tauri::command]
 pub async fn create_project(
@@ -460,6 +538,7 @@ pub async fn create_project(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<CreateProjectResult, String> {
+    let _pending_work = crate::lifecycle::PendingWork::begin(state.inner())?;
     validate_project_name(&request.name)?;
     let app_state = state.inner().clone();
     let preflight = build_project_preflight(
@@ -481,11 +560,15 @@ pub async fn create_project(
     let project = Project::new(request.name.trim());
     let creation_id = project.id.to_string();
     let cancel = Arc::new(AtomicBool::new(false));
+    let worker_pending = crate::lifecycle::PendingWork::begin(&app_state)?;
     {
         let mut inner = app_state
             .0
             .lock()
             .map_err(|_| "项目创建状态不可用，请重启应用后重试。".to_string())?;
+        if inner.shutting_down {
+            return Err("应用正在安全退出，请等待当前操作完成。".into());
+        }
         if inner.active_creation.is_some() {
             return Err("另一个项目正在创建，请等待完成或先取消。".into());
         }
@@ -497,22 +580,17 @@ pub async fn create_project(
 
     let worker_request = request.clone();
     let worker_handle = app_handle.clone();
+    let worker_cleanup = CreationCleanup {
+        state: app_state.clone(),
+        id: creation_id,
+    };
     let result = tokio::task::spawn_blocking(move || {
+        let _pending_work = worker_pending;
+        let _cleanup = worker_cleanup;
         create_project_transaction(project, worker_request, worker_handle, cancel)
     })
     .await
     .map_err(|_| "项目创建后台任务异常终止，请重试。".to_string())?;
-
-    if let Ok(mut inner) = app_state.0.lock() {
-        if inner
-            .active_creation
-            .as_ref()
-            .map(|active| active.id == creation_id)
-            .unwrap_or(false)
-        {
-            inner.active_creation = None;
-        }
-    }
 
     let (project, project_dir) = result?;
     let info = project_info(&project, &project_dir);
@@ -546,16 +624,19 @@ pub fn open_project(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
+    let _pending = crate::lifecycle::PendingWork::begin(state.inner())?;
     let project_dir = PathBuf::from(&path);
     let default_dir = dirs_next::document_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("MetOrigin Projects");
     let manager = ProjectManager::new(default_dir);
-    let mut project = manager
-        .open_project(&project_dir)
-        .map_err(|e| e.user_message_zh())?;
+    // The current application's own live project may be viewed, but never
+    // recovered or supplemented while the worker owns its state. Every other
+    // open acquires the same admission lock used by start_pipeline.
+    let (mut project, project_lock) =
+        super::recovery::open_project_for_view(&manager, state.inner(), &project_dir)?;
 
-    if project.source.is_none() {
+    if project_lock.is_some() && project.source.is_none() {
         if let Some(recovered_source) = detect_copied_source(&project_dir.join("source")) {
             project.source = Some(recovered_source);
             project.touch();
@@ -1061,38 +1142,40 @@ fn image_set_metadata(scan: &splat_pipeline::image_input::ImageScan) -> ImageSet
     }
 }
 
-fn existing_ancestor(path: &Path) -> Option<PathBuf> {
-    let mut current = path.to_path_buf();
-    loop {
-        if current.exists() {
-            return Some(current);
-        }
-        if !current.pop() {
-            return None;
-        }
-    }
-}
-
-fn check_nvidia_runtime() -> EngineCheck {
-    match splat_engine_brush::require_nvidia_smi() {
+fn training_runtime_check(
+    runtime: &splat_domain::AppResult<splat_engine_brush::TrainingRuntimeEvidence>,
+) -> EngineCheck {
+    let name = if cfg!(target_os = "macos") {
+        "Metal GPU / 计算验证"
+    } else {
+        "NVIDIA GPU / 驱动"
+    };
+    match runtime {
         Ok(info) => EngineCheck {
-            name: "NVIDIA GPU / 驱动".into(),
+            name: name.into(),
             available: true,
-            path: Some("nvidia-smi".into()),
+            path: None,
             expected_version: None,
-            actual_version: Some(info.driver_version.clone()),
+            actual_version: match info {
+                splat_engine_brush::TrainingRuntimeEvidence::LegacyNvidia(gpu) => {
+                    Some(gpu.driver_version.clone())
+                }
+                splat_engine_brush::TrainingRuntimeEvidence::Metal(brush) => {
+                    Some(brush.capabilities.identity.engine_version.clone())
+                }
+            },
             diagnostic: Some(info.summary()),
-            source: Some("system".into()),
+            source: Some("runtime_probe".into()),
             integrity_status: None,
         },
         Err(error) => EngineCheck {
-            name: "NVIDIA GPU / 驱动".into(),
+            name: name.into(),
             available: false,
-            path: Some("nvidia-smi".into()),
+            path: None,
             expected_version: None,
             actual_version: None,
             diagnostic: Some(error.user_message_zh()),
-            source: Some("system".into()),
+            source: Some("runtime_probe".into()),
             integrity_status: None,
         },
     }
@@ -1696,6 +1779,69 @@ fn refresh_recent_projects(projects: &mut [ProjectInfo]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn creation_worker_panic_releases_its_owner_and_pending_work() {
+        let state = AppState::new();
+        state.0.lock().unwrap().active_creation = Some(ActiveProjectCreation {
+            id: "panic-worker".into(),
+            cancel: Arc::new(AtomicBool::new(false)),
+        });
+        let pending = crate::lifecycle::PendingWork::begin(&state).unwrap();
+        let cleanup = CreationCleanup {
+            state: state.clone(),
+            id: "panic-worker".into(),
+        };
+        let result = tokio::task::spawn_blocking(move || {
+            let _pending = pending;
+            let _cleanup = cleanup;
+            panic!("simulated importer panic");
+        })
+        .await;
+        assert!(result.is_err());
+        let inner = state.0.lock().unwrap();
+        assert!(inner.active_creation.is_none());
+        assert_eq!(inner.pending_work, 0);
+    }
+
+    #[tokio::test]
+    async fn abandoning_import_ipc_does_not_release_a_running_worker() {
+        let state = AppState::new();
+        state.0.lock().unwrap().active_creation = Some(ActiveProjectCreation {
+            id: "detached-worker".into(),
+            cancel: Arc::new(AtomicBool::new(false)),
+        });
+        let pending = crate::lifecycle::PendingWork::begin(&state).unwrap();
+        let cleanup = CreationCleanup {
+            state: state.clone(),
+            id: "detached-worker".into(),
+        };
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let caller = tokio::spawn(async move {
+            tokio::task::spawn_blocking(move || {
+                let _pending = pending;
+                let _cleanup = cleanup;
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            })
+            .await
+        });
+        started_rx.await.unwrap();
+        caller.abort();
+        assert!(caller.await.is_err());
+        assert!(state.0.lock().unwrap().active_creation.is_some());
+        assert_eq!(state.0.lock().unwrap().pending_work, 1);
+        release_tx.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while state.0.lock().unwrap().pending_work != 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(state.0.lock().unwrap().active_creation.is_none());
+    }
 
     fn temporary_test_root(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!(

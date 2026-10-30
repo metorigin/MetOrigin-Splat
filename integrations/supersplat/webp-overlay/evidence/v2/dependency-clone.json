@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "/bin/cp",
+    "-cR",
+    "target/macos-m4/webp-rebuild-20261028/sources/splat-transform/node_modules",
+    "target/macos-m4/webp-rebuild-20261028/sources/splat-transform-v2/node_modules"
+  ],
+  "exit_code": 0,
+  "stdout": "",
+  "stderr": "",
+  "reason": "Preserve archive-relative source-map paths; filesystem clone of the fixed original npm ci install, no additional dependency resolution."
+}

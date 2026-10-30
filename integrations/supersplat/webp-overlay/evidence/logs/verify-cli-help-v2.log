@@ -1,0 +1,128 @@
+splat-transform v3.4.2 (0cb47cd)
+Transform and Filter Gaussian Splats
+====================================
+
+USAGE
+  splat-transform [GLOBAL] input [ACTIONS]  ...  output [ACTIONS]
+
+  • Input files become the working set; ACTIONS are applied in order.
+  • The last file is the output; actions after it modify the final result.
+  • Use 'null' as output to discard file output.
+
+SUPPORTED INPUTS
+    .ply   .compressed.ply   .sog   .spz   meta.json   lod-meta.json   .ksplat   .splat   .mjs   .lcc   .lcc2
+
+    Input filenames may also be http(s):// URLs (downloaded on demand;
+    .mjs generators are local-only).
+
+SUPPORTED OUTPUTS
+    .ply   .compressed.ply   .sog   .spz   meta.json   lod-meta.json   .glb   .csv   .html   .voxel.json   .webp   null
+
+ACTIONS (executed in order; can be repeated)
+    -t, --translate        <x,y,z>          Translate Gaussians by (x, y, z)
+    -r, --rotate           <x,y,z>          Rotate Gaussians by Euler angles, in degrees
+    -s, --scale            <factor>         Uniformly scale Gaussians by factor
+    -H, --filter-harmonics <0|1|2|3>        Remove spherical harmonic bands > n
+    -N, --filter-nan                        Remove Gaussians with NaN values, most Inf values, or a zero-norm rotation
+    -B, --filter-box       <x,y,z,X,Y,Z>    Remove Gaussians outside box (min, max corners)
+    -S, --filter-sphere    <x,y,z,radius>   Remove Gaussians outside sphere
+    -V, --filter-value     <name,cmp,value> Keep Gaussians where <name> <cmp> <value>;
+                                              cmp ∈ {lt,lte,gt,gte,eq,neq}
+    -d, --decimate         <n|n%>           Simplify at a uniform rate everywhere (default).
+                                              Lower memory, and better at depth on uniformly-sized
+                                              Gaussians: uniform texture, single objects, snow.
+        --decimate-adaptive <n|n%>          Simplify, allocating removal by local error (adaptive).
+                                              Much better on mixed-scale content such as skies.
+                                              Either must be the final action, with a .ply output
+        --scratch-dir      <path>           Directory for decimation spill files (deep targets on huge
+                                              scenes). Default: the output file's directory
+    -F, --filter-floaters  [size,op,min]    Remove Gaussians not contributing to any solid voxel. Default: 0.05,0.1,0.004
+    -C, --filter-cluster   [res,op,min]     Keep only the connected cluster at --seed-pos. Default: 1.0,0.999,0.1
+    -p, --params           <key=val,...>    Pass parameters to .mjs generator script
+    -l, --tag-lod          <n>              Tag the Gaussians with LOD level n (n >= 0, or -1 for environment)
+        --stats            [text|json]      Print file info, per-column statistics and the fill/overdraw ratio to stdout. Default: text
+        --info             [text|json]      Print structural metadata (format, per-LOD counts, extra columns) to stdout. Default: text
+    -m, --morton-order                      Reorder Gaussians by Morton code (Z-order curve)
+
+GENERAL
+    -h, --help                              Show this help and exit
+    -v, --version                           Show version and exit
+    -q, --quiet                             Suppress non-error output
+        --verbose                           Show debug-level diagnostics
+        --memory                            Show peak memory in progress output
+        --tty                               Interactive bar rendering (--no-tty to disable)
+    -w, --overwrite                         Overwrite output file if it exists
+
+GPU (used by SOG compression and GPU voxelization: --filter-cluster, --filter-floaters, .voxel.json output)
+        --list-gpus                         List available GPU adapters and exit
+    -g, --gpu              <n|cpu>          Device for GPU operations: GPU adapter index | 'cpu'
+                                              ('cpu' disables GPU and is incompatible with GPU-only features)
+
+SOG COMPRESSION (.sog, meta.json, lod-meta.json, .html outputs)
+    -i, --sh-iterations    <n>              SH compression iterations (more=better). Default: 10
+        --max-workers      <n>              Worker threads for SOG encoding (0 = inline/serial). Default: 4
+
+SPZ OUTPUT (.spz)
+        --spz-version      <3|4>            The SPZ format version to write. Default: 4
+
+HTML VIEWER OUTPUT (.html)
+        --viewer-settings  <settings.json>  HTML viewer settings JSON file
+        --unbundled                         Generate unbundled HTML viewer with separate files
+
+LOD INPUT (lod-meta.json, .lcc, .lcc2)
+    -L, --select-lod       <n,n,...>        Comma-separated LOD levels to read from streamed SOG / LCC / LCC2 input
+
+LOD OUTPUT (lod-meta.json)
+        --lod-chunk-count  <n>              Approximate number of Gaussians per LOD chunk in K. Default: 512
+        --lod-chunk-extent <n>              Approximate size of an LOD chunk in world units (m). Default: 16
+        --lod-chunk-min    <n>              Gaussians in K below which a chunk is not split for extent. Default: 8
+        --lod-errors                        Render per-chunk LOD error tables (needs a GPU). Default: off
+
+VOXEL OUTPUT (.voxel.json)
+        --voxel-size       <n>              Voxel size for .voxel.json. Default: 0.05
+        --voxel-opacity    <n>              Voxel opacity threshold for .voxel.json. Default: 0.1
+        --voxel-external-fill [size]        Fill exterior voxels via boundary flood fill (interior scenes). Default: 1.6
+        --voxel-floor-fill [size]           Fill columns upward from bottom (exterior scenes). Default: 1.6
+        --voxel-carve [h,r]                 Carve navigable space using capsule flood fill from seed. Default: 1.6,0.2
+        --seed-pos         <x,y,z>          Seed position for voxel processing and --filter-cluster. Default: 0,0,0
+        --collision-mesh   [smooth|faces]   Generate collision mesh (.collision.glb). Default shape: smooth
+
+IMAGE OUTPUT (.webp) — lossless WebP rendered via GPU rasterizer
+        --projection       <pinhole|equirect>  Camera projection. Default: pinhole.
+                                            equirect = 360°×180° panorama from --camera-pos; --camera-fov must be omitted;
+                                            --resolution must be 2:1 (default 2048x1024).
+        --camera-pos       <x,y,z>          Camera position in world space. Default: 2,1,-2
+        --camera-target    <x,y,z>          Camera target point. Default: 0,0,0
+        --camera-up        <x,y,z>          World up vector. Default: 0,1,0
+        --camera-fov       <degrees>        Vertical field of view in degrees. Default: 60. Rejected with --projection equirect.
+        --resolution       <WxH>            Output resolution, e.g. 1920x1080. Default: 1280x720 (pinhole) or 2048x1024 (equirect)
+        --camera-near      <n>              Near clip distance. Default: 0.2 (matches reference 3DGS)
+        --background       <r,g,b[,a]>      Background color in [0,1]. Default: 0,0,0,1
+        --f-stop           <N>              Aperture as a photographic f-stop (e.g. 2.8, 5.6, 11). Enables defocus blur;
+                                            smaller = more blur. Pinhole only. Default: disabled (no defocus).
+        --focus-distance   <n>              Camera-space Z of the focus plane (world units). Default: distance to --camera-target.
+                                            Pinhole only; only meaningful with --f-stop.
+        --sensor-size      <n>              Vertical sensor height in world units. Gives --f-stop a physical meaning.
+                                            Default: 0.024 (35mm full-frame, world units = meters). Scale to your world:
+                                            world unit = decimeter → 0.24, world unit = millimeter → 24.
+        --camera-pos-end   <x,y,z>          End camera position. When set, enables camera motion blur: the renderer
+                                            averages sub-frames with the camera interpolated from --camera-pos (shutter open)
+                                            to --camera-pos-end (shutter close). Default: disabled (no motion blur).
+        --camera-target-end <x,y,z>         End camera target. Default: same as --camera-target. Only with --camera-pos-end.
+        --camera-up-end    <x,y,z>          End up vector. Default: same as --camera-up. Only with --camera-pos-end.
+        --shutter          <0..1>           Fraction of the start→end segment integrated, centered on the midpoint
+                                            (1.0 = full motion; 0.5 = 180° shutter). Default: 1. Only with --camera-pos-end.
+        --motion-samples   <n>              Sub-frames to accumulate for motion blur. Cost is N× a single render.
+                                            Default: 16. Only with --camera-pos-end.
+
+EXAMPLES
+    # Convert formats
+    splat-transform input.ply output.sog
+
+    # Merge files with transforms
+    splat-transform -w a.ply -r 0,90,0 b.ply -s 2 merged.sog
+
+    # Generate voxel collision data
+    splat-transform input.ply --filter-cluster output.voxel.json
+
+    More examples: https://github.com/playcanvas/splat-transform#examples

@@ -8,6 +8,7 @@
 pub mod adapter;
 pub mod database;
 pub mod diagnostics;
+pub mod execution;
 pub mod feature;
 pub mod mapper;
 pub mod matching;
@@ -23,6 +24,7 @@ pub use database::{
     CameraConsolidationResult, DatabaseCreator, DatabaseStats, MatchGraphStats,
 };
 pub use diagnostics::{ColmapDiagnosticReport, DiagnosticItem};
+pub use execution::ColmapExecutionSettings;
 pub use feature::{FeatureExtractionOptions, FeatureExtractor};
 pub use mapper::{read_registered_image_names, validate_model_image_dimensions, ColmapMapper};
 pub use matching::MatchingValidator;

@@ -6,6 +6,8 @@ A Windows desktop application that turns a video or a folder of photos into a 3D
 
 **Status: Alpha / v0.1.0.** The core workflow is implemented; Windows installers are for internal validation. There is no supported public binary release yet.
 
+Apple Silicon macOS support is under validation: CPU COLMAP and Metal Brush have completed real photo/video pipelines on an M1 Pro with 32 GB memory, and native viewing/editing has been exercised. macOS 15, 16 GB clean-machine acceptance and Windows regression remain open. See the [implementation and acceptance plan](docs/macos-gaussian-generation-plan.zh-CN.md) and [macOS engine packaging](packaging/macos-arm64/README.md).
+
 ## What you can do
 
 - Create projects from MP4, MOV, AVI, MKV, or folders containing JPG, JPEG and PNG images.
@@ -24,14 +26,18 @@ Media processing runs on your computer. Engine preparation and dependency instal
 Use Windows 10/11 x64 with:
 
 - Rust **1.97.0**, including `x86_64-pc-windows-msvc`
-- Node.js **22** and pnpm **11.12.0**
+- Node.js **26** and pnpm **11.12.0**
 - Visual Studio Build Tools: **Desktop development with C++**, plus the Windows SDK
 - Microsoft Edge WebView2 Runtime
 - A compatible NVIDIA GPU for the currently validated reconstruction path
 
-From the repository root:
+The repository standardizes on Node.js 26. CI reads its Node version from `.node-version`; `.nvmrc` provides the same version for nvm. If you use nvm, optionally select it with `nvm install 26` and `nvm use 26`; nvm is not required when Node.js 26 is already installed.
+
+From the repository root, verify the versions in the same terminal that will start Tauri and Vite (`node -v` must report `v26.x`, and `pnpm -v` must report `11.12.0`):
 
 ```powershell
+node -v
+pnpm -v
 pnpm install --frozen-lockfile
 pnpm tauri dev
 ```

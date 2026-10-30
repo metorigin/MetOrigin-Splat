@@ -1,0 +1,64 @@
+{
+  "status": "passed-with-known-limitations",
+  "direct_cjs_baseline_comparison": [
+    {
+      "label": "candidate",
+      "status": "failed",
+      "message": "playcanvas.Vec3 is not a constructor"
+    },
+    {
+      "label": "baseline",
+      "status": "failed",
+      "message": "playcanvas.Vec3 is not a constructor"
+    }
+  ],
+  "cjs_test_adapter": "Actual PlayCanvas ESM exports supplied as external to CJS bundle; ordinary Node require fails identically in baseline and candidate.",
+  "results": [
+    {
+      "entry": "esm",
+      "exports_count": 60,
+      "codec_roundtrip": true,
+      "real_worker_queue_roundtrip": true
+    },
+    {
+      "entry": "cjs",
+      "exports_count": 60,
+      "codec_roundtrip": true,
+      "real_worker_queue_roundtrip": true
+    }
+  ],
+  "direct_built_worker": true,
+  "source_map_bindings": [
+    {
+      "entry": "index.mjs",
+      "source": "../lib/webp.mjs",
+      "glue_sha256": "f95547c1c361fa7d2540a03f204457f036af6d98600f0f96de578917e39f421d",
+      "codec_source_sha256": "c2a6f25923f3915131f743d397f499866b31154958d283b333214448c72f19dd",
+      "entry_sha256": "bbc9cba7d6a2829767371085e203ef3768102fa442c1066a2d33bd37f50b564b"
+    },
+    {
+      "entry": "index.cjs",
+      "source": "../lib/webp.mjs",
+      "glue_sha256": "f95547c1c361fa7d2540a03f204457f036af6d98600f0f96de578917e39f421d",
+      "codec_source_sha256": "c2a6f25923f3915131f743d397f499866b31154958d283b333214448c72f19dd",
+      "entry_sha256": "a066123a2f75c172437b880a743a4f906c8a7eb6d984273c7cd619c863dfeb7a"
+    },
+    {
+      "entry": "worker.mjs",
+      "source": "../lib/webp.mjs",
+      "glue_sha256": "f95547c1c361fa7d2540a03f204457f036af6d98600f0f96de578917e39f421d",
+      "codec_source_sha256": "c2a6f25923f3915131f743d397f499866b31154958d283b333214448c72f19dd",
+      "entry_sha256": "a3520388469bc02aad13864347c878c6820c2cbb82eab3e97b5e3cb22fcb7559"
+    },
+    {
+      "entry": "cli.mjs",
+      "source": "../lib/webp.mjs",
+      "glue_sha256": "f95547c1c361fa7d2540a03f204457f036af6d98600f0f96de578917e39f421d",
+      "codec_source_sha256": "c2a6f25923f3915131f743d397f499866b31154958d283b333214448c72f19dd",
+      "entry_sha256": "efc085fbd8faa54aeb11431b591af57ea940580fc08adfa6db88031c6d929fe7"
+    }
+  ],
+  "limitations": [
+    "Node runtime only; browser/native full-app acceptance remains separate."
+  ]
+}

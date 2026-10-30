@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifyCollectedSupersplatEvidence } from '../shared/supersplat-evidence.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const staging = resolve(root, process.argv[2] ?? 'target/distribution/windows-x64');
@@ -37,6 +38,7 @@ for (const item of index) {
 for (const item of payload) {
   assert.equal(sha256(child(staging, item.path)), item.sha256, `Payload hash mismatch: ${item.path}`);
 }
+const editorProof = await verifyCollectedSupersplatEvidence(root, licenses, bom, index, readiness);
 // Generated metadata must not expose machine-local paths or cached credential URLs.
 for (const name of ['SBOM.cdx.json', 'release-readiness.json', 'dependency-license-index.json', 'native-payload-inventory.json']) {
   const text = readFileSync(join(licenses, name), 'utf8');
@@ -54,4 +56,4 @@ if (schemaDirectory) {
   assert(validate(bom), JSON.stringify(validate.errors, null, 2));
 }
 assert.throws(() => child(licenses, '../outside'), /Unsafe evidence path/);
-console.log(`Verified ${refs.size} SBOM references, ${index.length} license hashes and ${payload.length} native payload hashes${schemaDirectory ? ' against CycloneDX 1.6 schema' : ''}.`);
+console.log(`Verified ${refs.size} SBOM references, ${index.length} license hashes, ${payload.length} native payload hashes and ${editorProof.evidence_file_count} current editor proof records${schemaDirectory ? ' against CycloneDX 1.6 schema' : ''}.`);

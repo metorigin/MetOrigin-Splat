@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "target": "same pinned macOS arm64 toolchain; normal app consumption uses only fixed gzip payloads",
+  "source_inputs": [
+    {
+      "name": "libwebp",
+      "version": "1.6.0",
+      "repository": "https://github.com/webmproject/libwebp",
+      "commit": "4fa21912338357f89e4fd51cf2368325b59e9bd9",
+      "download_url": "https://codeload.github.com/webmproject/libwebp/tar.gz/4fa21912338357f89e4fd51cf2368325b59e9bd9",
+      "archive": {
+        "path": "downloads/libwebp-4fa21912338357f89e4fd51cf2368325b59e9bd9.tar.gz",
+        "size_bytes": 3834766,
+        "sha256": "923f3382a47a2af185c3240c954cf004428b237bd7317413a95146d01eb4b94b"
+      }
+    },
+    {
+      "name": "emsdk",
+      "version": "4.0.21",
+      "repository": "https://github.com/emscripten-core/emsdk",
+      "commit": "b2436aafa7351ee1b581f15841f1b45ed716a279",
+      "download_url": "https://codeload.github.com/emscripten-core/emsdk/tar.gz/b2436aafa7351ee1b581f15841f1b45ed716a279",
+      "archive": {
+        "path": "downloads/emsdk-b2436aafa7351ee1b581f15841f1b45ed716a279.tar.gz",
+        "size_bytes": 207827,
+        "sha256": "0279973682a9830976256cd5b28692c4ea7931f2a47baf2d0b3e22e31b6d3741"
+      }
+    },
+    {
+      "name": "splat-transform",
+      "version": "3.4.2",
+      "repository": "https://github.com/playcanvas/splat-transform",
+      "commit": "0cb47cd81023cca117c20ce59a55ba584ee89177",
+      "download_url": "https://codeload.github.com/playcanvas/splat-transform/tar.gz/0cb47cd81023cca117c20ce59a55ba584ee89177",
+      "archive": {
+        "path": "downloads/splat-transform-0cb47cd81023cca117c20ce59a55ba584ee89177.tar.gz",
+        "size_bytes": 1188144,
+        "sha256": "a8753ef7c53f7138f6552c4b81e8f4703060aecda0b93d2b807a4602e4d1c0d6"
+      },
+      "wrapper": {
+        "path": "sources/splat-transform/lib/webp.c",
+        "size_bytes": 1914,
+        "sha256": "32c66c6de02eb30223d629987dfbe885e9f2039a663fe3f9eebd666c0b4d62f9"
+      },
+      "wrapper_unchanged_from_pinned_source": true
+    },
+    {
+      "name": "sharpyuv",
+      "version": "0.4.2",
+      "source": "same libwebp source tree, not an independently downloaded revision",
+      "commit": "4fa21912338357f89e4fd51cf2368325b59e9bd9",
+      "version_header": {
+        "path": "sources/libwebp/sharpyuv/sharpyuv.h",
+        "size_bytes": 7669,
+        "sha256": "4fcb150246232b0e8e605752deb66ca861872f86dd692308d9f854e10ad964ee"
+      }
+    }
+  ],
+  "toolchain_inputs": [
+    {
+      "path": "sources/emsdk/downloads/d70a5da89b3e673bf6a482724478fc17e81e575e-wasm-binaries-arm64.tar.xz",
+      "size_bytes": 297503416,
+      "sha256": "7960d8d33243f2f7acdac157136c6e93680550361ed71bb225fcfa25b6bbb2fb",
+      "download_url": "https://storage.googleapis.com/webassembly/emscripten-releases-builds/mac/d70a5da89b3e673bf6a482724478fc17e81e575e/wasm-binaries-arm64.tar.xz"
+    },
+    {
+      "path": "sources/emsdk/downloads/node-v22.16.0-darwin-arm64.tar.gz",
+      "size_bytes": 47716750,
+      "sha256": "1d7f34ec4c03e12d8b33481e5c4560432d7dc31a0ef3ff5a4d9a8ada7cf6ecc9",
+      "download_url": "https://storage.googleapis.com/webassembly/emscripten-releases-builds/deps/node-v22.16.0-darwin-arm64.tar.gz"
+    },
+    {
+      "path": "sources/emsdk/downloads/python-3.13.3-0-macos-arm64.tar.gz",
+      "size_bytes": 44280478,
+      "sha256": "2b0899d7ade9463b0c909ef23aeea27546a4f412637998d817a49718bc2bac19",
+      "download_url": "https://storage.googleapis.com/webassembly/emscripten-releases-builds/deps/python-3.13.3-0-macos-arm64.tar.gz"
+    }
+  ],
+  "source_preparation": [
+    "Validate each downloaded archive SHA-256 against this evidence before extraction. Reject absolute/traversal/link archive members and strip the official one-directory prefix.",
+    "Install and activate fixed emsdk 4.0.21 inside sources/emsdk with its embedded .emscripten and a stage-local EM_CACHE.",
+    "Extract original splat-transform into sources/splat-transform-v2. Copy the paired rebuilt outputs/webp.mjs and webp.wasm into its lib/.",
+    "Apply rollup-pin-source-revision.patch and v2/webp-codec-cleanup.patch exactly; validate original/modified source hashes in the source-patch record.",
+    "Run npm ci --ignore-scripts --no-audit --no-fund with the pinned source package-lock.json in the v2 source directory. The recorded run reused an exact filesystem clone of this same v1 install.",
+    "Run build-distributions-v2.mjs. It writes and closes all five Rollup bundles and copies the declaration before exit0.",
+    "Run the recorded codec, cleanup, bound-distribution, selected upstream tests and CLI-help checks. Compare output hashes, then gzip only the ten overlay paths with level9 and mtime0."
+  ],
+  "path_relocation": "Receipts retain actual absolute/relative paths. Relocate the recorded workspace prefix and stage prefix consistently in argv, cwd and explicit_environment; do not reuse an absolute-path CMakeCache from a different location.",
+  "successful_command_receipts": [
+    {
+      "path": "receipts/install-sdk.json",
+      "size_bytes": 1205,
+      "sha256": "39e4c27c83192034e93fd9774502f6fd3467f8b3429cfccb16ba9cc3b9336969"
+    },
+    {
+      "path": "receipts/activate-sdk.json",
+      "size_bytes": 1207,
+      "sha256": "a4c48f1ed2ae77641ab5641a76fc4081d017747912e196a03348138be6d94210"
+    },
+    {
+      "path": "receipts/configure-libwebp.json",
+      "size_bytes": 2449,
+      "sha256": "aa80380817de1bd59ebd43d648c56761e1be947bf1ee3cf583e70f3739eeb523"
+    },
+    {
+      "path": "receipts/build-libwebp.json",
+      "size_bytes": 1900,
+      "sha256": "c60ad6948637ca36d8650a51a9f0d9a7324554d64e8bdcc2426fb6293332fee4"
+    },
+    {
+      "path": "receipts/link-webp.json",
+      "size_bytes": 2544,
+      "sha256": "81ba550b1c3da8eecdbf699f3336a4f3eb59ba5822e7c0b52b126b5c30dc6681"
+    },
+    {
+      "path": "receipts/install-splat-dependencies.json",
+      "size_bytes": 1894,
+      "sha256": "87e75931b9d8fccc140d8f8a4c71f4b7c7d0b28ec8859c3e5c34d04977616fff"
+    },
+    {
+      "path": "receipts/build-splat-api-v2-canonical-paths.json",
+      "size_bytes": 1848,
+      "sha256": "de91df52d7ccf8e01d1e44dcb472d6fb2eea2c7072256b79a7acfbc4a06eae6d"
+    },
+    {
+      "path": "receipts/lint-codec-v2.json",
+      "size_bytes": 1892,
+      "sha256": "20cb907f5aef0f584adf35687db48927e4ce4fa658568fab6ecbe317903227ff"
+    },
+    {
+      "path": "receipts/verify-codec.json",
+      "size_bytes": 1816,
+      "sha256": "749c47336c654fa5eb67a06bb9d3dbbed57826ae680f36cd1a8967abe3299674"
+    },
+    {
+      "path": "receipts/verify-codec-cleanup-v2.json",
+      "size_bytes": 1833,
+      "sha256": "8ec6d253dfe9885d99aa2dbfb9524e49b02ede4f7e82a9795d97fc4707ab6e98"
+    },
+    {
+      "path": "receipts/verify-distributions-v2-bound.json",
+      "size_bytes": 1856,
+      "sha256": "3b24fd105f9b8f2f7ed6c2ba8eea38c5337b3ec20b937be251a2d7b384ed30d1"
+    },
+    {
+      "path": "receipts/verify-upstream-webp-exports-v2.json",
+      "size_bytes": 2061,
+      "sha256": "b9348b79376a67ac73090a5915c739189918212ae729a295124e02c34d41f5bf"
+    },
+    {
+      "path": "receipts/repeat-link-webp.json",
+      "size_bytes": 2561,
+      "sha256": "f80e7dfcc2ab4fc239b22dca59765c5c5a07bf8cd4acc77a298a819fa582975d"
+    },
+    {
+      "path": "receipts/verify-cli-help-v2.json",
+      "size_bytes": 1854,
+      "sha256": "81ef4206bc8b1f9e0d8ab4934e608427759b8d3e43b11734ce04c75f041e32ba"
+    }
+  ],
+  "patches": [
+    {
+      "path": "rollup-pin-source-revision.patch",
+      "size_bytes": 488,
+      "sha256": "a11d45f1b98e1cabd35b8d5a3332cb61056f4bd9e8c2eac42a1d12518d1bb727"
+    },
+    {
+      "path": "v2/webp-codec-cleanup.patch",
+      "size_bytes": 5094,
+      "sha256": "384f41b65020d7e84317fbbe4b4b9f5bdd6e644ad71abbc4b8d688c65dba77fe"
+    }
+  ],
+  "build_driver": {
+    "path": "build-distributions-v2.mjs",
+    "size_bytes": 1094,
+    "sha256": "84ab0ba784e15cae4ef99cec601a30ee1370c8ac6864abe2e4c4c89cf02105f1"
+  },
+  "fixed_source_lock": {
+    "path": "sources/splat-transform-v2/package-lock.json",
+    "size_bytes": 149292,
+    "sha256": "063947843402dfd1ec922d1f89af793dc9f26faef1391e603dd108bd8fc5e229"
+  },
+  "fixed_package_manifest": {
+    "path": "sources/splat-transform-v2/package.json",
+    "size_bytes": 2708,
+    "sha256": "b9d3e4010066c175d09435a0935e30a3f62d6fc9136697c8ada5933c09a95e55"
+  },
+  "gzip": "Python gzip.compress(data, compresslevel=9, mtime=0); exact compressed and decoded hashes are both recorded.",
+  "scope": "A same-toolchain repeat link produced identical paired codec bytes. Cross-platform clean-host bit-for-bit reproducibility is not claimed."
+}

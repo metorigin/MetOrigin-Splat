@@ -1,0 +1,16 @@
+{
+  "status": "passed",
+  "tests": 16,
+  "passed": 16,
+  "failed": 0,
+  "suite_files": [
+    "test/webp-codec.test.mjs",
+    "test/write-sog.test.mjs",
+    "test/html-output.test.mjs"
+  ],
+  "log": {
+    "path": "logs/verify-upstream.log",
+    "size_bytes": 4187,
+    "sha256": "c404daba9cc750d3df516a26009af0cf2f85eb9b18624e1cd435c4695d8bfa4b"
+  }
+}

@@ -18,8 +18,18 @@ pub struct ProcessHandle {
     pub started_at: DateTime<Utc>,
     /// The underlying child process (for cancellation / waiting)
     pub(crate) child: Arc<Mutex<Child>>,
+    pub(crate) lifecycle: Arc<Mutex<LifecycleReceipt>>,
+    #[cfg(unix)]
+    pub(crate) process_group: Arc<crate::unix_group::ProcessGroup>,
     /// Receiver for process events (stdout, stderr, exit, etc.)
     pub events: broadcast::Receiver<ProcessEvent>,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct LifecycleReceipt {
+    pub task: Option<tokio::task::JoinHandle<Result<(), String>>>,
+    // A failed cleanup remains owned; the next finish attempt must retry it.
+    pub error: Option<String>,
 }
 
 impl ProcessHandle {
@@ -31,7 +41,12 @@ impl ProcessHandle {
     ) -> Self {
         Self {
             process_id: child.id().unwrap_or(0),
+            #[cfg(unix)]
+            process_group: Arc::new(crate::unix_group::ProcessGroup::new(
+                child.id().unwrap_or(0),
+            )),
             child: Arc::new(Mutex::new(child)),
+            lifecycle: Arc::new(Mutex::new(LifecycleReceipt::default())),
             started_at,
             events,
         }
@@ -40,12 +55,13 @@ impl ProcessHandle {
 
 impl Clone for ProcessHandle {
     fn clone(&self) -> Self {
-        // Note: cloning a ProcessHandle is only meaningful for tests.
-        // The child reference is shared, but each clone gets an independent
-        // event receiver. This is intentional for multi-consumer scenarios.
+        // Ownership and lifecycle receipt are shared; events are independent.
         Self {
             process_id: self.process_id,
             child: self.child.clone(),
+            lifecycle: self.lifecycle.clone(),
+            #[cfg(unix)]
+            process_group: self.process_group.clone(),
             started_at: self.started_at,
             events: self.events.resubscribe(),
         }

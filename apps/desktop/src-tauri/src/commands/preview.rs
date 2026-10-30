@@ -1,7 +1,9 @@
+use super::system::resources::{self, PreviewAction, PreviewResourcePolicy};
 use splat_engine_brush::live_preview::{self, Frame, Request, Session};
+use splat_engine_brush::ExportManager;
 use std::{
     fs::File,
-    io::{BufRead, BufReader, Read, Seek, SeekFrom},
+    io::{BufReader, Read, Seek, SeekFrom},
     path::{Component, Path, PathBuf},
     time::UNIX_EPOCH,
 };
@@ -142,6 +144,7 @@ pub struct LivePreviewStatus {
     running: bool,
     revision: u64,
     frame: Option<GaussianPreviewSource>,
+    resource_policy: PreviewResourcePolicy,
 }
 
 pub(super) fn project_root(project_path: &str, project_id: &str) -> Result<PathBuf, String> {
@@ -192,91 +195,15 @@ fn revision(metadata: &std::fs::Metadata) -> String {
     )
 }
 
-/// Validate the full vertex payload using its layout, without turning millions
-/// of attributes into a JSON point array or silently sampling the model.
+/// Inspect bounded header/layout metadata; the actual response bytes are fully
+/// validated separately before IPC publication. This does not read every vertex.
 pub(super) fn ply_vertex_count(file: &mut File) -> Result<u64, String> {
-    let size = file.metadata().map_err(|error| error.to_string())?.len();
-    if size > MAX_PLY_BYTES {
+    if file.metadata().map_err(|error| error.to_string())?.len() > MAX_PLY_BYTES {
         return Err("该 PLY 超过当前预览的 1 GiB 文件上限。".into());
     }
-    let mut reader = BufReader::new(file);
-    let mut header_bytes = 0_u64;
-    let mut vertices = None;
-    let mut vertex_element = false;
-    let mut properties = Vec::new();
-    let mut binary = false;
-    loop {
-        let mut line = String::new();
-        // Bound each line as well as the total header; malformed input must not allocate unbounded memory.
-        let count = reader
-            .by_ref()
-            .take(65_537)
-            .read_line(&mut line)
-            .map_err(|_| "PLY 文件头无效。")?;
-        header_bytes += count as u64;
-        if count == 0 || header_bytes > 65_536 {
-            return Err("PLY 文件头不完整。".into());
-        }
-        let line = line.trim();
-        if header_bytes == count as u64 && line != "ply" {
-            return Err("文件不是 PLY 模型。".into());
-        }
-        if line == "end_header" {
-            break;
-        }
-        let parts: Vec<_> = line.split_whitespace().collect();
-        match parts.as_slice() {
-            ["format", "binary_little_endian", "1.0"] => binary = true,
-            ["element", "vertex", count] if vertices.is_none() => {
-                vertices = count.parse::<u64>().ok();
-                vertex_element = true;
-            }
-            ["element", _, count] => {
-                // Brush models have one vertex element. Nonempty preceding or subsequent elements are unsupported.
-                if *count != "0" {
-                    return Err("不支持该 PLY 元素布局。".into());
-                }
-                vertex_element = false;
-            }
-            ["property", "float" | "float32", name] if vertex_element => {
-                properties.push(name.to_string())
-            }
-            ["property", ..] if vertex_element => {
-                return Err("当前预览需要 Brush 的 float32 高斯属性。".into())
-            }
-            _ => {}
-        }
-    }
-    if !binary {
-        return Err("当前预览需要二进制小端 PLY。".into());
-    }
-    for name in [
-        "x", "y", "z", "scale_0", "scale_1", "scale_2", "rot_0", "rot_1", "rot_2", "rot_3",
-        "opacity", "f_dc_0", "f_dc_1", "f_dc_2",
-    ] {
-        if properties.iter().filter(|item| *item == name).count() != 1 {
-            return Err(format!("PLY 缺少有效高斯属性：{name}"));
-        }
-    }
-    let rest = properties
-        .iter()
-        .filter(|name| name.starts_with("f_rest_"))
-        .count();
-    if ![0, 9, 24, 45].contains(&rest)
-        || (0..rest).any(|index| !properties.contains(&format!("f_rest_{index}")))
-    {
-        return Err("PLY 球谐颜色数据不完整。".into());
-    }
-    let count = vertices
-        .filter(|value| *value > 0)
-        .ok_or("PLY 中没有高斯模型。")?;
-    let expected = count
-        .checked_mul(properties.len() as u64 * 4)
-        .and_then(|body| body.checked_add(header_bytes));
-    if expected != Some(size) {
-        return Err("PLY 数据尚未写完或文件已损坏。".into());
-    }
-    Ok(count)
+    ExportManager::read_preview_header(file)
+        .map(|metadata| metadata.vertex_count)
+        .map_err(|_| "PLY 文件头、布局或长度无效。".into())
 }
 
 pub(super) fn source(
@@ -325,33 +252,69 @@ pub async fn read_gaussian_ply(
     expected_revision: String,
 ) -> Result<tauri::ipc::Response, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let root = project_root(&project_path, &project_id)?;
-        if !relative_path.to_ascii_lowercase().ends_with(".ply") {
-            return Err("只能读取 PLY 模型。".into());
-        }
-        let mut file =
-            File::open(safe_path(&root, &relative_path)?).map_err(|error| error.to_string())?;
-        let before = file.metadata().map_err(|error| error.to_string())?;
-        if revision(&before) != expected_revision {
-            return Err("预览文件已更新，请重新读取。".into());
-        }
-        ply_vertex_count(&mut file)?;
-        file.seek(SeekFrom::Start(0))
-            .map_err(|error| error.to_string())?;
-        let mut bytes = Vec::with_capacity(before.len() as usize);
-        file.by_ref()
-            .take(MAX_PLY_BYTES + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|error| error.to_string())?;
-        if bytes.len() as u64 != before.len()
-            || revision(&file.metadata().map_err(|error| error.to_string())?) != expected_revision
-        {
-            return Err("读取期间模型发生变化，请重试。".into());
-        }
-        Ok(tauri::ipc::Response::new(bytes))
+        read_gaussian_ply_with_policy(
+            project_id,
+            project_path,
+            relative_path,
+            expected_revision,
+            resources::current_preview_policy,
+        )
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+fn read_gaussian_ply_with_policy(
+    project_id: String,
+    project_path: String,
+    relative_path: String,
+    expected_revision: String,
+    observe_policy: impl FnOnce() -> PreviewResourcePolicy,
+) -> Result<tauri::ipc::Response, String> {
+    let root = project_root(&project_path, &project_id)?;
+    if !relative_path.to_ascii_lowercase().ends_with(".ply") {
+        return Err("只能读取 PLY 模型。".into());
+    }
+    let mut file =
+        File::open(safe_path(&root, &relative_path)?).map_err(|error| error.to_string())?;
+    let before = file.metadata().map_err(|error| error.to_string())?;
+    if revision(&before) != expected_revision {
+        return Err("预览文件已更新，请重新读取。".into());
+    }
+    if before.len() > MAX_PLY_BYTES || !before.is_file() {
+        return Err("PLY 文件无效或超过当前预览的 1 GiB 文件上限。".into());
+    }
+    let policy = observe_policy();
+    if policy.action != PreviewAction::Allow || before.len() > policy.max_snapshot_bytes {
+        return Err(
+            "当前可用内存不足以加载完整预览；训练与检查点未改变，内存恢复后可重试。".into(),
+        );
+    }
+    file.seek(SeekFrom::Start(0))
+        .map_err(|error| error.to_string())?;
+    let capacity = usize::try_from(before.len()).map_err(|_| "模型过大，无法加载预览。")?;
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(capacity.saturating_add(1))
+        .map_err(|_| "没有足够内存加载完整模型预览。")?;
+    file.by_ref()
+        .take(before.len().saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() as u64 != before.len()
+        || revision(&file.metadata().map_err(|error| error.to_string())?) != expected_revision
+    {
+        return Err("读取期间模型发生变化，请重试。".into());
+    }
+    ExportManager::inspect_preview_bytes(&bytes)
+        .map_err(|_| "PLY 数据不完整或包含无效高斯参数。")?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// Cheap independent sampling while a model read/GPU upload is in flight.
+#[tauri::command]
+pub(crate) fn get_preview_resource_policy() -> PreviewResourcePolicy {
+    resources::current_preview_policy()
 }
 
 #[tauri::command]
@@ -363,102 +326,155 @@ pub async fn poll_live_preview(
     session_id: Option<String>,
 ) -> Result<LivePreviewStatus, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        if !["live", "low", "off"].contains(&mode.as_str()) {
-            return Err("预览刷新模式无效。".into());
-        }
-        let root = project_root(&project_path, &project_id)?;
-        let empty = LivePreviewStatus {
-            session_id: None,
-            available: false,
-            running: false,
-            revision: 0,
-            frame: None,
-        };
-        if !root
-            .join(live_preview::DIRECTORY)
-            .join("session.json")
-            .exists()
-        {
-            return Ok(empty);
-        }
-        let session: Session = read_json(&safe_path(
-            &root,
-            &format!("{}/session.json", live_preview::DIRECTORY),
-        )?)?;
-        if session.protocol != live_preview::PROTOCOL {
-            return Err("训练预览协议版本不匹配。".into());
-        }
-        if session.session_id.is_empty()
-            || !session
-                .session_id
-                .chars()
-                .all(|c| c.is_ascii_hexdigit() || c == '-')
-        {
-            return Err("训练预览会话无效。".into());
-        }
-        let relative_dir = format!("{}/{}", live_preview::DIRECTORY, session.session_id);
-        let directory = safe_path(&root, &relative_dir)?;
-        let latest: Option<Frame> = if directory.join("latest.json").exists() {
-            Some(read_json(&safe_path(
-                &root,
-                &format!("{relative_dir}/latest.json"),
-            )?)?)
-        } else {
-            None
-        };
-        let latest = latest.filter(|frame| {
-            frame.protocol == live_preview::PROTOCOL && frame.session_id == session.session_id
-        });
-        if session.available && session.running {
-            let request_path = directory.join("request.json");
-            if request_path.exists() {
-                safe_path(&root, &format!("{relative_dir}/request.json"))?;
-            }
-            live_preview::write_json_atomic(
-                &request_path,
-                &Request {
-                    session_id: session.session_id.clone(),
-                    after_revision: if session_id.as_deref() == Some(&session.session_id) {
-                        after_revision
-                    } else {
-                        0
-                    },
-                    mode,
-                    expires_at_ms: chrono::Utc::now().timestamp_millis().max(0) as u64 + 10_000,
-                },
-            )
-            .map_err(|error| error.to_string())?;
-        }
-        let frame_source = latest
-            .as_ref()
-            .map(|frame| {
-                if frame.relative_path != format!("frame-{}.ply", frame.revision) {
-                    return Err("训练预览帧路径无效。".into());
-                }
-                source(
-                    &root,
-                    &format!("{relative_dir}/{}", frame.relative_path),
-                    Some(frame.iteration),
-                )
-            })
-            .transpose()?;
-        Ok(LivePreviewStatus {
-            session_id: Some(session.session_id),
-            available: session.available,
-            running: session.running,
-            revision: latest.map(|frame| frame.revision).unwrap_or(0),
-            frame: frame_source,
-        })
+        poll_live_preview_with_policy(
+            project_id,
+            project_path,
+            mode,
+            after_revision,
+            session_id,
+            resources::current_preview_policy(),
+        )
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+fn poll_live_preview_with_policy(
+    project_id: String,
+    project_path: String,
+    mode: String,
+    after_revision: u64,
+    session_id: Option<String>,
+    mut policy: PreviewResourcePolicy,
+) -> Result<LivePreviewStatus, String> {
+    if !["live", "low", "off"].contains(&mode.as_str()) {
+        return Err("预览刷新模式无效。".into());
+    }
+    let root = project_root(&project_path, &project_id)?;
+    let empty = LivePreviewStatus {
+        session_id: None,
+        available: false,
+        running: false,
+        revision: 0,
+        frame: None,
+        resource_policy: policy.clone(),
+    };
+    if !root
+        .join(live_preview::DIRECTORY)
+        .join("session.json")
+        .exists()
+    {
+        return Ok(empty);
+    }
+    let session: Session = read_json(&safe_path(
+        &root,
+        &format!("{}/session.json", live_preview::DIRECTORY),
+    )?)?;
+    if session.protocol != live_preview::PROTOCOL {
+        return Err("训练预览协议版本不匹配。".into());
+    }
+    if uuid::Uuid::parse_str(&session.session_id).is_err() {
+        return Err("训练预览会话无效。".into());
+    }
+    let relative_dir = format!("{}/{}", live_preview::DIRECTORY, session.session_id);
+    let directory = safe_path(&root, &relative_dir)?;
+    let latest: Option<Frame> = if directory.join("latest.json").exists() {
+        Some(read_json(&safe_path(
+            &root,
+            &format!("{relative_dir}/latest.json"),
+        )?)?)
+    } else {
+        None
+    };
+    if latest.as_ref().is_some_and(|frame| {
+        frame.protocol != live_preview::PROTOCOL || frame.session_id != session.session_id
+    }) {
+        return Err("训练预览帧不属于当前协议或会话。".into());
+    }
+    // Validate frame identity/layout before writing an ACK request. Do not
+    // acknowledge corrupt or stale frames and thereby release their slots.
+    let frame_source = latest
+        .as_ref()
+        .map(|frame| -> Result<GaussianPreviewSource, String> {
+            if frame.relative_path != format!("frame-{}.ply", frame.revision) {
+                return Err("训练预览帧路径无效。".into());
+            }
+            let source = source(
+                &root,
+                &format!("{relative_dir}/{}", frame.relative_path),
+                Some(frame.iteration),
+            )?;
+            if source.vertex_count != u64::from(frame.splat_count) {
+                return Err("训练预览帧高斯数量与模型不符。".into());
+            }
+            Ok(source)
+        })
+        .transpose()?;
+    if session_id.as_deref() == Some(&session.session_id)
+        && latest
+            .as_ref()
+            .is_some_and(|frame| after_revision > frame.revision)
+    {
+        return Err("预览确认版本超出当前帧。".into());
+    }
+    if frame_source
+        .as_ref()
+        .is_some_and(|source| source.size_bytes > policy.max_snapshot_bytes)
+        && policy.action == PreviewAction::Allow
+    {
+        policy.action = PreviewAction::Pause;
+        policy.reason = Some("snapshot_budget");
+    }
+    let mode = if policy.action == PreviewAction::Allow {
+        mode
+    } else {
+        "off".into()
+    };
+    if session.available && session.running {
+        let request_path = directory.join("request.json");
+        if request_path.exists() {
+            safe_path(&root, &format!("{relative_dir}/request.json"))?;
+        }
+        live_preview::write_json_atomic(
+            &request_path,
+            &Request {
+                session_id: session.session_id.clone(),
+                after_revision: if session_id.as_deref() == Some(&session.session_id) {
+                    after_revision
+                } else {
+                    0
+                },
+                mode,
+                expires_at_ms: chrono::Utc::now().timestamp_millis().max(0) as u64 + 10_000,
+            },
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    let frame_source = if policy.action != PreviewAction::Allow
+        || (session_id.as_deref() == Some(&session.session_id)
+            && latest
+                .as_ref()
+                .is_some_and(|frame| frame.revision <= after_revision))
+    {
+        None
+    } else {
+        frame_source
+    };
+    Ok(LivePreviewStatus {
+        session_id: Some(session.session_id),
+        available: session.available,
+        running: session.running,
+        revision: latest.map(|frame| frame.revision).unwrap_or(0),
+        frame: frame_source,
+        resource_policy: policy,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn validates_all_vertices_without_sampling_and_rejects_partial_writes() {
+    fn metadata_preserves_the_full_count_and_rejects_partial_writes() {
         let path =
             std::env::temp_dir().join(format!("gaussian-preview-{}.ply", uuid::Uuid::now_v7()));
         let names = [
@@ -497,7 +513,10 @@ mod tests {
                 serde_json::json!({ "id": id }).to_string(),
             )
             .unwrap();
-            Self { root, id }
+            Self {
+                root: root.canonicalize().unwrap(),
+                id,
+            }
         }
         fn path(&self) -> String {
             self.root.to_string_lossy().into_owned()
@@ -507,6 +526,259 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.root);
         }
+    }
+
+    fn gaussian_bytes(non_finite: bool) -> Vec<u8> {
+        let ascii = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../test-fixtures/gaussian/minimal-sh0-ascii.ply"
+        ));
+        let (header, body) = ascii.split_once("end_header\n").unwrap();
+        let mut bytes = format!(
+            "{}end_header\n",
+            header.replace("format ascii", "format binary_little_endian")
+        )
+        .into_bytes();
+        for value in body.split_whitespace() {
+            bytes.extend_from_slice(&value.parse::<f32>().unwrap().to_le_bytes());
+        }
+        if non_finite {
+            let last = bytes.len() - 4;
+            bytes[last..].copy_from_slice(&f32::NAN.to_le_bytes());
+        }
+        bytes
+    }
+
+    fn allow_preview_policy() -> PreviewResourcePolicy {
+        resources::preview_policy(
+            true,
+            32 * 1024 * 1024 * 1024,
+            Some(10 * 1024 * 1024 * 1024),
+            Some(resources::MemoryPressure::Normal),
+        )
+    }
+
+    #[test]
+    fn ply_response_validates_the_actual_bytes_and_expected_revision() {
+        let project = TestProject::new();
+        let path = project.root.join("model.ply");
+        std::fs::write(&path, gaussian_bytes(false)).unwrap();
+        let metadata = source(&project.root, "model.ply", None).unwrap();
+        assert!(read_gaussian_ply_with_policy(
+            project.id.clone(),
+            project.path(),
+            "model.ply".into(),
+            metadata.revision.clone(),
+            allow_preview_policy,
+        )
+        .is_ok());
+        assert!(read_gaussian_ply_with_policy(
+            project.id.clone(),
+            project.path(),
+            "model.ply".into(),
+            "stale".into(),
+            allow_preview_policy,
+        )
+        .is_err());
+        std::fs::write(&path, gaussian_bytes(true)).unwrap();
+        let header = source(&project.root, "model.ply", None).unwrap();
+        assert_eq!(
+            header.vertex_count, 1,
+            "metadata is not a finite-value gate"
+        );
+        assert!(read_gaussian_ply_with_policy(
+            project.id.clone(),
+            project.path(),
+            "model.ply".into(),
+            header.revision,
+            allow_preview_policy,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn live_frame_validation_precedes_ack_and_repeated_ack_returns_no_frame() {
+        let project = TestProject::new();
+        let session = live_preview::LiveSession::start(&project.root, true).unwrap();
+        std::fs::write(session.directory.join("frame-1.ply"), gaussian_bytes(false)).unwrap();
+        let mut frame = Frame {
+            protocol: 1,
+            session_id: session.session.session_id.clone(),
+            revision: 1,
+            iteration: 100,
+            splat_count: 1,
+            relative_path: "frame-1.ply".into(),
+            created_at_ms: 1,
+        };
+        live_preview::write_json_atomic(&session.directory.join("latest.json"), &frame).unwrap();
+        let ready = poll_live_preview_with_policy(
+            project.id.clone(),
+            project.path(),
+            "live".into(),
+            0,
+            None,
+            allow_preview_policy(),
+        )
+        .unwrap();
+        assert!(ready.frame.is_some());
+        let acknowledged = poll_live_preview_with_policy(
+            project.id.clone(),
+            project.path(),
+            "live".into(),
+            1,
+            ready.session_id.clone(),
+            allow_preview_policy(),
+        )
+        .unwrap();
+        assert!(acknowledged.frame.is_none());
+        let request_before = std::fs::read(session.directory.join("request.json")).unwrap();
+        frame.splat_count = 2;
+        live_preview::write_json_atomic(&session.directory.join("latest.json"), &frame).unwrap();
+        assert!(poll_live_preview_with_policy(
+            project.id.clone(),
+            project.path(),
+            "live".into(),
+            1,
+            ready.session_id.clone(),
+            allow_preview_policy(),
+        )
+        .is_err());
+        assert_eq!(
+            request_before,
+            std::fs::read(session.directory.join("request.json")).unwrap()
+        );
+        frame.splat_count = 1;
+        frame.session_id = uuid::Uuid::now_v7().to_string();
+        live_preview::write_json_atomic(&session.directory.join("latest.json"), &frame).unwrap();
+        assert!(poll_live_preview_with_policy(
+            project.id.clone(),
+            project.path(),
+            "live".into(),
+            1,
+            ready.session_id,
+            allow_preview_policy(),
+        )
+        .is_err());
+        assert_eq!(
+            request_before,
+            std::fs::read(session.directory.join("request.json")).unwrap()
+        );
+    }
+
+    #[test]
+    fn memory_pressure_stops_producer_requests_and_preserves_disk_recovery_frame() {
+        let project = TestProject::new();
+        let session = live_preview::LiveSession::start(&project.root, true).unwrap();
+        let bytes = gaussian_bytes(false);
+        let path = session.directory.join("frame-1.ply");
+        std::fs::write(&path, &bytes).unwrap();
+        let relative_path = format!(
+            "{}/{}/frame-1.ply",
+            live_preview::DIRECTORY,
+            session.session.session_id
+        );
+        let metadata = source(&project.root, &relative_path, None).unwrap();
+        let frame = Frame {
+            protocol: 1,
+            session_id: session.session.session_id.clone(),
+            revision: 1,
+            iteration: 100,
+            splat_count: 1,
+            relative_path: "frame-1.ply".into(),
+            created_at_ms: 1,
+        };
+        live_preview::write_json_atomic(&session.directory.join("latest.json"), &frame).unwrap();
+        let gib = 1024 * 1024 * 1024;
+        for pressure in [
+            resources::MemoryPressure::Warning,
+            resources::MemoryPressure::Critical,
+        ] {
+            let policy = resources::preview_policy(true, 32 * gib, Some(10 * gib), Some(pressure));
+            assert!(read_gaussian_ply_with_policy(
+                project.id.clone(),
+                project.path(),
+                relative_path.clone(),
+                metadata.revision.clone(),
+                || policy.clone(),
+            )
+            .is_err());
+            let status = poll_live_preview_with_policy(
+                project.id.clone(),
+                project.path(),
+                "live".into(),
+                0,
+                None,
+                policy,
+            )
+            .unwrap();
+            assert!(status.frame.is_none());
+            let request: Request = read_json(&session.directory.join("request.json")).unwrap();
+            assert_eq!(request.mode, "off");
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        }
+        let mut capped = allow_preview_policy();
+        capped.max_snapshot_bytes = bytes.len() as u64 - 1;
+        assert!(read_gaussian_ply_with_policy(
+            project.id.clone(),
+            project.path(),
+            relative_path,
+            metadata.revision,
+            || capped.clone(),
+        )
+        .is_err());
+        let too_large = poll_live_preview_with_policy(
+            project.id.clone(),
+            project.path(),
+            "live".into(),
+            0,
+            None,
+            capped,
+        )
+        .unwrap();
+        assert!(too_large.frame.is_none());
+        assert_eq!(too_large.resource_policy.reason, Some("snapshot_budget"));
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        let policy = resources::preview_policy(
+            true,
+            32 * gib,
+            Some(10 * gib),
+            Some(resources::MemoryPressure::Normal),
+        );
+        let recovered = poll_live_preview_with_policy(
+            project.id.clone(),
+            project.path(),
+            "live".into(),
+            0,
+            Some(session.session.session_id.clone()),
+            policy,
+        )
+        .unwrap();
+        assert!(recovered.frame.is_some());
+        let request: Request = read_json(&session.directory.join("request.json")).unwrap();
+        assert_eq!(request.mode, "live");
+        assert_eq!(request.after_revision, 0);
+    }
+
+    #[tokio::test]
+    async fn malformed_live_session_uuid_is_rejected_without_request() {
+        let project = TestProject::new();
+        let session = live_preview::LiveSession::start(&project.root, true).unwrap();
+        let mut invalid = session.session.clone();
+        invalid.session_id = "dead-beef".into();
+        live_preview::write_json_atomic(
+            &project
+                .root
+                .join(live_preview::DIRECTORY)
+                .join("session.json"),
+            &invalid,
+        )
+        .unwrap();
+        assert!(
+            poll_live_preview(project.id.clone(), project.path(), "live".into(), 0, None)
+                .await
+                .is_err()
+        );
+        assert!(!session.directory.join("request.json").exists());
     }
 
     #[tokio::test]

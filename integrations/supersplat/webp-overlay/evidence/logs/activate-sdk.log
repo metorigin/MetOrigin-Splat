@@ -1,0 +1,15 @@
+Resolving SDK version '4.0.21' to 'sdk-releases-d70a5da89b3e673bf6a482724478fc17e81e575e-64bit'
+Setting the following tools as active:
+   node-22.16.0-64bit
+   python-3.13.3-64bit
+   releases-d70a5da89b3e673bf6a482724478fc17e81e575e-64bit
+
+Next steps:
+- To conveniently access emsdk tools from the command line,
+  consider adding the following directories to your PATH:
+    ${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk
+    ${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/upstream/emscripten
+- This can be done for the current shell by running:
+    source "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/emsdk_env.sh"
+- Configure emsdk in your shell startup scripts by running:
+    echo 'source "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/emsdk/emsdk_env.sh"' >> $HOME/.zprofile

@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { t } from "../../i18n";
 import { ArrowsOut, Eye, GridFour } from "../primitives/icons";
 import { useEffect, useRef, useState } from "react";
@@ -161,8 +162,8 @@ export function PointCloudPreview({ points, cameras = [], label }: {
     <div className="point-cloud-viewer">
       <div className="preview-toolbar">
         <span><Eye size={15} />{label}</span>
-        <button className="icon-button" type="button" onClick={() => resetRef.current?.()} aria-label={t("重置视角")} title={t("重置视角")}><ArrowsOut size={16} /></button>
-        <button className={`icon-button ${gridVisible ? "is-active" : ""}`} type="button" onClick={() => setGridVisible((value) => !value)} aria-label={t("切换地面网格")} title={t("切换地面网格")}><GridFour size={16} /></button>
+        <Button variant="ghost" size="icon-sm"  type="button" onClick={() => resetRef.current?.()} aria-label={t("重置视角")} title={t("重置视角")}><ArrowsOut size={16} /></Button>
+        <Button variant="ghost" size="icon-sm" aria-pressed={gridVisible} className={gridVisible ? "bg-white/10 text-white" : "text-slate-300"} type="button" onClick={() => setGridVisible((value) => !value)} aria-label={t("切换地面网格")} title={t("切换地面网格")}><GridFour size={16} /></Button>
       </div>
       <div className="point-cloud-canvas" ref={hostRef} tabIndex={0} role="application" aria-describedby="point-cloud-keyboard-help" aria-label={t("真实三维预览，共 {0} 个显示点", points.length)} />
       <span id="point-cloud-keyboard-help" className="visually-hidden">{t("方向键旋转视角，加号和减号缩放，R 重置视角。")}</span>

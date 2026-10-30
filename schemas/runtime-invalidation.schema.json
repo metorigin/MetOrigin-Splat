@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metorigin.app/schemas/runtime-invalidation.schema.json",
+  "title": "Pending runtime invalidation",
+  "description": "Durable stages that must execute after a profile/input change. Written before replacing execution-profile.json; advanced only after execution, output validation and completion persistence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "target_run_id", "next_stage"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "target_run_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "next_stage": {
+      "enum": ["MediaValidation", "FrameExtraction", "ImagePreprocessing", "ColmapFeatureExtraction", "ColmapMatching", "ColmapMapping", "ColmapValidation", "TrainingPreparation", "BrushTraining", "ModelValidation", "Export", "PreviewGeneration"]
+    }
+  }
+}

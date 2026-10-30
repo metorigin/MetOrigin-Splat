@@ -1,0 +1,18 @@
+--- a/rollup.config.mjs
++++ b/rollup.config.mjs
+@@ -9,13 +9,8 @@
+ 
+ import pkg from './package.json' with { type: 'json' };
+ 
+-const revision = (() => {
+-    try {
+-        return execSync('git rev-parse --short HEAD').toString().trim();
+-    } catch (e) {
+-        return 'unknown';
+-    }
+-})();
++// Fixed archive revision: no Git metadata is embedded in this isolated stage.
++const revision = 'e0dab1f';
+ 
+ const versionReplace = () => replace({
+     preventAssignment: true,

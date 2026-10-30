@@ -1,0 +1,1 @@
+{"schema_version": 1, "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "completed": {"checkpoint": "../scene.ply", "checkpoint_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "result_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "iterations": 300}}

@@ -507,6 +507,7 @@ async fn dispatch_ready_action(
             vec!["pipeline", "artifacts", "activity"]
         }
         WorkspaceActionKind::RestoreCheckpoint => {
+            let _pending = crate::lifecycle::PendingWork::begin(state)?;
             let iteration = record
                 .request
                 .checkpoint_iteration
@@ -616,6 +617,11 @@ mod tests {
             started_at: Arc::new(Mutex::new(Some("2026-08-14T08:00:01Z".into()))),
             sequence: Arc::new(AtomicU64::new(1)),
             abort_handle: Arc::new(Mutex::new(None)),
+            finalization: Arc::new(tokio::sync::Mutex::new(
+                crate::state::PipelineFinalization::Running,
+            )),
+            process_scope: splat_process::ProcessScope::default(),
+            event_forwarder: Arc::new(tokio::sync::Mutex::new(None)),
         });
     }
 
@@ -624,7 +630,10 @@ mod tests {
         std::fs::create_dir_all(&directory).unwrap();
         std::fs::write(
             directory.join(format!("checkpoint_{iteration:06}.ply")),
-            b"ply\nformat ascii 1.0\nelement vertex 1\nend_header\n0 0 0\n",
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../test-fixtures/gaussian/minimal-sh0-ascii.ply"
+            )),
         )
         .unwrap();
     }
@@ -781,7 +790,10 @@ mod tests {
 
         std::fs::write(
             project_dir.join("training/checkpoints/checkpoint_000500.ply"),
-            b"ply\nformat ascii 1.0\nelement vertex 2\nend_header\n0 0 0\n1 1 1\n",
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../test-fixtures/gaussian/minimal-sh0-ascii-two.ply"
+            )),
         )
         .unwrap();
         restore.checkpoint_iteration = Some(500);
@@ -869,6 +881,8 @@ mod tests {
 
         write_valid_checkpoint(&project_dir, 500);
         write_valid_checkpoint(&project_dir, 1000);
+        std::fs::write(project_dir.join("training/training-fingerprint.json"),
+            serde_json::to_vec(&serde_json::json!({"schema_version":1,"fingerprint":"a".repeat(64),"completed":null})).unwrap()).unwrap();
         let mut restore = request_for(
             &project,
             &project_dir,
@@ -912,29 +926,49 @@ mod tests {
             let (root, project_dir, project) = test_project(&label);
             let state = AppState::new();
             install_active_pipeline(&state, &project, &project_dir);
+            let active = state.0.lock().unwrap().active_pipeline.clone().unwrap();
+            let expected_intent = if action == WorkspaceActionKind::Pause {
+                PipelineControlIntent::Pause
+            } else {
+                PipelineControlIntent::Cancel
+            };
+            // Model the worker acknowledgement after the action sets intent,
+            // rather than a closed completion channel with no supervisor.
+            let (sender, receiver) = tokio::sync::watch::channel(false);
+            state
+                .0
+                .lock()
+                .unwrap()
+                .active_pipeline
+                .as_mut()
+                .unwrap()
+                .completion = receiver;
+            let finalization = active.finalization.clone();
+            let orchestrator = active.orchestrator.clone();
+            let acknowledgement = tokio::spawn(async move {
+                orchestrator.cancellation_token().cancelled().await;
+                *finalization.lock().await = crate::state::PipelineFinalization::Pending(Ok(()));
+                sender.send(true).unwrap();
+            });
             let record = ready_record(request_for(&project, &project_dir, action), &state).await;
             let receipt = dispatch_ready_action(record, None, &state).await.unwrap();
+            acknowledgement.await.unwrap();
             assert_eq!(receipt.action, action);
             assert!(receipt
                 .affected_resources
                 .iter()
                 .any(|item| item == "checkpoints"));
-            let intent = *state
-                .0
-                .lock()
-                .unwrap()
-                .active_pipeline
-                .as_ref()
-                .unwrap()
-                .control_intent
-                .lock()
+            assert_eq!(*active.control_intent.lock().unwrap(), expected_intent);
+            assert!(state.0.lock().unwrap().active_pipeline.is_none());
+            let saved = splat_project::ProjectManager::new(root.clone())
+                .open_project(&project_dir)
                 .unwrap();
             assert_eq!(
-                intent,
+                saved.status,
                 if action == WorkspaceActionKind::Pause {
-                    PipelineControlIntent::Pause
+                    splat_domain::ProjectStatus::Paused
                 } else {
-                    PipelineControlIntent::Cancel
+                    splat_domain::ProjectStatus::Cancelled
                 }
             );
             let _ = std::fs::remove_dir_all(root);

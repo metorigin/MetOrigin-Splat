@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_process::CommandSpec;
 
+use crate::execution::ColmapExecutionSettings;
 use crate::runtime;
 
 /// Counts read directly from a COLMAP SQLite database.
@@ -476,12 +477,21 @@ fn database_error(path: &Path, error: rusqlite::Error) -> AppError {
 /// - Cleaning up database files before re-running
 pub struct DatabaseCreator {
     colmap_path: PathBuf,
+    execution_settings: Option<ColmapExecutionSettings>,
 }
 
 impl DatabaseCreator {
     /// Create a new database creator with the path to the COLMAP executable.
     pub fn new(colmap_path: PathBuf) -> Self {
-        Self { colmap_path }
+        Self {
+            colmap_path,
+            execution_settings: None,
+        }
+    }
+
+    pub fn with_execution_settings(mut self, settings: ColmapExecutionSettings) -> Self {
+        self.execution_settings = Some(settings);
+        self
     }
 
     /// Build the `colmap database_creator` command.
@@ -492,16 +502,17 @@ impl DatabaseCreator {
     /// colmap database_creator --database_path <database_path>
     /// ```
     pub fn build_command(&self, database_path: &Path, log_path: &Path) -> CommandSpec {
-        runtime::command_spec(
+        runtime::command_spec_with_settings(
             &self.colmap_path,
             vec![
-                "database_creator",
-                "--log_target",
-                "stderr",
-                "--database_path",
-                database_path.to_str().unwrap_or(""),
+                std::ffi::OsString::from("database_creator"),
+                "--log_target".into(),
+                "stderr".into(),
+                "--database_path".into(),
+                database_path.as_os_str().to_owned(),
             ],
             log_path,
+            self.execution_settings.as_ref(),
         )
     }
 

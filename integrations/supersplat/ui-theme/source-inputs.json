@@ -1,0 +1,38 @@
+{
+  "repository": "https://github.com/playcanvas/supersplat",
+  "commit": "b89029dd20911fd18905b61de2701094ac390a73",
+  "files": [
+    {
+      "upstreamPath": "src/ui/histogram.ts",
+      "upstreamSha256": "4db4b259b71124d0b2589ead07eab9f0a3296a55026fcb849fd59734ffa323b1"
+    },
+    {
+      "upstreamPath": "src/ui/perf-overlay.ts",
+      "upstreamSha256": "68c484e7cfeed18a327f3050ada15d97c80fe396d668667566504f7300019865"
+    },
+    {
+      "upstreamPath": "src/ui/data-panel.ts",
+      "upstreamSha256": "399282bb0bf60514679c40ab8d6dee063d8ab071bf9cfd398d0034f1a8cb576e"
+    },
+    {
+      "upstreamPath": "src/ui/progress.ts",
+      "upstreamSha256": "88b7f2d36e812be0608ec3e21cab60f8704f076bb738b92ea9604afc8755a211"
+    },
+    {
+      "upstreamPath": "src/ui/scss/style.scss",
+      "upstreamSha256": "962f61609269e8796c053da9c6b1609b14236d23a69a6624f060201e7072f753"
+    },
+    {
+      "upstreamPath": "src/ui/settings-panel.ts",
+      "upstreamSha256": "6537c85adfb3e0c38b7bd8182cd3e8ff3a3d4cdb80f3a0687f7f24764a6c7199"
+    },
+    {
+      "upstreamPath": "src/main.ts",
+      "upstreamSha256": "418d00c9994323d1f3a34b5124a03c55e7c2d6c439990bb3783564eff44ff058"
+    },
+    {
+      "upstreamPath": "src/ui/menu.ts",
+      "upstreamSha256": "92783fb429981c7a1c25ce78754d516b7809563af89dd7b0aa9f5c49c01e7577"
+    }
+  ]
+}

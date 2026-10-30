@@ -1,0 +1,94 @@
+diff --git a/apps/brush-cli/src/lib.rs b/apps/brush-cli/src/lib.rs
+index f6b4b1c..15f3862 100644
+--- a/apps/brush-cli/src/lib.rs
++++ b/apps/brush-cli/src/lib.rs
+@@ -20,7 +20,7 @@ use tracing::trace_span;
+ #[derive(Parser)]
+ #[command(
+     author,
+-    version,
++    version = "1.0.0+metorigin-macos.1",
+     arg_required_else_help = false,
+     about = "Brush - universal splats"
+ )]
+@@ -68,15 +68,28 @@ pub async fn run_headless(
+     process: RunningProcess,
+     train_stream_config: TrainStreamConfig,
+ ) -> Result<(), anyhow::Error> {
+-    brush_process::burn_init_setup().await;
+-    run_cli_ui(process, train_stream_config).await
++    let (_, adapter_info) = brush_process::burn_init_setup_with_info().await;
++    run_cli_ui_with_adapter_info(
++        process,
++        train_stream_config,
++        Some(format!("{adapter_info:?}")),
++    )
++    .await
+ }
+ 
+ /// Run the CLI: pin the trainer stream to a dedicated [`Actor`] thread,
+ /// drive the indicatif UI on the main task.
+ pub async fn run_cli_ui(
++    process: RunningProcess,
++    train_stream_config: TrainStreamConfig,
++) -> Result<(), anyhow::Error> {
++    run_cli_ui_with_adapter_info(process, train_stream_config, None).await
++}
++
++async fn run_cli_ui_with_adapter_info(
+     mut process: RunningProcess,
+     train_stream_config: TrainStreamConfig,
++    adapter_info: Option<String>,
+ ) -> Result<(), anyhow::Error> {
+     // Pump the trainer stream from a dedicated Actor thread; the
+     // indicatif UI loop below consumes its output on the main task.
+@@ -113,6 +126,9 @@ pub async fn run_cli_ui(
+         multi
+     };
+ 
++    if let Some(info) = adapter_info {
++        log::info!("Initialized compute adapter: {info}");
++    }
+     log::info!("Compute backend: {:?}", process.device);
+ 
+     let main_spinner = ProgressBar::new_spinner().with_style(
+@@ -305,6 +321,15 @@ mod tests {
+     use super::*;
+     use clap::Parser;
+ 
++    #[test]
++    fn reports_metorigin_diagnostics_version() {
++        let Err(error) = Cli::try_parse_from(["brush-cli", "--version"]) else {
++            panic!("version should exit before GPU initialization");
++        };
++        assert_eq!(error.kind(), ErrorKind::DisplayVersion);
++        assert!(error.to_string().contains("1.0.0+metorigin-macos.1"));
++    }
++
+     #[test]
+     fn parses_source_and_overrides() {
+         let cli = Cli::try_parse_from([
+diff --git a/crates/brush-process/src/lib.rs b/crates/brush-process/src/lib.rs
+index 2cac236..231b801 100644
+--- a/crates/brush-process/src/lib.rs
++++ b/crates/brush-process/src/lib.rs
+@@ -35,8 +35,17 @@ fn burn_options() -> RuntimeOptions {
+ }
+ 
+ pub async fn burn_init_setup() -> ProcessDevice {
+-    burn_wgpu::init_setup_async::<AutoGraphicsApi>(&WgpuDevice::default(), burn_options()).await;
+-    default_device()
++    burn_init_setup_with_info().await.0
++}
++
++/// Initialize the compute device and return the adapter that actually backs it.
++/// This is runtime evidence, unlike the requested `WgpuDevice::Auto` selector.
++pub async fn burn_init_setup_with_info() -> (ProcessDevice, wgpu::AdapterInfo) {
++    let setup =
++        burn_wgpu::init_setup_async::<AutoGraphicsApi>(&WgpuDevice::default(), burn_options())
++            .await;
++    let info = setup.adapter.get_info();
++    (default_device(), info)
+ }
+ 
+ pub fn burn_init_device(adapter: Adapter, device: Device, queue: Queue) -> ProcessDevice {

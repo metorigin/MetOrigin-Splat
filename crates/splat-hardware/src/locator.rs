@@ -95,13 +95,19 @@ impl EngineLocator {
     pub fn resolve_detailed(options: EngineLocatorOptions) -> EngineResolution {
         let environment = std::env::var_os("METORIGIN_ENGINE_DIR").map(PathBuf::from);
         let path = std::env::var_os("PATH");
-        Self::resolve_detailed_inner(options, environment, path)
+        let platform = match (std::env::consts::OS, std::env::consts::ARCH) {
+            ("windows", "x86_64") => "windows-x64".to_string(),
+            ("macos", "aarch64") => "macos-arm64".to_string(),
+            (os, arch) => format!("{os}-{arch}"),
+        };
+        Self::resolve_detailed_inner(options, environment, path, &platform)
     }
 
     fn resolve_detailed_inner(
         options: EngineLocatorOptions,
         environment_dir: Option<PathBuf>,
         path_value: Option<OsString>,
+        expected_platform: &str,
     ) -> EngineResolution {
         let mut resolution = Self::empty_resolution();
         // METORIGIN_ENGINE_DIR is deliberately a developer-only escape hatch.
@@ -144,7 +150,7 @@ impl EngineLocator {
                         .integrity_cache
                         .as_ref()
                         .map(|cache| (cache.path.as_path(), cache.app_version.as_str()));
-                    match manifest.verify(root, &digest, cache) {
+                    match manifest.verify(root, &digest, cache, expected_platform) {
                         Ok(pack) => {
                             if options.mode == EngineResolutionMode::Release {
                                 return Self::resolution_from_pack(pack.executables, pack.statuses);
@@ -397,6 +403,14 @@ impl EngineLocator {
             candidates.push(root.join("brush_app.exe"));
             candidates.push(root.join("bin").join("brush_app.exe"));
         }
+        if cfg!(unix) && name == "brush" {
+            candidates.extend([
+                root.join("brush-cli"),
+                root.join("bin/brush-cli"),
+                root.join("brush/brush-cli"),
+                root.join("brush/bin/brush-cli"),
+            ]);
+        }
         let mut search_parents = vec![root.to_path_buf(), root.join(name)];
         if name == "ffprobe" {
             search_parents.push(root.join("ffmpeg"));
@@ -419,6 +433,10 @@ impl EngineLocator {
                     candidates.push(versioned_root.join("brush_app.exe"));
                     candidates.push(versioned_root.join("bin").join("brush_app.exe"));
                 }
+                if cfg!(unix) && name == "brush" {
+                    candidates.push(versioned_root.join("brush-cli"));
+                    candidates.push(versioned_root.join("bin/brush-cli"));
+                }
             }
         }
         candidates
@@ -438,6 +456,9 @@ impl EngineLocator {
                     let mut candidates = vec![directory.join(&executable)];
                     if cfg!(windows) && name == "brush" {
                         candidates.push(directory.join("brush_app.exe"));
+                    }
+                    if cfg!(unix) && name == "brush" {
+                        candidates.push(directory.join("brush-cli"));
                     }
                     candidates
                 })
@@ -565,6 +586,250 @@ mod tests {
         }
     }
 
+    fn write_mac_pack(root: &Path, arm64: bool) {
+        write_valid_pack(root);
+        let manifest_path = root.join("engine-manifest.json");
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
+        manifest["platform"] = json!("macos-arm64");
+        let mut header = [0_u8; 32];
+        header[..4].copy_from_slice(&[0xcf, 0xfa, 0xed, 0xfe]);
+        header[4..8].copy_from_slice(if arm64 { &[12, 0, 0, 1] } else { &[7, 0, 0, 1] });
+        header[12] = 2; // MH_EXECUTE; this fixture validates the container, not execution.
+        for (engine_name, engine) in manifest["engines"].as_object_mut().unwrap() {
+            let mut files: Vec<serde_json::Value> = engine["files"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|file| {
+                    engine["license_files"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&file["path"])
+                })
+                .cloned()
+                .collect();
+            for (logical, relative) in engine["executables"].as_object_mut().unwrap() {
+                let executable = if logical == "brush" {
+                    "brush-cli"
+                } else {
+                    logical.as_str()
+                };
+                let path = format!("{engine_name}/bin/{executable}");
+                files.push(create_file(root, &path, &header));
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(
+                        root.join(&path),
+                        std::fs::Permissions::from_mode(0o755),
+                    )
+                    .unwrap();
+                }
+                *relative = json!(path);
+            }
+            engine["files"] = json!(files);
+        }
+        std::fs::write(manifest_path, serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
+    }
+
+    fn resolve_mac_pack(options: EngineLocatorOptions) -> EngineResolution {
+        EngineLocator::resolve_detailed_inner(options, None, None, "macos-arm64")
+    }
+
+    /// Exercise the same release resolver as startup without launching engines
+    /// or using an integrity cache. Both inputs are explicit so a different
+    /// locally installed pack cannot silently replace the frozen build input.
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[test]
+    #[ignore = "requires METORIGIN_TEST_ENGINE_PACK and METORIGIN_TEST_ENGINE_MANIFEST_SHA256"]
+    fn frozen_macos_engine_pack_resolves_without_execution() {
+        let root = PathBuf::from(
+            std::env::var_os("METORIGIN_TEST_ENGINE_PACK")
+                .expect("set METORIGIN_TEST_ENGINE_PACK to the frozen engine pack"),
+        );
+        let expected_digest = std::env::var("METORIGIN_TEST_ENGINE_MANIFEST_SHA256")
+            .expect("set METORIGIN_TEST_ENGINE_MANIFEST_SHA256 to the selected manifest digest");
+        let (manifest, digest) = EnginePackManifest::load_with_digest(&root).unwrap();
+        assert!(digest.eq_ignore_ascii_case(&expected_digest));
+        let resolution = EngineLocator::resolve_detailed(release_options(&root));
+        assert!(
+            resolution.pack_error.is_none() && resolution.bundled_pack_is_valid(),
+            "frozen pack rejected by runtime resolver: {:?}",
+            resolution.pack_error
+        );
+        assert!(resolution.paths.is_complete());
+        for engine in manifest.engines.values() {
+            for (logical_name, relative) in &engine.executables {
+                assert_eq!(
+                    EngineLocator::path_for(&resolution.paths, logical_name),
+                    Some(&std::fs::canonicalize(root.join(relative)).unwrap())
+                );
+            }
+        }
+        println!(
+            "{}",
+            serde_json::json!({
+                "engine_pack": root,
+                "manifest_sha256": digest,
+                "declared_file_count": manifest.engines.values().map(|engine| engine.files.len()).sum::<usize>(),
+                "mode": "release",
+                "integrity_cache": false,
+                "runtime_resolution": "passed",
+                "engines_executed": false,
+                "statuses": resolution.statuses,
+            })
+        );
+    }
+
+    #[test]
+    fn macos_manifest_maps_brush_cli_and_verifies_native_headers() {
+        let root = TestDirectory::new("macos-valid");
+        write_mac_pack(root.path(), true);
+        let resolution = resolve_mac_pack(release_options(root.path()));
+        assert!(
+            resolution.bundled_pack_is_valid(),
+            "{:?}",
+            resolution.pack_error
+        );
+        assert!(resolution
+            .paths
+            .brush
+            .unwrap()
+            .ends_with("brush/bin/brush-cli"));
+    }
+
+    #[test]
+    fn macos_target_rejects_windows_pack_without_fallback() {
+        let root = TestDirectory::new("macos-windows-pack");
+        write_valid_pack(root.path());
+        let resolution = resolve_mac_pack(release_options(root.path()));
+        assert!(!resolution.paths.is_complete());
+        assert!(resolution.pack_error.unwrap().contains("does not match"));
+    }
+
+    #[test]
+    fn macos_pack_rejects_wrong_executable_architecture() {
+        let root = TestDirectory::new("macos-wrong-architecture");
+        write_mac_pack(root.path(), false);
+        let resolution = resolve_mac_pack(release_options(root.path()));
+        assert!(!resolution.paths.is_complete());
+        assert!(resolution.pack_error.unwrap().contains("arm64 Mach-O"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn macos_execute_permission_is_checked_even_when_hashes_are_cached() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = TestDirectory::new("macos-mode");
+        write_mac_pack(root.path(), true);
+        let mut options = release_options(root.path());
+        options.integrity_cache = Some(EngineIntegrityCacheOptions {
+            path: root.path().join("cache.json"),
+            app_version: "0.1.0".into(),
+        });
+        assert!(resolve_mac_pack(options.clone()).bundled_pack_is_valid());
+        std::fs::set_permissions(
+            root.path().join("brush/bin/brush-cli"),
+            std::fs::Permissions::from_mode(0o644),
+        )
+        .unwrap();
+        let resolution = resolve_mac_pack(options);
+        assert!(resolution
+            .pack_error
+            .unwrap()
+            .contains("execute permission"));
+    }
+
+    #[test]
+    fn macos_pack_rejects_case_only_duplicate_inventory_paths() {
+        let root = TestDirectory::new("macos-duplicate-case");
+        write_mac_pack(root.path(), true);
+        let path = root.path().join("engine-manifest.json");
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let files = manifest["engines"]["brush"]["files"]
+            .as_array_mut()
+            .unwrap();
+        let mut duplicate = files.last().unwrap().clone();
+        duplicate["path"] = json!("brush/bin/BRUSH-CLI");
+        files.push(duplicate);
+        std::fs::write(path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+        let resolution = resolve_mac_pack(release_options(root.path()));
+        assert!(resolution.pack_error.unwrap().contains("duplicate"));
+    }
+
+    #[test]
+    fn macos_pack_rejects_wrong_dylib_architecture_and_path_casing() {
+        let root = TestDirectory::new("macos-dylib");
+        write_mac_pack(root.path(), true);
+        let path = root.path().join("engine-manifest.json");
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let mut header = [0_u8; 32];
+        header[..4].copy_from_slice(&[0xcf, 0xfa, 0xed, 0xfe]);
+        header[4..8].copy_from_slice(&[7, 0, 0, 1]); // x86_64 MH_DYLIB
+        header[12] = 6;
+        let entry = create_file(root.path(), "colmap/lib/libtest.dylib", &header);
+        manifest["engines"]["colmap"]["files"]
+            .as_array_mut()
+            .unwrap()
+            .push(entry);
+        std::fs::write(&path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+        assert!(resolve_mac_pack(release_options(root.path()))
+            .pack_error
+            .unwrap()
+            .contains("arm64 Mach-O dynamic library"));
+
+        header[4..8].copy_from_slice(&[12, 0, 0, 1]);
+        let mut entry = create_file(root.path(), "colmap/lib/libtest.dylib", &header);
+        entry["path"] = json!("colmap/lib/LIBTEST.dylib");
+        *manifest["engines"]["colmap"]["files"]
+            .as_array_mut()
+            .unwrap()
+            .last_mut()
+            .unwrap() = entry;
+        std::fs::write(&path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+        assert!(!resolve_mac_pack(release_options(root.path())).bundled_pack_is_valid());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn macos_pack_rejects_executable_symlink_escape() {
+        let root = TestDirectory::new("macos-link-escape");
+        let outside = TestDirectory::new("macos-link-target");
+        write_mac_pack(root.path(), true);
+        let executable = root.path().join("brush/bin/brush-cli");
+        let external = outside.path().join("brush-cli");
+        std::fs::rename(&executable, &external).unwrap();
+        std::os::unix::fs::symlink(external, executable).unwrap();
+        let resolution = resolve_mac_pack(release_options(root.path()));
+        assert!(!resolution.paths.is_complete());
+        assert!(resolution.pack_error.unwrap().contains("escapes its root"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn development_can_resolve_brush_cli_name() {
+        let root = TestDirectory::new("brush-cli");
+        let path = root.path().join("brush/bin/brush-cli");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"test cli").unwrap();
+        let resolution = resolve_mac_pack(EngineLocatorOptions {
+            configured_dir: Some(root.path().to_path_buf()),
+            mode: EngineResolutionMode::Development,
+            ..EngineLocatorOptions::default()
+        });
+        assert_eq!(resolution.paths.brush, Some(path));
+        let cli = root.path().join("brush-cli");
+        std::fs::write(&cli, b"test cli").unwrap();
+        let paths = std::env::join_paths([root.path()]).unwrap();
+        assert_eq!(
+            EngineLocator::find_on_path_value("brush", Some(&paths)),
+            Some(cli)
+        );
+    }
+
     fn resolve_without_process_environment(
         options: EngineLocatorOptions,
         path: Option<&Path>,
@@ -573,6 +838,7 @@ mod tests {
             options,
             None,
             path.map(|path| std::env::join_paths([path]).unwrap()),
+            "windows-x64",
         )
     }
 
@@ -666,6 +932,7 @@ mod tests {
             options,
             Some(environment.path().to_path_buf()),
             None,
+            "windows-x64",
         );
 
         assert!(resolution.paths.ffmpeg.is_none());

@@ -1,4 +1,8 @@
 mod commands;
+mod lifecycle;
+mod macos_activity;
+#[cfg(target_os = "macos")]
+mod macos_titlebar;
 mod state;
 
 use state::AppState;
@@ -9,12 +13,13 @@ use tauri::Manager;
 pub fn run() {
     configure_debug_engine_dir();
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
+        .manage(lifecycle::ExitState::default())
         .manage(commands::editor::EditorState::default())
         .invoke_handler(tauri::generate_handler![
+            lifecycle::finish_app_exit,
             // System
             commands::system::app_version,
             commands::system::check_engines,
@@ -62,27 +67,40 @@ pub fn run() {
             commands::workspace::ensure_output_directory,
             commands::workspace::open_project_location,
             commands::workspace::get_frame_preview,
+            commands::workspace::get_project_thumbnail,
             commands::workspace::get_sparse_preview_pack,
             commands::workspace::inspect_ply,
             commands::preview::get_gaussian_preview,
             commands::preview::get_gaussian_camera,
             commands::preview::read_gaussian_ply,
             commands::preview::poll_live_preview,
+            commands::preview::get_preview_resource_policy,
             commands::editor::open_model_editor,
             commands::editor::close_model_editor,
             commands::editor::save_edited_ply,
+            commands::editor::save_editor_image,
         ])
         .setup(|_app| {
+            #[cfg(target_os = "macos")]
+            lifecycle::install_native_exit_guard(_app.handle()).map_err(std::io::Error::other)?;
+            #[cfg(target_os = "macos")]
+            macos_titlebar::install(_app.handle());
             #[cfg(debug_assertions)]
             {
-                if let Some(window) = _app.get_webview_window("main") {
-                    window.open_devtools();
+                if std::env::var("METORIGIN_OPEN_DEVTOOLS").as_deref() == Ok("1") {
+                    if let Some(window) = _app.get_webview_window("main") {
+                        window.open_devtools();
+                    }
                 }
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, _event| {
+            #[cfg(target_os = "macos")]
+            lifecycle::handle_event(_app, _event);
+        });
 }
 
 #[cfg(debug_assertions)]

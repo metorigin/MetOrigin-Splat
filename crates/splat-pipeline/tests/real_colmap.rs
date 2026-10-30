@@ -15,6 +15,7 @@ async fn reconstructs_real_frames_or_writes_quality_diagnosis() {
     assert!(project_dir.join("frames/frames.json").is_file());
 
     let config = PipelineConfig {
+        execution_profile: None,
         preset: "fast".to_string(),
         engine_paths: EnginePaths {
             ffmpeg: None,

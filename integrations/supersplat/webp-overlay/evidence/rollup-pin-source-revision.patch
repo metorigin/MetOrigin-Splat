@@ -1,0 +1,18 @@
+--- a/rollup.config.mjs
++++ b/rollup.config.mjs
+@@ -9,13 +9,8 @@
+ 
+ import pkg from './package.json' with { type: 'json' };
+ 
+-const revision = (() => {
+-    try {
+-        return execSync('git rev-parse --short HEAD').toString().trim();
+-    } catch (e) {
+-        return 'unknown';
+-    }
+-})();
++// Derived archive build: pin revision instead of inheriting the containing repository.
++const revision = '0cb47cd';
+ 
+ const versionReplace = () => replace({
+     preventAssignment: true,

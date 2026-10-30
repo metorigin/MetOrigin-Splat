@@ -1,13 +1,18 @@
 import { localizeMessage, t } from "./i18n";
 import { SpinnerGap, WarningCircle, X } from "./components/primitives/icons";
 import { listen } from "@tauri-apps/api/event";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
+import { DesktopTitlebar } from "./components/shell/DesktopTitlebar";
+import { DesktopAppShell } from "./components/shell/DesktopAppShell";
+import { SidebarInset, DEFAULT_SIDEBAR_WIDTH } from "./components/ui/sidebar";
+import { useSafeNavigation } from "./hooks/useSafeNavigation";
 import { ProjectSidebar } from "./components/shell/ProjectSidebar";
 import { TitleRunBar } from "./components/shell/TitleRunBar";
 import { SettingsDrawer } from "./components/settings";
+import { ConfirmationProvider } from "./components/confirmation/ConfirmationProvider";
 import { ActionReceipt, StatusAnnouncer } from "./components/feedback";
-import { WorkspaceActionDialog } from "./components/workspace";
+import { WorkspaceActionDialog } from "./components/workspace/WorkspaceActionDialog";
 import {
   AppProvider,
   selectActivePipelineSnapshot,
@@ -16,12 +21,13 @@ import {
   useAppContext,
 } from "./context";
 import { shouldIgnoreShortcut, useProjectAvailability } from "./hooks";
+import { hasPrimaryModifier } from "./lib/platformShortcuts";
 import { useModelEditor } from "./hooks/useModelEditor";
-import type { Page } from "./context";
+import { useAppExit } from "./hooks/useAppExit";
 import { getStageLabel } from "./localization";
-import { HomePage, NewProjectPage, ProjectDetailPage } from "./pages";
+import { HomePage } from "./pages/HomePage";
+import { NewProjectPage } from "./pages/NewProjectPage";
 import {
-  confirmRemoveRecentProject,
   DesktopCommandError,
   desktopApi,
   isActivePipelineConflict,
@@ -29,6 +35,7 @@ import {
   selectProjectDirectory,
 } from "./services/desktop";
 import { isUiPreviewMode } from "./services/uiPreview";
+import { commandErrorSummary } from "./services/errors";
 import type {
   AppSettings,
   PipelineConflictInfo,
@@ -42,12 +49,16 @@ import type {
   ActionReceipt as ActionReceiptModel,
   WorkspaceActionRequest,
 } from "./types";
+import { useCompactWindow } from "./hooks/useCompactWindow";
 import { useTheme } from "./hooks/useTheme";
 import { useLanguage } from "./hooks/useLanguage";
 import "@fontsource-variable/inter";
 import "@fontsource/jetbrains-mono/400.css";
-import "./styles/buzz.css";
+import "./styles/app.css";
+import { Button } from "@/components/ui/button";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
+const ProjectDetailPage = lazy(() => import("./pages/ProjectDetailPage").then((module) => ({ default: module.ProjectDetailPage })));
 const ModelEditorPage = lazy(() => import("./pages/ModelEditorPage"));
 
 function normalizeProjectStatus(status: string): ProjectStatus {
@@ -90,6 +101,12 @@ export function AppWorkspace() {
     ? new URLSearchParams(window.location.search).get("preview-overlay")
     : null;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const viewportCompact = useCompactWindow();
+  const [projectDrawerOpen, setProjectDrawerOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+  const [sidebarDragging, setSidebarDragging] = useState(false);
+  const [workspaceHeaderTarget, setWorkspaceHeaderTarget] = useState<HTMLDivElement | null>(null);
+  useEffect(() => setProjectDrawerOpen(false), [viewportCompact, state.page.type]);
   const [version, setVersion] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
@@ -103,9 +120,8 @@ export function AppWorkspace() {
   const [workspaceActivitySignal, setWorkspaceActivitySignal] = useState(0);
   const editor = useModelEditor((error) => dispatch({ type: "SET_ERROR", error }));
   const leaveEditor = editor.leave;
-  const navigate = useCallback(async (page: Page) => {
-    if (await leaveEditor()) dispatch({ type: "NAVIGATE", page });
-  }, [dispatch, leaveEditor]);
+  useAppExit(leaveEditor, (error) => dispatch({ type: "SET_ERROR", error }));
+  const { navigate, historyNavigating } = useSafeNavigation({ state, dispatch, leaveEditor });
   const { retryProjectAvailability } = useProjectAvailability(
     state.recentProjects,
     state.projectAvailability,
@@ -178,7 +194,7 @@ export function AppWorkspace() {
       .catch(() => undefined);
     const enginesTask = desktopApi.checkEngines()
       .then((engines) => dispatch({ type: "SET_ENGINES", engines }))
-      .catch((error) => dispatch({ type: "SET_ENGINES_ERROR", error: String(error) }));
+      .catch((error) => dispatch({ type: "SET_ENGINES_ERROR", error: commandErrorSummary(error, "check_engines") }));
     // Recent records must become interactive as soon as the index read ends;
     // engine/settings checks may touch slower resources and must not gate it.
     const projectsTask = desktopApi.listRecentProjectIndex()
@@ -189,7 +205,7 @@ export function AppWorkspace() {
         setSettings(nextSettings);
         setSettingsError(null);
       })
-      .catch((error) => setSettingsError(String(error)));
+      .catch((error) => setSettingsError(commandErrorSummary(error, "get_app_settings")));
     await Promise.all([versionTask, enginesTask, projectsTask, settingsTask]);
   }, [dispatch]);
 
@@ -453,21 +469,6 @@ export function AppWorkspace() {
     }
   }, [dispatch]);
 
-  const handleRemoveProject = useCallback(async (project: ProjectInfo) => {
-    try {
-      if (activeProjectPath === project.path && !await leaveEditor()) return;
-      const confirmed = await confirmRemoveRecentProject(project.name);
-      if (!confirmed) return;
-      await desktopApi.removeRecentProject(project.id, project.path);
-      dispatch({ type: "REMOVE_RECENT_PROJECT", projectId: project.id });
-      if (activeProjectPath === project.path) {
-        dispatch({ type: "NAVIGATE", page: { type: "home" } });
-      }
-    } catch (error) {
-      dispatch({ type: "SET_ERROR", error: String(error) });
-    }
-  }, [activeProjectPath, dispatch, leaveEditor]);
-
   const requestProjectDeletion = useCallback(async (project: ProjectInfo) => {
     if (activeProjectPath === project.path && !await leaveEditor()) return;
     setDeleteCandidate(project);
@@ -549,10 +550,16 @@ export function AppWorkspace() {
     void loadApplicationData();
   }, [activeProject, activeProjectPath, deleteCandidate, dispatch, loadApplicationData, refreshActivePipeline, workspaceAction]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if (shouldIgnoreShortcut(event)) return;
-      if (!event.ctrlKey) return;
+      if (!hasPrimaryModifier(event)) return;
+      // The wizard owns dirty drafts and safe cancellation of an in-flight copy.
+      // Global open/new must not replace it before that guard has finished.
+      if (state.page.type === "new-project") {
+        if (["n", "o"].includes(event.key.toLowerCase())) event.preventDefault();
+        return;
+      }
       if (event.key.toLowerCase() === "n") {
         event.preventDefault();
         void navigate({ type: "new-project" });
@@ -564,7 +571,7 @@ export function AppWorkspace() {
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [navigate, handleOpenProject]);
+  }, [navigate, handleOpenProject, state.page.type]);
 
   const page = (() => {
     switch (state.page.type) {
@@ -572,8 +579,17 @@ export function AppWorkspace() {
         return (
           <HomePage
             engines={state.engines}
-            metrics={metrics}
+            titleInWindowHeader
+            onOpenSettings={() => setSettingsOpen(true)}
             onOpenProject={() => void handleOpenProject()}
+            onSelectProject={(project) => void openSelectedProject(project)}
+            projectActions={{
+              onRevealProject: (project) => void handleRevealProject(project),
+              onDeleteProject: requestProjectDeletion,
+              onRetryAvailability: retryProjectAvailability,
+              onRelinkProject: handleRelinkProject,
+              onOpenIndependent: handleOpenIndependent,
+            }}
             onRetry={() => void loadApplicationData()}
           />
         );
@@ -581,12 +597,12 @@ export function AppWorkspace() {
         return <NewProjectPage settings={settings} onOpenSettings={() => setSettingsOpen(true)} />;
       case "project-detail":
         if (editor.session) return <Suspense fallback={<div className="preview-empty" role="status"><SpinnerGap size={28} className="spin" aria-hidden="true" /><span>{t("正在载入")}</span></div>}>
-          <ModelEditorPage ref={editor.editorRef} session={editor.session}
+          <ModelEditorPage ref={editor.editorRef} session={editor.session} headerTarget={workspaceHeaderTarget}
             onBack={() => void leaveEditor()} />
         </Suspense>;
         return (
           <ProjectDetailPage
-            key={state.page.projectId}
+            key={JSON.stringify([state.page.projectId, state.page.projectPath])}
             metrics={metrics}
             activityOpenSignal={workspaceActivitySignal}
             projectId={state.page.projectId}
@@ -597,62 +613,61 @@ export function AppWorkspace() {
   })();
 
   return (
-    <div className={`workspace-shell page-${state.page.type}${editor.session ? " is-model-editing" : ""}`}>
-      {state.page.type !== "new-project" ? (
-        <ProjectSidebar
-          projects={state.recentProjects}
-          availability={state.projectAvailability}
-          loading={state.recentProjectsLoading}
-          loadError={state.recentProjectsError}
-          activeProjectPath={activeProjectPath}
-          collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed((value) => !value)}
-          onHome={() => void navigate({ type: "home" })}
-          onNewProject={() =>
-            void navigate({ type: "new-project" })
-          }
-          onOpenProject={() => void handleOpenProject()}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onSelectProject={(project) => void openSelectedProject(project)}
-          onRevealProject={(project) => void handleRevealProject(project)}
-          onRemoveProject={(project) => void handleRemoveProject(project)}
-          onDeleteProject={requestProjectDeletion}
-          onRetryAvailability={retryProjectAvailability}
-          onRelinkProject={handleRelinkProject}
-          onOpenIndependent={handleOpenIndependent}
-          onRetry={() => void loadApplicationData()}
-          engines={state.engines}
-          metrics={metrics}
-        />
-      ) : null}
+    <DesktopAppShell className={`page-${state.page.type}`} data-sidebar-dragging={sidebarDragging}>
+      <DesktopTitlebar
+        title={state.page.type === "home" ? t("项目中心") : state.page.type === "new-project" ? t("创建新项目") : undefined}
+        headerTargetRef={setWorkspaceHeaderTarget}
+        sidebarWidth={sidebarWidth}
+        sidebarCollapsed={sidebarCollapsed || viewportCompact}
+        compact={viewportCompact}
+        drawerOpen={projectDrawerOpen}
+        navigationDisabled={state.page.type === "new-project" || historyNavigating}
+        onToggleSidebar={() => viewportCompact ? setProjectDrawerOpen(true) : setSidebarCollapsed((value) => !value)}
+      >
+            {state.page.type === "project-detail" && !editor.session ? (
+              <TitleRunBar compact
+                project={activeProject}
+                pipelineSnapshot={viewedPipelineSnapshot}
+                pipelineConflict={pipelineConflict}
+                taskProgress={activeProject ? taskProgressByProject[activeProject.id] ?? null : null}
+                updatedAt={viewedPipelineFreshness.updatedAt}
+                onHome={() => void navigate({ type: "home" })}
+                onEdit={isDesktopRuntime() && activeProject ? () => void editor.open(activeProject) : undefined}
+                openingEditor={editor.opening}
+                onBlockedAttempt={() => activeProject && blockForActiveProject(activeProject.id)}
+                onStart={() => void handleStart()}
+                onPause={handlePause}
+                onResume={() => void handleResume()}
+                onCancel={handleCancel}
+                onRevealProject={() => activeProject && void handleRevealProject(activeProject)}
+                onDeleteProject={() => activeProject && requestProjectDeletion(activeProject)}
+                onViewActivity={() => setWorkspaceActivitySignal((value) => value + 1)}
+              />
+            ) : null}
+      </DesktopTitlebar>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+          <ProjectSidebar
+            activeProjectPath={activeProjectPath}
+            collapsed={sidebarCollapsed}
+            width={sidebarWidth}
+            navigationDisabled={state.page.type === "new-project"}
+            onWidthChange={setSidebarWidth}
+            onDraggingChange={setSidebarDragging}
+            viewportCompact={viewportCompact}
+            drawerOpen={projectDrawerOpen}
+            onDrawerOpenChange={setProjectDrawerOpen}
+            onHome={() => void navigate({ type: "home" })}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
 
-      <section className="workspace-surface">
-        <div className="workspace-header-stack">
-          {state.page.type === "home" ? <h1 className="sr-only">{t("项目中心")}</h1> : null}
-          {state.page.type === "project-detail" && !editor.session ? (
-            <TitleRunBar
-              project={activeProject}
-              pipelineSnapshot={viewedPipelineSnapshot}
-              pipelineConflict={pipelineConflict}
-              taskProgress={activeProject ? taskProgressByProject[activeProject.id] ?? null : null}
-              updatedAt={viewedPipelineFreshness.updatedAt}
-              onHome={() => void navigate({ type: "home" })}
-              onEdit={isDesktopRuntime() && activeProject ? () => void editor.open(activeProject) : undefined}
-              openingEditor={editor.opening}
-              onBlockedAttempt={() => activeProject && blockForActiveProject(activeProject.id)}
-              onStart={() => void handleStart()}
-              onPause={handlePause}
-              onResume={() => void handleResume()}
-              onCancel={handleCancel}
-              onRevealProject={() => activeProject && void handleRevealProject(activeProject)}
-              onRemoveProject={() => activeProject && void handleRemoveProject(activeProject)}
-              onDeleteProject={() => activeProject && requestProjectDeletion(activeProject)}
-              onViewActivity={() => setWorkspaceActivitySignal((value) => value + 1)}
-            />
-          ) : null}
-        </div>
-        <main className="workspace-content">{page}</main>
-      </section>
+        <SidebarInset>
+          <main className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+            <Suspense fallback={<div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground" role="status"><SpinnerGap className="size-5 motion-safe:animate-spin" aria-hidden="true" />{t("正在载入")}</div>}>
+              {page}
+            </Suspense>
+          </main>
+        </SidebarInset>
+      </div>
 
       {settingsOpen && (
         <SettingsDrawer
@@ -685,37 +700,38 @@ export function AppWorkspace() {
       )}
       {actionReceipt ? <ActionReceipt receipt={actionReceipt} onDismiss={() => setActionReceipt(null)} /> : null}
 
-      {isUiPreviewMode() ? <div className="preview-mode-label">{t("界面预览 · 示例数据")}</div> : null}
+      {isUiPreviewMode() ? <div role="note" className="flex h-[22px] shrink-0 items-center justify-center border-t border-border/60 bg-sidebar px-2 text-[11px] text-muted-foreground">{t("界面预览 · 示例数据")}</div> : null}
 
       {state.error && (
-        <div className="global-error" role="alert">
+        <div className="fixed right-6 bottom-12 z-[70] flex max-w-[min(40rem,calc(100vw-3rem))] items-start gap-3 rounded-lg border border-destructive/40 bg-popover p-4 text-sm text-destructive shadow-lg" role="alert">
           <WarningCircle size={19} weight="fill" />
           <span>{localizeMessage(state.error)}</span>
-          <button
+          <Button
+            variant="ghost" size="icon-sm"
             type="button"
             onClick={() => dispatch({ type: "SET_ERROR", error: null })}
             aria-label={t("关闭错误提示")}
           >
             <X size={17} />
-          </button>
+          </Button>
         </div>
       )}
 
       {state.loading && (
-        <div className="loading-overlay" aria-live="polite">
-          <div className="loading-spinner" />
+        <div className="fixed inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-background/90 text-sm" aria-live="polite">
+          <SpinnerGap className="size-6 motion-safe:animate-spin" aria-hidden="true" />
           <p>{t("正在处理…")}</p>
         </div>
       )}
       <StatusAnnouncer message={announcement} />
-    </div>
+    </DesktopAppShell>
   );
 }
 
 function App() {
   return (
     <AppProvider>
-      <AppWorkspace />
+      <TooltipProvider delayDuration={400}><ConfirmationProvider><AppWorkspace /></ConfirmationProvider></TooltipProvider>
     </AppProvider>
   );
 }

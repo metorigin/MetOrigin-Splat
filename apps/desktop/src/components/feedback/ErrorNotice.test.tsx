@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { UiError } from "../../types";
@@ -51,7 +51,31 @@ describe("ErrorNotice", () => {
     fireEvent.click(screen.getByRole("button", { name: "重试中…" }));
     expect(onAction).toHaveBeenCalledOnce();
     expect(screen.getByText("无法读取项目")).toBeInTheDocument();
-    resolve();
-    await pending;
+    await act(async () => { resolve(); await pending; });
+  });
+
+  it.each([
+    new Error("token=RETRY_SECRET /Users/private/retry.log"),
+    { user_message: "token=RETRY_SECRET /Users/private/retry.log" },
+  ])("keeps the original error after a rejected action, protects diagnostics, and permits retry: %s", async (rejection) => {
+    const onAction = vi.fn().mockRejectedValueOnce(rejection).mockResolvedValueOnce(undefined);
+    render(<ErrorNotice error={uiError()} onAction={onAction} />);
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    const failure = await screen.findByRole("alert");
+    expect(failure).toHaveTextContent("操作未完成");
+    expect(failure).not.toHaveTextContent("RETRY_SECRET");
+    expect(failure).not.toHaveTextContent("/Users/private");
+    expect(screen.getByText("无法读取项目")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(onAction).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole("button", { name: "重试" })).toBeEnabled());
+    expect(screen.getByText("无法读取项目")).toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("does not expose active recovery actions without an action handler", () => {
+    render(<ErrorNotice error={uiError()} />);
+    expect(screen.getByRole("button", { name: "重试" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "打开设置" })).toBeDisabled();
   });
 });

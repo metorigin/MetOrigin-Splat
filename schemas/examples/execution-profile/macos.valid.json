@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "run_id": "01900000-0000-7000-8000-000000000001",
+  "platform": "macos",
+  "architecture": "arm64",
+  "os_version": "15.0",
+  "engine_pack_id": "macos-arm64-example-v1",
+  "engines": {
+    "ffmpeg": {
+      "version": "8.1.2",
+      "binary_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "ffprobe": {
+      "version": "8.1.2",
+      "binary_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "colmap": {
+      "version": "4.1.0",
+      "binary_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "source_commit": "fa8e3b3ff591552855f8ad2806723c80f963f69c"
+    },
+    "brush": {
+      "version": "1.0.0",
+      "binary_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "source_commit": "1388f74c6fe0236f68ee4915564bf00e9d2e3747"
+    }
+  },
+  "colmap": {
+    "cli_profile": "colmap_4_1",
+    "database_schema_profile": "colmap_4_1",
+    "feature_backend": "cpu",
+    "matching_backend": "cpu",
+    "ba_backend": "ceres_cpu",
+    "global_positioning_backend": "cpu"
+  },
+  "brush": {
+    "cli_profile": "metorigin_1",
+    "backend": "metal",
+    "probe_result": {
+      "kind": "compute_smoke",
+      "status": "supported",
+      "backend": "metal",
+      "device_name": "Apple Silicon fixture device"
+    },
+    "live_preview": "unknown",
+    "ply_warm_start": "unknown"
+  },
+  "memory": {
+    "kind": "unified",
+    "physical_memory_bytes": 17179869184,
+    "training_budget_bytes": 8589934592,
+    "available_working_set_bytes": 10737418240
+  },
+  "effective_training": {
+    "iterations": 300,
+    "sh_degree": 0,
+    "resolution": 960,
+    "image_cache_budget_bytes": 536870912,
+    "max_splats": 300000,
+    "threads": 4,
+    "lod_levels": 0
+  },
+  "live_protocol": "disabled",
+  "resume_mode": "disabled"
+}

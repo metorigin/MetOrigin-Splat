@@ -127,6 +127,8 @@ pub struct StageContext {
     pub preset: Option<String>,
     /// Executable paths resolved once when the pipeline is created.
     pub engine_paths: EnginePaths,
+    /// Frozen run profile shared by every stage; absence means legacy/unknown.
+    pub execution_profile: Option<std::sync::Arc<splat_domain::ExecutionProfile>>,
     /// Shared cancellation token for the active pipeline run.
     pub cancellation: CancellationToken,
 }
@@ -168,6 +170,7 @@ impl StageContext {
             log_path,
             preset,
             engine_paths,
+            execution_profile: None,
             cancellation,
         }
     }

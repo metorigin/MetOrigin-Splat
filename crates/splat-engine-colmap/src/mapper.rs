@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_process::CommandSpec;
 
+use crate::execution::{gpu_flag, ColmapExecutionSettings};
 use crate::result::ColmapResult;
 use crate::runtime;
 use crate::types::{MapperKind, ModelInfo};
@@ -18,12 +19,21 @@ use crate::types::{MapperKind, ModelInfo};
 /// - Parsing model statistics into structured `ColmapResult`
 pub struct ColmapMapper {
     colmap_path: PathBuf,
+    execution_settings: Option<ColmapExecutionSettings>,
 }
 
 impl ColmapMapper {
     /// Create a new mapper with the path to the COLMAP executable.
     pub fn new(colmap_path: PathBuf) -> Self {
-        Self { colmap_path }
+        Self {
+            colmap_path,
+            execution_settings: None,
+        }
+    }
+
+    pub fn with_execution_settings(mut self, settings: ColmapExecutionSettings) -> Self {
+        self.execution_settings = Some(settings);
+        self
     }
 
     /// Build a `CommandSpec` for `colmap mapper`.
@@ -59,24 +69,44 @@ impl ColmapMapper {
         output_path: &Path,
         log_path: &Path,
     ) -> CommandSpec {
-        runtime::command_spec(
+        let mut args: Vec<std::ffi::OsString> = vec![
+            match kind {
+                MapperKind::Global => "global_mapper",
+                MapperKind::Incremental => "mapper",
+            }
+            .into(),
+            "--log_target".into(),
+            "stderr".into(),
+            "--database_path".into(),
+            database_path.as_os_str().to_owned(),
+            "--image_path".into(),
+            image_path.as_os_str().to_owned(),
+            "--output_path".into(),
+            output_path.as_os_str().to_owned(),
+        ];
+        if let Some(settings) = &self.execution_settings {
+            match kind {
+                MapperKind::Incremental => args.extend([
+                    "--Mapper.ba_use_gpu".into(),
+                    "0".into(),
+                    "--Mapper.num_threads".into(),
+                    settings.threads().to_string().into(),
+                ]),
+                MapperKind::Global => args.extend([
+                    "--GlobalMapper.gp_use_gpu".into(),
+                    gpu_flag(settings.colmap().global_positioning_backend).into(),
+                    "--GlobalMapper.ba_ceres_use_gpu".into(),
+                    "0".into(),
+                    "--GlobalMapper.num_threads".into(),
+                    settings.threads().to_string().into(),
+                ]),
+            }
+        }
+        runtime::command_spec_with_settings(
             &self.colmap_path,
-            vec![
-                match kind {
-                    MapperKind::Global => "global_mapper",
-                    MapperKind::Incremental => "mapper",
-                }
-                .into(),
-                "--log_target".into(),
-                "stderr".into(),
-                "--database_path".into(),
-                database_path.as_os_str().to_owned(),
-                "--image_path".into(),
-                image_path.as_os_str().to_owned(),
-                "--output_path".into(),
-                output_path.as_os_str().to_owned(),
-            ],
+            args,
             log_path,
+            self.execution_settings.as_ref(),
         )
     }
 
@@ -188,13 +218,21 @@ impl ColmapMapper {
 
     /// Analyze one sparse model with this adapter's resolved COLMAP binary.
     pub fn analyze_model(&self, model_dir: &Path) -> AppResult<ModelInfo> {
-        analyze_model(&self.colmap_path, model_dir)
+        analyze_model(
+            &self.colmap_path,
+            model_dir,
+            self.execution_settings.as_ref(),
+        )
     }
 }
 
 /// Run `colmap model_analyzer` on a model directory and parse the output.
-fn analyze_model(colmap_path: &Path, model_dir: &Path) -> AppResult<ModelInfo> {
-    let output = runtime::command(colmap_path)
+fn analyze_model(
+    colmap_path: &Path,
+    model_dir: &Path,
+    settings: Option<&ColmapExecutionSettings>,
+) -> AppResult<ModelInfo> {
+    let output = runtime::command_with_settings(colmap_path, settings)
         .args(["model_analyzer", "--path"])
         .arg(model_dir.as_os_str())
         .output()

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "archive_id": "01900000-0000-7000-8000-000000000001",
+  "iteration": 500,
+  "checkpoint": "checkpoint_500.ply",
+  "checkpoint_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "extra": true,
+  "target_iterations": 3000
+}

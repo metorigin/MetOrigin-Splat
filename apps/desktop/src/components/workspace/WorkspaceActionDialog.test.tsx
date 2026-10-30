@@ -123,7 +123,7 @@ describe("WorkspaceActionDialog", () => {
 
     await screen.findByText("UI-UNKNOWN-COMMAND");
     expect(screen.getByText("kept artifact")).toBeVisible();
-    expect(dialog.querySelector<HTMLButtonElement>(".button-warning")).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "确认并执行" })).toBeDisabled();
     expect(within(dialog).getByRole("button", { name: "重新读取影响说明" })).toBeEnabled();
   });
 });

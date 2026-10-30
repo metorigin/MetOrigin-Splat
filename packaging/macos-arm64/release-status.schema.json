@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Manifest-bound engine pack distribution status",
+  "type": "object",
+  "required": ["schema_version", "manifest_sha256", "distributable", "distribution_status", "allowed_use", "engines", "blockers", "acceptance_scope"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "distributable": {"type": "boolean"},
+    "distribution_status": {"enum": ["blocked", "evidence-complete"]},
+    "allowed_use": {"enum": ["internal-alpha-validation", "subject-to-app-signing-and-acceptance"]},
+    "acceptance_scope": {"type": "string", "minLength": 1},
+    "engines": {
+      "type": "object",
+      "required": ["ffmpeg", "colmap", "brush"],
+      "additionalProperties": false,
+      "patternProperties": {
+        "^(ffmpeg|colmap|brush)$": {
+          "type": "object",
+          "required": ["release_ready", "issue_count", "audit_path"],
+          "additionalProperties": false,
+          "properties": {
+            "release_ready": {"type": "boolean"},
+            "issue_count": {"type": "integer", "minimum": 0},
+            "audit_path": {"type": "string", "pattern": "^(ffmpeg|colmap|brush)/provenance/audit\\.json$"}
+          }
+        }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["engine", "kind"],
+        "properties": {
+          "engine": {"enum": ["ffmpeg", "colmap", "brush"]},
+          "kind": {"type": "string", "minLength": 1},
+          "component": {"type": "string"}
+        }
+      }
+    }
+  },
+  "allOf": [{"if": {"properties": {"distributable": {"const": true}}}, "then": {"properties": {"blockers": {"maxItems": 0}, "distribution_status": {"const": "evidence-complete"}}}}]
+}

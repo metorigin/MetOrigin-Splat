@@ -1,0 +1,360 @@
+import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
+import { localStorageKey } from '@/constants/localStorage'
+import { backendStorage } from '@/lib/backendStorage'
+import { useTheme } from './useTheme'
+import {
+  getDefaultNotificationPosition,
+  isNotificationPosition,
+  type NotificationPosition,
+} from '@/utils/toastPlacement'
+
+export type FontSize = '14px' | '15px' | '16px' | '18px' | '20px'
+
+export const ACCENT_COLORS = [
+  {
+    name: 'Gray',
+    value: 'gray',
+    thumb: '#3F3F46',
+    primary: '#f17455',
+    sidebar: { light: '#f1f1f1', dark: '#171717' },
+  },
+  {
+    name: 'Red',
+    value: 'red',
+    thumb: '#F0614B',
+    primary: '#F0614B',
+    sidebar: { light: '#F3CBC4', dark: '#5E1308' },
+  },
+  {
+    name: 'Orange',
+    value: 'orange',
+    thumb: '#E9A23F',
+    primary: '#E9A23F',
+    sidebar: { light: '#F3DFC4', dark: '#5C3A0A' },
+  },
+  {
+    name: 'Green',
+    value: 'green',
+    thumb: '#88BA42',
+    primary: '#88BA42',
+    sidebar: { light: '#DFF3C4', dark: '#374B1B' },
+  },
+  {
+    name: 'Emerald',
+    value: 'emerald',
+    thumb: '#38AB51',
+    primary: '#38AB51',
+    sidebar: { light: '#C4F3CE', dark: '#194D24' },
+  },
+  {
+    name: 'Teal',
+    value: 'teal',
+    thumb: '#38AB8D',
+    primary: '#38AB8D',
+    sidebar: { light: '#C4F3E6', dark: '#194D3F' },
+  },
+  {
+    name: 'Cyan',
+    value: 'cyan',
+    thumb: '#45BBDE',
+    primary: '#45BBDE',
+    sidebar: { light: '#C4E8F3', dark: '#0F4657' },
+  },
+  {
+    name: 'Blue',
+    value: 'blue',
+    thumb: '#456BDE',
+    primary: '#456BDE',
+    sidebar: { light: '#C4D0F3', dark: '#0F2157' },
+  },
+  {
+    name: 'Purple',
+    value: 'purple',
+    thumb: '#865EEA',
+    primary: '#865EEA',
+    sidebar: { light: '#D2C4F3', dark: '#220C5A' },
+  },
+  {
+    name: 'Pink',
+    value: 'pink',
+    thumb: '#D55EF3',
+    primary: '#D55EF3',
+    sidebar: { light: '#FFDAE9', dark: '#4D075F' },
+  },
+  {
+    name: 'Rose',
+    value: 'rose',
+    thumb: '#F655B8',
+    primary: '#F655B8',
+    sidebar: { light: '#F3C4E1', dark: '#61053E' },
+  },
+] as const
+
+export type AccentColorValue = (typeof ACCENT_COLORS)[number]['value']
+const DEFAULT_ACCENT_COLOR: AccentColorValue = 'gray'
+
+const applyAccentColorToDOM = (colorValue: string, isDark: boolean) => {
+  const color = ACCENT_COLORS.find((c) => c.value === colorValue)
+  if (!color) return
+
+  const root = document.documentElement
+  const sidebarColor = isDark ? color.sidebar.dark : color.sidebar.light
+
+  root.style.setProperty('--sidebar', sidebarColor)
+  root.style.setProperty('--primary', color.primary)
+}
+
+export const MESSAGE_ZOOM_LEVELS = [0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
+const defaultMessageZoom = 1
+
+export const sanitizeMessageZoom = (zoom: unknown): number => {
+  if (typeof zoom !== 'number' || !Number.isFinite(zoom)) {
+    return defaultMessageZoom
+  }
+  return MESSAGE_ZOOM_LEVELS.reduce((nearest, level) =>
+    Math.abs(level - zoom) < Math.abs(nearest - zoom) ? level : nearest
+  )
+}
+
+const stepMessageZoom = (current: number, direction: 1 | -1): number => {
+  const levels =
+    direction === 1 ? MESSAGE_ZOOM_LEVELS : [...MESSAGE_ZOOM_LEVELS].reverse()
+  const from = sanitizeMessageZoom(current)
+  return (
+    levels.find((level) =>
+      direction === 1 ? level > from : level < from
+    ) ?? from
+  )
+}
+
+interface InterfaceSettingsState {
+  fontSize: FontSize
+  messageZoom: number
+  accentColor: AccentColorValue
+  notificationPosition: NotificationPosition
+  showTokenSpeed: boolean
+  coloredUserBubble: boolean
+  renderHtmlArtifacts: boolean
+  autoGenerateTitle: boolean
+  setFontSize: (size: FontSize) => void
+  zoomInMessages: () => void
+  zoomOutMessages: () => void
+  resetMessageZoom: () => void
+  setAccentColor: (color: AccentColorValue) => void
+  setNotificationPosition: (position: NotificationPosition) => void
+  setShowTokenSpeed: (show: boolean) => void
+  setColoredUserBubble: (colored: boolean) => void
+  setRenderHtmlArtifacts: (render: boolean) => void
+  setAutoGenerateTitle: (auto: boolean) => void
+  resetInterface: () => void
+}
+
+type InterfaceSettingsPersistedSlice = Omit<
+  InterfaceSettingsState,
+  | 'resetInterface'
+  | 'setFontSize'
+  | 'zoomInMessages'
+  | 'zoomOutMessages'
+  | 'resetMessageZoom'
+  | 'setAccentColor'
+  | 'setNotificationPosition'
+  | 'setShowTokenSpeed'
+  | 'setColoredUserBubble'
+  | 'setRenderHtmlArtifacts'
+  | 'setAutoGenerateTitle'
+>
+
+export const fontSizeOptions = [
+  { label: 'Small', value: '14px' as FontSize },
+  { label: 'Medium', value: '16px' as FontSize },
+  { label: 'Large', value: '18px' as FontSize },
+  { label: 'Extra Large', value: '20px' as FontSize },
+]
+
+// Default interface settings
+const defaultFontSize: FontSize = '16px'
+
+const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
+  return {
+    fontSize: defaultFontSize,
+    messageZoom: defaultMessageZoom,
+    accentColor: DEFAULT_ACCENT_COLOR,
+    notificationPosition: getDefaultNotificationPosition(),
+    showTokenSpeed: true,
+    coloredUserBubble: true,
+    renderHtmlArtifacts: false,
+    autoGenerateTitle: true,
+  }
+}
+
+const interfaceStorage = createJSONStorage<InterfaceSettingsPersistedSlice>(
+  () => backendStorage
+)
+
+export const useInterfaceSettings = create<InterfaceSettingsState>()(
+  persist<
+    InterfaceSettingsState,
+    [],
+    [],
+    InterfaceSettingsPersistedSlice
+  >(
+    (set) => {
+      const defaultState = createDefaultInterfaceValues()
+      return {
+        ...defaultState,
+        resetInterface: () => {
+          const { isDark } = useTheme.getState()
+
+          // Reset font size
+          document.documentElement.style.setProperty(
+            '--font-size-base',
+            defaultFontSize
+          )
+
+          // Reset accent color preset
+          applyAccentColorToDOM(DEFAULT_ACCENT_COLOR, isDark)
+
+          // Update state
+          set({
+            fontSize: defaultFontSize,
+            messageZoom: defaultMessageZoom,
+            accentColor: DEFAULT_ACCENT_COLOR,
+            notificationPosition: getDefaultNotificationPosition(),
+            showTokenSpeed: true,
+            coloredUserBubble: true,
+            renderHtmlArtifacts: false,
+            autoGenerateTitle: true,
+          })
+        },
+
+        setAccentColor: (color: AccentColorValue) => {
+          const colorExists = ACCENT_COLORS.find((c) => c.value === color)
+          if (!colorExists) return
+
+          const { isDark } = useTheme.getState()
+          applyAccentColorToDOM(color, isDark)
+          set({ accentColor: color })
+        },
+
+        setFontSize: (size: FontSize) => {
+          // Update CSS variable
+          document.documentElement.style.setProperty('--font-size-base', size)
+          // Update state
+          set({ fontSize: size })
+        },
+
+        zoomInMessages: () =>
+          set((state) => ({ messageZoom: stepMessageZoom(state.messageZoom, 1) })),
+
+        zoomOutMessages: () =>
+          set((state) => ({
+            messageZoom: stepMessageZoom(state.messageZoom, -1),
+          })),
+
+        resetMessageZoom: () => set({ messageZoom: defaultMessageZoom }),
+
+        setNotificationPosition: (position) => {
+          if (!isNotificationPosition(position)) return
+          set({ notificationPosition: position })
+        },
+
+        setShowTokenSpeed: (show) => {
+          set({ showTokenSpeed: show })
+        },
+
+        setColoredUserBubble: (colored) => {
+          set({ coloredUserBubble: colored })
+        },
+
+        setRenderHtmlArtifacts: (render) => {
+          set({ renderHtmlArtifacts: render })
+        },
+
+        setAutoGenerateTitle: (auto) => {
+          set({ autoGenerateTitle: auto })
+        },
+      }
+    },
+    {
+      name: localStorageKey.settingInterface,
+      storage: interfaceStorage,
+      skipHydration: true,
+      partialize: (state) => ({
+        fontSize: state.fontSize,
+        messageZoom: state.messageZoom,
+        accentColor: state.accentColor,
+        notificationPosition: state.notificationPosition,
+        showTokenSpeed: state.showTokenSpeed,
+        coloredUserBubble: state.coloredUserBubble,
+        renderHtmlArtifacts: state.renderHtmlArtifacts,
+        autoGenerateTitle: state.autoGenerateTitle,
+      }),
+      // Apply settings when hydrating from storage
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          // Migrate old font size value '15px' to '16px'
+          if ((state.fontSize as FontSize) === '15px') {
+            state.fontSize = '16px'
+          }
+
+          // Apply font size from storage
+          document.documentElement.style.setProperty(
+            '--font-size-base',
+            state.fontSize
+          )
+
+          state.messageZoom = sanitizeMessageZoom(state.messageZoom)
+
+          // Get the current theme state
+          const { isDark } = useTheme.getState()
+
+          // Apply accent color preset
+          const accentColorValue = state.accentColor || DEFAULT_ACCENT_COLOR
+          applyAccentColorToDOM(accentColorValue, isDark)
+
+          if (
+            !state.notificationPosition ||
+            !isNotificationPosition(state.notificationPosition)
+          ) {
+            state.notificationPosition = getDefaultNotificationPosition()
+          }
+
+          if (typeof state.showTokenSpeed !== 'boolean') {
+            state.showTokenSpeed = true
+          }
+
+          if (typeof state.coloredUserBubble !== 'boolean') {
+            state.coloredUserBubble = true
+          }
+
+          if (typeof state.renderHtmlArtifacts !== 'boolean') {
+            state.renderHtmlArtifacts = false
+          }
+
+          if (typeof state.autoGenerateTitle !== 'boolean') {
+            state.autoGenerateTitle = true
+          }
+        }
+
+        // Return the state to be used for hydration
+        return state
+      },
+    }
+  )
+)
+
+// Subscribe to theme changes to update accent color sidebar variant
+let prevIsDark = useTheme.getState().isDark
+const unsubscribeTheme = useTheme.subscribe((state) => {
+  if (state.isDark !== prevIsDark) {
+    prevIsDark = state.isDark
+    const { accentColor } = useInterfaceSettings.getState()
+    applyAccentColorToDOM(accentColor, state.isDark)
+  }
+})
+
+// Detach the module-level subscription on HMR so reloads don't stack listeners.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => unsubscribeTheme())
+}

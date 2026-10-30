@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "notices": [
+    {
+      "repository": "dropbox/rust-alloc-no-stdlib",
+      "commit": "ae42d22078b98549e987d2f03d12df7b984fde47",
+      "path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/ae42d22078b98549e987d2f03d12df7b984fde47/LICENSE",
+      "git_blob_sha1": "cd496ba72eb37e83a44958358d1f89a8a28cbc15",
+      "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae",
+      "size_bytes": 1483,
+      "local_path": "app-originals/dropbox__rust-alloc-no-stdlib/ae42d22078b98549e987d2f03d12df7b984fde47/LICENSE"
+    },
+    {
+      "repository": "open-i18n/rust-unic",
+      "commit": "8a6ce83063d90b91ae2ce59eddb803edd393fca9",
+      "path": "LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-APACHE",
+      "git_blob_sha1": "16fe87b06e802f094b3fbb0894b137bca2b16ef1",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "size_bytes": 10847,
+      "local_path": "app-originals/open-i18n__rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-APACHE"
+    },
+    {
+      "repository": "open-i18n/rust-unic",
+      "commit": "8a6ce83063d90b91ae2ce59eddb803edd393fca9",
+      "path": "AUTHORS",
+      "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/AUTHORS",
+      "git_blob_sha1": "ab3575c1f490363e4957adbc77a3783c48f4492b",
+      "sha256": "2748c1a1fba7616917c61d455e8d715ab952671ead63f2026ad0124410596b09",
+      "size_bytes": 664,
+      "local_path": "app-originals/open-i18n__rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/AUTHORS"
+    },
+    {
+      "repository": "tauri-apps/tauri",
+      "commit": "6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a",
+      "path": "LICENSE.spdx",
+      "url": "https://raw.githubusercontent.com/tauri-apps/tauri/6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a/LICENSE.spdx",
+      "git_blob_sha1": "4080281f12fc44a831babb7bb4f531aeb070078b",
+      "sha256": "5e834fe9788c524210deda859c46a550ffa5aa0cba9ea0572f0d81120e97c008",
+      "size_bytes": 889,
+      "local_path": "app-originals/tauri-apps__tauri/6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a/LICENSE.spdx"
+    },
+    {
+      "repository": "open-i18n/rust-unic",
+      "commit": "5878605364af97a3358368a6eaef02104af2e016",
+      "path": "LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+      "git_blob_sha1": "16fe87b06e802f094b3fbb0894b137bca2b16ef1",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "size_bytes": 10847,
+      "local_path": "app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE"
+    },
+    {
+      "repository": "open-i18n/rust-unic",
+      "commit": "5878605364af97a3358368a6eaef02104af2e016",
+      "path": "LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+      "git_blob_sha1": "31aa79387f27e730e33d871925e152e35e428031",
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "size_bytes": 1023,
+      "local_path": "app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT"
+    },
+    {
+      "repository": "open-i18n/rust-unic",
+      "commit": "8a6ce83063d90b91ae2ce59eddb803edd393fca9",
+      "path": "LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-MIT",
+      "git_blob_sha1": "31aa79387f27e730e33d871925e152e35e428031",
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "size_bytes": 1023,
+      "local_path": "app-originals/open-i18n__rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-MIT"
+    },
+    {
+      "repository": "tauri-apps/tauri",
+      "commit": "6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a",
+      "path": "LICENSE_MIT",
+      "url": "https://raw.githubusercontent.com/tauri-apps/tauri/6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a/LICENSE_MIT",
+      "git_blob_sha1": "b08530d59433b3060f4fad8751ac2610c0b0aff3",
+      "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
+      "size_bytes": 1090,
+      "local_path": "app-originals/tauri-apps__tauri/6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a/LICENSE_MIT"
+    },
+    {
+      "repository": "open-i18n/rust-unic",
+      "commit": "5878605364af97a3358368a6eaef02104af2e016",
+      "path": "AUTHORS",
+      "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/AUTHORS",
+      "git_blob_sha1": "ab3575c1f490363e4957adbc77a3783c48f4492b",
+      "sha256": "2748c1a1fba7616917c61d455e8d715ab952671ead63f2026ad0124410596b09",
+      "size_bytes": 664,
+      "local_path": "app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/AUTHORS"
+    },
+    {
+      "repository": "tauri-apps/tauri",
+      "commit": "6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a",
+      "path": "LICENSE_APACHE-2.0",
+      "url": "https://raw.githubusercontent.com/tauri-apps/tauri/6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a/LICENSE_APACHE-2.0",
+      "git_blob_sha1": "f433b1a53f5b830a205fd2df78e2b34974656c7b",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "size_bytes": 10174,
+      "local_path": "app-originals/tauri-apps__tauri/6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a/LICENSE_APACHE-2.0"
+    },
+    {
+      "repository": "mozilla/bedrock",
+      "commit": "9fa617356a7473a9bd48155c044f4f6efc0c6383",
+      "path": "media/MPL/2.0/index.txt",
+      "url": "https://raw.githubusercontent.com/mozilla/bedrock/9fa617356a7473a9bd48155c044f4f6efc0c6383/media/MPL/2.0/index.txt",
+      "git_blob_sha1": "d0a1fa1482eea82e19510e7920cbe3a03e41f691",
+      "local_path": "app-originals/mozilla__bedrock/9fa617356a7473a9bd48155c044f4f6efc0c6383/MPL-2.0.txt",
+      "sha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04",
+      "size_bytes": 16726,
+      "kind": "standard-license-from-license-steward"
+    }
+  ],
+  "crates": [
+    {
+      "name": "alloc-stdlib",
+      "version": "0.2.4",
+      "repository": "dropbox/rust-alloc-no-stdlib",
+      "vcs_commit": "ae42d22078b98549e987d2f03d12df7b984fde47",
+      "crate_sha256": "0e76a019e91224d279006ff972f1e984179a6e9feb050adba6ce8274aef23195",
+      "notices": [
+        "app-originals/dropbox__rust-alloc-no-stdlib/ae42d22078b98549e987d2f03d12df7b984fde47/LICENSE"
+      ]
+    },
+    {
+      "name": "unic-ucd-ident",
+      "version": "0.9.0",
+      "repository": "open-i18n/rust-unic",
+      "vcs_commit": "8a6ce83063d90b91ae2ce59eddb803edd393fca9",
+      "crate_sha256": "e230a37c0381caa9219d67cf063aa3a375ffed5bf541a452db16e744bdab6987",
+      "notices": [
+        "app-originals/open-i18n__rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-APACHE",
+        "app-originals/open-i18n__rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/AUTHORS",
+        "app-originals/open-i18n__rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-MIT"
+      ]
+    },
+    {
+      "name": "unic-char-property",
+      "version": "0.9.0",
+      "repository": "open-i18n/rust-unic",
+      "vcs_commit": "5878605364af97a3358368a6eaef02104af2e016",
+      "crate_sha256": "a8c57a407d9b6fa02b4795eb81c5b6652060a15a7903ea981f3d723e6c0be221",
+      "notices": [
+        "app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+        "app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+        "app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/AUTHORS"
+      ]
+    },
+    {
+      "name": "unic-char-range",
+      "version": "0.9.0",
+      "repository": "open-i18n/rust-unic",
+      "vcs_commit": "5878605364af97a3358368a6eaef02104af2e016",
+      "crate_sha256": "0398022d5f700414f6b899e10b8348231abf9173fa93144cbc1a43b9793c1fbc",
+      "notices": [
+        "app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+        "app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+        "app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/AUTHORS"
+      ]
+    },
+    {
+      "name": "unic-ucd-version",
+      "version": "0.9.0",
+      "repository": "open-i18n/rust-unic",
+      "vcs_commit": "5878605364af97a3358368a6eaef02104af2e016",
+      "crate_sha256": "96bd2f2237fe450fcd0a1d2f5f4e91711124f7857ba2e964247776ebeeb7b0c4",
+      "notices": [
+        "app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+        "app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+        "app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/AUTHORS"
+      ]
+    },
+    {
+      "name": "unic-common",
+      "version": "0.9.0",
+      "repository": "open-i18n/rust-unic",
+      "vcs_commit": "5878605364af97a3358368a6eaef02104af2e016",
+      "crate_sha256": "80d7ff825a6a654ee85a63e80f92f054f904f21e7d12da4e22f9834a4aaa35bc",
+      "notices": [
+        "app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+        "app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+        "app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/AUTHORS"
+      ]
+    },
+    {
+      "name": "tauri-plugin",
+      "version": "2.6.3",
+      "repository": "tauri-apps/tauri",
+      "vcs_commit": "6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a",
+      "crate_sha256": "74be5dd4bed9afbd145e5716b5fa2ec28cbc29c34ffa61c258c9273d896c8020",
+      "notices": [
+        "app-originals/tauri-apps__tauri/6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a/LICENSE.spdx",
+        "app-originals/tauri-apps__tauri/6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a/LICENSE_MIT",
+        "app-originals/tauri-apps__tauri/6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a/LICENSE_APACHE-2.0"
+      ]
+    },
+    {
+      "name": "selectors",
+      "version": "0.36.1",
+      "repository": "servo/stylo",
+      "vcs_commit": "635e1a19d02960588a00e189bd4bd5bdb150ec3d",
+      "crate_sha256": "c5d9c0c92a92d33f08817311cf3f2c29a3538a8240e94a6a3c622ce652d7e00c",
+      "notices": [
+        "app-originals/mozilla__bedrock/9fa617356a7473a9bd48155c044f4f6efc0c6383/MPL-2.0.txt"
+      ],
+      "source_notice_file": "lib.rs",
+      "source_notice_sha256": "d54c6e13e9e952dac17d209171df8657e3cae93beaddace4906150cdec8d02e9",
+      "source_notice_kind": "Original MPL Exhibit A source header; full unmodified crate is also supplied. The separately supplied full license text is from Mozilla, not an original selectors LICENSE file."
+    }
+  ]
+}

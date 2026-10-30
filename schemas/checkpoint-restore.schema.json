@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metorigin.app/schemas/checkpoint-restore.schema.json",
+  "title": "Durable checkpoint restore intent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "archive_id",
+    "iteration",
+    "checkpoint",
+    "checkpoint_sha256",
+    "fingerprint",
+    "target_iterations"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "archive_id": {
+      "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
+      "pattern": "^[0-9a-fA-F-]+$"
+    },
+    "iteration": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "checkpoint": {
+      "type": "string",
+      "pattern": "^checkpoint_[0-9]+\\.ply$"
+    },
+    "checkpoint_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{64}$"
+    },
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{64}$"
+    },
+    "target_iterations": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 4294967295
+    }
+  }
+}

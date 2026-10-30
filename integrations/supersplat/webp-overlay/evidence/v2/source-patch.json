@@ -1,0 +1,8 @@
+{
+  "path": "src/lib/utils/webp-codec.ts",
+  "original_sha256": "1cfb3c675343af986f57eae3b66b1763008548eb2364dd6972a352958c2ed225",
+  "modified_sha256": "93b36f2b4ce70c2980b321ff2c947ae84ed019e0fade3ced9a2d3bc7d7b2f594",
+  "patch_sha256": "384f41b65020d7e84317fbbe4b4b9f5bdd6e644ad71abbc4b8d688c65dba77fe",
+  "reason": "Root-authorized resource cleanup on encode/decode failure and JS input/output-copy exceptions; C wrapper, pinned libwebp source and paired WASM/glue unchanged.",
+  "dependency_install": "Filesystem clone of original fixed npm ci install; canonical local node_modules paths avoid source-map traversal into v1. No additional dependency resolution."
+}

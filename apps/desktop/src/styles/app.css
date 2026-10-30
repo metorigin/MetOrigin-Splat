@@ -1,0 +1,80 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./tokens.css" layer(theme);
+@import "./workspace.css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --color-background: var(--background);
+  --color-app-surface: var(--app-surface);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger-soft: var(--danger-soft);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --text-xs: calc(var(--font-size-base) * .75);
+  --text-sm: calc(var(--font-size-base) * .875);
+  --text-base: var(--font-size-base);
+  --text-lg: calc(var(--font-size-base) * 1.125);
+  --text-xl: calc(var(--font-size-base) * 1.25);
+  --text-2xl: calc(var(--font-size-base) * 1.5);
+}
+
+@layer base {
+  * { @apply border-border; }
+  html, body, #root { @apply h-full w-full overflow-hidden; }
+  body { @apply bg-background font-sans text-sm text-foreground antialiased; font-synthesis: none; }
+  button, input, select, textarea { font: inherit; }
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]) { cursor: pointer; }
+  :where(button, input, select, textarea, summary, a, [tabindex]):focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+  h1 { @apply text-2xl font-semibold tracking-tight; }
+  h2 { @apply text-base font-semibold; }
+  h3 { @apply text-sm font-semibold; }
+  code, pre { @apply font-mono; }
+  ::selection { background: var(--accent); color: var(--accent-foreground); }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background: color-mix(in srgb, var(--muted-foreground) 40%, transparent); background-clip: padding-box; }
+  input, textarea { caret-color: var(--foreground); -webkit-text-fill-color: currentColor; }
+  * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--muted-foreground) 40%, transparent) transparent; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  }
+}
+@layer utilities {
+  .spin { animation: spin 1s linear infinite; }
+  .visually-hidden { @apply sr-only; }
+}
+
+/* Only the sidebar layout changes; scene/iframe hosts stay mounted while it hides or resizes. */
+.desktop-app-shell[data-sidebar-dragging="true"] { cursor: ew-resize; user-select: none; }
+.desktop-app-shell[data-sidebar-dragging="true"] iframe { pointer-events: none; }

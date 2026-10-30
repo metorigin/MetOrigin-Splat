@@ -1,350 +1,180 @@
-# MetOrigin Splat 设计系统方案
+# MetOrigin Splat 设计系统
 
-**状态：Proposed / 待实施方案。日期：2026-10-21。**
+> 2026-10-29 实施更新：当前主题和组件基于 Jan 固定提交 `b8d58255baf6d9e870025d3f0c60a5b80a63143b`，同源设计值位于 `integrations/jan/theme.json`。用户最新桌面红框参考优先于 Jan 浮动容器：采用左上窗口导航/左下全高侧栏、右上项目页头/右下内容四区齐边结构，不使用网页式外边距和大圆角页面卡片。NumberTicker/Magic UI 与 Motion 已移除，结果数值静态本地化显示；内嵌编辑器通过静态适配和受校验主题协议迁移内部 UI。以下此前章节中的蓝色、浮动壳、Magic 动效或“编辑器未迁移”描述为历史基线，当前实现及未验限制以迁移记录第 9–10 节为准。
 
-这套规范面向本地 GPU 驱动的三维重建桌面工作台，采用 shadcn/ui 作为基础组件来源、Tailwind CSS 作为样式实现方式、Magic UI 作为有限动效来源。目标是让素材导入、长任务控制、模型检查和结果保存形成一致、可解释的操作体验。
 
-本文规定目标设计，不代表组件、色值或布局已经落地。现有默认浅色、已保存主题偏好、中英文切换、后端状态与原生文件交互均应保持兼容。色彩对比、缩放表现和动效开销在实施后按文末验收，不能仅凭 token 值宣称通过。
+历史范围：以下第 1–8 节保留 2026-10-28 的宿主界面实现与验证事实，其中“当前”“实际”等表述均指当时版本；第 9 节为现行 Jan 规范。原生平台、读屏、缩放和性能验收仍以[迁移记录](frontend-migration-plan.zh-CN.md)为准。
 
-## 产品定位与设计原则
+当时后续规划的 Jan 全页面迁移目标主题、布局及 SuperSplat 内部适配见[前端迁移方案第 9 节](frontend-migration-plan.zh-CN.md)。以下历史章节继续描述当时实现；现行规范以第 9 节为准。
 
-[项目介绍](../README.zh-CN.md)定义的核心工作是将视频或照片通过 FFmpeg、COLMAP 和 Brush 在本机重建为 3D Gaussian Splatting 场景，并在 SuperSplat 中继续编辑。设计重心是场景、任务进展和操作后果。
+系统面向本地三维重建桌面工作台：shadcn/ui 提供可维护的基础组件源码，Tailwind v4 表达样式，Magic UI 仅提供完成汇总数的有限动效。页面围绕素材、真实任务进展、模型检查与保存后果组织，不以持续装饰抢占三维预览资源。
 
-| 使用角色 | 高频任务 | 界面必须帮助判断 |
-| --- | --- | --- |
-| 首次使用者 | 导入素材、检查环境、选择预设 | 是否能开始，问题如何修复，原文件是否受影响 |
-| 重建操作者 | 运行、暂停、继续、切换查看项目 | 正在处理哪个项目，当前阶段，资源消耗，恢复边界 |
-| 内容创作者 | 观察点云和模型、编辑、保存、导出 | 当前产物是否可用，修改是否保存，导出到哪里 |
-| 排障使用者 | 查看失败步骤、日志、引擎配置和诊断 | 具体原因、保留产物、可执行的下一步 |
+## 1 实际结构和设计原则（历史）
 
-1. 让三维视口获得主要空间；面板承担解释与控制。
-2. 每个当前任务区域只提供一个首要动作，次要动作通过位置与样式退让。
-3. 当前浏览项目与全局正在运行的项目分别表达；切换页面不暗示任务停止。
-4. 展示真实进度与测量值；未知、尚未测量、过期、估算必须可区分。
-5. 使用颜色、图标和文字共同表达状态，避免单靠红绿或动画传递结果。
-6. 通用控件保持稳定；领域信息通过组合组件表达，不在页面内重新发明按钮、弹窗和状态标签。
+应用采用连续的桌面工作区、紧凑导航、中性悬停与选择态、少量蓝色主要操作，以及独立暗色三维视口。侧栏和内容以单条轻分隔线区分，取消包围主页面的圆角边框卡片。本地 Inter 与 JetBrains Mono 保留，中文在 macOS 使用系统 PingFang SC 回退。主题沿用 `light | dark | system` 及既有存储键，默认浅色，`html[data-theme]` 是唯一生效源。
 
-## 现有基础与设计缺口
+1. 三维视口获得主要空间，Inspector 解释产物和资源，日志按需打开。
+2. 当前浏览项目与全局活动项目分别表达，切页不暗示停止任务。
+3. 数值与进度来自真实状态；未知、过期、失败和部分可用不能伪装为零或成功。
+4. 状态同时使用文字和必要图标，颜色只是补充。
+5. 通用交互复用基础组件；原生任务、文件与 renderer 继续由原服务边界管理。
 
-当前已有语义色、深浅主题、键盘焦点和交互状态基础。迁移需要保留这些能力，同时建立可复用的组件与布局契约。
+实际组件分为 `components/ui`、`components/magicui`、`components/motion`，业务组合继续放在 `shell/settings/workspace/feedback` 与页面中。没有为未使用的抽象创建 `ActionButton`、`Field`、`ResourceMeter` 等第二套接口。
 
-| 代码证据 | 处理方式 |
-| --- | --- |
-| [tokens.css](../apps/desktop/src/styles/tokens.css)含 57 行主题与表面 token | 保留蓝色识别，映射为 shadcn 语义 token，并补足域语义 |
-| [buzz.css](../apps/desktop/src/styles/buzz.css)与[interaction-surfaces.css](../apps/desktop/src/styles/interaction-surfaces.css)合计 1111 行，存在相同选择器覆盖 | 逐模块迁移、逐模块删除旧规则，禁止长期靠加载顺序修补样式 |
-| [ModalSurface](../apps/desktop/src/components/primitives/ModalSurface.tsx)与[useModalFocus](../apps/desktop/src/hooks/useModalFocus.ts)处理 Portal、焦点和背景 inert | 替换基础实现时保留初始焦点、关闭、返回焦点和嵌套模态行为 |
-| [SettingsDrawer](../apps/desktop/src/components/settings/SettingsDrawer.tsx)第 78、180、197 行附近同时有即时保存、保存按钮及逐字符数值提交 | 用明确的字段保存策略替代混合模型 |
-| [buzz.css](../apps/desktop/src/styles/buzz.css)第 217、218、457 行等使用 10px 辅助文字 | 关键状态与操作说明提升至至少 12px；最终可读性通过真实窗口验证 |
-| [ModelEditorPage](../apps/desktop/src/pages/ModelEditorPage.tsx)第 131 行嵌入独立 iframe | 外层工作台与 SuperSplat 内部主题分别管理，CSS 不跨 iframe 自动生效 |
+## 2 Token 与主题（历史）
 
-以上为代码事实。具体拥挤程度、视口比例和视觉层次应结合页面验收确认，不从源代码推断已经观察到的视觉缺陷。
+[app.css](../apps/desktop/src/styles/app.css)是宿主唯一入口；[tokens.css](../apps/desktop/src/styles/tokens.css)提供语义色；[workspace.css](../apps/desktop/src/styles/workspace.css)提供阶段、活动、视口等领域布局规则。CSS 层为 Tailwind 的 theme/base/components/utilities，旧全局按钮/表单样式已经删除。
 
-## Token 架构与主题
-
-Token 分为基础值、界面语义、业务语义三层。组件使用语义 token；只有主题文件可以直接引用色值。Tailwind 的 `bg-background`、`text-foreground`、`border-border` 等映射到同一份 CSS 变量，避免维护两套颜色源。
-
-保留 [useTheme](../apps/desktop/src/hooks/useTheme.ts)的 `light | dark | system`、存储键和默认浅色行为。Tailwind 的 dark variant 直接映射已有 `data-theme`，不另建 `.dark` 状态或第二个主题 provider。
-
-### shadcn 语义颜色
-
-以下 HEX 是方案的可读基准，实施可等值转换为 OKLCH。`--input` 表示输入控件边框，不表示输入背景；危险按钮前景色作为本项目明确扩展保留。
+Tailwind `bg-background`、`text-foreground`、`border-border` 等映射到同一 CSS 变量。`--bg-panel`、`--text-secondary` 等保留的 renderer/domain 别名也引用这份变量，不构成第二套主题。
 
 | Token | Light | Dark | 用途 |
 | --- | --- | --- | --- |
-| `--background` | `#F6F7F9` | `#111318` | 页面画布 |
-| `--foreground` | `#1F2937` | `#E8EDF5` | 主要文字 |
-| `--card` | `#FFFFFF` | `#1D212A` | 静态面板 |
-| `--card-foreground` | `#1F2937` | `#E8EDF5` | 面板文字 |
-| `--popover` | `#FFFFFF` | `#242A35` | 菜单与浮层 |
-| `--popover-foreground` | `#1F2937` | `#E8EDF5` | 浮层文字 |
-| `--primary` | `#2563EB` | `#8AB4FF` | 首要操作 |
-| `--primary-foreground` | `#FFFFFF` | `#102246` | 首要按钮文字 |
-| `--secondary` | `#EEF1F5` | `#292F3A` | 次要控件表面 |
-| `--secondary-foreground` | `#344154` | `#DFE6F1` | 次要控件文字 |
-| `--muted` | `#EEF1F5` | `#292F3A` | 低层级表面 |
-| `--muted-foreground` | `#596579` | `#AFB9C9` | 辅助文字 |
-| `--accent` | `#E9F0FF` | `#243B60` | 选择与交互底色 |
-| `--accent-foreground` | `#1D4ED8` | `#B5CEFF` | 选择状态文字 |
-| `--destructive` | `#B52B3C` | `#FFA0AD` | 危险操作 |
-| `--destructive-foreground` | `#FFFFFF` | `#40101C` | 危险按钮文字 |
-| `--border` | `#DEE3EB` | `#353D4A` | 非交互分隔线 |
-| `--input` | `#8692A5` | `#748196` | 控件识别边框 |
-| `--ring` | `#2563EB` | `#8AB4FF` | 键盘焦点 |
-| `--chart-1` | `#2563EB` | `#8AB4FF` | GPU 或主指标 |
-| `--chart-2` | `#18744A` | `#7DD5A6` | 内存或次指标 |
-| `--chart-3` | `#8A5A08` | `#F2C879` | 存储或第三指标 |
-| `--chart-4` | `#7545B5` | `#C9A4F5` | 比较指标 |
-| `--chart-5` | `#147987` | `#79CCD6` | 比较指标 |
-| `--sidebar` | `#F0F2F5` | `#171A21` | 全局导航 |
-| `--sidebar-foreground` | `#344154` | `#D5DFEE` | 导航文字 |
-| `--sidebar-primary` | `#2563EB` | `#8AB4FF` | 导航主动作 |
-| `--sidebar-primary-foreground` | `#FFFFFF` | `#102246` | 导航主动作文字 |
-| `--sidebar-accent` | `#E1E9F7` | `#263950` | 当前导航项 |
-| `--sidebar-accent-foreground` | `#1D4ED8` | `#B5CEFF` | 当前导航项文字 |
-| `--sidebar-border` | `#DEE3EB` | `#353D4A` | 导航分隔线 |
-| `--sidebar-ring` | `#2563EB` | `#8AB4FF` | 导航焦点 |
-
-### 业务颜色与视口
-
-| Token 或语义组 | Light | Dark |
-| --- | --- | --- |
-| `--success` / `--success-soft` | `#18744A` / `#EAF6EF` | `#7DD5A6` / `#19392B` |
-| `--warning` / `--warning-soft` | `#8A5A08` / `#FFF4DA` | `#F2C879` / `#3D3120` |
-| `--danger-soft` | `#FDECEF` | `#44262F` |
-| `--info` / `--info-soft` | `#1D4ED8` / `#E9F0FF` | `#B5CEFF` / `#243B60` |
-| `--input-background` | `#FFFFFF` | `#171D26` |
-| `--primary-hover` | `#1D4ED8` | `#A6C6FF` |
-| `--primary-active` | `#1E40AF` | `#76A5F5` |
-| `--overlay` | `#10182866` | `#00000099` |
-| `--viewport-background` | `#11161C` | `#11161C` |
-| `--viewport-toolbar` | `#1E242C` | `#1E242C` |
-| `--viewport-foreground` | `#D8E1EE` | `#D8E1EE` |
-| `--viewport-muted` | `#AAB7CB` | `#AAB7CB` |
-| `--viewport-border` | `#586779` | `#586779` |
-| `--viewport-selection` | `#8AB4FF` | `#8AB4FF` |
-
-`pipeline-running` 引用 info，`pipeline-completed` 引用 success，`pipeline-paused` 引用 warning，`pipeline-failed` 引用 destructive。资源图表颜色只区分数据系列；超过阈值才引入 warning/danger，并说明阈值含义。
-
-视口保持独立暗色观察环境。工具栏、错误覆盖层和焦点环采用视口 token，不直接套用浅色主题。不得改变模型自身颜色来配合界面主题。图表始终保留图例、数值和非颜色区分方式。
-
-## 字体与数值
-
-| 角色 | 字号与行高 | 字重 | 使用范围 |
-| --- | --- | --- | --- |
-| 页面标题 | 24px / 32px | 600 | 项目中心、创建标题 |
-| 区域标题 | 16px / 24px | 600 | 面板、设置分组 |
-| 正文 | 14px / 22px | 400 | 表单、说明、错误恢复 |
-| 紧凑正文 | 13px / 20px | 400 | 列表、工具栏、密集面板 |
-| 标签与辅助文字 | 12px / 18px | 400 或 500 | 状态、单位、路径说明 |
-| 摘要数字 | 24px / 30px | 600 | 完成汇总、概览 |
-| 日志与技术值 | 12px / 18px | 400 | 日志、命令、详细参数 |
-
-主字体沿用 `Inter Variable, Microsoft YaHei UI, Segoe UI, sans-serif`；日志用 `JetBrains Mono, monospace`，中文继续回退系统字体。正文不使用负字距；按钮 500，标题 600，避免任意字重扩散。
-
-实时数值启用 `tabular-nums`，为百分比与单位预留宽度。二进制容量写 `MiB/GiB`，使用 `1024` 换算；若写 `MB/GB`，必须按十进制换算。容量默认一位小数，利用率默认整数，温度写 `°C`，迭代数带千位分隔。
-
-未知值显示 `—` 并提供“尚未测量”等上下文；无效值不能回退成 `0`。耗时采用稳定的 `hh:mm:ss` 或本地化时长，时间戳保留精确时间详情。估算明确标注“预估”，单位和数字之间使用不换行空格。
-
-## 间距与组件尺寸
-
-空间基准为 4px，允许 2px 用于描边和图标微调。允许的间距为 `2、4、8、12、16、20、24、32、40、48、64px`；Tailwind 任意值只用于确有约束的视口尺寸和动态数据。
-
-| Token 或规格 | 数值 | 规则 |
-| --- | --- | --- |
-| `--radius` | 8px | 全局基准 |
-| radius-xs / sm / md / lg / xl | 4 / 6 / 8 / 12 / 16px | 小标记 / 控件 / 卡片 / 对话框 / 特殊外壳 |
-| control-sm / md / lg | 32 / 36 / 40px | 工具栏 / 默认 / 创建主表单 |
-| button padding-x | 12 / 14 / 16px | 随尺寸变化 |
-| icon button | 32 或 36px 正方形 | 图标默认 16px；必须有名称 |
-| input padding-x | 12px | 错误图标另预留空间 |
-| list-row compact / default | 36 / 44px | 多行说明时允许增高 |
-| table-row compact / default | 32 / 40px | 列头至少 36px |
-| panel padding / page padding | 16–20 / 24px | 同级区域保持一致 |
-| panel gap / section gap | 16 / 24px | 标题与内容间距 12px |
-
-第一阶段只建立默认密度和组件级 compact 变体，不新增全局密度偏好。compact 不缩小正文至 12px 以下；触控输入设备的主要点击目标应扩大到 44×44px。Tailwind 的 radius 语义必须显式映射到表中数值，不直接依赖生成模板对单个 `--radius` 的默认加减公式。
-
-静态面板默认无投影。popover 使用 `0 8px 24px #1018281F`，dialog 使用 `0 20px 64px #10182833`；深色分别采用 `#00000066`、`#00000088`。投影不能替代边框识别。
-
-根层级为内容0、sticky10、页面popover30、模态overlay40、dialog50。Dialog 内的 Select/Menu/Popover 挂到当前模态容器并高于其内容，不复用页面popover30而被遮罩盖住。嵌套模态由统一管理器相对父层增加10；toast与tooltip相对活动顶层分配，不硬编码一个会被后续模态遮住的全局值。背景页面的tooltip/menu随模态打开而关闭；不能用随机增大z-index解决焦点问题。
-
-## 桌面布局与页面规范
-
-[Tauri 配置](../apps/desktop/src-tauri/tauri.conf.json)当前默认 1440×1024，最小 1024×768。下面尺寸采用 CSS 像素；必须同时测试 Windows 缩放后的真实 WebView 可用面积，不能把物理窗口尺寸当作可用内容尺寸。
-
-| 区域 | 默认规格 | 空间不足时 |
-| --- | --- | --- |
-| 全局侧栏 | 240px，折叠 56px | 优先折叠，入口保留 Tooltip |
-| 工作区顶栏 | 最小 56px | 操作进入更多菜单，标题可截断 |
-| 项目运行栏 | 64–88px，允许两行 | 仍保留运行对象、状态和主操作 |
-| 系统状态栏 | 28px | 次要硬件信息进入详情，错误入口保留 |
-| 右侧 Inspector | 默认 320px，可调 280–400px | 切换为 Sheet，保存用户显隐选择 |
-| 视口 | 宽度目标至少 560px，高度目标至少 360px | 切换布局，不用压缩文字换取空间 |
-| 日志区域 | 默认折叠；展开默认 240px | 可调高度，与视口共享可用空间 |
-| 普通 Dialog | 480 或 640px | `max-width: calc(100vw - 32px)` |
-| 设置 Dialog | 760px，目标高 640px | 高度受可用视口约束，正文滚动 |
-
-响应以内容可用空间为依据：1440 级完整布局；1200 级压缩次要留白；1024 级折叠侧栏并可隐藏 Inspector。低于可用布局阈值时继续提供可滚动/切换的内容，不能直接隐藏主操作。优先使用容器查询承接侧栏和面板拖动造成的变化。
-
-### 项目中心
-
-主内容展示最近项目、搜索和当前运行任务；新建项目是首要操作，打开项目是次要操作。最近项目行包含名称、来源或路径、状态、更新时间和更多操作。运行环境作为次级区域，故障时提升优先级。
-
-无项目、搜索无结果、加载失败、显示缓存列表分别有独立文案与动作。列表记录存在而本地目录丢失时显示“需要重新定位”，不能混同重建失败。首屏不以大面积装饰卡片挤压项目列表。
-
-### 创建项目
-
-保留“选择素材 → 分析与检查 → 确认创建”三步。步骤条和底部操作区稳定，正文独立滚动；内容最大宽 1120px，默认主内容加帮助侧栏，空间不足时帮助内容折叠。
-
-素材选择后展示可读文件范围、数量与预览。warning 允许继续，blocker 明确阻止继续并提供修复入口。返回上一步保留已选素材与参数；参数改变后，旧预检结果不能继续作为当前有效结论。
-
-最后一步明确项目名、实际保存路径、磁盘预估、预设和是否立即开始。复制过程中显示真实字节进度、取消状态与结果；关闭时延续现有未完成创建保护，不把后台取消过程误报为已取消。
-
-### 重建工作台
-
-顶部显示项目身份、当前状态和运行控制；四个阶段摘要位于视口上方，12 个具体步骤按需展开。Inspector 放阶段产物、质量结果与资源指标。日志承担排障，不占据默认主视觉。
-
-查看非运行项目时，全局任务摘要标明正在运行的项目，并提供“返回运行项目”。开始新任务受现有单任务约束，冲突提示说明占用项目，不能创建并不存在的后台排队体验。
-
-视口顶部提供视图模式、重置视角和必要显示选项；底部显示交互提示与产物更新时间。更新模型时保留现有画面和相机状态，失败时尽可能保留最后可用结果。
-
-### 模型编辑与设置
-
-编辑页保留项目名、返回、保存状态和保存按钮，最大化画布。外层负责加载、初始化失败、未保存退出和保存回执；内部 SuperSplat 的组件更换需要独立评估。不能把“外层已换主题”算作编辑器内部完成迁移。
-
-设置使用“常规、引擎、性能与存储、外观、诊断”五类。语言和主题归外观；默认重建预设与创建后启动归常规；引擎路径与检测归引擎。可见分类文字与无障碍名称完全一致。
-
-## 组件层次与 API 契约
-
-`components/ui` 存放 shadcn 基础组件，`components/domain` 放跨页面领域组合，`components/motion` 承接项目动效封装。迁移期间保留现有 `shell/settings/workspace` 业务边界；最终目录按[迁移方案](frontend-migration-plan.zh-CN.md)逐模块收敛，不同时再建职责重复的 patterns 层。
-
-| 组件 | 关键 API | 默认外观与行为 |
-| --- | --- | --- |
-| `Button` | `variant: default/secondary/outline/ghost/destructive/link`；`size: sm/default/lg/icon`；标准按钮属性 | 默认 h36；loading 由应用封装提供，不伪称 shadcn 原生属性 |
-| `ActionButton` | `pending`、`pendingLabel`、`disabledReason`、`onAction` | 保留宽度；pending 不重复提交；原因可被键盘用户读取 |
-| `IconAction` | `label`、`shortcut?`、`pressed?` | Tooltip 与 accessible name 同源；默认 32px |
-| `Field` | `label`、`description?`、`error?`、`required?`、`controlId` | 说明与错误关联控件；不靠占位文字替代标签 |
-| `NumericSetting` | `value`、`min`、`max`、`step`、`unit`、`onCommit` | 本地编辑草稿，确认后提交，不逐字符写后端 |
-| `StatusBadge` | `tone`、`label`、`icon?` | h24，12px；图标与文字共同表达含义 |
-| `PipelineStatusBadge` | `status: ProjectStatus`、`reason?` | 统一映射，页面不可自行改写同一状态名称 |
-| `ResourceMeter` | `value: number/null`、`max?`、`unit`、`freshness` | 真实数值为主；未知不画成零；阈值由领域配置提供 |
-| `AsyncBoundary` | `resource`、`onRetry`、`empty`、`children` | 首次加载骨架，刷新保留内容，过期显示时间与重试 |
-| `PathField` | `path`、`onBrowse`、`onReveal?`、`validation` | 保留原生选择器；长路径可复制、查看完整值 |
-| `SceneViewport` | `artifact`、`loading`、`error`、`updatedAt`、`onRetry` | 容器统一，渲染器生命周期保持独立 |
-| `PipelineTimeline` | `snapshot`、`selectedStage`、`onSelectStage` | 四阶段概览与12步骤来自现有定义 |
-| `ActionResultNotice` | `result`、`onDismiss`、`action?` | 成功可短暂提示；失败保留到用户处理 |
-
-基础映射：ModalSurface → Dialog/AlertDialog；侧向补充信息 → Sheet；手写菜单 → DropdownMenu；分类 → Tabs；折叠详情 → Accordion/Collapsible；选择预设 → RadioGroup 或 Select；即时开关 → Switch；勾选确认项 → Checkbox。
-
-布局映射：Inspector 与日志 → Resizable；稳定滚动区域 → ScrollArea；阶段百分比 → Progress；可恢复错误 → Alert；操作成功回执 → Sonner。Sonner 不能承担唯一的阻断错误或删除影响说明。
-
-设置窗口虽然现名 `SettingsDrawer`，目标形态是 Dialog；不要为了名称机械选 Sheet。保留 `WorkspaceActionDialog`、`DeleteProjectDialog`、`CheckpointDrawer`、`ActivityWorkbench` 等业务边界，替换其内部基础组件。
-
-所有可交互组件统一支持 default、hover、focus-visible、active、disabled；异步组件再支持 pending、success、error。选中状态与 hover 分开，loading 与 disabled 原因分开。图标来源统一 Lucide，默认 16px、stroke 1.75；不再暴露实际不生效的 `weight="fill"`。
-
-## 任务状态与数据新鲜度
-
-当前 [ProjectStatus](../apps/desktop/src/types/project.ts)是 **11 个项目状态**，[StageStatus](../apps/desktop/src/types/pipeline.ts)是 **10 个步骤状态**；**12** 指具体步骤 ID 数量。设计直接复用这些类型，不引入新的运行状态框架。
-
-| 项目状态 | 中文显示 | 视觉语义 | 操作规则 |
-| --- | --- | --- | --- |
-| `creating` | 创建中 | info + 进度 | 只暴露现有创建取消能力 |
-| `starting` | 正在启动 | info + pending | 防重复启动，等待权威回执 |
-| `ready` | 就绪 | neutral | 可开始，仍受环境与全局任务约束 |
-| `running` | 运行中 | info | 按已有能力暂停或取消 |
-| `pausing` | 正在暂停 | info + pending | 不提前显示“已暂停” |
-| `paused` | 已暂停 | warning | 有效恢复条件满足后可继续 |
-| `cancelling` | 正在取消 | info + pending | 等待进程停止与保留结果确认 |
-| `cancelled` | 已取消 | neutral | 展示保留数据及允许的恢复方式 |
-| `recovering` | 正在恢复 | info + pending | 防重复恢复，显示当前恢复步骤 |
-| `completed` | 已完成 | success | 查看、编辑、导出有效结果 |
-| `failed` | 失败 | destructive | 显示原因、失败步骤、重试或修复 |
-
-步骤状态的 `pending/preparing/running/pausing/paused/cancelling/cancelled/completed/failed/skipped` 分别显示“待处理/准备中/运行中/正在暂停/已暂停/正在取消/已取消/已完成/失败/已跳过”。`skipped` 是中性缓存复用结果，不能用相同成功图标冒充执行完成。
-
-四组12步骤按 [projectTimeline.ts](../apps/desktop/src/pages/projectTimeline.ts)和后端实际事件排序渲染；分组名称可审查调整，但不能仅改显示顺序伪造真实执行顺序。
-
-| 分组 | 具体步骤 ID | 展示内容 |
-| --- | --- | --- |
-| 素材准备 | `MediaValidation`、`FrameExtraction`、`ImagePreprocessing` | 素材有效性、帧数、准备产物 |
-| 相机重建 | `ColmapFeatureExtraction`、`ColmapMatching`、`ColmapMapping`、`ColmapValidation` | 匹配、相机、稀疏点云与质量 |
-| 高斯重建 | `TrainingPreparation`、`BrushTraining`、`ModelValidation` | 训练进度、可用快照与模型校验 |
-| 结果输出 | `PreviewGeneration`、`Export` | 预览和输出有效性；执行顺序以实际事件为准 |
-
-进度已知才设置 `aria-valuenow`；未知使用 indeterminate。0% 与未知不同，显示来源阶段和最后更新时间；暂停/失败保留真实最后进度。只把已完成任务显示为100%，不得使用时间驱动的假进度补齐。
-
-[AsyncResource](../apps/desktop/src/types/async.ts)与任务状态正交：任务仍可运行，而某块资源数据已经过期。复用已有 freshness/completeness 元数据，不把接口刷新失败改成任务失败。
-
-| 资源状态 | 显示规则 | 动作 |
-| --- | --- | --- |
-| `idle` | 等待条件满足，不显示错误 | 提示所需前置条件 |
-| `loading` | 首次加载用对应结构 Skeleton；操作处可 busy | 不遮挡无关区域 |
-| `success` | 显示当前内容 | 正常操作 |
-| `refreshing` | 保留内容，局部弱提示更新中 | 避免重置滚动和焦点 |
-| `stale` | 保留最后成功内容，显示更新失败和时间 | 提供局部重试 |
-| `error` | 没有可用内容时显示 ErrorNotice | 给出重试或修复入口 |
-
-`completeness: partial` 显示缺失范围，不让完整可用的区域一起消失。高频进度变化不逐条播报；辅助技术只播报阶段变化、暂停完成、失败、完成和需要用户行动的事件。
-
-## 表单保存与危险操作
-
-主题、语言和简单偏好即时保存，界面保留“保存中/已保存/保存失败”的局部结果；失败不默默丢掉用户选择。数值、路径组合和依赖多字段的配置使用本地草稿及“应用”提交，校验后一次保存相关字段。
-
-数值允许暂时清空和输入中间值，提交时检查有限数、整数要求及 min/max。不能将空串经 `Number("")` 直接保存为0。请求按字段组串行或带版本控制，旧回执不能覆盖更新的选择。
-
-“应用”在无修改时禁用；成功后清除 dirty，失败保留草稿与可重试动作。关闭有未应用草稿的设置分组时提示继续编辑或放弃。已即时保存的设置不再附一个语义不明的总保存按钮。
-
-危险操作使用 AlertDialog：标题写具体动作，列出项目名、完整路径、影响产物、不可撤销性及保留项。默认焦点落在取消；主按钮写“永久删除”等实际动词，不写笼统“确定”。
-
-沿用 [WorkspaceActionDialog](../apps/desktop/src/components/workspace/WorkspaceActionDialog.tsx)的影响预览与可执行性校验。预览过期或作用对象变化时重新获取并提示，不使用旧预览执行；执行中阻止重复提交和误关闭，完成后展示真实结果。
-
-删除与从最近列表移除必须分开命名；取消重建与删除项目不能共享一个危险按钮。错误结果留在原上下文，展示实际保留/删除结果，不通过动画或成功 toast 推测成功。
-
-## Magic UI 与动效规范
-
-Magic UI 只作为白名单组件来源。业务页面通过应用封装使用，不能直接复制任意动效并自定时长。shadcn 负责控件交互，CSS 负责简单状态过渡，Motion 只负责需要生命周期控制的入场与退出。
-
-| 动效类别 | 实现方式 | 时长与限制 |
-| --- | --- | --- |
-| hover、focus、pressed | CSS transition | 100–120ms；仅颜色、边框、opacity |
-| Popover、Dialog、Sheet | 基础组件 data-state + CSS，必要时统一 Motion | 160–200ms；位移4–8px；不能双重播放 |
-| 页面初次内容入场 | Magic UI BlurFade 的应用封装 | 160–200ms；只播放一次，blur关闭，位移不超过4px |
-| 低频完成汇总数字 | Magic UI NumberTicker 的应用封装 | 最多400ms；仅任务完成汇总，禁用于进度、GPU、VRAM、日志计数 |
-| 有限结果通知 | Magic UI AnimatedList 的应用封装 | 最多3条，单条160ms；不用于原始日志流 |
-| 真实未知进度 | Progress 或 Spinner | 与真实请求生命周期绑定 |
-
-统一 easing 为 `cubic-bezier(.2,.8,.2,1)`；尺寸调整优先直接响应，不用动画追赶拖动。禁止动画改变视口相机、模型颜色或精确数据含义。不要同时用 CSS 与 Motion 控制同一元素的 transform/opacity。
-
-工作台白名单不包含 BorderBeam、ShineBorder、Meteors、Particles、Marquee 等持续装饰效果。任务完成无需彩纸庆祝；一次有限的完成反馈足够表达结果。
-
-全局动效策略读取 `prefers-reduced-motion`、`document.visibilityState` 和当前实际训练/预览状态。CSS 媒体查询不能替代 Motion/JS 动画的显式停止。NumberTicker 源码需要适配当前 locale、语义文字色和静态辅助文本；`MotionConfig reducedMotion="user"` 不能单独覆盖 blur、数字滚动等所有效果。[NumberTicker源码](https://magicui.design/r/number-ticker.json)、[Motion无障碍说明](https://motion.dev/docs/react-accessibility)。
-
-- reduced-motion：禁用位移、缩放、blur、数字滚动和列表重排动画；直接显示最终值，保留静态忙碌说明。
-- 页面隐藏：停止装饰循环与入场计时；返回时读取当前状态，不补播错过的动画序列。
-- 训练或持续渲染：装饰动画预算为0；只保留必要操作反馈，不用动效争抢 GPU 合成资源。
-- 高频数据：文本按数据更新，界面按合理节流展示；进度过渡不得积压或落后于最新真实值。
-- 首次加载后不得因轮询、语言切换或窗口 resize 重放整页入场。
-
-动效验收比较关闭与开启白名单动效的 CPU/GPU、长任务和视口帧时。预算是设计限制，性能改善需实测；稳定性不足时删除动效，不降低模型预览质量补偿。
-
-## 无障碍与中英文本
-
-普通文字目标对比度至少4.5:1，大字至少3:1；必需的控件边界、状态图形和焦点指示目标至少3:1。`focus-visible` 使用2px ring与2px offset；以上色值尚需在实际相邻背景、hover和选中状态下测量。
-
-本次按sRGB相对亮度公式计算了12种基础文字/背景组合的明暗两套值，共24组，最低5.17:1，均超过4.5:1。范围涵盖正文、卡片、浮层、主/次/危险按钮、弱文字、选择态、侧栏及视口；不涵盖透明叠加、禁用态、图表、控件边界与最终渲染，因此不能据此宣称完整WCAG合规。计算结果保存在本地审查目录的 `token-contrast.json`。
-
-所有操作可用键盘完成。Tabs/菜单采用基础组件的键盘模型，避免保留另一套手写 roving focus；Dialog 由同一个焦点管理器负责 trap、Escape、返回焦点和背景隔离。原生文件对话框关闭后焦点回到触发按钮。
-
-图标按钮必须有可读名称；Tooltip 作为补充说明。禁用动作的原因在附近可读取，不能只依赖不可聚焦的 disabled 按钮 Tooltip。图标若只作装饰则隐藏于无障碍树。
-
-错误通过文本与 `aria-describedby` 关联字段；提交失败聚焦首个错误或错误摘要。非紧急更新用 polite，阻断失败用 assertive；进度值、日志和资源数字不持续打断阅读。
-
-中英文继续沿用 [现有本地化机制](localization.md)。文案完整进入翻译资源，不拼接依赖中文语序的片段；时间、数字、复数按 locale 格式化。可见 label 与 accessible name 共享同一翻译值。
-
-按钮预留英文增长空间，不给“开始重建”等操作写固定窄宽度；路径允许断行或中间省略，并提供完整值和复制。中文标点与英文句式分别维护，错误技术码保留原值。
-
-布局验收覆盖200%文本/页面缩放下的可达性：允许折叠、滚动和重新排布，关键按钮与错误说明不能永久消失。支持 forced-colors；状态不能依赖背景色或 box-shadow 单独表达。
-
-## 组件治理与验收
-
-每个基础组件必须有用途、允许变体、尺寸、键盘模型、状态示例和禁止事项。新增变体先判断能否复用既有语义；不为单个页面增加 `special-blue` 等样式接口。
-
-shadcn 与 Magic UI 引入的源码记录来源、获取版本和本地修改。只导入需要的组件，更新时审查差异；业务代码不直接依赖上游示例目录。基础组件与业务组件之间通过明确 props 连接，不引入新的状态框架。
-
-建立组件展示页或等价可复现 fixture，覆盖明暗主题、中文英文、默认紧凑尺寸和所有交互状态。设计 token 是唯一来源；新增原始色值、任意 z-index 和全局元素规则必须说明理由。
-
-| 验收对象 | 必须通过的场景 |
+| `--background` | `#F7F7F8` | `#1D1E22` | 应用画布 |
+| `--foreground` | `#25262B` | `#EDEDF0` | 主文字 |
+| `--card` | `#FFFFFF` | `#242529` | 面板 |
+| `--card-foreground` | `#25262B` | `#EDEDF0` | 面板文字 |
+| `--popover` | `#FFFFFF` | `#2B2C31` | 菜单与浮层 |
+| `--popover-foreground` | `#25262B` | `#EDEDF0` | 浮层文字 |
+| `--primary` | `#2563EB` | `#8AB4FF` | 主要操作 |
+| `--primary-foreground` | `#FFFFFF` | `#102246` | 主要操作文字 |
+| `--secondary` / `--muted` | `#F0F0F2` | `#303137` | 次级表面 |
+| `--secondary-foreground` | `#41434B` | `#DEDEE3` | 次级操作文字 |
+| `--muted-foreground` | `#686B75` | `#A8A9B3` | 辅助说明 |
+| `--accent` | `#EEEEF1` | `#34353C` | 中性悬停与选择背景 |
+| `--accent-foreground` | `#25262B` | `#E0E0E8` | 选择文字 |
+| `--destructive` | `#B52B3C` | `#FFA0AD` | 危险与错误 |
+| `--destructive-foreground` | `#FFFFFF` | `#40101C` | 实色危险面的文字 |
+| `--danger-soft` | `#FDECEF` | `#44262F` | 危险按钮与提示的柔和背景 |
+| `--border` | `#E6E6E9` | `#37383E` | 分隔线 |
+| `--input` | `#8692A5` | `#748196` | 输入边框 |
+| `--input-background` | `#FFFFFF` | `#222327` | 输入背景 |
+| `--ring` | `#2563EB` | `#8AB4FF` | 焦点 |
+| `--success` / `--success-soft` | `#18744A` / `#EAF6EF` | `#7DD5A6` / `#19392B` | 成功与可用 |
+| `--warning` / `--warning-soft` | `#8A5A08` / `#FFF4DA` | `#F2C879` / `#3D3120` | 暂停、风险与待处理 |
+| `--sidebar` | `#F5F5F7` | `#1E1F23` | 导航背景 |
+| `--sidebar-foreground` | `#41434B` | `#D5D5DD` | 导航文字 |
+| `--sidebar-accent` | `#E8E8ED` | `#303137` | 当前导航项 |
+| `--sidebar-accent-foreground` | `#25262B` | `#E0E0E8` | 当前导航文字 |
+
+三维视口不随浅色主题变白：`--viewport-background: #11161C`、toolbar `#1E242C`、foreground `#D8E1EE`、muted `#AAB7CB`、border `#586779`、selection `#8AB4FF`。这些颜色用于宿主控件，不修改模型本身颜色，不穿透 SuperSplat iframe。
+
+不得新增无语义的页面专属颜色。尚未使用的 chart token、全局密度设置和其他主题值不预先添加，按真实需求审查。
+
+## 3 字体、间距与控件尺寸（历史）
+
+| 角色 | 当前约定 |
 | --- | --- |
-| 基础控件 | default、hover、focus、pressed、disabled；异步控件含 pending/error |
-| 工作台状态 | 11项目状态、10步骤状态、12步骤定位与实际产物对应 |
-| 数据状态 | 首次加载、后台刷新、stale、partial、无数据、局部失败 |
-| 窗口与缩放 | 1024×768与1440×1024；Windows125%/150%；200%可达性 |
-| 语言与内容 | 中英文、长项目名、长路径、大数字、缺失指标 |
-| 浮层与键盘 | 菜单→Dialog、嵌套模态、Escape、返回焦点、原生文件选择 |
-| 表单 | 中间输入值、越界、保存失败、并发回执、dirty退出 |
-| 危险操作 | 影响预览过期、对象变化、重复点击、部分失败和真实回执 |
-| 三维视口 | 调整面板尺寸、切项目、更新快照、加载失败与最后可用画面 |
-| 动效 | reduced-motion、隐藏页面、训练中、长时间运行 |
-| 性能 | 与迁移前同场景基线比较，隔离UI开销和渲染器开销 |
+| 页面标题 | 项目库 18px semibold；其他页面按内容层级使用 18–24px |
+| 面板标题 | 14–16px，semibold |
+| 正文/表单 | 14px，必要时 13px 紧凑正文 |
+| 状态/路径/日志 | 通常 12px；侧栏紧凑修复按钮 11px；重要错误保留完整说明与恢复入口 |
+| 数值 | 使用 `tabular-nums`；时间、整数按 locale 格式化 |
+| 容量 | 1024 换算时写 MiB/GiB；0 是有效数值，未知显示说明 |
+| 空间基准 | 4px；常用 8/12/16/24/32px；项目库行高 60px，侧栏正常行 32px、路径异常行 56px |
+| 圆角 | sm 6px、md 8px、lg 12px、xl 16px；`--radius` 基准 8px |
+| Button 高度 | xs 24px、sm 32px、default 36px、lg 40px |
+| 图标 Button | 24/32/36/40px 对应 icon-xs/icon-sm/icon/icon-lg；窗口导航使用28px触发器、16–17px图标；必须有名称 |
 
-迁移完成的标准是所有实际使用页面遵循这套语义与组件契约，并清理对应旧样式；安装三个库不等于完成设计系统。SuperSplat 内部、真实原生文件交互与 GPU 预览需要各自的集成验收，不能用纯浏览器示例替代。
+默认字体为本地 `Inter Variable, -apple-system, BlinkMacSystemFont, PingFang SC, Microsoft YaHei UI, Segoe UI, sans-serif`；技术值为 `JetBrains Mono, monospace`。按钮文字避免固定窄宽度，保留英文增长空间。长路径可换行或省略，完整值必须能在上下文获取。
+
+基础层提供可见焦点描边，组件可在此基础上使用 ring。Dialog/Menu 层级由 Radix 的 Portal 与本地容器上下文组合，不能随意追加 z-index 修复焦点问题。模态中的 Tooltip/Menu 必须挂在当前模态容器内。
+
+## 4 基础组件契约（历史）
+
+完整来源及改动见[ui-sources.json](../apps/desktop/ui-sources.json)和[组件维护说明](../apps/desktop/src/components/ui/README.md)。
+
+| 组件 | 实际接口或约定 |
+| --- | --- |
+| Button | `variant=default/secondary/outline/ghost/destructive/warning/link`；默认 `type=button`；标准 disabled/aria 属性；pending 由业务状态驱动 |
+| Input / NativeSelect / Label | 保留原生输入、选择和 IME 行为；label 与控件通过 id 关联 |
+| Checkbox / Switch | Radix 状态；确认事项用 Checkbox，即时布尔偏好用 Switch |
+| Badge | `success/warning/destructive` 等语义变体，显示真实文字；不能靠颜色区分任务结果 |
+| Progress | 将真实 value 传到 Radix；未知为 null，视觉范围限制 0–100；不能用未知值伪造 0% |
+| Tabs / Collapsible | Radix 键盘和展开状态；用于设置分类、活动筛选、阶段详情和帮助 |
+| DropdownMenu / Tooltip | Radix 行为；嵌套模态 Portal 通过 OverlayContainerContext 指定容器 |
+| Alert / Card | 内容结构与语义样式；阻断错误应保留到用户处理 |
+| Dialog / ModalSurface | Radix 负责 focus trap；应用适配负责 busy、初始焦点、返回目标、危险操作外部关闭限制 |
+| Resizable | 对 react-resizable-panels 3.0.6 的本地适配；panel 节点稳定，不借拖动重新创建 renderer |
+
+AlertDialog、Sheet、Separator、Skeleton 已作为源码基础组件纳入；当前业务模态主要通过 `ModalSurface` 使用 Dialog，不为了目录名称机械换成 Sheet。当前未引入 Sonner、ScrollArea、自定义 Select、RadioGroup 或 Accordion。
+
+同一弹层只能有一个焦点管理器，旧焦点 hooks 已删除。`ModalSurface` 关闭时恢复 opener，失效时使用调用点的 fallback；busy 禁止 Escape/外部关闭并保持可用焦点。`role=alertdialog` 阻止点遮罩取消。删除、恢复和重跑仍由原业务确认流程决定是否执行。
+
+DropdownMenu 在 Radix 默认行为基础上，通过 `DesktopMenu` 保留桌面键盘约定，例如 ArrowUp 进入末项和 Tab 退出。全局快捷键忽略输入及活动弹层，防止菜单打开时触发背景命令。
+
+## 5 页面组合（历史）
+
+| 页面/区域 | 当前布局与关键约束 |
+| --- | --- |
+| 项目中心 | 单一搜索/打开/新建工具区，60px 最近项目主列表；标题14px/500，辅助路径12px；总数与完成数为小字；环境集中在设置，引擎异常仍在首页提醒 |
+| 创建向导 | 选择素材 → 预检与参数 → 确认创建；主体滚动、底部动作明确；返回保留草稿，参数修改使旧预检失效 |
+| 外壳 | 40px一体窗口导航，侧栏开关/后退/前进使用28px按钮；macOS叠加原生交通灯，侧栏色块延伸至顶部；240px侧栏可折叠为64px，窄窗开关打开受控项目抽屉；正常项目一行、异常路径增加一行可操作提示 |
+| 工作台 | 四阶段摘要与展开步骤；场景、Inspector 使用可调面板；窄窗详情为独立模态，视口节点不跟随迁移 |
+| 活动/日志 | 独立可滚动区域；Tabs 筛选、搜索 debounce、后端 cursor 分页、选择详情、自动跟随与回到最新 |
+| Checkpoint | 共享模态、真实检查点与恢复条件；未满足条件不能用样式假装可恢复 |
+| 设置 | 常规、引擎、性能与存储、外观、诊断；Dialog 内容滚动；可见分类名即无障碍名称 |
+| 模型编辑 | 宿主返回/保存/错误/离开保护统一；内部 SuperSplat UI 保留固定上游实现 |
+
+原生默认窗口 1440×1024、最小 1024×768。`DesktopTitlebar` 在各平台呈现40px应用导航；macOS为原生交通灯预留左侧84px，Windows/Linux保留系统标题栏且不增加这段空白。28px侧栏/后退/前进按钮与空白拖拽区域分离；顶部不重复页面标题，也不再使用横贯窗口的底边框。顶部左侧背景跟随240/64px侧栏宽度，右侧跟随当前页面background/card；按钮不受64px折叠轨道宽度约束。调试版不再默认打开 WebInspector，需要时设置 `METORIGIN_OPEN_DEVTOOLS=1`。设置窗口当前最大 800px 宽、720px 高，并受 viewport 留白限制；工作台在 1120px 及以下切换 Inspector 呈现。页面应允许缩小、折叠和滚动，不能隐藏主操作；这些源码约束还需配合真实 WebView/DPI 与 200% 缩放验收。
+
+数值设置在本地保存草稿，日志上限验证 64–4096，缩略图缓存验证 64–8192，显式保存后再采用后端回执。即时偏好和主题语言使用既有保存机制；保存失败保留上下文供重试，不将输入中间态写入后端。
+
+窗口导航使用最多50项内存页面历史，同页不重复入栈，后退后普通跳页截断forward；移除项目清理历史，重新定位更新历史路径。创建向导是瞬态流程，不入历史，保留自己的草稿与安全取消出口；向导中工具栏导航禁用。编辑器前后退必须经过`editor.leave()`并在确认关闭后更新历史。App持有compact断点和抽屉状态，确保顶部开关、侧栏与焦点恢复使用同一状态源。
+
+## 6 任务、异步与错误语义（历史）
+
+继续复用已有 ProjectStatus、StageStatus、TaskProgress 和异步资源类型。项目创建、运行、暂停中、暂停、取消中、取消、恢复、完成和失败的展示由后端状态与现有派生函数决定，不另建 UI 状态机。
+
+- `loading` 显示载入说明；`refreshing` 保留既有数据；`stale` 明确上次成功数据与重试入口。
+- 暂停中/取消中不是已暂停/已取消，成功回执必须来自后端结果。
+- warning 可继续的路径与 blocker 阻止的路径分别表达。
+- 字段错误有文本及关联；操作错误使用 ErrorNotice，不能只靠暂时消失的通知。
+- 诊断文本沿用脱敏规则，原始引擎输出不在 UI 中随意泄露。
+- 事件查询以 query generation 同时保护显示数据、cursor 与 refs，旧请求不能覆盖新筛选结果。
+- Progress 只显示有分母的真实进度；没有数据时显示未知说明，不用装饰动画生成百分比。
+
+模型更新失败尽可能保留最后有效模型和用户相机；编辑会话的 dirty、保存和离开检查不因主题、语言或布局迁移而改变。UI 预览中的模拟任务数据始终明确标记，不能当成实际 GPU 或原生任务结果。
+
+## 7 Magic UI 与减少动效（历史）
+
+白名单当前只有 **NumberTicker**，唯一业务入口是 `ResultNumber`。它用于项目中心“已完成项目数”的真实变化，首次渲染静态显示，动画最长 350ms。Motion 按需 lazy 加载，动画可停止并正确清理监听器。
+
+| 情况 | 行为 |
+| --- | --- |
+| 完成汇总数发生变化且可动画 | 从上一真实值到当前真实值，350ms |
+| `prefers-reduced-motion: reduce` | 直接显示最终值，卸载数字动画 |
+| 页面隐藏 | 停止动画；重新显示不补播旧变化 |
+| 实际重建任务活动 | 不启动数字动画，保留静态最终值 |
+| 首次载入、语言/策略切换、重新进入 | 不重播历史变化 |
+| 读屏 | 始终读取静态最终数字，动画文本 aria-hidden |
+
+CSS 的 hover/focus 以颜色和边框变化为主，弹层使用组件内有限过渡；全局减少动效媒体查询约束 CSS animation/transition。数字动画另有 JS 策略，不能仅靠 CSS 查询暂停。
+
+禁止把 NumberTicker 用于训练进度、GPU/VRAM、温度或日志计数。未使用 BlurFade、AnimatedList、BorderBeam、ShineBorder、Meteors、Particles、Marquee；后续新增需独立说明业务用途、持续时间与停止条件。没有 CPU/GPU 实测前不能宣称动效无开销或提升性能。
+
+## 8 无障碍、本地化与验收（历史）
+
+基础控件使用语义标签和 Radix 键盘模型。图标按钮必须有名称；Tooltip 只补充说明；disabled 原因应在邻近上下文可读取。状态通知沿用 StatusAnnouncer，避免轮询与连续资源数字反复打断读屏。
+
+文字、数值、日期继续采用既有中英 i18n/locale。可见 label 与 accessible name 使用同一翻译值。错误消息完整展示，长路径和英文按钮保留扩展空间。普通文字目标对比度 4.5:1，必要控件边界/焦点目标 3:1；这些是验收目标，最终组合和透明叠加仍需测量，不能继承旧 token 评估就宣称当前完整 WCAG 合规。
+
+当前已通过的单元/交互测试覆盖模态、菜单、Tabs、创建草稿与取消、设置失败、日志乱序、渲染生命周期及减少动效策略。完整生产构建和 Spark/Three/SuperSplat 集成回归已通过。浏览器在 1440×1024 与 1024×768 实查中文浅色首页、向导第一步、工作区、设置、项目菜单和窄窗弹层，并检查英文深色设置，控制台无 error/warn。后续桌面壳重设计还完成了原生调试 .app 构建与 17 条真实记录截图对照，涵盖中文、长路径、空格与 emoji，以及原生明暗主题、全屏进出和菜单 Esc 焦点恢复；英文深色 1024×768 项目库与工作台主操作可见。视觉对照、已修问题与原生控件验证限制见 [design-qa.md](../design-qa.md)。本轮新增的窗口导航还通过333项全量前端测试，以及之后独立运行的7项预览身份单测；原生后退/前进、折叠和双击缩放已检查。最新两张红框参考与实现的合并对照位于`.test-results/window-toolbar/`。具体数量与构建状态见[迁移验证记录](frontend-migration-plan.zh-CN.md#6-已执行验证与限制)。
+
+发布前仍需按目标平台完成键盘全路径、读屏、forced-colors、200% 缩放、Windows DPI/WebView2、macOS WKWebView、原生文件选择、真实任务/恢复/保存、GPU 资源和长时间运行验证。SuperSplat 内部独立验收，不能用宿主换肤推断其内部已迁移。
+
+## 9 Jan 现行规范（2026-10-29）
+
+- **桌面框架**：共用48px窗口首行。展开时左上与左下全高侧栏同宽，默认240px、可调224–320；左上只保留原生交通灯安全区和靠右的侧栏开关，内容页头紧接侧栏区域，按用户要求不呈现后退/前进按钮或其占位。隐藏采用Jan LeftSidebar的offcanvas语义：正文侧栏占位为0，隐藏内容退出焦点序列，展开恢复先前宽度；首行开关位于macOS 84px安全区之后，页头随其内容宽度紧接，使用主区背景且无竖分隔。侧栏开关为32px圆形点击区、18px图标；稳定节点和header portal在开合时保留。原生macOS三灯由AppKit标准按钮提供：移除仅调整容器的`trafficLightPosition`配置，在主队列完成布局后把实际按钮圆心对齐至首行24pt；按内容/父视图坐标转换，仅调整纵向位置，保留系统横向间距、尺寸和动作。窗口缩放/焦点/主题/DPI变化以及原生窗口更新后仅在偏离时重新校正，全屏时交给系统；Destroyed使排队任务永久失效并移除观察器。compact抽屉在隐藏侧栏之外，统一提供项目中心和底部设置入口；新建/打开集中在项目中心主区工具栏。没有网页式外边距、浮动页面大圆角或重复标题，OS窗口圆角保留。
+- **项目导航**：侧栏与窄窗项目抽屉均移除“最近项目”标题及列表，仅保留“项目中心”与底部“设置与引擎”。侧栏继续沿用宽度、折叠与安全导航行为，窄窗抽屉保留关闭、焦点及模态保护；项目数据与管理操作集中在主区网格。
+- **项目中心**：用户选定Meshroom Projects的照片网格组织方式，保留Jan桌面壳及主题。数量、搜索、打开和新建集中在可换行的单行工具栏，不增加重复“打开项目”图块。按用户圈选移除“全部状态”菜单、照片下的训练状态行和常驻路径异常/重新定位块；主区使用180–220px照片方格，图下只显示项目名。搜索仅匹配名称及完整路径，不因训练状态或路径健康隐藏项目，全库不受导航组件默认50项限制。训练状态、阶段、路径健康、完整路径和更新时间保留在title及无障碍描述，并继续用于原安全逻辑。项目更多菜单与真正的右键ContextMenu共享原管理和安全导航流程；右键释放不执行动作，Esc返焦更多按钮。重试检查与重新定位留在菜单，仅实际操作后的UUID不匹配和重新定位错误反馈在卡片中显示。成功打开项目才前移最近顺序，后台状态更新保序；本次侧栏移除不改变主区网格。
+- **项目照片来源**：缩略图代表项目内真实输入素材，优先frames中的首张图片，再回退source中已复制的照片，不冒充重建渲染。只读命令校验项目身份、项目内路径与普通文件，限制扫描、文件大小和像素，返回最长边360px的JPEG或null；不调用引擎、抽视频帧或写磁盘缓存。前端靠近可见区时加载，并发2、48项内存LRU，按项目ID/路径/updated_at及状态/阶段隔离；缺图或读取失败只显示该项目的局部占位反馈，不生成替代照片。Meshroom仅作视觉参考，未复制QML代码，也未增加依赖。
+- **主题**：唯一来源 `integrations/jan/theme.json`，宿主生成tokens，编辑器构建消费同源数据；light/dark/system仍由原useTheme拥有。浅色主填充`#be4c30`+白字，深色`#f17455`+深字；侧栏`#f1f1f1`/`#171717`。正文14px，`--font-size-base:16px`；Inter+中文系统回退，技术数值JetBrains Mono。没有复制Jan字标或授权不明字体。
+- **组件**：保留本地props、Radix交互、Portal scope、默认button type、busy/focus保护及有限状态语义；Jan视觉与shadcn MIT来源并列保留。结果数量静态本地化，不加载Magic/Motion数字动效。
+- **设置**：设置仍是稳定壳上的双栏浮层，232px分类与独立滚动正文，60px为设置内部标题高度；主页面保持挂载。
+- **创建向导**：保留素材、预检与参数、确认创建三步流程，共用48px窗口页头。步骤条使用24px紧凑标记，去掉卡片背景及重复的可见“下一步”说明，正文最大960px，底部操作与安全退出位置不变。素材选择使用紧凑入口，移除大虚线及上传伪区域；拍摄建议默认折叠，仅保留“素材默认仅在本机处理”的本机说明，最多6张素材预览按2/3/6列重排，目标元数据保留。参数页先呈现桌面三列预设，选中项使用default主色橙色填充、primary-foreground文字及勾选/ring，未选项为outline，aria-pressed及业务切换不变。重复的预计帧数、分辨率和目标迭代汇总收进默认折叠的“参数详情”；下方统一环境检查，正常“运行环境详情”默认折叠，can_continue为false时由本地展示状态自动展开。warnings、blockers及设置修复入口位于折叠区外，直接可见；已知Mac执行提示只从当前后端警告提取实际数值，简写为如“本次 Mac：7,000 步 · SH1 · 1920px”，完整原提示保留title，未知警告原样呈现。确认页采用标签行表单与轻量摘要，移除额外素材复制说明，摘要中的copy方式保持。失败/复制反馈随步骤正文滚动；hook、后端、引擎及参数协议、目录重检、预检门禁、复制取消与退出确认沿用原业务控制。
+- **工作台页头**：共用首行的compact运行栏保留项目名、适用的任务控制、编辑与操作菜单，移除状态/进度入口及完成项目的独立“文件”按钮；文件定位仍在操作菜单。非compact完整运行栏继续显示路径、整体进度、状态、当前阶段、适用的实际工作量与最近更新，任务冲突和启动/暂停/继续/取消/重试行为不变。
+- **工作台阶段导航**：桌面四大阶段使用单行数字或完成勾、阶段名、细连接线及展开箭头；完成态不再逐格重复“已完成 · 100%”，运行和异常态保留简洁真实状态，完整状态/进度保留在title与无障碍名称。预览所选阶段轻量高亮，可展开子阶段并使用键盘选择预览；子阶段移除重跑/重试按钮及其导航回调，选中阶段的错误说明继续显示。真正的失败重试和质量阻断修复仍由Inspector原恢复入口处理。
+- **工作台Inspector**：完成态只保留一个“重建完成”标题及一句结果说明，不重复展示完成标签、100%数值或满进度条；运行、暂停、取消与失败态继续显示对应进度和恢复反馈。质量区域称“重建质量”，其中COLMAP结果明确标为“相机重建检查”及对应风险/阻断状态；主要匹配组覆盖率说明其图像分组含义，不冒充整体模型质量。注册率按素材类型显示“照片注册率”“视频帧注册率”，未知类型使用“图像注册率”；点数优先显示真实splat_count并标“高斯点数”，否则使用sparse_points并标“稀疏点数”，缺值仍为未知。相机重建尝试记录默认折叠，质量检查详情及原风险继续/修复流程保留。输出目录、PLY文件与“恢复点（数量）”采用32px紧凑小按钮，PLY继续受真实产物校验约束；恢复点表示Brush的PLY几何恢复，不暗示完整优化器状态恢复。
+- **三维工作台布局与反馈**：视口在固定ResizablePanel中，Inspector为兄弟区域，窄窗用模态显示；512CSS重排允许正文滚动。UI工具栏按主题变化，模型颜色、选区语义及输出色彩不变。未知资源不是0，质量风险按钮严格取决于真实decision。恢复点AsyncStatus在成功但为空时静默，由父容器现有:empty规则消除占位；加载、refreshing、error、stale、partial与重试反馈仍保留。
+- **编辑器**：当前固定官方SuperSplat 3.7.0/`b89029dd20911fd18905b61de2701094ac390a73`，配套splat-transform 3.10.2/`e0dab1fa0b7f7546d2b4b197f6294570e53ba3b8`及独立`webp-overlay-3.10.2`；旧3.4.2派生证据保留为历史。独立iframe URL固定，父窗口source/origin/channel鉴权、load/dirty/saved/save-failed、单飞及保存会话确认保持；export使用`{}`保留实际SH0–3，不强制补齐到SH3。theme仅传light/dark+jan-v1，拒绝任意样式/脚本；Jan共享颜色经静态样式及Canvas最小绘制适配进入完整UI，所有输入进入缓存签名/资产清单。语言由宿主拥有，嵌入Preferences不再提供独立语言选择，Reset保留宿主语言；主题和语言同步不重载iframe或重置dirty，theme失败可重试且不冒充模型失败。嵌入菜单隐藏menu-home与其separator，宿主标题、右下版本、About及NOTICE保留。首次在registerPreferences前仅将camera.showInfo与view.perfOverlay迁移为false，保留其他偏好及顶层字段，成功后写入metorigin:supersplat:overlay-defaults:v1标记；随后手动开启仍记忆。standalone保持上游行为，未知或损坏存储不清空，失败写入不标记完成。
+- **验证含义**：布局视觉对照与完整发布验收分别记录于根`design-qa.md`和迁移记录第10节。样例数据明确标记，截图不冒充GPU/文件保存/重建证据；未验平台与真实场景不能标成已完成。

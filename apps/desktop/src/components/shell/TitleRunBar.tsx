@@ -2,7 +2,6 @@ import { t, getLocale } from "../../i18n";
 import {
   ArrowClockwise,
   CaretDown,
-  Export,
   FolderOpen,
   Pause,
   Pencil,
@@ -10,17 +9,20 @@ import {
   StopCircle,
   SpinnerGap,
   Trash,
-  XCircle,
 } from "../primitives/icons";
 import { useId, useState } from "react";
+import { cn } from "@/lib/utils";
 
-import { useMenuFocus } from "../../hooks";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { DesktopMenu } from "./DesktopMenu";
 import { getProjectStatusLabel, getStageLabel } from "../../localization";
 import type { PipelineConflictInfo, PipelineSnapshot, ProjectInfo, TaskProgress } from "../../types";
-import appIconUrl from "../../../src-tauri/icons/app-icon.svg";
 
 interface TitleRunBarProps {
   project: ProjectInfo | null;
+  compact?: boolean;
   pipelineSnapshot: PipelineSnapshot | null;
   onStart: () => void;
   onHome?: () => void;
@@ -28,7 +30,6 @@ interface TitleRunBarProps {
   onResume: () => void;
   onCancel: () => void;
   onRevealProject: () => void;
-  onRemoveProject: () => void;
   onDeleteProject: () => void;
   onViewActivity?: () => void;
   pipelineConflict?: PipelineConflictInfo | null;
@@ -41,14 +42,13 @@ interface TitleRunBarProps {
 
 export function TitleRunBar({
   project,
+  compact = false,
   pipelineSnapshot,
   onStart,
-  onHome = () => undefined,
   onPause,
   onResume,
   onCancel,
   onRevealProject,
-  onRemoveProject,
   onDeleteProject,
   onViewActivity = () => undefined,
   pipelineConflict = null,
@@ -58,9 +58,7 @@ export function TitleRunBar({
   onEdit,
   openingEditor = false,
 }: TitleRunBarProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [conflictAssertive, setConflictAssertive] = useState(false);
-  const menuId = useId();
   const conflictDescriptionId = useId();
   const status = pipelineSnapshot?.status ?? project?.status ?? "ready";
   const isRunning = ["starting", "running", "pausing", "cancelling", "recovering"].includes(status);
@@ -68,13 +66,6 @@ export function TitleRunBar({
   const canResume = status === "paused" || status === "cancelled";
   const isFailed = status === "failed";
   const isComplete = status === "completed";
-  const statusLabel = status === "running" ? t("处理中") : status === "failed" ? t("已阻塞") : status === "ready" ? t("等待中") : getProjectStatusLabel(status);
-  const menu = useMenuFocus({
-    open: menuOpen,
-    onOpenChange: setMenuOpen,
-    itemCount: 3,
-    isDisabled: (index) => isRunning && index >= 1,
-  });
   if (!project) return null;
   const progress = isComplete ? 100 : pipelineSnapshot && Number.isFinite(pipelineSnapshot.state.overall_progress)
     ? Math.round(pipelineSnapshot.state.overall_progress * 100)
@@ -103,96 +94,13 @@ export function TitleRunBar({
     else onStart();
   };
 
-  return (
-    <header className="title-run-bar">
-      <div className="title-row">
-        <button type="button" className="workspace-brand-button" onClick={onHome} title={t("返回项目中心")}>
-          <img src={appIconUrl} alt="" />
-          <span>MetOrigin Splat</span>
-        </button>
-        <div className="project-heading">
-          <h1 aria-label={project.name}>{project.name}</h1>
-          <p>{project.path}</p>
+  const progressDetails = (
+      <div className={cn("grid items-center gap-4", !compact && "xl:grid-cols-[minmax(180px,1fr)_auto]")}>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">{t("整体进度")}</span><strong className="font-medium tabular-nums">{progress == null ? t("正在估算") : `${progress}%`}</strong></div>
+          <Progress value={progress} aria-label={t("整体进度")} aria-valuetext={progressText} />
         </div>
-
-        <div className="run-actions">
-          <span className={`status-pill status-${status}`}><i />{statusLabel}</span>
-          {isComplete && onEdit && (
-            <button type="button" className="button button-secondary workspace-compact-action" onClick={onEdit} disabled={openingEditor} aria-label={openingEditor ? t("正在打开编辑器") : t("编辑")} title={t("在操作台内使用 SuperSplat 编辑模型")}>{openingEditor ? <SpinnerGap size={17} className="spin" /> : <Pencil size={17} />}{t("编辑")}</button>
-          )}
-          {(status === "running" || status === "cancelling") && (
-            <button
-              type="button"
-              className="button button-danger"
-              onClick={onCancel}
-              disabled={isControlling}
-            >
-              <StopCircle size={17} />
-              {status === "cancelling" ? t("正在取消…") : t("取消任务")}
-            </button>
-          )}
-          {isFailed ? <button type="button" className="button button-secondary" onClick={onViewActivity}>{t("查看日志")}</button> : null}
-          <button
-            type="button"
-            className={`button ${isFailed || canResume ? "button-primary" : "button-secondary"}`}
-            onClick={isComplete ? onRevealProject : handleRunAction}
-            disabled={isControlling}
-            aria-disabled={pipelineConflict && !isComplete ? true : undefined}
-            aria-describedby={pipelineConflict && !isComplete ? conflictDescriptionId : undefined}
-            title={isComplete ? t("打开项目文件目录") : isFailed ? t("重新启动任务并校验现有产物") : isRunning ? t("安全暂停并保留有效产物") : canResume ? t("校验产物后继续重建") : t("开始重建")}
-            aria-label={isRunning ? t("暂停") : undefined}
-          >
-            {isComplete ? <Export size={17} /> : isFailed ? <ArrowClockwise size={17} /> : isRunning ? <Pause size={17} weight="fill" /> : <Play size={17} weight="fill" />}
-            {isControlling ? t("正在处理…") : isComplete ? t("查看项目文件") : isFailed ? t("重试任务") : isRunning ? t("暂停任务") : canResume ? t("继续") : t("开始重建")}
-          </button>
-          <div className="project-action-menu">
-            <button
-              ref={menu.triggerRef}
-              type="button"
-              className="button button-secondary"
-              disabled={!project}
-              onClick={() => menuOpen ? menu.closeMenu(true) : menu.openMenu("first")}
-              onKeyDown={menu.onTriggerKeyDown}
-              aria-expanded={menuOpen}
-              aria-haspopup="menu"
-              aria-controls={menuOpen ? menuId : undefined}
-            >
-              {t("操作")}<CaretDown size={14} />
-            </button>
-            {menuOpen && project && (
-              <div ref={menu.menuRef} id={menuId} className="action-menu-popover" role="menu" data-keyboard-overlay="true" onKeyDown={menu.onMenuKeyDown}>
-                <button type="button" {...menu.getItemProps(0)} onClick={() => { setMenuOpen(false); onRevealProject(); }}>
-                  <FolderOpen size={15} /> {t("在资源管理器中显示")}</button>
-                <span className="action-menu-separator" />
-                <button type="button" {...menu.getItemProps(1)} disabled={isRunning} title={isRunning ? t("请先安全取消重建") : undefined} onClick={() => { setMenuOpen(false); onRemoveProject(); }}>
-                  <XCircle size={15} /> {t("从最近项目移除")}</button>
-                <button type="button" {...menu.getItemProps(2)} className="is-danger" disabled={isRunning} title={isRunning ? t("请先安全取消重建") : undefined} onClick={() => { setMenuOpen(false); onDeleteProject(); }}>
-                  <Trash size={15} /> {t("永久删除项目")}</button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="run-summary-row">
-        <div
-          className="progress-summary"
-          role="progressbar"
-          aria-label={t("整体进度")}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={progress ?? undefined}
-          aria-valuetext={progressText}
-        >
-          <span className="progress-copy">
-            <span>{t("整体进度")}</span>
-            <strong>{progress == null ? t("正在估算") : `${progress}%`}</strong>
-          </span>
-          <span className="progress-track" aria-hidden="true">
-            <span style={{ width: `${progress ?? 0}%` }} />
-          </span>
-        </div>
-        <div className="run-time-copy">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs [&>span]:text-muted-foreground [&>strong]:mr-3 [&>strong]:font-medium [&>strong]:tabular-nums">
           <span>{t("状态")}</span>
           <strong>{getProjectStatusLabel(status)}</strong>
           <span>{t("当前阶段")}</span>
@@ -202,8 +110,58 @@ export function TitleRunBar({
           <strong>{updatedAt ? new Date(updatedAt).toLocaleTimeString(getLocale(), { hour12: false }) : t("等待活动")}</strong>
         </div>
       </div>
+  );
+
+  return (
+    <header className={cn("bg-background", compact ? "flex h-full min-w-0 flex-1 items-center px-3" : "shrink-0 space-y-3 px-4 py-3")}>
+      <div className={cn("flex min-w-0 items-center", compact ? "w-full gap-3" : "flex-wrap gap-4")}>
+        <div className={cn("min-w-0 flex-1 [&_h1]:truncate [&_h1]:font-medium [&_p]:truncate [&_p]:text-xs [&_p]:text-muted-foreground", compact ? "[&_h1]:text-sm" : "[&_h1]:text-lg")}>
+          <h1 data-tauri-drag-region aria-label={project.name} title={project.name}>{project.name}</h1>
+          {!compact ? <p>{project.path}</p> : null}
+        </div>
+
+        <div className={cn("flex shrink-0 items-center gap-2", !compact && "flex-wrap")}>
+          {isComplete && onEdit && (
+            <Button type="button" variant="outline" size="sm" onClick={onEdit} disabled={openingEditor} aria-label={openingEditor ? t("正在打开编辑器") : t("编辑")} title={t("在操作台内使用 SuperSplat 编辑模型")}>{openingEditor ? <SpinnerGap size={17} className="spin" /> : <Pencil size={17} />}<span className={compact ? "max-[900px]:sr-only" : undefined}>{t("编辑")}</span></Button>
+          )}
+          {(status === "running" || status === "cancelling") && (
+            <Button
+              type="button"
+              variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={onCancel}
+              aria-label={status === "cancelling" ? t("正在取消…") : t("取消任务")}
+              disabled={isControlling}
+            >
+              <StopCircle size={17} />
+              <span className={compact ? "max-[900px]:sr-only" : undefined}>{status === "cancelling" ? t("正在取消…") : t("取消任务")}</span>
+            </Button>
+          )}
+          {isFailed ? <Button type="button" variant="outline" size="sm" className={compact ? "max-[900px]:hidden" : undefined} onClick={onViewActivity}>{t("查看日志")}</Button> : null}
+          {!isComplete && <Button
+            type="button"
+            variant="default" size="sm"
+            onClick={handleRunAction}
+            disabled={isControlling}
+            aria-disabled={pipelineConflict ? true : undefined}
+            aria-describedby={pipelineConflict ? conflictDescriptionId : undefined}
+            title={isFailed ? t("重新启动任务并校验现有产物") : isRunning ? t("安全暂停并保留有效产物") : canResume ? t("校验产物后继续重建") : t("开始重建")}
+            aria-label={isRunning ? t("暂停") : isControlling ? t("正在处理…") : isFailed ? t("重试任务") : canResume ? t("继续") : t("开始重建")}
+          >
+            {isFailed ? <ArrowClockwise size={17} /> : isRunning ? <Pause size={17} /> : <Play size={17} />}
+            <span className={compact ? "max-[900px]:sr-only" : undefined}>{isControlling ? t("正在处理…") : isFailed ? t("重试任务") : isRunning ? t("暂停任务") : canResume ? t("继续") : t("开始重建")}</span>
+          </Button>}
+          <DesktopMenu trigger={<Button variant="ghost" size="sm" aria-label={t("操作")}><span className={compact ? "max-[900px]:sr-only" : undefined}>{t("操作")}</span><CaretDown size={14} /></Button>}>
+            {compact && isFailed ? <DropdownMenuItem onSelect={onViewActivity}>{t("查看日志")}</DropdownMenuItem> : null}
+            <DropdownMenuItem onSelect={onRevealProject}><FolderOpen size={15} />{t("在资源管理器中显示")}</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="text-destructive focus:text-destructive" disabled={isRunning} title={isRunning ? t("请先安全取消重建") : undefined} onSelect={onDeleteProject}><Trash size={15} />{t("永久删除项目")}</DropdownMenuItem>
+          </DesktopMenu>
+        </div>
+      </div>
+
+      {!compact ? progressDetails : null}
       {pipelineConflict && !isComplete && (
-        <p id={conflictDescriptionId} className={conflictAssertive ? "run-conflict-feedback" : "sr-only"} role={conflictAssertive ? "alert" : undefined}>
+        <p id={conflictDescriptionId} className={conflictAssertive && !compact ? "rounded-md bg-warning/10 p-3 text-xs text-warning" : "sr-only"} role={conflictAssertive ? "alert" : undefined}>
           {t("当前有重建任务尚未结束，请先暂停或结束任务后再开始新的重建。")}</p>
       )}
     </header>

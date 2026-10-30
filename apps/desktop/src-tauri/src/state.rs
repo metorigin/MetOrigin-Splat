@@ -65,6 +65,8 @@ pub struct ProjectInfo {
 
 /// Global application state accessible from Tauri commands.
 pub struct AppStateInner {
+    pub shutting_down: bool,
+    pub pending_work: usize,
     pub recent_projects: Vec<ProjectInfo>,
     pub project_dir: Option<std::path::PathBuf>,
     pub active_pipeline: Option<ActivePipeline>,
@@ -83,12 +85,23 @@ pub struct ActivePipeline {
     pub project_id: String,
     pub project_dir: std::path::PathBuf,
     pub orchestrator: Arc<PipelineOrchestrator>,
+    /// True only after the supervised worker has joined. Durable finalization
+    /// is tracked separately and retains this owner until it succeeds.
     pub completion: watch::Receiver<bool>,
     pub control_intent: Arc<Mutex<PipelineControlIntent>>,
     pub accepted_at: String,
     pub started_at: Arc<Mutex<Option<String>>>,
     pub sequence: Arc<AtomicU64>,
     pub abort_handle: Arc<Mutex<Option<tokio::task::AbortHandle>>>,
+    pub finalization: Arc<tokio::sync::Mutex<PipelineFinalization>>,
+    pub process_scope: splat_process::ProcessScope,
+    pub event_forwarder: Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
+}
+
+pub enum PipelineFinalization {
+    Running,
+    Pending(splat_domain::AppResult<()>),
+    Complete,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,6 +118,8 @@ impl AppState {
     pub fn new() -> Self {
         AppState(
             Arc::new(Mutex::new(AppStateInner {
+                shutting_down: false,
+                pending_work: 0,
                 recent_projects: Vec::new(),
                 project_dir: None,
                 active_pipeline: None,

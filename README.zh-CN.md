@@ -6,6 +6,8 @@
 
 **当前状态：Alpha / v0.1.0。** 核心流程已实现，Windows 安装包用于内部验证，暂未提供受支持的公开二进制版本。
 
+Apple Silicon macOS 支持正在验收：已在 M1 Pro／32 GB 上跑通真实照片、视频的 CPU COLMAP → Metal Brush 流水线，并验证原生查看和编辑。macOS 15、16 GB 干净环境及 Windows 回归尚未通过。详见[实施与验收方案](docs/macos-gaussian-generation-plan.zh-CN.md)和 [Mac 引擎打包](packaging/macos-arm64/README.md)。
+
 ## 主要功能
 
 - 导入 MP4、MOV、AVI、MKV 视频，或包含 JPG、JPEG、PNG 的图片文件夹。
@@ -24,14 +26,18 @@
 Windows 10/11 x64 开发环境需要：
 
 - Rust **1.97.0**，包含 `x86_64-pc-windows-msvc` 目标
-- Node.js **22**、pnpm **11.12.0**
+- Node.js **26**、pnpm **11.12.0**
 - Visual Studio Build Tools 的 **使用 C++ 的桌面开发** 工作负载，以及 Windows SDK
 - Microsoft Edge WebView2 Runtime
 - 兼容的 NVIDIA GPU；当前重建流程按这一硬件路径验证
 
-在项目根目录执行：
+仓库统一使用 Node.js 26。CI 从 `.node-version` 读取 Node 版本，`.nvmrc` 为 nvm 提供相同版本。使用 nvm 时，可选执行 `nvm install 26` 和 `nvm use 26`；已安装 Node.js 26 时无需使用 nvm。
+
+在项目根目录、随后用于启动 Tauri 和 Vite 的同一个终端中检查版本：`node -v` 应输出 `v26.x`，`pnpm -v` 应输出 `11.12.0`，然后安装并启动：
 
 ```powershell
+node -v
+pnpm -v
 pnpm install --frozen-lockfile
 pnpm tauri dev
 ```

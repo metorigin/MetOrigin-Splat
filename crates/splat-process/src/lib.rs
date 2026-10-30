@@ -20,6 +20,10 @@ pub mod log_writer;
 pub mod parser;
 pub mod platform;
 pub mod runner;
+pub mod scope;
+pub mod sync_probe;
+#[cfg(unix)]
+mod unix_group;
 
 pub use command::CommandSpec;
 pub use encoding::decode_process_output;
@@ -30,3 +34,5 @@ pub use log_writer::LogWriter;
 pub use parser::{CompositeParser, PercentageParser, ProgressParser};
 pub use platform::{background_command, configure_background_command};
 pub use runner::{CapturedProcessResult, ProcessRunner};
+pub use scope::{spawn_scoped, ProcessScope};
+pub use sync_probe::{probe_output_sync, probe_output_sync_with_timeout, ProbeOutput};

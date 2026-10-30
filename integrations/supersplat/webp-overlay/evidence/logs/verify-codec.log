@@ -1,0 +1,1609 @@
+{
+  "status": "passed-with-known-limitations",
+  "started_at": "2026-10-27T17:45:50.655Z",
+  "script": {
+    "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec.mjs",
+    "size_bytes": 28293,
+    "sha256": "0ef2f629e1779436aa5830679deb254733609340a7ef800b44af6aebf9d009d9"
+  },
+  "source_codec": {
+    "path": "${REPO_ROOT}/target/macos-m4/webp-provenance-followup-20261028/current-codec-from-installed-sourcemap.ts",
+    "size_bytes": 4474,
+    "sha256": "1cfb3c675343af986f57eae3b66b1763008548eb2364dd6972a352958c2ed225"
+  },
+  "scope": "Isolated old/new paired WebP module ABI, actual transpiled source codec, RGBA data, ownership and Node-worker checks. No production assets, license collections or application bundles changed.",
+  "transparent_pixel_contract": "Alpha is exact; RGB is exact where alpha>0. Simple libwebp lossless API has exact=0, so hidden RGB at alpha=0 is observed separately, not masked into an all-RGBA-lossless claim.",
+  "allocation_scope": "Counts cover JS-visible caller malloc/free and WebP output free calls. They are not instrumentation of internal WASM allocations.",
+  "known_limitations": [
+    "Actual source codec leaks three caller allocations on encode failure. This harness records that behavior and explicitly frees only its measured leftovers afterward; source is not repaired.",
+    "C ABI has no RGBA input-buffer length; no arbitrary bad pointer, short allocation, overflow dimension or NaN coercion test is claimed.",
+    "Compressed bytes may differ across library versions. Acceptance compares decoded data, not identical compression output.",
+    "Node worker_threads coverage is not browser-worker, rebuilt dist/worker.mjs, SOG pipeline, GPU, native UI or full-application acceptance."
+  ],
+  "pair_identity_comparison": {
+    "independent_classes_and_instances": true,
+    "wasm_bytes_differ": true,
+    "glue_bytes_differ": true
+  },
+  "pairs": {
+    "old": {
+      "bindings": {
+        "glue": {
+          "path": "${REPO_ROOT}/target/supersplat-source/upstream/node_modules/@playcanvas/splat-transform/lib/webp.mjs",
+          "size_bytes": 11893,
+          "sha256": "96bdc7e19889af61457bdb386c729a30bd29a8961a0187918b07a4b1f0a82dca"
+        },
+        "wasm": {
+          "path": "${REPO_ROOT}/target/supersplat-source/upstream/node_modules/@playcanvas/splat-transform/lib/webp.wasm",
+          "size_bytes": 352406,
+          "sha256": "e2c337e1afacf5c9e35f21916b5615fc6c5623074c6e110c07791bd0af071501"
+        }
+      },
+      "concurrent_factory_calls": 1,
+      "locate_file": [
+        {
+          "path": "webp.wasm",
+          "resolved": "file://${REPO_ROOT}/target/supersplat-source/upstream/node_modules/@playcanvas/splat-transform/lib/webp.wasm"
+        }
+      ],
+      "cases": [
+        {
+          "fixture": "opaque-1x1",
+          "width": 1,
+          "height": 1,
+          "stride": 4,
+          "input_byte_offset": 5,
+          "webp_bytes": 38,
+          "webp_sha256": "62f567d6151c39d4b9c5e3ed95f595e2e48ddbb9fcaba73ee852df818b583850",
+          "alpha": {
+            "transparent_pixels": 0,
+            "changed_hidden_rgb_bytes": 0,
+            "hidden_rgb_examples": [],
+            "expected_rgba_sha256": "e0ec77bc109902cd440adaedb8fd2c93bfee8f6bdb3ecdee72b75eae72c755ad",
+            "decoded_rgba_sha256": "e0ec77bc109902cd440adaedb8fd2c93bfee8f6bdb3ecdee72b75eae72c755ad"
+          },
+          "encode_allocations": {
+            "caller_malloc_calls": 3,
+            "caller_free_calls": 3,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          },
+          "decode_allocations": {
+            "caller_malloc_calls": 4,
+            "caller_free_calls": 4,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          }
+        },
+        {
+          "fixture": "opaque-3x2",
+          "width": 3,
+          "height": 2,
+          "stride": 12,
+          "input_byte_offset": 5,
+          "webp_bytes": 74,
+          "webp_sha256": "6601f960d38f72076b1d9d6d51e119b9aa346726475380ed2c16106a3a454d79",
+          "alpha": {
+            "transparent_pixels": 0,
+            "changed_hidden_rgb_bytes": 0,
+            "hidden_rgb_examples": [],
+            "expected_rgba_sha256": "1da891c1c5caab3f1f44250aabb04775d0ae8af0dcd1663a75995f26981924dc",
+            "decoded_rgba_sha256": "1da891c1c5caab3f1f44250aabb04775d0ae8af0dcd1663a75995f26981924dc"
+          },
+          "encode_allocations": {
+            "caller_malloc_calls": 3,
+            "caller_free_calls": 3,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          },
+          "decode_allocations": {
+            "caller_malloc_calls": 4,
+            "caller_free_calls": 4,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          }
+        },
+        {
+          "fixture": "opaque-odd-padded",
+          "width": 17,
+          "height": 13,
+          "stride": 75,
+          "input_byte_offset": 5,
+          "webp_bytes": 68,
+          "webp_sha256": "234396b2f16d36a9c0aa823d786309b200b184aacbddf80cdcc5ebebdc348cfc",
+          "alpha": {
+            "transparent_pixels": 0,
+            "changed_hidden_rgb_bytes": 0,
+            "hidden_rgb_examples": [],
+            "expected_rgba_sha256": "3c9f6564a0302955d25d112ce8f6ef092634b8baabae7fd8aad48cd8d81bd4a4",
+            "decoded_rgba_sha256": "3c9f6564a0302955d25d112ce8f6ef092634b8baabae7fd8aad48cd8d81bd4a4"
+          },
+          "encode_allocations": {
+            "caller_malloc_calls": 3,
+            "caller_free_calls": 3,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          },
+          "decode_allocations": {
+            "caller_malloc_calls": 4,
+            "caller_free_calls": 4,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          }
+        },
+        {
+          "fixture": "mixed-alpha-odd-padded",
+          "width": 17,
+          "height": 13,
+          "stride": 75,
+          "input_byte_offset": 5,
+          "webp_bytes": 132,
+          "webp_sha256": "3d157cb658869c5a113ce264b78c810ecffaf31191dcad37df7a824eba39a8e6",
+          "alpha": {
+            "transparent_pixels": 45,
+            "changed_hidden_rgb_bytes": 135,
+            "hidden_rgb_examples": [
+              {
+                "pixel": 0,
+                "input": [
+                  11,
+                  29,
+                  151,
+                  0
+                ],
+                "decoded": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              {
+                "pixel": 5,
+                "input": [
+                  20,
+                  64,
+                  50,
+                  0
+                ],
+                "decoded": [
+                  223,
+                  57,
+                  19,
+                  0
+                ]
+              },
+              {
+                "pixel": 10,
+                "input": [
+                  29,
+                  99,
+                  205,
+                  0
+                ],
+                "decoded": [
+                  232,
+                  92,
+                  174,
+                  0
+                ]
+              },
+              {
+                "pixel": 15,
+                "input": [
+                  38,
+                  134,
+                  104,
+                  0
+                ],
+                "decoded": [
+                  241,
+                  127,
+                  73,
+                  0
+                ]
+              }
+            ],
+            "expected_rgba_sha256": "dead61bd7948e712d1a779a312bdfc829656c4bd00e5aaed90cc781c1a8b0255",
+            "decoded_rgba_sha256": "ffb8dc9719b0aa922caa2be6a2e0a2576ea63c308afbd55032f9c3f844ae8ac1"
+          },
+          "encode_allocations": {
+            "caller_malloc_calls": 3,
+            "caller_free_calls": 3,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          },
+          "decode_allocations": {
+            "caller_malloc_calls": 4,
+            "caller_free_calls": 4,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          }
+        },
+        {
+          "fixture": "transparent-hidden-rgb",
+          "width": 3,
+          "height": 2,
+          "stride": 12,
+          "input_byte_offset": 5,
+          "webp_bytes": 34,
+          "webp_sha256": "06b174d7336bf5bfd65570087b74363e581f4b72fe2cf625d2a475a94fa6ace1",
+          "alpha": {
+            "transparent_pixels": 6,
+            "changed_hidden_rgb_bytes": 18,
+            "hidden_rgb_examples": [
+              {
+                "pixel": 0,
+                "input": [
+                  11,
+                  29,
+                  151,
+                  0
+                ],
+                "decoded": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              {
+                "pixel": 1,
+                "input": [
+                  64,
+                  36,
+                  182,
+                  0
+                ],
+                "decoded": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              {
+                "pixel": 2,
+                "input": [
+                  117,
+                  43,
+                  213,
+                  0
+                ],
+                "decoded": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              {
+                "pixel": 3,
+                "input": [
+                  30,
+                  126,
+                  164,
+                  0
+                ],
+                "decoded": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              }
+            ],
+            "expected_rgba_sha256": "86e13888d3dfac3abcad97353bd2657982a28117a7ceaba0745397e4f48eaf6a",
+            "decoded_rgba_sha256": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+          },
+          "encode_allocations": {
+            "caller_malloc_calls": 3,
+            "caller_free_calls": 3,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          },
+          "decode_allocations": {
+            "caller_malloc_calls": 4,
+            "caller_free_calls": 4,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          }
+        }
+      ],
+      "cwrap": {
+        "status": "passed",
+        "alpha": {
+          "transparent_pixels": 0,
+          "changed_hidden_rgb_bytes": 0,
+          "hidden_rgb_examples": [],
+          "expected_rgba_sha256": "3c9f6564a0302955d25d112ce8f6ef092634b8baabae7fd8aad48cd8d81bd4a4",
+          "decoded_rgba_sha256": "3c9f6564a0302955d25d112ce8f6ef092634b8baabae7fd8aad48cd8d81bd4a4"
+        }
+      },
+      "safe_c_abi_negatives": [
+        {
+          "label": "lossless:null-input",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:width-zero",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:width-negative",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:height-zero",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:height-negative",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:stride-zero",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:stride-negative",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:stride-short-safe-buffer",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:null-output-slot",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:null-size-slot",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:null-input",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:width-zero",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:width-negative",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:height-zero",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:height-negative",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:stride-zero",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:stride-negative",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:stride-short-safe-buffer",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:null-output-slot",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:null-size-slot",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:quality--1",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:quality-101",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "decode:null-input",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "decode:zero-length",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "decode:null-output-slot",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "decode:null-width-slot",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "decode:null-height-slot",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "decode:junk",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "decode:truncated-header-only",
+          "status": 0,
+          "output_slots_unchanged": true
+        }
+      ],
+      "source_failure_accounting": {
+        "encode": {
+          "caller_malloc_calls": 3,
+          "caller_free_calls": 0,
+          "webp_free_calls": 0,
+          "outstanding_caller_allocations": 3,
+          "classification": "known existing source-codec failure leak; not repaired",
+          "harness_cleanup_after_measurement": 3
+        },
+        "decode": {
+          "caller_malloc_calls": 4,
+          "caller_free_calls": 4,
+          "webp_free_calls": 0,
+          "outstanding_caller_allocations": 0
+        }
+      },
+      "heap_growth": {
+        "before_bytes": 16908288,
+        "requested_allocation_bytes": 16973824,
+        "after_bytes": 20316160,
+        "actual_growth": true,
+        "output_arrays_owned": true,
+        "counts": {
+          "caller_malloc_calls": 7,
+          "caller_free_calls": 7,
+          "webp_free_calls": 2,
+          "outstanding_caller_allocations": 0
+        },
+        "scope": "Real malloc growth followed by actual source-codec calls; not a claim that the encoder itself triggered growth."
+      },
+      "repeated_calls": {
+        "iterations": 12,
+        "caller_malloc_calls": 84,
+        "caller_free_calls": 84,
+        "webp_free_calls": 24,
+        "outstanding_caller_allocations": 0
+      }
+    },
+    "candidate": {
+      "bindings": {
+        "glue": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/outputs/webp.mjs",
+          "size_bytes": 11523,
+          "sha256": "4fb1318061392a7f0c3668add77dc13677d40ff93bc84ad2b8493be7965e20cf"
+        },
+        "wasm": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/outputs/webp.wasm",
+          "size_bytes": 346456,
+          "sha256": "72cd94e42bce159f10ce49bb41a17f725b8a0d165f496548a5775fec267a519c"
+        }
+      },
+      "concurrent_factory_calls": 1,
+      "locate_file": [
+        {
+          "path": "webp.wasm",
+          "resolved": "file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/outputs/webp.wasm"
+        }
+      ],
+      "cases": [
+        {
+          "fixture": "opaque-1x1",
+          "width": 1,
+          "height": 1,
+          "stride": 4,
+          "input_byte_offset": 5,
+          "webp_bytes": 38,
+          "webp_sha256": "62f567d6151c39d4b9c5e3ed95f595e2e48ddbb9fcaba73ee852df818b583850",
+          "alpha": {
+            "transparent_pixels": 0,
+            "changed_hidden_rgb_bytes": 0,
+            "hidden_rgb_examples": [],
+            "expected_rgba_sha256": "e0ec77bc109902cd440adaedb8fd2c93bfee8f6bdb3ecdee72b75eae72c755ad",
+            "decoded_rgba_sha256": "e0ec77bc109902cd440adaedb8fd2c93bfee8f6bdb3ecdee72b75eae72c755ad"
+          },
+          "encode_allocations": {
+            "caller_malloc_calls": 3,
+            "caller_free_calls": 3,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          },
+          "decode_allocations": {
+            "caller_malloc_calls": 4,
+            "caller_free_calls": 4,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          }
+        },
+        {
+          "fixture": "opaque-3x2",
+          "width": 3,
+          "height": 2,
+          "stride": 12,
+          "input_byte_offset": 5,
+          "webp_bytes": 74,
+          "webp_sha256": "6601f960d38f72076b1d9d6d51e119b9aa346726475380ed2c16106a3a454d79",
+          "alpha": {
+            "transparent_pixels": 0,
+            "changed_hidden_rgb_bytes": 0,
+            "hidden_rgb_examples": [],
+            "expected_rgba_sha256": "1da891c1c5caab3f1f44250aabb04775d0ae8af0dcd1663a75995f26981924dc",
+            "decoded_rgba_sha256": "1da891c1c5caab3f1f44250aabb04775d0ae8af0dcd1663a75995f26981924dc"
+          },
+          "encode_allocations": {
+            "caller_malloc_calls": 3,
+            "caller_free_calls": 3,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          },
+          "decode_allocations": {
+            "caller_malloc_calls": 4,
+            "caller_free_calls": 4,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          }
+        },
+        {
+          "fixture": "opaque-odd-padded",
+          "width": 17,
+          "height": 13,
+          "stride": 75,
+          "input_byte_offset": 5,
+          "webp_bytes": 68,
+          "webp_sha256": "234396b2f16d36a9c0aa823d786309b200b184aacbddf80cdcc5ebebdc348cfc",
+          "alpha": {
+            "transparent_pixels": 0,
+            "changed_hidden_rgb_bytes": 0,
+            "hidden_rgb_examples": [],
+            "expected_rgba_sha256": "3c9f6564a0302955d25d112ce8f6ef092634b8baabae7fd8aad48cd8d81bd4a4",
+            "decoded_rgba_sha256": "3c9f6564a0302955d25d112ce8f6ef092634b8baabae7fd8aad48cd8d81bd4a4"
+          },
+          "encode_allocations": {
+            "caller_malloc_calls": 3,
+            "caller_free_calls": 3,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          },
+          "decode_allocations": {
+            "caller_malloc_calls": 4,
+            "caller_free_calls": 4,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          }
+        },
+        {
+          "fixture": "mixed-alpha-odd-padded",
+          "width": 17,
+          "height": 13,
+          "stride": 75,
+          "input_byte_offset": 5,
+          "webp_bytes": 132,
+          "webp_sha256": "3d157cb658869c5a113ce264b78c810ecffaf31191dcad37df7a824eba39a8e6",
+          "alpha": {
+            "transparent_pixels": 45,
+            "changed_hidden_rgb_bytes": 135,
+            "hidden_rgb_examples": [
+              {
+                "pixel": 0,
+                "input": [
+                  11,
+                  29,
+                  151,
+                  0
+                ],
+                "decoded": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              {
+                "pixel": 5,
+                "input": [
+                  20,
+                  64,
+                  50,
+                  0
+                ],
+                "decoded": [
+                  223,
+                  57,
+                  19,
+                  0
+                ]
+              },
+              {
+                "pixel": 10,
+                "input": [
+                  29,
+                  99,
+                  205,
+                  0
+                ],
+                "decoded": [
+                  232,
+                  92,
+                  174,
+                  0
+                ]
+              },
+              {
+                "pixel": 15,
+                "input": [
+                  38,
+                  134,
+                  104,
+                  0
+                ],
+                "decoded": [
+                  241,
+                  127,
+                  73,
+                  0
+                ]
+              }
+            ],
+            "expected_rgba_sha256": "dead61bd7948e712d1a779a312bdfc829656c4bd00e5aaed90cc781c1a8b0255",
+            "decoded_rgba_sha256": "ffb8dc9719b0aa922caa2be6a2e0a2576ea63c308afbd55032f9c3f844ae8ac1"
+          },
+          "encode_allocations": {
+            "caller_malloc_calls": 3,
+            "caller_free_calls": 3,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          },
+          "decode_allocations": {
+            "caller_malloc_calls": 4,
+            "caller_free_calls": 4,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          }
+        },
+        {
+          "fixture": "transparent-hidden-rgb",
+          "width": 3,
+          "height": 2,
+          "stride": 12,
+          "input_byte_offset": 5,
+          "webp_bytes": 34,
+          "webp_sha256": "06b174d7336bf5bfd65570087b74363e581f4b72fe2cf625d2a475a94fa6ace1",
+          "alpha": {
+            "transparent_pixels": 6,
+            "changed_hidden_rgb_bytes": 18,
+            "hidden_rgb_examples": [
+              {
+                "pixel": 0,
+                "input": [
+                  11,
+                  29,
+                  151,
+                  0
+                ],
+                "decoded": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              {
+                "pixel": 1,
+                "input": [
+                  64,
+                  36,
+                  182,
+                  0
+                ],
+                "decoded": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              {
+                "pixel": 2,
+                "input": [
+                  117,
+                  43,
+                  213,
+                  0
+                ],
+                "decoded": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              {
+                "pixel": 3,
+                "input": [
+                  30,
+                  126,
+                  164,
+                  0
+                ],
+                "decoded": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              }
+            ],
+            "expected_rgba_sha256": "86e13888d3dfac3abcad97353bd2657982a28117a7ceaba0745397e4f48eaf6a",
+            "decoded_rgba_sha256": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+          },
+          "encode_allocations": {
+            "caller_malloc_calls": 3,
+            "caller_free_calls": 3,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          },
+          "decode_allocations": {
+            "caller_malloc_calls": 4,
+            "caller_free_calls": 4,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          }
+        }
+      ],
+      "cwrap": {
+        "status": "passed",
+        "alpha": {
+          "transparent_pixels": 0,
+          "changed_hidden_rgb_bytes": 0,
+          "hidden_rgb_examples": [],
+          "expected_rgba_sha256": "3c9f6564a0302955d25d112ce8f6ef092634b8baabae7fd8aad48cd8d81bd4a4",
+          "decoded_rgba_sha256": "3c9f6564a0302955d25d112ce8f6ef092634b8baabae7fd8aad48cd8d81bd4a4"
+        }
+      },
+      "safe_c_abi_negatives": [
+        {
+          "label": "lossless:null-input",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:width-zero",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:width-negative",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:height-zero",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:height-negative",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:stride-zero",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:stride-negative",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:stride-short-safe-buffer",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:null-output-slot",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossless:null-size-slot",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:null-input",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:width-zero",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:width-negative",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:height-zero",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:height-negative",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:stride-zero",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:stride-negative",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:stride-short-safe-buffer",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:null-output-slot",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:null-size-slot",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:quality--1",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "lossy:quality-101",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "decode:null-input",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "decode:zero-length",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "decode:null-output-slot",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "decode:null-width-slot",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "decode:null-height-slot",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "decode:junk",
+          "status": 0,
+          "output_slots_unchanged": true
+        },
+        {
+          "label": "decode:truncated-header-only",
+          "status": 0,
+          "output_slots_unchanged": true
+        }
+      ],
+      "source_failure_accounting": {
+        "encode": {
+          "caller_malloc_calls": 3,
+          "caller_free_calls": 0,
+          "webp_free_calls": 0,
+          "outstanding_caller_allocations": 3,
+          "classification": "known existing source-codec failure leak; not repaired",
+          "harness_cleanup_after_measurement": 3
+        },
+        "decode": {
+          "caller_malloc_calls": 4,
+          "caller_free_calls": 4,
+          "webp_free_calls": 0,
+          "outstanding_caller_allocations": 0
+        }
+      },
+      "heap_growth": {
+        "before_bytes": 16908288,
+        "requested_allocation_bytes": 16973824,
+        "after_bytes": 20316160,
+        "actual_growth": true,
+        "output_arrays_owned": true,
+        "counts": {
+          "caller_malloc_calls": 7,
+          "caller_free_calls": 7,
+          "webp_free_calls": 2,
+          "outstanding_caller_allocations": 0
+        },
+        "scope": "Real malloc growth followed by actual source-codec calls; not a claim that the encoder itself triggered growth."
+      },
+      "repeated_calls": {
+        "iterations": 12,
+        "caller_malloc_calls": 84,
+        "caller_free_calls": 84,
+        "webp_free_calls": 24,
+        "outstanding_caller_allocations": 0
+      }
+    }
+  },
+  "cross_decode": [
+    {
+      "encoder": "old",
+      "decoder": "candidate",
+      "fixture": "opaque-1x1",
+      "alpha": {
+        "transparent_pixels": 0,
+        "changed_hidden_rgb_bytes": 0,
+        "hidden_rgb_examples": [],
+        "expected_rgba_sha256": "e0ec77bc109902cd440adaedb8fd2c93bfee8f6bdb3ecdee72b75eae72c755ad",
+        "decoded_rgba_sha256": "e0ec77bc109902cd440adaedb8fd2c93bfee8f6bdb3ecdee72b75eae72c755ad"
+      }
+    },
+    {
+      "encoder": "old",
+      "decoder": "candidate",
+      "fixture": "opaque-3x2",
+      "alpha": {
+        "transparent_pixels": 0,
+        "changed_hidden_rgb_bytes": 0,
+        "hidden_rgb_examples": [],
+        "expected_rgba_sha256": "1da891c1c5caab3f1f44250aabb04775d0ae8af0dcd1663a75995f26981924dc",
+        "decoded_rgba_sha256": "1da891c1c5caab3f1f44250aabb04775d0ae8af0dcd1663a75995f26981924dc"
+      }
+    },
+    {
+      "encoder": "old",
+      "decoder": "candidate",
+      "fixture": "opaque-odd-padded",
+      "alpha": {
+        "transparent_pixels": 0,
+        "changed_hidden_rgb_bytes": 0,
+        "hidden_rgb_examples": [],
+        "expected_rgba_sha256": "3c9f6564a0302955d25d112ce8f6ef092634b8baabae7fd8aad48cd8d81bd4a4",
+        "decoded_rgba_sha256": "3c9f6564a0302955d25d112ce8f6ef092634b8baabae7fd8aad48cd8d81bd4a4"
+      }
+    },
+    {
+      "encoder": "old",
+      "decoder": "candidate",
+      "fixture": "mixed-alpha-odd-padded",
+      "alpha": {
+        "transparent_pixels": 45,
+        "changed_hidden_rgb_bytes": 135,
+        "hidden_rgb_examples": [
+          {
+            "pixel": 0,
+            "input": [
+              11,
+              29,
+              151,
+              0
+            ],
+            "decoded": [
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "pixel": 5,
+            "input": [
+              20,
+              64,
+              50,
+              0
+            ],
+            "decoded": [
+              223,
+              57,
+              19,
+              0
+            ]
+          },
+          {
+            "pixel": 10,
+            "input": [
+              29,
+              99,
+              205,
+              0
+            ],
+            "decoded": [
+              232,
+              92,
+              174,
+              0
+            ]
+          },
+          {
+            "pixel": 15,
+            "input": [
+              38,
+              134,
+              104,
+              0
+            ],
+            "decoded": [
+              241,
+              127,
+              73,
+              0
+            ]
+          }
+        ],
+        "expected_rgba_sha256": "dead61bd7948e712d1a779a312bdfc829656c4bd00e5aaed90cc781c1a8b0255",
+        "decoded_rgba_sha256": "ffb8dc9719b0aa922caa2be6a2e0a2576ea63c308afbd55032f9c3f844ae8ac1"
+      }
+    },
+    {
+      "encoder": "old",
+      "decoder": "candidate",
+      "fixture": "transparent-hidden-rgb",
+      "alpha": {
+        "transparent_pixels": 6,
+        "changed_hidden_rgb_bytes": 18,
+        "hidden_rgb_examples": [
+          {
+            "pixel": 0,
+            "input": [
+              11,
+              29,
+              151,
+              0
+            ],
+            "decoded": [
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "pixel": 1,
+            "input": [
+              64,
+              36,
+              182,
+              0
+            ],
+            "decoded": [
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "pixel": 2,
+            "input": [
+              117,
+              43,
+              213,
+              0
+            ],
+            "decoded": [
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "pixel": 3,
+            "input": [
+              30,
+              126,
+              164,
+              0
+            ],
+            "decoded": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ],
+        "expected_rgba_sha256": "86e13888d3dfac3abcad97353bd2657982a28117a7ceaba0745397e4f48eaf6a",
+        "decoded_rgba_sha256": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+      }
+    },
+    {
+      "encoder": "candidate",
+      "decoder": "old",
+      "fixture": "opaque-1x1",
+      "alpha": {
+        "transparent_pixels": 0,
+        "changed_hidden_rgb_bytes": 0,
+        "hidden_rgb_examples": [],
+        "expected_rgba_sha256": "e0ec77bc109902cd440adaedb8fd2c93bfee8f6bdb3ecdee72b75eae72c755ad",
+        "decoded_rgba_sha256": "e0ec77bc109902cd440adaedb8fd2c93bfee8f6bdb3ecdee72b75eae72c755ad"
+      }
+    },
+    {
+      "encoder": "candidate",
+      "decoder": "old",
+      "fixture": "opaque-3x2",
+      "alpha": {
+        "transparent_pixels": 0,
+        "changed_hidden_rgb_bytes": 0,
+        "hidden_rgb_examples": [],
+        "expected_rgba_sha256": "1da891c1c5caab3f1f44250aabb04775d0ae8af0dcd1663a75995f26981924dc",
+        "decoded_rgba_sha256": "1da891c1c5caab3f1f44250aabb04775d0ae8af0dcd1663a75995f26981924dc"
+      }
+    },
+    {
+      "encoder": "candidate",
+      "decoder": "old",
+      "fixture": "opaque-odd-padded",
+      "alpha": {
+        "transparent_pixels": 0,
+        "changed_hidden_rgb_bytes": 0,
+        "hidden_rgb_examples": [],
+        "expected_rgba_sha256": "3c9f6564a0302955d25d112ce8f6ef092634b8baabae7fd8aad48cd8d81bd4a4",
+        "decoded_rgba_sha256": "3c9f6564a0302955d25d112ce8f6ef092634b8baabae7fd8aad48cd8d81bd4a4"
+      }
+    },
+    {
+      "encoder": "candidate",
+      "decoder": "old",
+      "fixture": "mixed-alpha-odd-padded",
+      "alpha": {
+        "transparent_pixels": 45,
+        "changed_hidden_rgb_bytes": 135,
+        "hidden_rgb_examples": [
+          {
+            "pixel": 0,
+            "input": [
+              11,
+              29,
+              151,
+              0
+            ],
+            "decoded": [
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "pixel": 5,
+            "input": [
+              20,
+              64,
+              50,
+              0
+            ],
+            "decoded": [
+              223,
+              57,
+              19,
+              0
+            ]
+          },
+          {
+            "pixel": 10,
+            "input": [
+              29,
+              99,
+              205,
+              0
+            ],
+            "decoded": [
+              232,
+              92,
+              174,
+              0
+            ]
+          },
+          {
+            "pixel": 15,
+            "input": [
+              38,
+              134,
+              104,
+              0
+            ],
+            "decoded": [
+              241,
+              127,
+              73,
+              0
+            ]
+          }
+        ],
+        "expected_rgba_sha256": "dead61bd7948e712d1a779a312bdfc829656c4bd00e5aaed90cc781c1a8b0255",
+        "decoded_rgba_sha256": "ffb8dc9719b0aa922caa2be6a2e0a2576ea63c308afbd55032f9c3f844ae8ac1"
+      }
+    },
+    {
+      "encoder": "candidate",
+      "decoder": "old",
+      "fixture": "transparent-hidden-rgb",
+      "alpha": {
+        "transparent_pixels": 6,
+        "changed_hidden_rgb_bytes": 18,
+        "hidden_rgb_examples": [
+          {
+            "pixel": 0,
+            "input": [
+              11,
+              29,
+              151,
+              0
+            ],
+            "decoded": [
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "pixel": 1,
+            "input": [
+              64,
+              36,
+              182,
+              0
+            ],
+            "decoded": [
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "pixel": 2,
+            "input": [
+              117,
+              43,
+              213,
+              0
+            ],
+            "decoded": [
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "pixel": 3,
+            "input": [
+              30,
+              126,
+              164,
+              0
+            ],
+            "decoded": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ],
+        "expected_rgba_sha256": "86e13888d3dfac3abcad97353bd2657982a28117a7ceaba0745397e4f48eaf6a",
+        "decoded_rgba_sha256": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+      }
+    }
+  ],
+  "lossy": [
+    {
+      "encoder": "old",
+      "decoder": "candidate",
+      "quality": 75.5,
+      "webp_bytes": 394,
+      "webp_sha256": "5ac12daaaa38db6d1d78196e909781271ccdc994d3a35f08c7941d0cf1dd9a4f",
+      "width": 17,
+      "height": 13,
+      "alpha_exact": true,
+      "rgb_absolute_error_observed_not_gated": 28505,
+      "scope": "Actual lossy export and cross-version decode validity; no quality-improvement or RGB-losslessness claim."
+    },
+    {
+      "encoder": "candidate",
+      "decoder": "old",
+      "quality": 75.5,
+      "webp_bytes": 394,
+      "webp_sha256": "5ac12daaaa38db6d1d78196e909781271ccdc994d3a35f08c7941d0cf1dd9a4f",
+      "width": 17,
+      "height": 13,
+      "alpha_exact": true,
+      "rgb_absolute_error_observed_not_gated": 28505,
+      "scope": "Actual lossy export and cross-version decode validity; no quality-improvement or RGB-losslessness claim."
+    }
+  ],
+  "node_workers": {
+    "old": {
+      "status": "passed",
+      "bindings": {
+        "glue": {
+          "path": "${REPO_ROOT}/target/supersplat-source/upstream/node_modules/@playcanvas/splat-transform/lib/webp.mjs",
+          "size_bytes": 11893,
+          "sha256": "96bdc7e19889af61457bdb386c729a30bd29a8961a0187918b07a4b1f0a82dca"
+        },
+        "wasm": {
+          "path": "${REPO_ROOT}/target/supersplat-source/upstream/node_modules/@playcanvas/splat-transform/lib/webp.wasm",
+          "size_bytes": 352406,
+          "sha256": "e2c337e1afacf5c9e35f21916b5615fc6c5623074c6e110c07791bd0af071501"
+        }
+      },
+      "cases": [
+        {
+          "fixture": "worker-opaque",
+          "bytes": 74,
+          "counts": {
+            "caller_malloc_calls": 3,
+            "caller_free_calls": 3,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          },
+          "alpha": {
+            "transparent_pixels": 0,
+            "changed_hidden_rgb_bytes": 0,
+            "hidden_rgb_examples": [],
+            "expected_rgba_sha256": "1da891c1c5caab3f1f44250aabb04775d0ae8af0dcd1663a75995f26981924dc",
+            "decoded_rgba_sha256": "1da891c1c5caab3f1f44250aabb04775d0ae8af0dcd1663a75995f26981924dc"
+          }
+        },
+        {
+          "fixture": "worker-alpha",
+          "bytes": 132,
+          "counts": {
+            "caller_malloc_calls": 3,
+            "caller_free_calls": 3,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          },
+          "alpha": {
+            "transparent_pixels": 45,
+            "changed_hidden_rgb_bytes": 135,
+            "hidden_rgb_examples": [
+              {
+                "pixel": 0,
+                "input": [
+                  11,
+                  29,
+                  151,
+                  0
+                ],
+                "decoded": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              {
+                "pixel": 5,
+                "input": [
+                  20,
+                  64,
+                  50,
+                  0
+                ],
+                "decoded": [
+                  223,
+                  57,
+                  19,
+                  0
+                ]
+              },
+              {
+                "pixel": 10,
+                "input": [
+                  29,
+                  99,
+                  205,
+                  0
+                ],
+                "decoded": [
+                  232,
+                  92,
+                  174,
+                  0
+                ]
+              },
+              {
+                "pixel": 15,
+                "input": [
+                  38,
+                  134,
+                  104,
+                  0
+                ],
+                "decoded": [
+                  241,
+                  127,
+                  73,
+                  0
+                ]
+              }
+            ],
+            "expected_rgba_sha256": "dead61bd7948e712d1a779a312bdfc829656c4bd00e5aaed90cc781c1a8b0255",
+            "decoded_rgba_sha256": "ffb8dc9719b0aa922caa2be6a2e0a2576ea63c308afbd55032f9c3f844ae8ac1"
+          }
+        }
+      ],
+      "scope": "Node worker_threads with actual transpiled codec and paired factory. Does not test browser Worker loading or rebuilt splat-transform dist/worker.mjs."
+    },
+    "candidate": {
+      "status": "passed",
+      "bindings": {
+        "glue": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/outputs/webp.mjs",
+          "size_bytes": 11523,
+          "sha256": "4fb1318061392a7f0c3668add77dc13677d40ff93bc84ad2b8493be7965e20cf"
+        },
+        "wasm": {
+          "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/outputs/webp.wasm",
+          "size_bytes": 346456,
+          "sha256": "72cd94e42bce159f10ce49bb41a17f725b8a0d165f496548a5775fec267a519c"
+        }
+      },
+      "cases": [
+        {
+          "fixture": "worker-opaque",
+          "bytes": 74,
+          "counts": {
+            "caller_malloc_calls": 3,
+            "caller_free_calls": 3,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          },
+          "alpha": {
+            "transparent_pixels": 0,
+            "changed_hidden_rgb_bytes": 0,
+            "hidden_rgb_examples": [],
+            "expected_rgba_sha256": "1da891c1c5caab3f1f44250aabb04775d0ae8af0dcd1663a75995f26981924dc",
+            "decoded_rgba_sha256": "1da891c1c5caab3f1f44250aabb04775d0ae8af0dcd1663a75995f26981924dc"
+          }
+        },
+        {
+          "fixture": "worker-alpha",
+          "bytes": 132,
+          "counts": {
+            "caller_malloc_calls": 3,
+            "caller_free_calls": 3,
+            "webp_free_calls": 1,
+            "outstanding_caller_allocations": 0
+          },
+          "alpha": {
+            "transparent_pixels": 45,
+            "changed_hidden_rgb_bytes": 135,
+            "hidden_rgb_examples": [
+              {
+                "pixel": 0,
+                "input": [
+                  11,
+                  29,
+                  151,
+                  0
+                ],
+                "decoded": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              {
+                "pixel": 5,
+                "input": [
+                  20,
+                  64,
+                  50,
+                  0
+                ],
+                "decoded": [
+                  223,
+                  57,
+                  19,
+                  0
+                ]
+              },
+              {
+                "pixel": 10,
+                "input": [
+                  29,
+                  99,
+                  205,
+                  0
+                ],
+                "decoded": [
+                  232,
+                  92,
+                  174,
+                  0
+                ]
+              },
+              {
+                "pixel": 15,
+                "input": [
+                  38,
+                  134,
+                  104,
+                  0
+                ],
+                "decoded": [
+                  241,
+                  127,
+                  73,
+                  0
+                ]
+              }
+            ],
+            "expected_rgba_sha256": "dead61bd7948e712d1a779a312bdfc829656c4bd00e5aaed90cc781c1a8b0255",
+            "decoded_rgba_sha256": "ffb8dc9719b0aa922caa2be6a2e0a2576ea63c308afbd55032f9c3f844ae8ac1"
+          }
+        }
+      ],
+      "scope": "Node worker_threads with actual transpiled codec and paired factory. Does not test browser Worker loading or rebuilt splat-transform dist/worker.mjs."
+    }
+  },
+  "completed_at": "2026-10-27T17:45:51.151Z"
+}

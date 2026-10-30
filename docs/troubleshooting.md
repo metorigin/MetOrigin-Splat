@@ -22,6 +22,8 @@ pnpm verify:windows:engines
 
 The prepared directory is `target/distribution/windows-x64/engines`. Select that directory in settings. A packaged integrity failure should be repaired by preparing/reinstalling the matching pack; replacing random executable files can leave its manifest inconsistent. `METORIGIN_ENGINE_DIR` is a development override and is ignored in release mode. See [engine integration](engine-integration.md).
 
+For the experimental Apple Silicon build, use the matching [macOS arm64 pack](../packaging/macos-arm64/README.md). It uses CPU COLMAP and Metal Brush; an absent NVIDIA driver is expected. The Metal preflight runs a real small forward/backward calculation. Architecture, checksum, missing-library or compute-probe failures must be resolved before reconstruction; a successful `--version` alone is insufficient.
+
 ## Import and preflight
 
 - **The image folder picker does not show images:** the current import uses a file picker that displays JPG/JPEG/PNG. Select one image to import its entire parent folder, including subfolders. A Windows dialog restricted to folders is the earlier behavior; restart the current desktop build if it remains visible.
@@ -53,13 +55,14 @@ After an interruption, open the full `.splat-project` directory and allow artifa
 ## Preview problems
 
 - **No preview yet:** the selected stage may not have produced a viewable artifact. Wait or select a completed stage. COLMAP sparse geometry and a trained Gaussian model are different outputs.
-- **Saved model works but training does not update:** check that `brush_live.exe` is beside the configured `brush_app.exe`, start a new training session, follow the current stage and choose “实时” or “低频”. A hidden page or “暂停预览” stops requesting snapshots.
+- **Saved model works but training does not update:** on Windows, check that `brush_live.exe` is beside the configured `brush_app.exe`. The Mac engine implements live updates in the main CLI and requires both the advertised capability and the request/ACK protocol. Start a new session, follow the current stage and choose “实时” or “低频”. A hidden page or “暂停预览” stops requesting snapshots.
+- **Mac preview pauses or releases the model:** memory pressure and available-memory estimates protect training from preview allocations. Warning pressure stops new requests; critical pressure or very low headroom releases the mesh. The model is requested again when the policy permits. Training can continue while preview is suspended. GPU utilization and working-set values that cannot be measured remain unknown.
 - **Viewing an old checkpoint:** manual checkpoint selection pins that file. Use “跟随当前阶段” to return to current output.
 - **PLY rejected:** the Gaussian path accepts complete binary little-endian float32 PLY with required Gaussian properties, SH degree 0–3, up to the implemented 1 GiB limit. Incomplete writes and files outside the validated project path are rejected.
-- **WebGL/GPU rendering fails:** use the native desktop environment with WebView2 and a supported GPU/driver. A synthetic browser preview cannot establish rendering compatibility.
+- **WebGL/GPU rendering fails:** use the native desktop environment (WebView2 on Windows, WKWebView on macOS) and a supported GPU/driver. A synthetic browser preview cannot establish rendering compatibility.
 
 For the companion build, model update protocol and native reproduction steps, read [Gaussian live preview](gaussian-live-preview.zh-CN.md).
 
 ## Reporting a problem
 
-Include the application version, Windows version, engine versions, GPU/driver, preset, failing stage, error code and steps to reproduce. Use the application's diagnostic export where available and review its contents before sharing. Never attach private project media or credentials to an issue. Security vulnerabilities should be reported through [SECURITY.md](../SECURITY.md).
+Include the application version, OS version, architecture, engine versions, GPU/driver or Apple chip, memory size, preset, failing stage, error code and steps to reproduce. Use the application's diagnostic export where available and review its contents before sharing. Never attach private project media or credentials to an issue. Security vulnerabilities should be reported through [SECURITY.md](../SECURITY.md).

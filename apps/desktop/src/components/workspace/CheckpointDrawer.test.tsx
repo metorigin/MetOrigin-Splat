@@ -36,9 +36,9 @@ describe("CheckpointDrawer", () => {
     const remove = screen.getByRole("button", { name: "删除" });
     expect(close).toHaveFocus();
     remove.focus();
-    fireEvent.keyDown(window, { key: "Tab" });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Tab" });
     expect(close).toHaveFocus();
-    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Tab", shiftKey: true });
     expect(remove).toHaveFocus();
   });
 
@@ -52,7 +52,7 @@ describe("CheckpointDrawer", () => {
     opener.focus();
     fireEvent.click(opener);
     expect(await screen.findByRole("dialog", { name: "Checkpoint 管理器" })).toBeInTheDocument();
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "Checkpoint 管理器" })).not.toBeInTheDocument();
     await waitFor(() => expect(opener).toHaveFocus());
   });

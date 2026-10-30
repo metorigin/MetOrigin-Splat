@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "id": "splat-transform-3.10.2-webp-1.6.0-emscripten-4.0.21-v1",
+  "base": {
+    "name": "@playcanvas/splat-transform",
+    "version": "3.10.2",
+    "commit": "e0dab1fa0b7f7546d2b4b197f6294570e53ba3b8",
+    "package_json_sha256": "c65ef9c4e9e84512638391a9b7ca2a2c064dc8a291f80073039174b01e87e1aa"
+  },
+  "build_evidence_sha256": "e78ba0eb4298d07a06116d396893a1e534a9f04118e70d5044eceed74e8e4abb",
+  "files": [
+    {
+      "path": "lib/webp.mjs",
+      "payload": "payload/lib--webp.mjs.gz",
+      "compressed_sha256": "93a77e986f36998fa44007d5996367e5c980750b861c6318a3598178e4646b68",
+      "sha256": "f95547c1c361fa7d2540a03f204457f036af6d98600f0f96de578917e39f421d",
+      "size_bytes": 11649,
+      "base_sha256": "cec9a2ad93c87786fc358afedb8f00d0ff40a02b98bc69513063d6f5addb829f"
+    },
+    {
+      "path": "lib/webp.wasm",
+      "payload": "payload/lib--webp.wasm.gz",
+      "compressed_sha256": "03a3bf4b2b104e22ac5a00a446ea354936f70ab24cd99a69125a86a6314cea3e",
+      "sha256": "e65b8818d755ddb3f27e1843d4f7e7e7bcba9982f027b8a66468cadb0ac31d2d",
+      "size_bytes": 346832,
+      "base_sha256": "2460985592f576eb6ff4a6ec893e6770ac760be5469b02cfbee35649e1548f50"
+    },
+    {
+      "path": "dist/index.mjs",
+      "payload": "payload/dist--index.mjs.gz",
+      "compressed_sha256": "ba45ac73922b2cc25f2b41a2110299d122b5e23dbd5a6c28efafb69c9794da63",
+      "sha256": "bbc9cba7d6a2829767371085e203ef3768102fa442c1066a2d33bd37f50b564b",
+      "size_bytes": 5650654,
+      "base_sha256": "40e8588561f4fc245d9bed4f18fb9ca77cc520636ff6a178f2edf3d918ed4fd0"
+    },
+    {
+      "path": "dist/index.mjs.map",
+      "payload": "payload/dist--index.mjs.map.gz",
+      "compressed_sha256": "7b391a3ea6c46472aadbc9e25157a878183685a760766e7e0b35544ccea80faf",
+      "sha256": "0016bee39f858cea6edd768399726414e30053838e827ba68ed1d74d112b7f15",
+      "size_bytes": 7557621,
+      "base_sha256": "a2abadc6d20724408227446d54665885e5c634d581fbe2f1ab8a8be9c0cac0b1"
+    },
+    {
+      "path": "dist/index.cjs",
+      "payload": "payload/dist--index.cjs.gz",
+      "compressed_sha256": "d753b9bc916f606e0fc6adf35e64f421168471b434a676ba45c98bd5b6371489",
+      "sha256": "a066123a2f75c172437b880a743a4f906c8a7eb6d984273c7cd619c863dfeb7a",
+      "size_bytes": 5659548,
+      "base_sha256": "fc3fd64d535f2de25f1cb2f862470d7a245c5e3259500de5ad978f920617a485"
+    },
+    {
+      "path": "dist/index.cjs.map",
+      "payload": "payload/dist--index.cjs.map.gz",
+      "compressed_sha256": "11b9020a55371a9e31970b85c9ff7987398e6ad74564de857cf77ce08181e220",
+      "sha256": "6d960c6c2187ea4026f3b80d7b730290c47f76563a27028ebec28ee2526f3b13",
+      "size_bytes": 7558742,
+      "base_sha256": "4ebc3d36b8b330c8bc1c7ae1e252365723256734b7db0e9747e48dc5f5955677"
+    },
+    {
+      "path": "dist/worker.mjs",
+      "payload": "payload/dist--worker.mjs.gz",
+      "compressed_sha256": "7efe54513735cbadab90aea66a205bcf91bbdb8329f26f6494a2996878af921a",
+      "sha256": "a3520388469bc02aad13864347c878c6820c2cbb82eab3e97b5e3cb22fcb7559",
+      "size_bytes": 66089,
+      "base_sha256": "c8c795e51f2b500a4fae63bb57b8c2b2e61438e86d6937620d2ff203da893504"
+    },
+    {
+      "path": "dist/worker.mjs.map",
+      "payload": "payload/dist--worker.mjs.map.gz",
+      "compressed_sha256": "03fa729b1fec952da904ac5b65894483903fb95c5457ca898369d28dbe3155fb",
+      "sha256": "d6d0d6bc45fc5e9c223c41f5554ce27bbe67a4c6d6058453dfcfa27bca1049ef",
+      "size_bytes": 148183,
+      "base_sha256": "2b78342d14b1193afc025e17d249b8f569953b3180ca0e78953b1d7cc53766d3"
+    },
+    {
+      "path": "dist/cli.mjs",
+      "payload": "payload/dist--cli.mjs.gz",
+      "compressed_sha256": "a18d9de094ba0f5bbacdafb0c1e326bb70a6a2312dd1c71e6ecbd44651df887f",
+      "sha256": "efc085fbd8faa54aeb11431b591af57ea940580fc08adfa6db88031c6d929fe7",
+      "size_bytes": 6175663,
+      "base_sha256": "1fcd2c19f288073e35f3a6983794ec906448b0507b2e0f951a58191979dd40bf"
+    },
+    {
+      "path": "dist/cli.mjs.map",
+      "payload": "payload/dist--cli.mjs.map.gz",
+      "compressed_sha256": "2e076b0fc35c61dfab7f1e968a23c6e8d4ecca07c67a1a01c177f12a8ca095fe",
+      "sha256": "9e624f03614b756a73fe2d077fffea76be71d7f85d8fb551f982e922662f5f51",
+      "size_bytes": 8781635,
+      "base_sha256": "20b8ab4043938c5ec50877118dd468bd16b0db7c1b8ee26e546b5ed01527dad0"
+    }
+  ]
+}

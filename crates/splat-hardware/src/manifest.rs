@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -10,10 +10,10 @@ use thiserror::Error;
 
 const MANIFEST_FILE_NAME: &str = "engine-manifest.json";
 const MANIFEST_SCHEMA_VERSION: u32 = 1;
-const SUPPORTED_PLATFORM: &str = "windows-x64";
+const SUPPORTED_PLATFORMS: [&str; 2] = ["windows-x64", "macos-arm64"];
 const MAX_MANIFEST_BYTES: u64 = 8 * 1024 * 1024;
 
-/// Reproducible description of every file shipped in the Windows engine pack.
+/// Reproducible description of every file shipped in a platform engine pack.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct EnginePackManifest {
@@ -114,6 +114,12 @@ pub enum EnginePackError {
     UnsupportedSchema(u32),
     #[error("unsupported engine pack platform '{0}'")]
     UnsupportedPlatform(String),
+    #[error("engine pack platform '{actual}' does not match this target '{expected}'")]
+    PlatformMismatch { expected: String, actual: String },
+    #[error("engine pack executable is missing Unix execute permission: {0}")]
+    NotExecutable(String),
+    #[error("engine pack file is not an arm64 Mach-O {kind}: {path}")]
+    InvalidMachO { path: String, kind: &'static str },
     #[error("invalid engine pack manifest: {0}")]
     InvalidManifest(String),
     #[error("unsafe engine pack path '{0}'")]
@@ -197,7 +203,7 @@ impl EnginePackManifest {
         if self.schema_version != MANIFEST_SCHEMA_VERSION {
             return Err(EnginePackError::UnsupportedSchema(self.schema_version));
         }
-        if self.platform != SUPPORTED_PLATFORM {
+        if !SUPPORTED_PLATFORMS.contains(&self.platform.as_str()) {
             return Err(EnginePackError::UnsupportedPlatform(self.platform.clone()));
         }
         if self.pack_version.trim().is_empty() {
@@ -289,7 +295,14 @@ impl EnginePackManifest {
         root: &Path,
         manifest_sha256: &str,
         cache: Option<(&Path, &str)>,
+        expected_platform: &str,
     ) -> Result<VerifiedEnginePack, EnginePackError> {
+        if self.platform != expected_platform {
+            return Err(EnginePackError::PlatformMismatch {
+                expected: expected_platform.into(),
+                actual: self.platform.clone(),
+            });
+        }
         let canonical_root = std::fs::canonicalize(root)
             .map_err(|_| EnginePackError::MissingRoot(root.to_path_buf()))?;
         let mut checked_files = Vec::new();
@@ -305,16 +318,24 @@ impl EnginePackManifest {
                 })?;
                 let normalized = normalize_relative_path(&file.path)?;
                 if declared_paths
-                    .insert(normalized.clone(), engine_name.as_str())
+                    .insert(normalized.to_lowercase(), engine_name.as_str())
                     .is_some()
                 {
                     return Err(EnginePackError::DuplicatePath(normalized));
+                }
+                if self.platform == "macos-arm64" {
+                    verify_path_case(&canonical_root, &normalized)?;
                 }
                 let canonical_path = canonical_pack_file(&canonical_root, &normalized)?;
                 let metadata = std::fs::metadata(&canonical_path)
                     .map_err(|_| EnginePackError::MissingFile(normalized.clone()))?;
                 if !metadata.is_file() {
                     return Err(EnginePackError::MissingFile(normalized));
+                }
+                if self.platform == "macos-arm64"
+                    && normalized.to_ascii_lowercase().ends_with(".dylib")
+                {
+                    verify_arm64_macho(&canonical_path, &normalized, false)?;
                 }
                 if metadata.len() != file.size_bytes {
                     return Err(EnginePackError::SizeMismatch {
@@ -429,6 +450,18 @@ impl EnginePackManifest {
                         "executable '{logical_name}' path '{relative_path}' is not listed in files"
                     ))
                 })?;
+                if self.platform == "macos-arm64" {
+                    verify_arm64_macho(path, &normalized, true)?;
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let metadata = std::fs::metadata(path)
+                            .map_err(|_| EnginePackError::MissingFile(normalized.clone()))?;
+                        if metadata.permissions().mode() & 0o111 == 0 {
+                            return Err(EnginePackError::NotExecutable(normalized));
+                        }
+                    }
+                }
                 executables.insert(logical_name.clone(), path.clone());
                 statuses.insert(
                     logical_name.clone(),
@@ -451,16 +484,148 @@ impl EnginePackManifest {
     }
 }
 
-/// Match a pinned version against the version token reported by an engine.
-/// Suffixes such as `8.1.2-essentials_build` are accepted, while `8.1.20`
-/// does not accidentally match `8.1.2`.
+fn verify_arm64_macho(
+    path: &Path,
+    relative: &str,
+    executable: bool,
+) -> Result<(), EnginePackError> {
+    let valid = File::open(path)
+        .and_then(|mut file| {
+            let length = file.metadata()?.len();
+            has_arm64_macho_header(&mut file, length, executable)
+        })
+        .unwrap_or(false);
+    if valid {
+        Ok(())
+    } else {
+        Err(EnginePackError::InvalidMachO {
+            path: relative.into(),
+            kind: if executable {
+                "executable"
+            } else {
+                "dynamic library"
+            },
+        })
+    }
+}
+
+fn has_arm64_macho_header(
+    file: &mut (impl Read + Seek),
+    length: u64,
+    executable: bool,
+) -> std::io::Result<bool> {
+    let mut header = [0_u8; 32];
+    file.read_exact(&mut header[..8])?;
+    match header[..4] {
+        [0xcf, 0xfa, 0xed, 0xfe] => file.read_exact(&mut header[8..])?,
+        // A fat container with exactly one ARM64_ALL slice is still arm64-only.
+        // Conda's libgcc_s uses this layout. Multi-architecture and arm64e packs
+        // remain unsupported, and the inner Mach-O must have the required type.
+        [0xca, 0xfe, 0xba, 0xbe] | [0xca, 0xfe, 0xba, 0xbf] => {
+            if u32::from_be_bytes(header[4..8].try_into().unwrap()) != 1 {
+                return Ok(false);
+            }
+            let fat64 = header[3] == 0xbf;
+            let record_size = if fat64 { 32 } else { 20 };
+            let mut arch = [0_u8; 32];
+            file.read_exact(&mut arch[..record_size])?;
+            if arch[..4] != [0x01, 0x00, 0x00, 0x0c] || arch[4..8] != [0; 4] {
+                return Ok(false);
+            }
+            let (offset, size, alignment_power) = if fat64 {
+                if arch[28..32] != [0; 4] {
+                    return Ok(false);
+                }
+                (
+                    u64::from_be_bytes(arch[8..16].try_into().unwrap()),
+                    u64::from_be_bytes(arch[16..24].try_into().unwrap()),
+                    u32::from_be_bytes(arch[24..28].try_into().unwrap()),
+                )
+            } else {
+                (
+                    u64::from(u32::from_be_bytes(arch[8..12].try_into().unwrap())),
+                    u64::from(u32::from_be_bytes(arch[12..16].try_into().unwrap())),
+                    u32::from_be_bytes(arch[16..20].try_into().unwrap()),
+                )
+            };
+            let Some(alignment) = 1_u64.checked_shl(alignment_power) else {
+                return Ok(false);
+            };
+            if offset < (8 + record_size) as u64
+                || size < header.len() as u64
+                || offset % alignment != 0
+                || offset.checked_add(size).is_none_or(|end| end > length)
+            {
+                return Ok(false);
+            }
+            file.seek(SeekFrom::Start(offset))?;
+            file.read_exact(&mut header)?;
+        }
+        _ => return Ok(false),
+    }
+    Ok(header[..4] == [0xcf, 0xfa, 0xed, 0xfe]
+        && header[4..8] == [0x0c, 0x00, 0x00, 0x01]
+        && header[8..12] == [0; 4]
+        && header[12..16]
+            == if executable {
+                [2, 0, 0, 0]
+            } else {
+                [6, 0, 0, 0]
+            })
+}
+
+fn verify_path_case(root: &Path, relative: &str) -> Result<(), EnginePackError> {
+    // APFS is often case-insensitive. Reject a manifest that would only work on
+    // that volume but fail on a case-sensitive installation.
+    let mut parent = root.to_path_buf();
+    for segment in relative.split('/') {
+        let entries = std::fs::read_dir(&parent)
+            .map_err(|_| EnginePackError::MissingFile(relative.into()))?;
+        let mut found = false;
+        for entry in entries {
+            let entry = entry.map_err(|_| EnginePackError::MissingFile(relative.into()))?;
+            if entry.file_name() == std::ffi::OsStr::new(segment) {
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            return Err(EnginePackError::MissingFile(relative.into()));
+        }
+        parent.push(segment);
+    }
+    Ok(())
+}
+
+/// Compare version tokens, ignoring tool prefixes and an optional leading `v`.
+/// An explicitly pinned suffix/build identity must match in full. Plain numeric
+/// pins still allow distribution suffixes such as `8.1.2-essentials_build`, but
+/// never match a different numeric version such as `8.1.20`.
 pub fn version_matches(expected: &str, actual: &str) -> bool {
-    let expected = expected.trim().trim_start_matches(['v', 'V']);
-    !expected.is_empty()
-        && actual
-            .split(|character: char| !(character.is_ascii_alphanumeric() || character == '.'))
-            .map(|token| token.trim_start_matches(['v', 'V']))
-            .any(|token| token == expected)
+    fn versions(text: &str) -> impl Iterator<Item = &str> {
+        text.split(|character: char| {
+            !(character.is_ascii_alphanumeric() || matches!(character, '.' | '+' | '-' | '_'))
+        })
+        .map(|token| token.trim_start_matches(['v', 'V']))
+        .filter(|token| {
+            token.split(['+', '-', '_']).next().is_some_and(|numeric| {
+                numeric.split('.').all(|component| {
+                    !component.is_empty() && component.bytes().all(|byte| byte.is_ascii_digit())
+                })
+            })
+        })
+    }
+
+    let Some(expected) = versions(expected).next() else {
+        return false;
+    };
+    versions(actual).any(|actual| {
+        if expected.contains(['+', '-', '_']) {
+            actual == expected
+        } else {
+            actual.split(['+', '-', '_']).next() == Some(expected)
+        }
+    })
 }
 
 fn normalize_relative_path(path: &str) -> Result<String, EnginePackError> {
@@ -563,6 +728,149 @@ fn write_cache_best_effort(path: &Path, cache: &IntegrityCache) {
 mod tests {
     use super::*;
 
+    fn macho_header(file_type: u32) -> Vec<u8> {
+        let mut bytes = vec![0; 32];
+        bytes[..4].copy_from_slice(&[0xcf, 0xfa, 0xed, 0xfe]);
+        bytes[4..8].copy_from_slice(&0x0100_000c_u32.to_le_bytes());
+        bytes[12..16].copy_from_slice(&file_type.to_le_bytes());
+        bytes
+    }
+
+    fn single_arm64_fat(file_type: u32, fat64: bool) -> Vec<u8> {
+        let mut bytes = vec![0; 64];
+        bytes[..4].copy_from_slice(if fat64 {
+            &[0xca, 0xfe, 0xba, 0xbf]
+        } else {
+            &[0xca, 0xfe, 0xba, 0xbe]
+        });
+        bytes[4..8].copy_from_slice(&1_u32.to_be_bytes());
+        bytes[8..12].copy_from_slice(&0x0100_000c_u32.to_be_bytes());
+        if fat64 {
+            bytes[16..24].copy_from_slice(&64_u64.to_be_bytes());
+            bytes[24..32].copy_from_slice(&32_u64.to_be_bytes());
+            bytes[32..36].copy_from_slice(&6_u32.to_be_bytes());
+        } else {
+            bytes[16..20].copy_from_slice(&64_u32.to_be_bytes());
+            bytes[20..24].copy_from_slice(&32_u32.to_be_bytes());
+            bytes[24..28].copy_from_slice(&6_u32.to_be_bytes());
+        }
+        bytes.extend(macho_header(file_type));
+        bytes
+    }
+
+    fn valid_macho(bytes: &[u8], executable: bool) -> bool {
+        has_arm64_macho_header(
+            &mut std::io::Cursor::new(bytes),
+            bytes.len() as u64,
+            executable,
+        )
+        .unwrap_or(false)
+    }
+
+    #[test]
+    fn accepts_thin_and_single_arm64_fat_executables_and_dylibs() {
+        for (file_type, executable) in [(2, true), (6, false)] {
+            assert!(valid_macho(&macho_header(file_type), executable));
+            for fat64 in [false, true] {
+                assert!(valid_macho(&single_arm64_fat(file_type, fat64), executable));
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_wrong_macho_type_in_thin_and_fat_slices() {
+        // MH_DYLIB_STUB (9) is not a loadable runtime dylib.
+        for file_type in [1, 2, 6, 9] {
+            for executable in [false, true] {
+                if file_type == if executable { 2 } else { 6 } {
+                    continue;
+                }
+                assert!(!valid_macho(&macho_header(file_type), executable));
+                for fat64 in [false, true] {
+                    assert!(!valid_macho(
+                        &single_arm64_fat(file_type, fat64),
+                        executable
+                    ));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_fat_architecture_and_subtype_mismatches() {
+        for fat64 in [false, true] {
+            for count in [0_u32, 2, u32::MAX] {
+                let mut bytes = single_arm64_fat(6, fat64);
+                bytes[4..8].copy_from_slice(&count.to_be_bytes());
+                assert!(!valid_macho(&bytes, false));
+            }
+            for (offset, value) in [
+                (8, 0x0100_0007_u32.to_be_bytes()),  // Outer x86_64.
+                (12, 2_u32.to_be_bytes()),           // Outer arm64e.
+                (68, 0x0100_0007_u32.to_le_bytes()), // Inner x86_64.
+                (72, 2_u32.to_le_bytes()),           // Inner arm64e.
+                (64, [0xca, 0xfe, 0xba, 0xbe]),      // Nested fat container.
+            ] {
+                let mut bytes = single_arm64_fat(6, fat64);
+                bytes[offset..offset + 4].copy_from_slice(&value);
+                assert!(!valid_macho(&bytes, false));
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_truncated_overlapping_or_misaligned_fat_slices() {
+        for fat64 in [false, true] {
+            let original = single_arm64_fat(6, fat64);
+            for length in 0..original.len() {
+                assert!(!valid_macho(&original[..length], false));
+            }
+            for offset in [0_u64, 16, 65, 128] {
+                let mut bytes = original.clone();
+                if fat64 {
+                    bytes[16..24].copy_from_slice(&offset.to_be_bytes());
+                } else {
+                    bytes[16..20].copy_from_slice(&(offset as u32).to_be_bytes());
+                }
+                assert!(!valid_macho(&bytes, false));
+            }
+            for size in [0_u64, 31, 33, u32::MAX.into()] {
+                let mut bytes = original.clone();
+                if fat64 {
+                    bytes[24..32].copy_from_slice(&size.to_be_bytes());
+                } else {
+                    bytes[20..24].copy_from_slice(&(size as u32).to_be_bytes());
+                }
+                assert!(!valid_macho(&bytes, false));
+            }
+            let alignment_offset = if fat64 { 32 } else { 24 };
+            for alignment_power in [7_u32, 64, u32::MAX] {
+                let mut bytes = original.clone();
+                bytes[alignment_offset..alignment_offset + 4]
+                    .copy_from_slice(&alignment_power.to_be_bytes());
+                assert!(!valid_macho(&bytes, false));
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_fat64_overflow_reserved_fields_and_nonstandard_endianness() {
+        let mut overflow = single_arm64_fat(6, true);
+        overflow[16..24].copy_from_slice(&(u64::MAX - 15).to_be_bytes());
+        overflow[32..36].copy_from_slice(&0_u32.to_be_bytes());
+        assert!(!valid_macho(&overflow, false));
+
+        let mut reserved = single_arm64_fat(6, true);
+        reserved[36..40].copy_from_slice(&1_u32.to_be_bytes());
+        assert!(!valid_macho(&reserved, false));
+
+        for magic in [[0xbe, 0xba, 0xfe, 0xca], [0xbf, 0xba, 0xfe, 0xca]] {
+            let mut bytes = single_arm64_fat(6, false);
+            bytes[..4].copy_from_slice(&magic);
+            assert!(!valid_macho(&bytes, false));
+        }
+    }
+
     #[test]
     fn version_matching_observes_token_boundaries() {
         assert!(version_matches(
@@ -576,6 +884,58 @@ mod tests {
         assert!(version_matches("0.3.0", "brush-app v0.3.0"));
         assert!(!version_matches("8.1.2", "ffmpeg version 8.1.20"));
         assert!(!version_matches("0.3.0", "brush-app 0.2.9"));
+    }
+
+    #[test]
+    fn version_matching_accepts_complete_brush_identity_and_tool_prefixes() {
+        let pinned = "brush-cli 1.0.0+metorigin-macos.6";
+        for actual in [
+            pinned,
+            "1.0.0+metorigin-macos.6",
+            "brush-cli v1.0.0+metorigin-macos.6",
+            "  brush-cli 1.0.0+metorigin-macos.6 (Metal)\n",
+        ] {
+            assert!(version_matches(pinned, actual), "{actual}");
+            assert!(version_matches("v1.0.0+metorigin-macos.6", actual));
+        }
+        assert!(version_matches("brush-app v0.3.0", "brush-app 0.3.0"));
+        assert!(version_matches("ffprobe 8.1.2", "ffprobe version 8.1.2"));
+    }
+
+    #[test]
+    fn version_matching_preserves_pinned_build_identity() {
+        let pinned = "brush-cli 1.0.0+metorigin-macos.6";
+        for actual in [
+            "brush-cli 1.0.0+metorigin-macos.5",
+            "brush-cli 1.0.0+metorigin-macos.60",
+            "brush-cli 1.0.0+metorigin-macos.6.1",
+            "brush-cli 1.0.0+metorigin-macos.6-dirty",
+            "brush-cli 1.0.0",
+            "brush-cli 1.0.1+metorigin-macos.6",
+        ] {
+            assert!(!version_matches(pinned, actual), "{actual}");
+        }
+        assert!(!version_matches("1.0.0-beta.1", "1.0.0-beta.2"));
+    }
+
+    #[test]
+    fn version_matching_retains_distribution_suffixes_and_numeric_boundaries() {
+        for actual in [
+            "ffmpeg version 8.1.2-essentials_build",
+            "ffmpeg version v8.1.2_essentials_build",
+            "ffmpeg version 8.1.2+vendor.1",
+        ] {
+            assert!(version_matches("V8.1.2", actual), "{actual}");
+        }
+        for actual in ["8.1.20", "18.1.2", "8.1.2.0", "8.1.2foo", "unknown"] {
+            assert!(!version_matches("8.1.2", actual), "{actual}");
+        }
+        for expected in ["", "v", "brush-cli", "unknown", "8..1"] {
+            assert!(!version_matches(
+                expected,
+                "brush-cli 1.0.0+metorigin-macos.6"
+            ));
+        }
     }
 
     #[test]

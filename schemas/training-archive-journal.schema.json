@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metorigin.dev/schemas/training-archive-journal.schema.json",
+  "title": "Managed Brush archive journal v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "archive_id", "entries"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "archive_id": {"type": "string", "pattern": "^[0-9a-fA-F-]{36}$"},
+    "entries": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"enum": ["checkpoints", "result", "fingerprint", "init", "init_temporary"]}
+    }
+  }
+}

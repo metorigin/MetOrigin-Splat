@@ -135,6 +135,7 @@ fn configured_orchestrator(project_dir: &Path, brush: &Path) -> PipelineOrchestr
     PipelineOrchestrator::new_with_config(
         project_dir.to_path_buf(),
         PipelineConfig {
+            execution_profile: None,
             preset: "fast".to_string(),
             engine_paths: EnginePaths {
                 ffmpeg: None,

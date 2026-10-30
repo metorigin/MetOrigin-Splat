@@ -1,0 +1,4728 @@
+{
+  "status": "passed",
+  "started_at": "2026-10-27T17:53:41.109Z",
+  "script": {
+    "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs",
+    "size_bytes": 19250,
+    "sha256": "613e5d53ed81177276dd6676dea977d8be407da1163fa12c71d120f524982c3d"
+  },
+  "scope": "Actual staged v1/v2 TypeScript classes, independently instantiated from the same candidate glue/WASM. Real caller allocation and codec-output ownership measured through a Module Proxy; only bounded JS exceptions and one mocked null allocation are injected.",
+  "boundaries": [
+    "No real OOM, allocator corruption, invalid free, arbitrary pointer, trap, browser, worker, full application, GPU or production packaging claim.",
+    "Unowned frees are refused by the harness before reaching real WASM. Failed-case emergency cleanup never changes the recorded failing result.",
+    "Counters cover caller-visible allocation/free and outputs from real codec returns, not every internal libwebp allocation.",
+    "v1/v2 equality uses the same binary. It proves cleanup preserves successful output; default exact=0 may still change RGB under fully transparent pixels relative to input.",
+    "The production baseline harness and license/public/app resources are not modified."
+  ],
+  "bindings": {
+    "v1_source": {
+      "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/splat-transform/src/lib/utils/webp-codec.ts",
+      "size_bytes": 4474,
+      "sha256": "1cfb3c675343af986f57eae3b66b1763008548eb2364dd6972a352958c2ed225"
+    },
+    "v2_source": {
+      "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/sources/splat-transform-v2/src/lib/utils/webp-codec.ts",
+      "size_bytes": 5711,
+      "sha256": "93b36f2b4ce70c2980b321ff2c947ae84ed019e0fade3ced9a2d3bc7d7b2f594"
+    },
+    "glue": {
+      "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/outputs/webp.mjs",
+      "size_bytes": 11523,
+      "sha256": "4fb1318061392a7f0c3668add77dc13677d40ff93bc84ad2b8493be7965e20cf"
+    },
+    "wasm": {
+      "path": "${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/outputs/webp.wasm",
+      "size_bytes": 346456,
+      "sha256": "72cd94e42bce159f10ce49bb41a17f725b8a0d165f496548a5775fec267a519c"
+    }
+  },
+  "initialization": {
+    "independent_classes_and_instances": true,
+    "v1_factory_calls": 1,
+    "v2_factory_calls": 1,
+    "v1_locations": [
+      "file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/outputs/webp.wasm"
+    ],
+    "v2_locations": [
+      "file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/outputs/webp.wasm"
+    ],
+    "same_glue_and_wasm": true
+  },
+  "success_path_comparison": [
+    {
+      "fixture": "opaque",
+      "width": 3,
+      "height": 2,
+      "stride": 12,
+      "input_byte_offset": 0,
+      "encoded_bytes": 72,
+      "encoded_sha256": "6bae1e65e3ae85a641e69c39aae08cd67d0bec1d4c420febb66b0179a16b18d8",
+      "decoded_rgba_sha256": "e9bd53f53618dceb59e206f763cf64b2e3023f084dac31e8467bd36ac43e8e02",
+      "encode_bytes_identical": true,
+      "all_decoded_rgba_bytes_identical": true,
+      "hidden_rgb_changes_from_input": 0
+    },
+    {
+      "fixture": "nonzero-alpha",
+      "width": 17,
+      "height": 5,
+      "stride": 68,
+      "input_byte_offset": 0,
+      "encoded_bytes": 90,
+      "encoded_sha256": "e2a778a9877d98256e5c74dabd5564432f9f42491d4e1ae66dec0b8245e50a75",
+      "decoded_rgba_sha256": "104cd708d200fb18d18721d973405d00bdfffbd395ed1096ebc326bce4ff2f2b",
+      "encode_bytes_identical": true,
+      "all_decoded_rgba_bytes_identical": true,
+      "hidden_rgb_changes_from_input": 0
+    },
+    {
+      "fixture": "alpha-zero-hidden-RGB",
+      "width": 17,
+      "height": 5,
+      "stride": 68,
+      "input_byte_offset": 0,
+      "encoded_bytes": 312,
+      "encoded_sha256": "d8c26a5b724ac1ac9972591714db03f594e761987ebd8f2b5c5bf0db1d63038a",
+      "decoded_rgba_sha256": "575c05bd62ee2c5befde6e11f7dc8a566fa58183b7a494aa283d8fbc4eb11bca",
+      "encode_bytes_identical": true,
+      "all_decoded_rgba_bytes_identical": true,
+      "hidden_rgb_changes_from_input": 66
+    },
+    {
+      "fixture": "stride-padding",
+      "width": 17,
+      "height": 5,
+      "stride": 75,
+      "input_byte_offset": 0,
+      "encoded_bytes": 70,
+      "encoded_sha256": "75134c6a98a2e1c4469dfa82577cba1a7e657d3131f3ace148f447a21052ee70",
+      "decoded_rgba_sha256": "c66ad6773a39780eb47d6b672bca265d6bc70277419c8553f626a1cef0859611",
+      "encode_bytes_identical": true,
+      "all_decoded_rgba_bytes_identical": true,
+      "hidden_rgb_changes_from_input": 0
+    },
+    {
+      "fixture": "subarray-with-nonzero-offset",
+      "width": 3,
+      "height": 2,
+      "stride": 12,
+      "input_byte_offset": 5,
+      "encoded_bytes": 92,
+      "encoded_sha256": "a1123ad15394f9fca77424b14be88ab1b9604898870da414b0b60d6cd8c5ad10",
+      "decoded_rgba_sha256": "5176636cd4babe8b04c002b80f7d1ae2d982faf755fcf9435db76bcc46429dc9",
+      "encode_bytes_identical": true,
+      "all_decoded_rgba_bytes_identical": true,
+      "hidden_rgb_changes_from_input": 0
+    }
+  ],
+  "cases": [
+    {
+      "label": "encode:success",
+      "operation": "encode",
+      "fault": null,
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 3,
+        "caller_allocations": 3,
+        "caller_frees": 3,
+        "null_caller_frees": 0,
+        "codec_calls": 1,
+        "codec_outputs": 1,
+        "codec_output_frees": 1,
+        "heap_set_calls": 1,
+        "heap_slice_calls": 1,
+        "injected_faults": 0,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 24
+          },
+          {
+            "event": "malloc",
+            "pointer": 116568,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116584,
+            "size": 4
+          },
+          {
+            "event": "codec-return",
+            "name": "_webp_encode_lossless_rgba",
+            "status": 1
+          },
+          {
+            "event": "codec-output-acquired-by-ABI",
+            "pointer": 117784
+          },
+          {
+            "event": "webp-free",
+            "pointer": 117784
+          },
+          {
+            "event": "free",
+            "pointer": 116584
+          },
+          {
+            "event": "free",
+            "pointer": 116568
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": null,
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "encode:success:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "encode:success:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "encode:C-rejects-input",
+      "operation": "encode",
+      "fault": null,
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 3,
+        "caller_allocations": 3,
+        "caller_frees": 3,
+        "null_caller_frees": 0,
+        "codec_calls": 1,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 1,
+        "heap_slice_calls": 0,
+        "injected_faults": 0,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 24
+          },
+          {
+            "event": "malloc",
+            "pointer": 116568,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116584,
+            "size": 4
+          },
+          {
+            "event": "codec-return",
+            "name": "_webp_encode_lossless_rgba",
+            "status": 0
+          },
+          {
+            "event": "free",
+            "pointer": 116584
+          },
+          {
+            "event": "free",
+            "pointer": 116568
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "WebP lossless encode failed",
+        "stack": "Error: WebP lossless encode failed\n    at WebPCodec.encodeLosslessRGBA (eval at loadCodec (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:32:5), <anonymous>:82:23)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:183:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "encode:C-rejects-input:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "encode:C-rejects-input:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "encode:input-HEAPU8.set-throws",
+      "operation": "encode",
+      "fault": {
+        "kind": "input-set"
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 3,
+        "caller_allocations": 3,
+        "caller_frees": 3,
+        "null_caller_frees": 0,
+        "codec_calls": 0,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 1,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 24
+          },
+          {
+            "event": "malloc",
+            "pointer": 116568,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116584,
+            "size": 4
+          },
+          {
+            "event": "free",
+            "pointer": 116584
+          },
+          {
+            "event": "free",
+            "pointer": 116568
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "injected JavaScript fault: input-set",
+        "stack": "Error: injected JavaScript fault: input-set\n    at trackModule (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:84:27)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:177:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "encode:input-HEAPU8.set-throws:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "encode:input-HEAPU8.set-throws:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "encode:output-HEAPU8.slice-throws",
+      "operation": "encode",
+      "fault": {
+        "kind": "output-slice"
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 3,
+        "caller_allocations": 3,
+        "caller_frees": 3,
+        "null_caller_frees": 0,
+        "codec_calls": 1,
+        "codec_outputs": 1,
+        "codec_output_frees": 1,
+        "heap_set_calls": 1,
+        "heap_slice_calls": 1,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 24
+          },
+          {
+            "event": "malloc",
+            "pointer": 116568,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116584,
+            "size": 4
+          },
+          {
+            "event": "codec-return",
+            "name": "_webp_encode_lossless_rgba",
+            "status": 1
+          },
+          {
+            "event": "codec-output-acquired-by-ABI",
+            "pointer": 117784
+          },
+          {
+            "event": "webp-free",
+            "pointer": 117784
+          },
+          {
+            "event": "free",
+            "pointer": 116584
+          },
+          {
+            "event": "free",
+            "pointer": 116568
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "injected JavaScript fault: output-slice",
+        "stack": "Error: injected JavaScript fault: output-slice\n    at trackModule (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:84:27)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:177:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "encode:output-HEAPU8.slice-throws:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "encode:output-HEAPU8.slice-throws:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "encode:C-succeeded-then-JS-throws-before-return",
+      "operation": "encode",
+      "fault": {
+        "kind": "after-codec-return"
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 3,
+        "caller_allocations": 3,
+        "caller_frees": 3,
+        "null_caller_frees": 0,
+        "codec_calls": 1,
+        "codec_outputs": 1,
+        "codec_output_frees": 1,
+        "heap_set_calls": 1,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 24
+          },
+          {
+            "event": "malloc",
+            "pointer": 116568,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116584,
+            "size": 4
+          },
+          {
+            "event": "codec-return",
+            "name": "_webp_encode_lossless_rgba",
+            "status": 1
+          },
+          {
+            "event": "codec-output-acquired-by-ABI",
+            "pointer": 117784
+          },
+          {
+            "event": "webp-free",
+            "pointer": 117784
+          },
+          {
+            "event": "free",
+            "pointer": 116584
+          },
+          {
+            "event": "free",
+            "pointer": 116568
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "injected JavaScript fault: after-codec-return",
+        "stack": "Error: injected JavaScript fault: after-codec-return\n    at trackModule (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:84:27)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:177:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "encode:C-succeeded-then-JS-throws-before-return:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "encode:C-succeeded-then-JS-throws-before-return:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "encode:malloc-1-throws",
+      "operation": "encode",
+      "fault": {
+        "kind": "malloc-throw",
+        "at": 1
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 1,
+        "caller_allocations": 0,
+        "caller_frees": 0,
+        "null_caller_frees": 0,
+        "codec_calls": 0,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 0,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": []
+      },
+      "caught": {
+        "name": "Error",
+        "message": "injected JavaScript fault: malloc-throw",
+        "stack": "Error: injected JavaScript fault: malloc-throw\n    at trackModule (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:84:27)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:177:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "encode:malloc-1-throws:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "encode:malloc-1-throws:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "encode:malloc-1-returns-zero",
+      "operation": "encode",
+      "fault": {
+        "kind": "malloc-zero",
+        "at": 1
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 3,
+        "caller_allocations": 2,
+        "caller_frees": 2,
+        "null_caller_frees": 0,
+        "codec_calls": 0,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 0,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc-zero",
+            "size": 24
+          },
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116552,
+            "size": 4
+          },
+          {
+            "event": "free",
+            "pointer": 116552
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "WebP lossless encode failed",
+        "stack": "Error: WebP lossless encode failed\n    at WebPCodec.encodeLosslessRGBA (eval at loadCodec (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:32:5), <anonymous>:77:23)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:183:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "encode:malloc-1-returns-zero:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "encode:malloc-1-returns-zero:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "encode:malloc-2-throws",
+      "operation": "encode",
+      "fault": {
+        "kind": "malloc-throw",
+        "at": 2
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 2,
+        "caller_allocations": 1,
+        "caller_frees": 1,
+        "null_caller_frees": 0,
+        "codec_calls": 0,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 0,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 24
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "injected JavaScript fault: malloc-throw",
+        "stack": "Error: injected JavaScript fault: malloc-throw\n    at trackModule (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:84:27)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:177:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "encode:malloc-2-throws:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "encode:malloc-2-throws:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "encode:malloc-2-returns-zero",
+      "operation": "encode",
+      "fault": {
+        "kind": "malloc-zero",
+        "at": 2
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 3,
+        "caller_allocations": 2,
+        "caller_frees": 2,
+        "null_caller_frees": 0,
+        "codec_calls": 0,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 0,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 24
+          },
+          {
+            "event": "malloc-zero",
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116568,
+            "size": 4
+          },
+          {
+            "event": "free",
+            "pointer": 116568
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "WebP lossless encode failed",
+        "stack": "Error: WebP lossless encode failed\n    at WebPCodec.encodeLosslessRGBA (eval at loadCodec (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:32:5), <anonymous>:77:23)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:183:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "encode:malloc-2-returns-zero:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "encode:malloc-2-returns-zero:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "encode:malloc-3-throws",
+      "operation": "encode",
+      "fault": {
+        "kind": "malloc-throw",
+        "at": 3
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 3,
+        "caller_allocations": 2,
+        "caller_frees": 2,
+        "null_caller_frees": 0,
+        "codec_calls": 0,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 0,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 24
+          },
+          {
+            "event": "malloc",
+            "pointer": 116568,
+            "size": 4
+          },
+          {
+            "event": "free",
+            "pointer": 116568
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "injected JavaScript fault: malloc-throw",
+        "stack": "Error: injected JavaScript fault: malloc-throw\n    at trackModule (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:84:27)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:177:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "encode:malloc-3-throws:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "encode:malloc-3-throws:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "encode:malloc-3-returns-zero",
+      "operation": "encode",
+      "fault": {
+        "kind": "malloc-zero",
+        "at": 3
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 3,
+        "caller_allocations": 2,
+        "caller_frees": 2,
+        "null_caller_frees": 0,
+        "codec_calls": 0,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 0,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 24
+          },
+          {
+            "event": "malloc",
+            "pointer": 116568,
+            "size": 4
+          },
+          {
+            "event": "malloc-zero",
+            "size": 4
+          },
+          {
+            "event": "free",
+            "pointer": 116568
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "WebP lossless encode failed",
+        "stack": "Error: WebP lossless encode failed\n    at WebPCodec.encodeLosslessRGBA (eval at loadCodec (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:32:5), <anonymous>:77:23)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:183:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "encode:malloc-3-returns-zero:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "encode:malloc-3-returns-zero:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "decode:success",
+      "operation": "decode",
+      "fault": null,
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 4,
+        "caller_allocations": 4,
+        "caller_frees": 4,
+        "null_caller_frees": 0,
+        "codec_calls": 1,
+        "codec_outputs": 1,
+        "codec_output_frees": 1,
+        "heap_set_calls": 1,
+        "heap_slice_calls": 1,
+        "injected_faults": 0,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 72
+          },
+          {
+            "event": "malloc",
+            "pointer": 116616,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116632,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116648,
+            "size": 4
+          },
+          {
+            "event": "codec-return",
+            "name": "_webp_decode_rgba",
+            "status": 1
+          },
+          {
+            "event": "codec-output-acquired-by-ABI",
+            "pointer": 116960
+          },
+          {
+            "event": "webp-free",
+            "pointer": 116960
+          },
+          {
+            "event": "free",
+            "pointer": 116648
+          },
+          {
+            "event": "free",
+            "pointer": 116632
+          },
+          {
+            "event": "free",
+            "pointer": 116616
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": null,
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "decode:success:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "decode:success:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "decode:C-rejects-input",
+      "operation": "decode",
+      "fault": null,
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 4,
+        "caller_allocations": 4,
+        "caller_frees": 4,
+        "null_caller_frees": 0,
+        "codec_calls": 1,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 1,
+        "heap_slice_calls": 0,
+        "injected_faults": 0,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 16
+          },
+          {
+            "event": "malloc",
+            "pointer": 116560,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116576,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116592,
+            "size": 4
+          },
+          {
+            "event": "codec-return",
+            "name": "_webp_decode_rgba",
+            "status": 0
+          },
+          {
+            "event": "free",
+            "pointer": 116592
+          },
+          {
+            "event": "free",
+            "pointer": 116576
+          },
+          {
+            "event": "free",
+            "pointer": 116560
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "WebP decode failed",
+        "stack": "Error: WebP decode failed\n    at WebPCodec.decodeRGBA (eval at loadCodec (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:32:5), <anonymous>:124:23)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:184:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "decode:C-rejects-input:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "decode:C-rejects-input:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "decode:input-HEAPU8.set-throws",
+      "operation": "decode",
+      "fault": {
+        "kind": "input-set"
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 4,
+        "caller_allocations": 4,
+        "caller_frees": 4,
+        "null_caller_frees": 0,
+        "codec_calls": 0,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 1,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 72
+          },
+          {
+            "event": "malloc",
+            "pointer": 116616,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116632,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116648,
+            "size": 4
+          },
+          {
+            "event": "free",
+            "pointer": 116648
+          },
+          {
+            "event": "free",
+            "pointer": 116632
+          },
+          {
+            "event": "free",
+            "pointer": 116616
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "injected JavaScript fault: input-set",
+        "stack": "Error: injected JavaScript fault: input-set\n    at trackModule (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:84:27)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:177:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "decode:input-HEAPU8.set-throws:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "decode:input-HEAPU8.set-throws:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "decode:output-HEAPU8.slice-throws",
+      "operation": "decode",
+      "fault": {
+        "kind": "output-slice"
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 4,
+        "caller_allocations": 4,
+        "caller_frees": 4,
+        "null_caller_frees": 0,
+        "codec_calls": 1,
+        "codec_outputs": 1,
+        "codec_output_frees": 1,
+        "heap_set_calls": 1,
+        "heap_slice_calls": 1,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 72
+          },
+          {
+            "event": "malloc",
+            "pointer": 116616,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116632,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116648,
+            "size": 4
+          },
+          {
+            "event": "codec-return",
+            "name": "_webp_decode_rgba",
+            "status": 1
+          },
+          {
+            "event": "codec-output-acquired-by-ABI",
+            "pointer": 116960
+          },
+          {
+            "event": "webp-free",
+            "pointer": 116960
+          },
+          {
+            "event": "free",
+            "pointer": 116648
+          },
+          {
+            "event": "free",
+            "pointer": 116632
+          },
+          {
+            "event": "free",
+            "pointer": 116616
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "injected JavaScript fault: output-slice",
+        "stack": "Error: injected JavaScript fault: output-slice\n    at trackModule (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:84:27)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:177:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "decode:output-HEAPU8.slice-throws:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "decode:output-HEAPU8.slice-throws:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "decode:C-succeeded-then-JS-throws-before-return",
+      "operation": "decode",
+      "fault": {
+        "kind": "after-codec-return"
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 4,
+        "caller_allocations": 4,
+        "caller_frees": 4,
+        "null_caller_frees": 0,
+        "codec_calls": 1,
+        "codec_outputs": 1,
+        "codec_output_frees": 1,
+        "heap_set_calls": 1,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 72
+          },
+          {
+            "event": "malloc",
+            "pointer": 116616,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116632,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116648,
+            "size": 4
+          },
+          {
+            "event": "codec-return",
+            "name": "_webp_decode_rgba",
+            "status": 1
+          },
+          {
+            "event": "codec-output-acquired-by-ABI",
+            "pointer": 116960
+          },
+          {
+            "event": "webp-free",
+            "pointer": 116960
+          },
+          {
+            "event": "free",
+            "pointer": 116648
+          },
+          {
+            "event": "free",
+            "pointer": 116632
+          },
+          {
+            "event": "free",
+            "pointer": 116616
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "injected JavaScript fault: after-codec-return",
+        "stack": "Error: injected JavaScript fault: after-codec-return\n    at trackModule (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:84:27)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:177:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "decode:C-succeeded-then-JS-throws-before-return:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "decode:C-succeeded-then-JS-throws-before-return:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "decode:malloc-1-throws",
+      "operation": "decode",
+      "fault": {
+        "kind": "malloc-throw",
+        "at": 1
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 1,
+        "caller_allocations": 0,
+        "caller_frees": 0,
+        "null_caller_frees": 0,
+        "codec_calls": 0,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 0,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": []
+      },
+      "caught": {
+        "name": "Error",
+        "message": "injected JavaScript fault: malloc-throw",
+        "stack": "Error: injected JavaScript fault: malloc-throw\n    at trackModule (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:84:27)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:177:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "decode:malloc-1-throws:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "decode:malloc-1-throws:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "decode:malloc-1-returns-zero",
+      "operation": "decode",
+      "fault": {
+        "kind": "malloc-zero",
+        "at": 1
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 4,
+        "caller_allocations": 3,
+        "caller_frees": 3,
+        "null_caller_frees": 0,
+        "codec_calls": 0,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 0,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc-zero",
+            "size": 72
+          },
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116552,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116568,
+            "size": 4
+          },
+          {
+            "event": "free",
+            "pointer": 116568
+          },
+          {
+            "event": "free",
+            "pointer": 116552
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "WebP decode failed",
+        "stack": "Error: WebP decode failed\n    at WebPCodec.decodeRGBA (eval at loadCodec (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:32:5), <anonymous>:119:23)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:184:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "decode:malloc-1-returns-zero:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "decode:malloc-1-returns-zero:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "decode:malloc-2-throws",
+      "operation": "decode",
+      "fault": {
+        "kind": "malloc-throw",
+        "at": 2
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 2,
+        "caller_allocations": 1,
+        "caller_frees": 1,
+        "null_caller_frees": 0,
+        "codec_calls": 0,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 0,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 72
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "injected JavaScript fault: malloc-throw",
+        "stack": "Error: injected JavaScript fault: malloc-throw\n    at trackModule (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:84:27)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:177:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "decode:malloc-2-throws:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "decode:malloc-2-throws:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "decode:malloc-2-returns-zero",
+      "operation": "decode",
+      "fault": {
+        "kind": "malloc-zero",
+        "at": 2
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 4,
+        "caller_allocations": 3,
+        "caller_frees": 3,
+        "null_caller_frees": 0,
+        "codec_calls": 0,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 0,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 72
+          },
+          {
+            "event": "malloc-zero",
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116616,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116632,
+            "size": 4
+          },
+          {
+            "event": "free",
+            "pointer": 116632
+          },
+          {
+            "event": "free",
+            "pointer": 116616
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "WebP decode failed",
+        "stack": "Error: WebP decode failed\n    at WebPCodec.decodeRGBA (eval at loadCodec (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:32:5), <anonymous>:119:23)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:184:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "decode:malloc-2-returns-zero:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "decode:malloc-2-returns-zero:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "decode:malloc-4-throws",
+      "operation": "decode",
+      "fault": {
+        "kind": "malloc-throw",
+        "at": 4
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 4,
+        "caller_allocations": 3,
+        "caller_frees": 3,
+        "null_caller_frees": 0,
+        "codec_calls": 0,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 0,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 72
+          },
+          {
+            "event": "malloc",
+            "pointer": 116616,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116632,
+            "size": 4
+          },
+          {
+            "event": "free",
+            "pointer": 116632
+          },
+          {
+            "event": "free",
+            "pointer": 116616
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "injected JavaScript fault: malloc-throw",
+        "stack": "Error: injected JavaScript fault: malloc-throw\n    at trackModule (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:84:27)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:177:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "decode:malloc-4-throws:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "decode:malloc-4-throws:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "decode:malloc-4-returns-zero",
+      "operation": "decode",
+      "fault": {
+        "kind": "malloc-zero",
+        "at": 4
+      },
+      "status": "passed",
+      "observed": {
+        "malloc_attempts": 4,
+        "caller_allocations": 3,
+        "caller_frees": 3,
+        "null_caller_frees": 0,
+        "codec_calls": 0,
+        "codec_outputs": 0,
+        "codec_output_frees": 0,
+        "heap_set_calls": 0,
+        "heap_slice_calls": 0,
+        "injected_faults": 1,
+        "outstanding_callers": 0,
+        "outstanding_codec_outputs": 0,
+        "violations": [],
+        "events": [
+          {
+            "event": "malloc",
+            "pointer": 116536,
+            "size": 72
+          },
+          {
+            "event": "malloc",
+            "pointer": 116616,
+            "size": 4
+          },
+          {
+            "event": "malloc",
+            "pointer": 116632,
+            "size": 4
+          },
+          {
+            "event": "malloc-zero",
+            "size": 4
+          },
+          {
+            "event": "free",
+            "pointer": 116632
+          },
+          {
+            "event": "free",
+            "pointer": 116616
+          },
+          {
+            "event": "free",
+            "pointer": 116536
+          }
+        ]
+      },
+      "caught": {
+        "name": "Error",
+        "message": "WebP decode failed",
+        "stack": "Error: WebP decode failed\n    at WebPCodec.decodeRGBA (eval at loadCodec (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:32:5), <anonymous>:119:23)\n    at runCase (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:184:21)\n    at main (file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:283:24)\n    at async file://${REPO_ROOT}/target/macos-m4/webp-rebuild-20261028/verify-codec-cleanup.mjs:306:7"
+      },
+      "emergency_cleanup_after_measurement": {
+        "caller_allocations": 0,
+        "codec_outputs": 0
+      },
+      "recovery": [
+        {
+          "label": "decode:malloc-4-returns-zero:recovery-encode",
+          "operation": "encode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 3,
+            "caller_allocations": 3,
+            "caller_frees": 3,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 24
+              },
+              {
+                "event": "malloc",
+                "pointer": 116568,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116584,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_encode_lossless_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 117784
+              },
+              {
+                "event": "webp-free",
+                "pointer": 117784
+              },
+              {
+                "event": "free",
+                "pointer": 116584
+              },
+              {
+                "event": "free",
+                "pointer": 116568
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        },
+        {
+          "label": "decode:malloc-4-returns-zero:recovery-decode",
+          "operation": "decode",
+          "fault": null,
+          "status": "passed",
+          "observed": {
+            "malloc_attempts": 4,
+            "caller_allocations": 4,
+            "caller_frees": 4,
+            "null_caller_frees": 0,
+            "codec_calls": 1,
+            "codec_outputs": 1,
+            "codec_output_frees": 1,
+            "heap_set_calls": 1,
+            "heap_slice_calls": 1,
+            "injected_faults": 0,
+            "outstanding_callers": 0,
+            "outstanding_codec_outputs": 0,
+            "violations": [],
+            "events": [
+              {
+                "event": "malloc",
+                "pointer": 116536,
+                "size": 72
+              },
+              {
+                "event": "malloc",
+                "pointer": 116616,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116632,
+                "size": 4
+              },
+              {
+                "event": "malloc",
+                "pointer": 116648,
+                "size": 4
+              },
+              {
+                "event": "codec-return",
+                "name": "_webp_decode_rgba",
+                "status": 1
+              },
+              {
+                "event": "codec-output-acquired-by-ABI",
+                "pointer": 116960
+              },
+              {
+                "event": "webp-free",
+                "pointer": 116960
+              },
+              {
+                "event": "free",
+                "pointer": 116648
+              },
+              {
+                "event": "free",
+                "pointer": 116632
+              },
+              {
+                "event": "free",
+                "pointer": 116616
+              },
+              {
+                "event": "free",
+                "pointer": 116536
+              }
+            ]
+          },
+          "caught": null,
+          "emergency_cleanup_after_measurement": {
+            "caller_allocations": 0,
+            "codec_outputs": 0
+          }
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "primary_cases": 22,
+    "recovery_cases": 44,
+    "successful_output_comparisons": 5,
+    "failed_case_groups": 0
+  },
+  "completed_at": "2026-10-27T17:53:41.278Z"
+}

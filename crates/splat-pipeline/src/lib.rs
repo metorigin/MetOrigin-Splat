@@ -10,6 +10,7 @@ pub mod image_input;
 pub mod lock;
 pub mod orchestrator;
 pub mod recovery;
+pub mod runtime;
 pub mod stage;
 pub mod stages;
 

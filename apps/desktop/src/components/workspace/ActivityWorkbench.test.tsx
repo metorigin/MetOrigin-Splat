@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EventPage, PipelineEventRecord } from "../../types";
@@ -58,6 +58,19 @@ describe("ActivityWorkbench", () => {
     );
   });
 
+  it("does not claim a successful empty page when the initial activity read fails", async () => {
+    vi.mocked(desktopApi.getPipelineEvents)
+      .mockRejectedValueOnce(new Error("initial read unavailable"))
+      .mockResolvedValueOnce(page([]));
+    render(<ActivityWorkbench projectPath={"D:\\project"} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("活动记录加载失败");
+    expect(screen.queryByText(/可能已过期|最后一次成功获取的数据/)).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无符合条件的真实事件")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(await screen.findByText("暂无符合条件的真实事件")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("retains last-good rows on refresh failure and offers a safe retry", async () => {
     vi.mocked(desktopApi.getPipelineEvents)
       .mockResolvedValueOnce(page([event(1)]))
@@ -91,7 +104,7 @@ describe("ActivityWorkbench", () => {
     expect(screen.getByLabelText("事件详情")).toHaveTextContent("原始引擎输出已隐藏");
     expect(screen.getByLabelText("事件详情")).not.toHaveTextContent("secret");
 
-    fireEvent.click(screen.getByRole("tab", { name: /错误/ }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /错误/ }), { button: 0, ctrlKey: false });
     fireEvent.change(screen.getByRole("textbox", { name: "搜索活动记录" }), { target: { value: "camera" } });
     await waitFor(() => expect(desktopApi.getPipelineEvents).toHaveBeenLastCalledWith(
       "D:\\project",
@@ -105,25 +118,47 @@ describe("ActivityWorkbench", () => {
     expect(await screen.findByText("暂无符合条件的真实事件")).toBeInTheDocument();
   });
 
+  it("does not let an old search response overwrite the current pagination cursor or cached rows", async () => {
+    let resolveOld!: (value: EventPage) => void;
+    const oldResponse = new Promise<EventPage>((resolve) => { resolveOld = resolve; });
+    vi.mocked(desktopApi.getPipelineEvents).mockImplementation(async (_path, query) => {
+      if (!query?.search) return oldResponse;
+      return query.cursor === 20 ? page([event(19)]) : page([event(21)], 20);
+    });
+    render(<ActivityWorkbench projectPath={"D:\\project"} />);
+    await waitFor(() => expect(desktopApi.getPipelineEvents).toHaveBeenCalled());
+    fireEvent.change(screen.getByRole("textbox", { name: "搜索活动记录" }), { target: { value: "camera" } });
+    expect(await screen.findByText("事件 21")).toBeInTheDocument();
+    await act(async () => { resolveOld(page([event(99)], 98)); await oldResponse; });
+    expect(screen.queryByText("事件 99")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "加载更早记录" }));
+    expect(await screen.findByText("事件 19")).toBeInTheDocument();
+    expect(screen.getByText("事件 21")).toBeInTheDocument();
+    expect(screen.queryByText("事件 99")).not.toBeInTheDocument();
+    expect(desktopApi.getPipelineEvents).toHaveBeenLastCalledWith(
+      "D:\\project", expect.objectContaining({ cursor: 20, search: "camera" }),
+    );
+  });
+
   it("uses a single tab stop with automatic arrow activation and linked panels", async () => {
     vi.mocked(desktopApi.getPipelineEvents).mockResolvedValue(page([]));
     render(<ActivityWorkbench projectPath={"D:\\project"} />);
     await screen.findByText("暂无符合条件的真实事件");
     const log = screen.getByRole("tab", { name: "活动日志" });
     const eventTab = screen.getByRole("tab", { name: "事件" });
-    log.focus();
+    act(() => log.focus());
     expect(log).toHaveAttribute("tabindex", "0");
     expect(eventTab).toHaveAttribute("tabindex", "-1");
     fireEvent.keyDown(log, { key: "ArrowRight" });
-    expect(eventTab).toHaveFocus();
+    await waitFor(() => expect(eventTab).toHaveFocus());
     expect(eventTab).toHaveAttribute("aria-selected", "true");
     const panel = screen.getByRole("tabpanel");
     expect(eventTab).toHaveAttribute("aria-controls", panel.id);
     expect(panel).toHaveAttribute("aria-labelledby", eventTab.id);
     fireEvent.keyDown(eventTab, { key: "End" });
-    expect(screen.getByRole("tab", { name: /错误/ })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole("tab", { name: /错误/ })).toHaveFocus());
     fireEvent.keyDown(screen.getByRole("tab", { name: /错误/ }), { key: "Home" });
-    expect(log).toHaveFocus();
+    await waitFor(() => expect(log).toHaveFocus());
   });
 
   it("redacts canaries and never renders unrelated source logs", async () => {

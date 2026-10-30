@@ -1,0 +1,348 @@
+{
+  "schema_version": 2,
+  "prefix": {
+    "byte_length": 78,
+    "sha256": "e58f659210ab6620519aa9164b4067a1f5624f4ae3aa3ccb2a52391033b60f3e"
+  },
+  "policy": "Only exact reviewed NUL-terminated __TEXT,__cstring or __TEXT,__const fields; diagnostics/configure strings excluded. Disable optional plugin/config/data defaults for offline JPEG/PNG SfM scope.",
+  "files": [
+    {
+      "name": "libcrypto.3.dylib",
+      "source_sha256": "a833ce9acaddce2a3983ae8199adcf4ef43771becc87f979eff87ae4fbfad415",
+      "fields": [
+        {
+          "offset": 3379529,
+          "sha256": "622af1d640151a1a94c8d3062ccb27954ca8a1df11ccf5f0165dde25292dd954",
+          "byte_length": 98,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 3421103,
+          "sha256": "a9cc2db459b3c10826f888f51ce6c036fe11e7c5c0b3c2710c6476e1c866df7b",
+          "byte_length": 82,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 3421363,
+          "sha256": "0aae03a791b78c32e9cda279fecc8a82a90144d3e839024cd0995f211d202181",
+          "byte_length": 92,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 3421633,
+          "sha256": "d7ef2fd6b550618bd446ae38878ed16ccc25bc4398810cbfce64b7c5d3b490d0",
+          "byte_length": 95,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 3511322,
+          "sha256": "7be5ce8802c541fc48fb6d1e87de4042fafd985d214dc1dba6af4ca0243f9a00",
+          "byte_length": 90,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 3511590,
+          "sha256": "d107a6915823b5346668f8b98df8b047b5f577b81c5506a44837eaa35f3c5e50",
+          "byte_length": 88,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 3511856,
+          "sha256": "10414bc308305178349b255de3eb54fcf0e81439381cbeffa6b76dda46cb897b",
+          "byte_length": 91,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "libdcmdata.20.3.7.0.dylib",
+      "source_sha256": "584adb196081b13b5a60c893be35708889e8224a4541be898350c311219a02ea",
+      "fields": [
+        {
+          "offset": 1084141,
+          "sha256": "dc774de0703969fef1edca773d3ce9e77836d5a226d6bb7dc83a05dde97c954d",
+          "byte_length": 215,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0,
+            107
+          ]
+        }
+      ]
+    },
+    {
+      "name": "libfontconfig.1.dylib",
+      "source_sha256": "57506678cfea25f8de2f6cabfe3678bcafa66aa7416dae6421bbc47604237bd0",
+      "fields": [
+        {
+          "offset": 188020,
+          "sha256": "4cd8ae530cc4f6c8fb27c2aba9d85fd2948b8eb17d8dc860d5c7b87d8ce93825",
+          "byte_length": 88,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 192363,
+          "sha256": "51812f8c5cea04f55590b9bdb3528b645a3c5762de14feea32a3f1c9824f5e0b",
+          "byte_length": 106,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 192771,
+          "sha256": "843b8f4ab222fc52d314fbfb2e8cd9f1f534c94139e9845a98b15c83e5560f70",
+          "byte_length": 99,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 193165,
+          "sha256": "30a3baad88ce1ae381c43a85d92a7d82d4101e360274ab897a814647a4b0ee7c",
+          "byte_length": 670,
+          "section": "__TEXT,__cstring",
+          "kind": "fontconfig_default_xml",
+          "prefix_offsets": [
+            216,
+            404
+          ]
+        }
+      ]
+    },
+    {
+      "name": "libgio-2.0.0.dylib",
+      "source_sha256": "1013c392ab8a060f7a40e9a18f2eabbab2dd75e6cf0959d648f1cd69f62711e0",
+      "fields": [
+        {
+          "offset": 1339601,
+          "sha256": "4190dfa34fec5b2a6797b9252a176897b231bb5297703ee2995948a103152487",
+          "byte_length": 94,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 1385679,
+          "sha256": "e4a7b89d194ed1b41460afb38ad308d386e660247b08d82c5851a60827f5da05",
+          "byte_length": 82,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 1445327,
+          "sha256": "89b79e396b661e418de9d1a185c57bc0b9c1b80c363b15f3fc8e23adacf19777",
+          "byte_length": 102,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 1468255,
+          "sha256": "2e8aa5461aa9c21e1d77c0157fc07d0f25b7640bba262254f8ed49f0dacbea11",
+          "byte_length": 97,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "libglib-2.0.0.dylib",
+      "source_sha256": "eaa5b628ebe7f9df6c43e7a209205fb430973d25a215fdd5fd35501cbcc14bef",
+      "fields": [
+        {
+          "offset": 671499,
+          "sha256": "5cda69f4b4659ab9c440f294d18d4c7d7fc390aa416e0b470ac4f4c8bddd78c2",
+          "byte_length": 91,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 723450,
+          "sha256": "2e8aa5461aa9c21e1d77c0157fc07d0f25b7640bba262254f8ed49f0dacbea11",
+          "byte_length": 97,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 738849,
+          "sha256": "f5bc1703ce3f35fa7a4d3e389a4d4f1701e0fb9aae415fdbfb3844cce33a11a1",
+          "byte_length": 82,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "libheif.1.23.6.dylib",
+      "source_sha256": "deeb6e1c7141de72cc595c2e4a6a6b8bbf2b3c98a671ef476b36620c9838e85b",
+      "fields": [
+        {
+          "offset": 1412326,
+          "sha256": "4aa8d000b1c2a8270d219b9a560f6a1edaa78d6384d05900e3320d3c55982d4d",
+          "byte_length": 90,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "libintl.8.dylib",
+      "source_sha256": "ad4b8f6d1e8603aae112281b822f5a6582d17d529e7d0a8936de3dfb8a4c08e6",
+      "fields": [
+        {
+          "offset": 104452,
+          "sha256": "5cda69f4b4659ab9c440f294d18d4c7d7fc390aa416e0b470ac4f4c8bddd78c2",
+          "byte_length": 91,
+          "section": "__TEXT,__const",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "liboficonv.20.3.7.0.dylib",
+      "source_sha256": "a2888abe52111a9de8db637714b3574de14ece1ace1cb20fc4d9927a589c0e41",
+      "fields": [
+        {
+          "offset": 108105,
+          "sha256": "f1a72c340a64d82f3abbec6dabab09f46c1ff9e9bbb33a46f54cd7824619c268",
+          "byte_length": 97,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "libofstd.20.3.7.0.dylib",
+      "source_sha256": "52d9f6a49fbd2ef76c3c39d15663a942c7873d6d343c7391d4b13adc4b7ea245",
+      "fields": [
+        {
+          "offset": 185991,
+          "sha256": "f1a72c340a64d82f3abbec6dabab09f46c1ff9e9bbb33a46f54cd7824619c268",
+          "byte_length": 97,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 186266,
+          "sha256": "bdcbedda459a3196da765b1cbca981437400cf58110b2a75d4b0e56044ec3fa2",
+          "byte_length": 95,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "libpango-1.0.0.dylib",
+      "source_sha256": "4d9694d9aa84b7fa619cc1192213fecbceaccd87e15a8068a654a5d1f70dd410",
+      "fields": [
+        {
+          "offset": 302505,
+          "sha256": "00f43f2ee9465f80ea34c42a705f1fb22f45d265ac297f05f8c824deadcf0885",
+          "byte_length": 88,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        },
+        {
+          "offset": 302784,
+          "sha256": "bb35d62e64fab137d5e1258d70be597c5f9903cec26394a6cf70f02223b6a2fb",
+          "byte_length": 88,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_path",
+          "prefix_offsets": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "libxml2.16.dylib",
+      "source_sha256": "6a9e2f1e0d1c996618662febc5226c7bcbd8f0273388b10c8d0142cb6b85b921",
+      "fields": [
+        {
+          "offset": 928227,
+          "sha256": "d44594a5cd863dc1306166be1b6530494a32331379db70d7c2d0db214acfbe25",
+          "byte_length": 101,
+          "section": "__TEXT,__cstring",
+          "kind": "optional_runtime_file_uri",
+          "prefix_offsets": [
+            7
+          ]
+        }
+      ]
+    }
+  ]
+}

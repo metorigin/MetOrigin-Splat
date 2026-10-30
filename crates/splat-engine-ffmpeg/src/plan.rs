@@ -91,13 +91,9 @@ pub fn plan_extraction(metadata: &VideoMetadata, preset: &FrameExtractionPreset)
     let target = estimated.min(preset.max_frames);
 
     // 3. Determine output dimensions (scale down but never scale up)
-    let transpose_filter = match metadata.rotation {
-        Some(90) => Some("transpose=1"),              // 90° clockwise
-        Some(270) => Some("transpose=2"),             // 90° counter-clockwise
-        Some(180) => Some("transpose=2,transpose=2"), // 180°
-        _ => None,
-    };
-    let (logical_width, logical_height) = match metadata.rotation {
+    let transpose_filter = display_rotation_filter(metadata.rotation);
+    let (logical_width, logical_height) = match metadata.rotation.map(|angle| angle.rem_euclid(360))
+    {
         Some(90) | Some(270) => (metadata.height, metadata.width),
         _ => (metadata.width, metadata.height),
     };
@@ -148,6 +144,19 @@ pub fn plan_extraction(metadata: &VideoMetadata, preset: &FrameExtractionPreset)
         filter_graph,
         estimated_bytes,
         output_pattern: "%06d.jpg".into(),
+    }
+}
+
+/// FFprobe's display-matrix angle is counterclockwise, unlike FFmpeg's
+/// `transpose=clock` direction. Normalize only here so manifests retain the
+/// original signed angle. This also lets cache validation reject old plans
+/// that ignored negative angles or applied positive quarter-turns backwards.
+pub(crate) fn display_rotation_filter(rotation: Option<i32>) -> Option<&'static str> {
+    match rotation.map(|angle| angle.rem_euclid(360)) {
+        Some(90) => Some("transpose=cclock"),
+        Some(270) => Some("transpose=clock"),
+        Some(180) => Some("transpose=2,transpose=2"),
+        _ => None,
     }
 }
 
@@ -334,7 +343,7 @@ mod tests {
     fn test_rotation_90_swaps_dimensions() {
         let meta = make_metadata(1080, 1920, 30.0, 0, 60.0, Some(90));
         let plan = plan_extraction(&meta, &balanced_preset());
-        assert_eq!(plan.rotation_correction, Some("transpose=1".into()));
+        assert_eq!(plan.rotation_correction, Some("transpose=cclock".into()));
         assert_eq!(plan.output_width, 1920);
         assert_eq!(plan.output_height, 1080);
     }
@@ -343,7 +352,7 @@ mod tests {
     fn test_rotation_270() {
         let meta = make_metadata(1080, 1920, 30.0, 0, 60.0, Some(270));
         let plan = plan_extraction(&meta, &balanced_preset());
-        assert_eq!(plan.rotation_correction, Some("transpose=2".into()));
+        assert_eq!(plan.rotation_correction, Some("transpose=clock".into()));
     }
 
     #[test]
@@ -358,6 +367,49 @@ mod tests {
         let meta = make_metadata(1920, 1080, 30.0, 0, 60.0, None);
         let plan = plan_extraction(&meta, &balanced_preset());
         assert!(plan.rotation_correction.is_none());
+    }
+
+    #[test]
+    fn signed_display_matrix_angles_match_counterclockwise_semantics() {
+        for (angles, correction, dimensions) in [
+            (vec![-90, 270, -450, 630], "transpose=clock", (960, 1280)),
+            (vec![90, -270, 450], "transpose=cclock", (960, 1280)),
+            (
+                vec![-180, 180, 540, -540],
+                "transpose=2,transpose=2",
+                (1280, 960),
+            ),
+        ] {
+            for angle in angles {
+                let meta = make_metadata(1920, 1440, 30.0, 714, 23.796667, Some(angle));
+                let plan = plan_extraction(&meta, &fast_preset());
+                assert_eq!(
+                    plan.rotation_correction.as_deref(),
+                    Some(correction),
+                    "{angle}"
+                );
+                assert_eq!(
+                    (plan.output_width, plan.output_height),
+                    dimensions,
+                    "{angle}"
+                );
+                assert!(plan
+                    .filter_graph
+                    .starts_with(&format!("{correction},fps=2,")));
+                assert!(plan.will_scale);
+            }
+        }
+    }
+
+    #[test]
+    fn complete_display_turns_preserve_orientation() {
+        for angle in [0, 360, -360, 720, -720] {
+            let meta = make_metadata(1920, 1440, 30.0, 714, 23.796667, Some(angle));
+            let plan = plan_extraction(&meta, &balanced_preset());
+            assert_eq!(plan.rotation_correction, None, "{angle}");
+            assert_eq!((plan.output_width, plan.output_height), (1920, 1440));
+            assert_eq!(plan.filter_graph, "fps=3");
+        }
     }
 
     // ─── Filter graph ──────────────────────────────────────────────────
@@ -395,7 +447,7 @@ mod tests {
     fn test_filter_graph_with_rotation_plus_scale() {
         let meta = make_metadata(3840, 2160, 3.0, 0, 60.0, Some(90));
         let plan = plan_extraction(&meta, &balanced_preset());
-        assert!(plan.filter_graph.contains("transpose=1"));
+        assert!(plan.filter_graph.contains("transpose=cclock"));
         assert!(plan.filter_graph.contains("scale"));
         assert_eq!((plan.output_width, plan.output_height), (1080, 1920));
         assert!(plan

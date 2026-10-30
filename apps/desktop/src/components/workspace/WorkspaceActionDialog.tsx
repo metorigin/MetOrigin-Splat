@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { localizeMessage, t } from "../../i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -15,9 +16,9 @@ import { ModalSurface } from "../primitives";
 function formatBytes(value: number | null): string | null {
   if (value == null) return null;
   if (value < 1024) return `${value} B`;
-  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`;
-  if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`;
-  return `${(value / 1024 ** 3).toFixed(1)} GB`;
+  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KiB`;
+  if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MiB`;
+  return `${(value / 1024 ** 3).toFixed(1)} GiB`;
 }
 
 export function WorkspaceActionDialog({
@@ -112,6 +113,7 @@ export function WorkspaceActionDialog({
       id="workspace-action-dialog"
       title={t("确认操作影响")}
       role="alertdialog"
+      className="w-[min(720px,calc(100vw-2rem))]"
       busy={busy}
       onClose={onClose}
       initialFocusRef={cancelRef}
@@ -126,13 +128,13 @@ export function WorkspaceActionDialog({
       {error ? (
         <>
           <ErrorNotice error={error} blocking />
-          <button
+          <Button variant="outline"
             type="button"
-            className="button button-secondary"
+
             disabled={loading || busy}
             onClick={() => void loadPreview("retry")}
           >
-            {t("重新读取影响说明")}</button>
+            {t("重新读取影响说明")}</Button>
         </>
       ) : null}
       {preview ? (
@@ -152,14 +154,14 @@ export function WorkspaceActionDialog({
         </div>
       ) : null}
       {receipt ? <ActionReceipt receipt={receipt} /> : null}
-      <div className="dialog-actions">
-        <button ref={cancelRef} type="button" className="button button-secondary" disabled={busy} onClick={onClose}>
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="outline" ref={cancelRef} type="button" disabled={busy} onClick={onClose}>
           {receipt ? t("关闭") : t("取消")}
-        </button>
+        </Button>
         {!receipt && preview?.allowed ? (
-          <button type="button" className={preview.irreversible ? "button button-danger" : "button button-warning"} disabled={busy || loading || !previewUsable} onClick={confirm}>
+          <Button type="button" variant={preview.irreversible ? "destructive" : "warning"} disabled={busy || loading || !previewUsable} onClick={confirm}>
             {busy ? t("正在执行…") : t("确认并执行")}
-          </button>
+          </Button>
         ) : null}
       </div>
     </ModalSurface>

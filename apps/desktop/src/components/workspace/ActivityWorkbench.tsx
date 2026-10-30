@@ -1,3 +1,6 @@
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { localizeMessage, t, getLocale } from "../../i18n";
 import {
   ArrowDown,
@@ -9,7 +12,7 @@ import {
 } from "../primitives/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useAsyncResource, useRovingFocus } from "../../hooks";
+import { useAsyncResource } from "../../hooks";
 import { getStageLabel } from "../../localization";
 import { desktopApi } from "../../services/desktop";
 import { normalizeCommandError, redactSensitiveText } from "../../services/errors";
@@ -44,11 +47,16 @@ export function ActivityWorkbench({
 }: ActivityWorkbenchProps) {
   const [tab, setTab] = useState<ActivityTab>("log");
   const [search, setSearch] = useState("");
+  const [querySearch, setQuerySearch] = useState("");
+  useEffect(() => {
+    const timer = window.setTimeout(() => setQuerySearch(search.trim()), 180);
+    return () => window.clearTimeout(timer);
+  }, [search]);
   const [selected, setSelected] = useState<PipelineEventRecord | null>(null);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [autoFollow, setAutoFollow] = useState(true);
   const [announcement, setAnnouncement] = useState("");
-  const activity = useAsyncResource<PipelineEventRecord[]>([]);
+  const activity = useAsyncResource<PipelineEventRecord[]>();
   const eventsRef = useRef<PipelineEventRecord[]>([]);
   const queryKeyRef = useRef("");
   const requestSequence = useRef(0);
@@ -56,7 +64,9 @@ export function ActivityWorkbench({
   const previousStatus = useRef(activity.resource.status);
   const previousRefreshSignal = useRef(refreshSignal);
 
-  const queryKey = `${projectPath}|${selectedStage ?? "all"}|${tab}|${search.trim()}`;
+  const queryKey = `${projectPath}|${selectedStage ?? "all"}|${tab}|${querySearch}`;
+  const activeQuery = useRef(queryKey);
+  activeQuery.current = queryKey;
   const load = useCallback(async (mode: "replace" | "refresh" | "older") => {
     const requestId = ++requestSequence.current;
     const requestKey = `${queryKey}:${mode}:${requestId}`;
@@ -71,23 +81,27 @@ export function ActivityWorkbench({
           const page = await desktopApi.getPipelineEvents(projectPath, {
             stageId: selectedStage ?? undefined,
             severity,
-            search: search.trim() || undefined,
+            search: querySearch || undefined,
             cursor,
           });
           const filtered = tab === "event"
             ? page.items.filter((event) => event.kind !== "log")
             : page.items;
-          setNextCursor(page.next_cursor);
+          if (requestSequence.current === requestId && activeQuery.current === queryKey) {
+            setNextCursor(page.next_cursor);
+          }
           return mergeActivityEvents(base, filtered);
         },
         (error) => normalizeCommandError(error, "get_pipeline_events"),
       );
-      queryKeyRef.current = queryKey;
-      eventsRef.current = data;
+      if (requestSequence.current === requestId && activeQuery.current === queryKey) {
+        queryKeyRef.current = queryKey;
+        eventsRef.current = data;
+      }
     } catch {
       // AsyncResource retains the last good page and normalized failure.
     }
-  }, [activity, nextCursor, projectPath, queryKey, search, selectedStage, tab]);
+  }, [activity, nextCursor, projectPath, queryKey, querySearch, selectedStage, tab]);
   const loadRef = useRef(load);
   loadRef.current = load;
 
@@ -100,7 +114,7 @@ export function ActivityWorkbench({
     const timer = window.setInterval(() => {
       if (!document.hidden) void load("refresh");
     }, 3_000);
-    return () => window.clearInterval(timer);
+    return () => { window.clearInterval(timer); requestSequence.current += 1; };
     // queryKey is the intentional reset boundary; load also changes as resource state changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryKey]);
@@ -136,61 +150,43 @@ export function ActivityWorkbench({
     ["warning", t("警告 ({0})", warningCount)],
     ["error", t("错误 ({0})", errorCount)],
   ] as const;
-  const tabRoving = useRovingFocus({
-    itemCount: tabs.length,
-    orientation: "horizontal",
-    initialIndex: 0,
-    activateOnFocus: true,
-    onActivate: (index) => setTab(tabs[index][0]),
-  });
 
   return (
-    <section className="activity-panel panel" aria-label={t("Pipeline 活动")} aria-busy={["loading", "refreshing"].includes(activity.resource.status)}>
-      <div ref={tabRoving.containerRef as React.RefObject<HTMLDivElement>} className="activity-tabs" role="tablist" aria-label={t("Pipeline 活动筛选")}>
-        {tabs.map(([value, label], index) => (
-          <button
-            id={`activity-tab-${value}`}
-            key={value}
-            type="button"
-            role="tab"
-            {...tabRoving.getItemProps(index)}
-            aria-selected={tab === value}
-            aria-controls="activity-event-panel"
-            className={tab === value ? "is-active" : ""}
-            onClick={() => { setTab(value); tabRoving.setActiveIndex(index); }}
-          >
-            {label}
-          </button>
-        ))}
+    <section className="activity-panel relative flex min-h-0 flex-1 flex-col bg-card" aria-label={t("Pipeline 活动")} aria-busy={["loading", "refreshing"].includes(activity.resource.status)}>
+      <Tabs value={tab} onValueChange={(value) => setTab(value as ActivityTab)} className="flex min-h-0 flex-1 flex-col">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+        <TabsList aria-label={t("Pipeline 活动筛选")}>
+          {tabs.map(([value, label]) => <TabsTrigger key={value} value={value}>{label}</TabsTrigger>)}
+        </TabsList>
         <label className="activity-search">
           <MagnifyingGlass size={14} />
-          <input aria-label={t("搜索活动记录")} value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("搜索日志")} />
+          <Input aria-label={t("搜索活动记录")} value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("搜索日志")} />
         </label>
       </div>
-      <AsyncStatus resource={activity.resource} label={t("活动记录")} empty={events.length === 0} />
+      <AsyncStatus resource={activity.resource} label={t("活动记录")} empty={events.length === 0} onRetry={() => void load("refresh")} />
       {activity.resource.error && activity.resource.data !== null ? (
         <div className="activity-load-warning" role="status">
           <Warning size={15} weight="fill" />
-          {t("活动记录更新失败，正在显示最后一次成功获取的数据。")}<button type="button" onClick={() => void load("refresh")}>{t("重试刷新")}</button>
+          {t("活动记录更新失败，正在显示最后一次成功获取的数据。")}
         </div>
       ) : null}
-      <div id="activity-event-panel" className="activity-workbench-body" role="tabpanel" aria-labelledby={`activity-tab-${tab}`}>
+      <TabsContent value={tab} className="activity-workbench-body m-0 min-h-0 flex-1">
         <div className="activity-content" ref={listRef} onScroll={(event) => {
           const target = event.currentTarget;
           setAutoFollow(target.scrollHeight - target.scrollTop - target.clientHeight < 32);
         }}>
           <div className="activity-table-header"><span>{t("时间")}</span><span>{t("级别")}</span><span>{t("阶段")}</span><span>{t("消息")}</span></div>
-          {events.length === 0 ? (
+          {events.length === 0 ? activity.resource.status === "error" ? null : (
             <div className="activity-empty-row">
               <CheckCircle size={17} weight="fill" />
-              <span>{activity.resource.status === "loading" ? t("正在加载活动日志…") : t("暂无符合条件的真实事件")}</span>
-              <span>{activity.resource.status === "loading" ? t("请稍候") : t("Pipeline 运行后将在此持续记录")}</span>
+              <span>{["idle", "loading"].includes(activity.resource.status) ? t("正在加载活动日志…") : t("暂无符合条件的真实事件")}</span>
+              <span>{["idle", "loading"].includes(activity.resource.status) ? t("请稍候") : t("Pipeline 运行后将在此持续记录")}</span>
             </div>
           ) : events.map((event) => (
-            <button
+            <Button variant="ghost"
               type="button"
               aria-pressed={selected?.event_id === event.event_id}
-              className={`activity-event-row severity-${event.severity} ${selected?.event_id === event.event_id ? "is-selected" : ""}`}
+              className={`activity-event-row grid h-auto w-full justify-start rounded-none px-3 py-2 text-left text-xs severity-${event.severity} ${selected?.event_id === event.event_id ? "is-selected" : ""}`}
               key={event.event_id || `${event.project_id}:${event.sequence}`}
               onClick={() => {
                 setSelected(event);
@@ -201,11 +197,11 @@ export function ActivityWorkbench({
               <span>{event.severity === "error" ? <XCircle size={14} weight="fill" /> : event.severity === "warning" ? <Warning size={14} weight="fill" /> : <CheckCircle size={14} weight="fill" />}{event.severity.toUpperCase()}</span>
               <span>{event.stage_id ? getStageLabel(event.stage_id) : "Pipeline"}</span>
               <span>{localizeMessage(redactSensitiveText(event.user_message))}</span>
-            </button>
+            </Button>
           ))}
           {nextCursor != null ? (
-            <button className="button button-secondary activity-load-more" type="button" onClick={() => void load("older")}>
-              <ArrowUp size={14} /> {t("加载更早记录")}</button>
+            <Button variant="outline" className="activity-load-more m-3" type="button" onClick={() => void load("older")}>
+              <ArrowUp size={14} /> {t("加载更早记录")}</Button>
           ) : null}
         </div>
         <aside className="event-detail" aria-label={t("事件详情")}>
@@ -220,8 +216,9 @@ export function ActivityWorkbench({
             ) : null}
           </> : <><strong>{t("事件详情")}</strong><p>{t("选择一条日志查看完整上下文。")}</p></>}
         </aside>
-      </div>
-      {!autoFollow && <button className="back-to-latest" type="button" onClick={() => setAutoFollow(true)}><ArrowDown size={14} />{t("回到最新")}</button>}
+      </TabsContent>
+      </Tabs>
+      {!autoFollow && <Button variant="secondary" className="back-to-latest absolute bottom-3 left-1/2 -translate-x-1/2 border border-border bg-popover shadow-sm" type="button" onClick={() => setAutoFollow(true)}><ArrowDown size={14} />{t("回到最新")}</Button>}
       <StatusAnnouncer message={announcement} />
     </section>
   );

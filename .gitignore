@@ -50,5 +50,10 @@ Thumbs.db
 # Logs
 *.log
 logs/
+# Reviewed WebP source/build evidence is part of the packaged provenance inputs.
+!integrations/supersplat/webp-overlay/evidence/logs/
+!integrations/supersplat/webp-overlay/evidence/logs/*.log
+!integrations/supersplat/webp-overlay-3.10.2/evidence/logs/
+!integrations/supersplat/webp-overlay-3.10.2/evidence/logs/*.log
 coverage/
 .test-results/

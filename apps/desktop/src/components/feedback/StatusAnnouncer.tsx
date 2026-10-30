@@ -21,7 +21,7 @@ export function StatusAnnouncer({
 
   return (
     <div
-      className="visually-hidden"
+      className="sr-only"
       role={assertive ? "alert" : "status"}
       aria-live={assertive ? "assertive" : "polite"}
       aria-atomic="true"

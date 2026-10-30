@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::hardware::EngineInfo;
-use splat_process::{background_command, CommandSpec};
+use splat_process::{background_command, probe_output_sync, CommandSpec};
 
 use crate::plan::{plan_extraction, ExtractionPlan, FrameExtractionPreset};
 use crate::probe::probe_video_with;
@@ -97,11 +97,14 @@ impl FfmpegAdapter {
         }
     }
 
+    /// Read the actual companion version for a frozen execution profile.
+    pub fn ffprobe_version(&self) -> AppResult<String> {
+        Self::get_program_version(&self.ffprobe_path, "ffprobe")
+    }
+
     /// Validate that FFmpeg is functional by running a simple check.
     pub fn validate(&self) -> AppResult<()> {
-        let output = background_command(&self.ffmpeg_path)
-            .arg("-version")
-            .output()
+        let output = probe_output_sync(background_command(&self.ffmpeg_path).arg("-version"))
             .map_err(|e| {
                 AppError::new(
                     "E-2101",
@@ -125,22 +128,22 @@ impl FfmpegAdapter {
             ));
         }
 
-        let probe_output = background_command(&self.ffprobe_path)
-            .arg("-version")
-            .output()
-            .map_err(|e| {
-                AppError::new(
-                    "E-2103",
-                    ErrorCategory::Engine,
-                    "FFprobe Validation Failed",
-                    format!(
-                        "Could not run FFprobe at '{}': {}",
-                        self.ffprobe_path.display(),
-                        e
-                    ),
-                )
-                .retryable(true)
-            })?;
+        let probe_output = probe_output_sync(
+            background_command(&self.ffprobe_path).arg("-version"),
+        )
+        .map_err(|e| {
+            AppError::new(
+                "E-2103",
+                ErrorCategory::Engine,
+                "FFprobe Validation Failed",
+                format!(
+                    "Could not run FFprobe at '{}': {}",
+                    self.ffprobe_path.display(),
+                    e
+                ),
+            )
+            .retryable(true)
+        })?;
 
         if !probe_output.status.success() {
             return Err(AppError::new(
@@ -272,28 +275,25 @@ impl FfmpegAdapter {
         // release while preserving normal command behavior on other systems.
         // the OS will search PATH. If it can't be found, we provide
         // a helpful error.
-        let output = background_command(name)
-            .arg("-version")
-            .output()
-            .map_err(|_| {
-                AppError::new(
-                    "E-2101",
-                    ErrorCategory::Engine,
-                    format!("{} Not Found", name),
-                    format!(
-                        "{} is not installed or not available in your system PATH.",
-                        name
-                    ),
-                )
-                .with_suggestions(vec![
-                    &format!("Install {} from https://ffmpeg.org/download.html", name),
-                    &format!(
-                        "Make sure {} is in your system PATH after installation",
-                        name
-                    ),
-                    "Restart the application after installing FFmpeg",
-                ])
-            })?;
+        let output = probe_output_sync(background_command(name).arg("-version")).map_err(|_| {
+            AppError::new(
+                "E-2101",
+                ErrorCategory::Engine,
+                format!("{} Not Found", name),
+                format!(
+                    "{} is not installed or not available in your system PATH.",
+                    name
+                ),
+            )
+            .with_suggestions(vec![
+                &format!("Install {} from https://ffmpeg.org/download.html", name),
+                &format!(
+                    "Make sure {} is in your system PATH after installation",
+                    name
+                ),
+                "Restart the application after installing FFmpeg",
+            ])
+        })?;
 
         if !output.status.success() {
             return Err(AppError::new(
@@ -308,9 +308,7 @@ impl FfmpegAdapter {
         // (although finding via PATH is enough — we use the name below)
         #[cfg(target_os = "windows")]
         {
-            let where_output = background_command("where")
-                .arg(name)
-                .output()
+            let where_output = probe_output_sync(background_command("where").arg(name))
                 .ok()
                 .and_then(|o| {
                     if o.status.success() {
@@ -333,35 +331,72 @@ impl FfmpegAdapter {
 
     /// Get the FFmpeg version string from `ffmpeg -version`.
     fn get_ffmpeg_version(path: &Path) -> AppResult<String> {
-        let output = background_command(path)
-            .arg("-version")
-            .output()
-            .map_err(|e| {
-                AppError::new(
-                    "E-2101",
-                    ErrorCategory::Engine,
-                    "FFmpeg Detection Failed",
-                    format!("Could not run ffmpeg: {}", e),
-                )
-            })?;
+        Self::get_program_version(path, "ffmpeg")
+    }
 
+    fn get_program_version(path: &Path, program: &str) -> AppResult<String> {
+        let output = probe_output_sync(background_command(path).arg("-version")).map_err(|e| {
+            AppError::new(
+                "E-2101",
+                ErrorCategory::Engine,
+                "FFmpeg Detection Failed",
+                format!("Could not run ffmpeg: {}", e),
+            )
+        })?;
+
+        if !output.status.success() {
+            return Err(AppError::new(
+                "E-2102",
+                ErrorCategory::Engine,
+                "FFmpeg Version Check Failed",
+                "The executable returned an error during version detection.",
+            ));
+        }
         let stdout = String::from_utf8_lossy(&output.stdout);
         // Parse first line: "ffmpeg version 7.0.2 Copyright ..."
         let first_line = stdout.lines().next().unwrap_or("");
         // Extract version after "ffmpeg version " and before the next space
         let version = first_line
-            .strip_prefix("ffmpeg version ")
-            .or_else(|| first_line.strip_prefix("ffmpeg version "))
+            .strip_prefix(&format!("{program} version "))
             .and_then(|rest| rest.split_whitespace().next())
             .unwrap_or("unknown");
 
-        Ok(version.to_string())
+        // Official release-tag builds use n8.1.2, while archive builds use 8.1.2.
+        Ok(version
+            .strip_prefix('n')
+            .filter(|value| value.starts_with(|character: char| character.is_ascii_digit()))
+            .unwrap_or(version)
+            .to_string())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn release_tag_version_is_normalized_and_failure_is_not_accepted() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let binary = root.path().join("ffprobe");
+        std::fs::write(
+            &binary,
+            "#!/bin/sh\nprintf 'ffprobe version n8.1.2 Copyright\\n'\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(
+            FfmpegAdapter::get_program_version(&binary, "ffprobe").unwrap(),
+            "8.1.2"
+        );
+        std::fs::write(
+            &binary,
+            "#!/bin/sh\nprintf 'ffprobe version n8.1.2 Copyright\\n'\nexit 1\n",
+        )
+        .unwrap();
+        assert!(FfmpegAdapter::get_program_version(&binary, "ffprobe").is_err());
+    }
 
     // ─── Version parsing ────────────────────────────────────────────────
 

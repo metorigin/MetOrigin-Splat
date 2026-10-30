@@ -1,0 +1,115 @@
+{
+  "schema": 1,
+  "kind": "derived-overlay-candidate-v2",
+  "base": {
+    "name": "@playcanvas/splat-transform",
+    "version": "3.4.2",
+    "commit": "0cb47cd81023cca117c20ce59a55ba584ee89177",
+    "package_json_sha256": "b9d3e4010066c175d09435a0935e30a3f62d6fc9136697c8ada5933c09a95e55"
+  },
+  "source_lock_sha256": "063947843402dfd1ec922d1f89af793dc9f26faef1391e603dd108bd8fc5e229",
+  "files": [
+    {
+      "path": "dist/cli.mjs",
+      "base_sha256": "ea20640a6b3fe3a256ebf25e14d87bb4793f85e01dadd99eddbfbd3c57230e12",
+      "base_size_bytes": 5405181,
+      "sha256": "63d1a657de5aae97fe57144a0eff5daf1464fc3d16e657d358cad301446af11a",
+      "size_bytes": 5406076,
+      "payload": "payload/dist__cli.mjs.gz",
+      "compressed_sha256": "11039cf05646c8ebbc235b91317242611292bcb27374f938b48a40c5e7b7d609",
+      "compressed_size_bytes": 1186857
+    },
+    {
+      "path": "dist/cli.mjs.map",
+      "base_sha256": "8447c1cb4f846def09bbeb5680b4570fb7997cf957c34518c1547a57cffa6da9",
+      "base_size_bytes": 7901746,
+      "sha256": "3b494ad22d6b092038f5fedcb9f2aeef2ed8978fd0c0bf29911588e4aad20572",
+      "size_bytes": 7902886,
+      "payload": "payload/dist__cli.mjs.map.gz",
+      "compressed_sha256": "5f465f75a577035ed88a3a6a04d1ca9f5cfce52367c8ade183a92b4f657f2b3c",
+      "compressed_size_bytes": 1520919
+    },
+    {
+      "path": "dist/index.cjs",
+      "base_sha256": "0cd8ae69fc13ae8c43cae1de4493773fb75862c0ecd0aa5c558a94feef29fa60",
+      "base_size_bytes": 4924297,
+      "sha256": "08ac5264eabfea40b28d0a5d7ab522fccf070fa523982fc97eed456ca63abaa2",
+      "size_bytes": 4925192,
+      "payload": "payload/dist__index.cjs.gz",
+      "compressed_sha256": "d74d10983f8d4645fa9380bdb7c48cf62ac48b1824842e2ba20f7c5078fc8ffe",
+      "compressed_size_bytes": 1083234
+    },
+    {
+      "path": "dist/index.cjs.map",
+      "base_sha256": "fe2d88eae42c7cc70b6f2c9f04b93c0219a339093747839fee9b0fe041879799",
+      "base_size_bytes": 6750205,
+      "sha256": "2f968893bad69fa39d36e42678dd240b12e5b010d4a3d0c7dc9accd03ff76ea7",
+      "size_bytes": 6751345,
+      "payload": "payload/dist__index.cjs.map.gz",
+      "compressed_sha256": "8251be4d58d382629e3a673dcaa4d9444fce681f33758213f9be0156a7856a1e",
+      "compressed_size_bytes": 1337652
+    },
+    {
+      "path": "dist/index.mjs",
+      "base_sha256": "569e7d7e1edcb006d88ca7274ac18589d96d08b3af8c492326a63f9585ce82bc",
+      "base_size_bytes": 4914990,
+      "sha256": "ad48a3b211ecf6f8d5e386eac1ea6926db3fa9f091e182ec453262722adebc93",
+      "size_bytes": 4915885,
+      "payload": "payload/dist__index.mjs.gz",
+      "compressed_sha256": "b3d830485550e0d42ae520afef99373fac9d87bbd5b85fb76db1ed16feb54e43",
+      "compressed_size_bytes": 1082551
+    },
+    {
+      "path": "dist/index.mjs.map",
+      "base_sha256": "09095309b6dfd91c152741ae1c1b58ebc95a5c2999fc617e0d44677e1b099044",
+      "base_size_bytes": 6749047,
+      "sha256": "9c2b18b3b9275868007c30954a44510049437d1bd46344e8b755192401910c3c",
+      "size_bytes": 6750187,
+      "payload": "payload/dist__index.mjs.map.gz",
+      "compressed_sha256": "552b608c583a967398ddcb0aef38ead69d23f78add1de898ebf21a86effd9dbb",
+      "compressed_size_bytes": 1337068
+    },
+    {
+      "path": "dist/worker.mjs",
+      "base_sha256": "c552a34b1a6e97d19e921de0bd375ab54f11899da81bbe87468b00a57b0ba6ea",
+      "base_size_bytes": 63900,
+      "sha256": "98f38d9b4e73255bae4a72bebf397546a19f6159ab1faae5c3f8b42c0efa09b9",
+      "size_bytes": 64795,
+      "payload": "payload/dist__worker.mjs.gz",
+      "compressed_sha256": "c751f9b33ac1f5ed7fa7027df8e4c27f723ee23e0f9d6f878fe3aac6622ec1ea",
+      "compressed_size_bytes": 18962
+    },
+    {
+      "path": "dist/worker.mjs.map",
+      "base_sha256": "62f3eefa50c8d46548db3e58962f5a2168d279f1b07f97d79ac2f38766b5c6de",
+      "base_size_bytes": 143480,
+      "sha256": "04ed53a168c76d7d7e83db0e0d4d64067f3d5a5707e416bcea1bbac982243363",
+      "size_bytes": 144620,
+      "payload": "payload/dist__worker.mjs.map.gz",
+      "compressed_sha256": "778091754560fd7e795ee0712124ab1806246aeb8168112a3a2aab7eea5cc3b1",
+      "compressed_size_bytes": 31970
+    },
+    {
+      "path": "lib/webp.mjs",
+      "base_sha256": "96bdc7e19889af61457bdb386c729a30bd29a8961a0187918b07a4b1f0a82dca",
+      "base_size_bytes": 11893,
+      "sha256": "4fb1318061392a7f0c3668add77dc13677d40ff93bc84ad2b8493be7965e20cf",
+      "size_bytes": 11523,
+      "payload": "payload/lib__webp.mjs.gz",
+      "compressed_sha256": "48958a622ce9c879bb4f9bf27c6d3e31264551cd994334e30f5a8f78e26bb3b2",
+      "compressed_size_bytes": 3842
+    },
+    {
+      "path": "lib/webp.wasm",
+      "base_sha256": "e2c337e1afacf5c9e35f21916b5615fc6c5623074c6e110c07791bd0af071501",
+      "base_size_bytes": 352406,
+      "sha256": "72cd94e42bce159f10ce49bb41a17f725b8a0d165f496548a5775fec267a519c",
+      "size_bytes": 346456,
+      "payload": "payload/lib__webp.wasm.gz",
+      "compressed_sha256": "666f240e6867ffac121d8e0426157aec570401c398f907d09d2c56cd20e57a08",
+      "compressed_size_bytes": 139525
+    }
+  ],
+  "total_payload_bytes": 7742580,
+  "total_decoded_bytes": 37218965
+}
