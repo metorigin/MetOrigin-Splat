@@ -88,16 +88,81 @@ impl Drop for KernelLock {
     }
 }
 
-/// Holds a kernel lock until metadata cleanup succeeds or this guard is dropped.
+/// Holds project ownership until metadata cleanup succeeds or this guard drops.
 /// The stable `.lock.guard` file survives release; `.lock` is owner metadata.
 #[must_use = "Lock guard will be dropped immediately; hold it for the duration of the pipeline"]
 pub struct LockGuard {
     lock_path: PathBuf,
     owner_json: Vec<u8>,
     kernel_lock: Option<KernelLock>,
+    metadata_retained: bool,
 }
 
 impl LockGuard {
+    /// Move an owned project without losing admission ownership. Windows cannot
+    /// rename a directory with an open child handle, so retain the live `.lock`
+    /// owner while closing the kernel handle. Both acquisition and force-unlock
+    /// reject that live owner even while the kernel handle is closed.
+    pub fn rename_project_directory(&mut self, destination: &Path) -> std::io::Result<()> {
+        if self.kernel_lock.is_none() && !self.metadata_retained {
+            return Err(std::io::Error::other("Project lock has been released"));
+        }
+        self.verify_owner_metadata()?;
+        let source = self
+            .lock_path
+            .parent()
+            .ok_or_else(|| std::io::Error::other("Project lock has no parent directory"))?;
+        validate_project_directory(source)?;
+        #[cfg(windows)]
+        {
+            self.metadata_retained = true;
+            if let Some(mut kernel_lock) = self.kernel_lock.take() {
+                kernel_lock.unlock()?;
+            }
+        }
+        std::fs::rename(source, destination)?;
+        // Cleanup must follow the moved directory, including rollback, and may
+        // never remove metadata from a replacement at the original path.
+        self.lock_path = destination.join(LOCK_FILE);
+        Ok(())
+    }
+
+    /// Restore a quarantined directory after recursive deletion failed. That
+    /// deletion may already have removed our lock files, so acquire fresh
+    /// ownership before moving residual files if the owner marker is gone.
+    pub fn restore_project_directory(&mut self, destination: &Path) -> std::io::Result<()> {
+        if self.kernel_lock.is_none() && !self.metadata_retained {
+            return Err(std::io::Error::other("Project lock has been released"));
+        }
+        match self.verify_owner_metadata() {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let directory = self.lock_path.parent().unwrap().to_owned();
+                validate_project_directory(&directory)?;
+                if let Some(mut kernel_lock) = self.kernel_lock.take() {
+                    kernel_lock.unlock()?;
+                }
+                let replacement = ProjectLock::try_lock(&directory, "project_delete")
+                    .map_err(std::io::Error::other)?;
+                // Releasing the previous guard must not clean a fresh marker.
+                self.metadata_retained = false;
+                *self = replacement;
+            }
+            Err(error) => return Err(error),
+        }
+        self.rename_project_directory(destination)
+    }
+
+    fn verify_owner_metadata(&self) -> std::io::Result<()> {
+        regular_metadata(&self.lock_path)?;
+        if std::fs::read(&self.lock_path)? != self.owner_json {
+            return Err(std::io::Error::other(
+                "Lock metadata changed; refusing to remove another owner's file",
+            ));
+        }
+        Ok(())
+    }
+
     /// Verify that a borrowed guard still owns this project's kernel lock.
     /// This lets nested recovery reuse ownership without acquiring a second lock.
     pub fn covers_project(&self, project_dir: &Path) -> bool {
@@ -133,16 +198,35 @@ impl LockGuard {
     }
 
     pub fn try_release(&mut self) -> std::io::Result<()> {
+        if self.metadata_retained {
+            match self.verify_owner_metadata() {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    self.metadata_retained = false;
+                    return Ok(());
+                }
+                Err(error) => return Err(error),
+            }
+            let directory = self.lock_path.parent().unwrap();
+            self.kernel_lock = Some(
+                KernelLock::try_acquire(open_kernel_lock(directory)?).map_err(
+                    |error| match error {
+                        TryLockError::WouldBlock => std::io::Error::new(
+                            std::io::ErrorKind::WouldBlock,
+                            "Project has an active operation",
+                        ),
+                        TryLockError::Error(error) => error,
+                    },
+                )?,
+            );
+            self.metadata_retained = false;
+        }
         if self.kernel_lock.is_none() {
             return Ok(());
         }
         match regular_metadata(&self.lock_path) {
             Ok(_) => {
-                if std::fs::read(&self.lock_path)? != self.owner_json {
-                    return Err(std::io::Error::other(
-                        "Lock metadata changed; refusing to remove another owner's file",
-                    ));
-                }
+                self.verify_owner_metadata()?;
                 std::fs::remove_file(&self.lock_path)?;
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -163,6 +247,15 @@ impl Drop for LockGuard {
     fn drop(&mut self) {
         let _ = self.try_release();
     }
+}
+
+fn validate_project_directory(path: &Path) -> std::io::Result<()> {
+    if !std::fs::symlink_metadata(path)?.file_type().is_dir() {
+        return Err(std::io::Error::other(
+            "Project must be a directory, never a symbolic link",
+        ));
+    }
+    Ok(())
 }
 
 fn regular_metadata(path: &Path) -> std::io::Result<std::fs::Metadata> {
@@ -255,6 +348,7 @@ impl ProjectLock {
                         lock_path,
                         owner_json,
                         kernel_lock: Some(kernel_lock),
+                        metadata_retained: false,
                     });
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -437,6 +531,103 @@ mod tests {
         }
         // Guard dropped → lock released
         assert!(!dir.join(".lock").exists());
+    }
+
+    #[test]
+    fn renamed_project_retains_ownership_and_cleanup_follows_its_new_path() {
+        let root = tempfile::tempdir().unwrap();
+        let original = root.path().join("project");
+        let renamed = root.path().join("quarantined");
+        std::fs::create_dir(&original).unwrap();
+        let mut guard = ProjectLock::try_lock(&original, "project_delete").unwrap();
+        guard.rename_project_directory(&renamed).unwrap();
+        assert!(!original.exists());
+        assert!(matches!(
+            ProjectLock::try_lock(&renamed, "contender"),
+            Err(LockError::AlreadyLocked(_))
+        ));
+        assert_eq!(
+            ProjectLock::force_unlock(&renamed).unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+
+        std::fs::create_dir(&original).unwrap();
+        let replacement = ProjectLock::try_lock(&original, "new_project").unwrap();
+        let replacement_owner = std::fs::read(original.join(LOCK_FILE)).unwrap();
+        guard.try_release().unwrap();
+        assert!(!renamed.join(LOCK_FILE).exists());
+        assert_eq!(
+            std::fs::read(original.join(LOCK_FILE)).unwrap(),
+            replacement_owner
+        );
+        assert!(ProjectLock::try_lock(&original, "contender").is_err());
+        ProjectLock::try_lock(&renamed, "retry").unwrap().release();
+        drop(replacement);
+    }
+
+    #[test]
+    fn failed_directory_rename_and_rollback_keep_the_guard_releasable() {
+        let root = tempfile::tempdir().unwrap();
+        let original = root.path().join("project");
+        let renamed = root.path().join("quarantined");
+        let occupied = root.path().join("occupied");
+        std::fs::create_dir(&original).unwrap();
+        std::fs::write(&occupied, b"keep").unwrap();
+        let mut guard = ProjectLock::try_lock(&original, "project_delete").unwrap();
+        assert!(guard.rename_project_directory(&occupied).is_err());
+        assert!(ProjectLock::try_lock(&original, "contender").is_err());
+        assert_eq!(std::fs::read(&occupied).unwrap(), b"keep");
+        guard.rename_project_directory(&renamed).unwrap();
+        guard.rename_project_directory(&original).unwrap();
+        assert!(!renamed.exists());
+        assert!(ProjectLock::try_lock(&original, "contender").is_err());
+        guard.try_release().unwrap();
+        assert!(!original.join(LOCK_FILE).exists());
+        ProjectLock::try_lock(&original, "retry").unwrap().release();
+        assert!(guard.rename_project_directory(&renamed).is_err());
+    }
+
+    #[test]
+    fn partial_deletion_can_restore_residual_files_after_lock_files_are_removed() {
+        let root = tempfile::tempdir().unwrap();
+        let original = root.path().join("project");
+        let renamed = root.path().join("quarantined");
+        std::fs::create_dir(&original).unwrap();
+        std::fs::write(original.join("residual.bin"), b"keep").unwrap();
+        let mut guard = ProjectLock::try_lock(&original, "project_delete").unwrap();
+        guard.rename_project_directory(&renamed).unwrap();
+        std::fs::remove_file(renamed.join(LOCK_FILE)).unwrap();
+        std::fs::remove_file(renamed.join(KERNEL_LOCK_FILE)).unwrap();
+        guard.restore_project_directory(&original).unwrap();
+        assert_eq!(
+            std::fs::read(original.join("residual.bin")).unwrap(),
+            b"keep"
+        );
+        assert!(ProjectLock::try_lock(&original, "contender").is_err());
+        guard.try_release().unwrap();
+        ProjectLock::try_lock(&original, "retry").unwrap().release();
+    }
+
+    #[test]
+    fn rollback_never_moves_a_directory_adopted_by_another_owner() {
+        let root = tempfile::tempdir().unwrap();
+        let original = root.path().join("project");
+        let renamed = root.path().join("quarantined");
+        std::fs::create_dir(&original).unwrap();
+        let mut guard = ProjectLock::try_lock(&original, "project_delete").unwrap();
+        guard.rename_project_directory(&renamed).unwrap();
+        std::fs::remove_file(renamed.join(LOCK_FILE)).unwrap();
+        std::fs::remove_file(renamed.join(KERNEL_LOCK_FILE)).unwrap();
+        let replacement = ProjectLock::try_lock(&renamed, "new_owner").unwrap();
+        let replacement_owner = std::fs::read(renamed.join(LOCK_FILE)).unwrap();
+        assert!(guard.restore_project_directory(&original).is_err());
+        drop(guard);
+        assert!(!original.exists());
+        assert_eq!(
+            std::fs::read(renamed.join(LOCK_FILE)).unwrap(),
+            replacement_owner
+        );
+        drop(replacement);
     }
 
     #[test]
@@ -809,6 +1000,7 @@ mod tests {
             lock_path: PathBuf::from("/tmp/test.lock"),
             owner_json: Vec::new(),
             kernel_lock: None,
+            metadata_retained: false,
         };
     }
 }

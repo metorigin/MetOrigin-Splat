@@ -1135,7 +1135,7 @@ fn delete_project_at_index(
         return Err(stale());
     }
     let before_lock = target.fingerprint.clone();
-    let _project_lock = if !target.record_only() {
+    let mut project_lock = if !target.record_only() {
         Some(
             splat_pipeline::ProjectLock::try_lock(&target.project_dir, "project_delete").map_err(
                 |_| {
@@ -1183,15 +1183,17 @@ fn delete_project_at_index(
         if tombstone.exists() {
             return Err("项目删除临时目录已存在，请先检查磁盘状态。".into());
         }
-        std::fs::rename(project_dir, &tombstone)
+        let project_lock = project_lock.as_mut().unwrap();
+        project_lock
+            .rename_project_directory(&tombstone)
             .map_err(|_| "无法锁定项目目录进行删除，请关闭占用该目录的程序后重试。".to_string())?;
         if let Err(error) = install_recent_project_index(index_path, &projects) {
-            let _ = std::fs::rename(&tombstone, project_dir);
+            let _ = project_lock.rename_project_directory(project_dir);
             return Err(error);
         }
         if let Err(error) = std::fs::remove_dir_all(&tombstone) {
             let _ = install_recent_project_index(index_path, &original_projects);
-            let _ = std::fs::rename(&tombstone, project_dir);
+            let _ = project_lock.restore_project_directory(project_dir);
             return Err(format!("删除项目文件失败，已尝试恢复原目录：{error}"));
         }
     }
@@ -2490,6 +2492,43 @@ mod tests {
         );
         assert!(!directory.exists());
         assert!(read_recent_project_index_path(&index).unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn failed_index_install_restores_the_locked_project_and_allows_deletion_retry() {
+        let root = temporary_test_root("delete-physical-rollback");
+        let manager = ProjectManager::new(root.clone());
+        let (project, directory) = manager.create_project("有效项目").unwrap();
+        let index = root.join("recent-projects.json");
+        let info = recent_info(&project.id.to_string(), &directory);
+        install_recent_project_index(&index, std::slice::from_ref(&info)).unwrap();
+        let request = DeleteProjectRequest {
+            project_id: project.id.to_string(),
+            project_path: directory.to_string_lossy().into(),
+        };
+        let state = AppState::new();
+        state.0.lock().unwrap().recent_projects = vec![info.clone()];
+        let temporary = index_temporary_path(&index);
+        std::fs::create_dir(&temporary).unwrap();
+        assert!(delete_project_at_index(request.clone(), &index, &state, None).is_err());
+        assert!(directory.join("project.json").is_file());
+        assert!(!directory.join(".lock").exists());
+        assert_eq!(
+            read_recent_project_index_path(&index).unwrap(),
+            vec![info.clone()]
+        );
+        assert_eq!(state.0.lock().unwrap().recent_projects, vec![info]);
+        splat_pipeline::ProjectLock::try_lock(&directory, "retry")
+            .unwrap()
+            .release();
+        std::fs::remove_dir(&temporary).unwrap();
+        assert!(
+            delete_project_at_index(request, &index, &state, None)
+                .unwrap()
+                .files_deleted
+        );
+        assert!(!directory.exists());
         let _ = std::fs::remove_dir_all(root);
     }
 
