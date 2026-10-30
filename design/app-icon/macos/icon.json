@@ -1,0 +1,24 @@
+{
+  "fill": {
+    "solid": "srgb:0.12549,0.13333,0.15294,1.00000"
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "v4.png",
+          "name": "MetOrigin S artwork",
+          "glass": false,
+          "position": {
+            "scale": 1,
+            "translation-in-points": [0, 10]
+          }
+        }
+      ],
+      "shadow": {"kind": "neutral", "opacity": 0},
+      "specular": false,
+      "translucency": {"enabled": false, "value": 0}
+    }
+  ],
+  "supported-platforms": {"squares": ["macOS"]}
+}

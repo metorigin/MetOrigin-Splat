@@ -984,7 +984,10 @@ describe("ProjectDetailPage async workspace resources", () => {
       } else {
         await waitFor(() => expect(screen.queryByTestId("gaussian-preview")).not.toBeInTheDocument());
         expect(within(document.querySelector(".preview-panel")!).getByText("预览尚未生成")).toBeInTheDocument();
-        if (selection === "export") expect(document.getElementById("stage-button-Export")).toHaveAttribute("aria-pressed", "true");
+        if (selection === "export") {
+          fireEvent.click(screen.getByRole("button", { name: /结果导出/ }));
+          expect(document.getElementById("stage-button-Export")).toHaveAttribute("aria-pressed", "true");
+        }
       }
       const plyButton = screen.getByRole("button", { name: "打开 PLY" });
       expect(plyButton).toHaveTextContent("PLY 文件");

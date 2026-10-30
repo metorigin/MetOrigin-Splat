@@ -163,7 +163,7 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
         <SceneViewportHost workspace={workspace} projectId={projectId} projectPath={projectPath} />
 
         </ResizablePanel>
-        <ResizableHandle withHandle className="workspace-resize-handle mx-2 max-[1120px]:hidden" />
+        <ResizableHandle withHandle className="workspace-resize-handle ml-1 mr-2 max-[1120px]:hidden" />
         <ResizablePanel id="scene-inspector" defaultSize={28} minSize={22} maxSize={45} className="inspector-details-panel min-w-0">
         <ResponsiveInspectorSurface open={inspectorOpen} onClose={() => setInspectorOpen(false)} closeRef={inspectorCloseRef}>
         <TaskInspector workspace={workspace} metrics={metrics} />

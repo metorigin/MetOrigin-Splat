@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "app_icon_name": "AppIcon",
+  "compiler": "Xcode 27.1\nBuild version 27A9275",
+  "inputs": {
+    "design/app-icon/macos/icon.json": "3b6cc05c0cdbe029d2847c7a5d19c53937a356d86d5000e3306da37b66e26b90",
+    "design/app-icon/metorigin-splat-icon-v4.png": "09344e658af8b37ccf986187f1b82c1e6bf5929b661420263dbf3befff20d9ea"
+  },
+  "outputs": {
+    "Assets.car": "d77330e049065475eb9fb285efa62674ddb62d93ee87b02c183ed7be7fbfc818",
+    "icon.icns": "a51e6226ffacd29266005c8cbff40144b79918da70ff5c46142c2a57dc98f2f7",
+    "icon.png": "a2f7025dc341851c54b9de5bcfaef332275a8b42fd2f7e69e7151fd387aa9817",
+    "32x32.png": "d8b971b1bb5c3d7fffb0114c8dac5c2fceb132fb235c37c16dae8bf41af5f737",
+    "128x128.png": "9739334feb662007378acab9cb0747fb583d3dd3f3919fd6dff5a03cece615d2",
+    "128x128@2x.png": "a2f7025dc341851c54b9de5bcfaef332275a8b42fd2f7e69e7151fd387aa9817"
+  }
+}

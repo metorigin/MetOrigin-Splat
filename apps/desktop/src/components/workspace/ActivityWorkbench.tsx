@@ -159,8 +159,8 @@ export function ActivityWorkbench({
           {tabs.map(([value, label]) => <TabsTrigger key={value} value={value}>{label}</TabsTrigger>)}
         </TabsList>
         <label className="activity-search">
-          <MagnifyingGlass size={14} />
-          <Input aria-label={t("搜索活动记录")} value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("搜索日志")} />
+          <MagnifyingGlass size={14} aria-hidden="true" />
+          <Input className="pl-9" aria-label={t("搜索活动记录")} value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("搜索日志")} />
         </label>
       </div>
       <AsyncStatus resource={activity.resource} label={t("活动记录")} empty={events.length === 0} onRetry={() => void load("refresh")} />

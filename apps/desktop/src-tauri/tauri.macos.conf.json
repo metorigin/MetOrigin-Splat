@@ -2,6 +2,13 @@
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
   "bundle": {
     "targets": ["app", "dmg"],
+    "icon": [
+      "icons/macos/32x32.png",
+      "icons/macos/128x128.png",
+      "icons/macos/128x128@2x.png",
+      "icons/macos/icon.icns",
+      "icons/macos/Assets.car"
+    ],
     "macOS": {
       "minimumSystemVersion": "15.0"
     }

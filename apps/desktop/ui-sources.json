@@ -94,7 +94,8 @@
       "licenseUrl": "https://github.com/shadcn-ui/ui/blob/main/LICENSE.md",
       "copyright": "Copyright (c) 2023 shadcn",
       "localChanges": [
-        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility."
+        "Resolve registry imports through the application @ aliases and shared clsx + tailwind-merge cn utility.",
+        "Use size-specific checked thumb travel to preserve equal 1px edge clearance in the 34x18px default and 24x14px small switches; prevent thumb shrinkage."
       ]
     },
     {
@@ -448,7 +449,8 @@
       "retrieved": "2026-10-29",
       "localChanges": [
         "Merge Jan presentation with existing shadcn MIT source; use merged radix-ui, cn, semantic theme and React 19 refs.",
-        "Retain local button type, domain variants, focus rings, localized labels, bounded/unknown progress and active-modal portal scope as applicable; see jan-MODIFICATIONS.md."
+        "Retain local button type, domain variants, focus rings, localized labels, bounded/unknown progress and active-modal portal scope as applicable; see jan-MODIFICATIONS.md.",
+        "Use size-specific checked thumb travel to preserve equal 1px edge clearance in the 34x18px default and 24x14px small switches; prevent thumb shrinkage."
       ]
     },
     {
@@ -879,7 +881,7 @@
       "fileSha256": {
         "src/components/ui/licenses/Apache-2.0.txt": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
         "src/components/ui/licenses/jan-LICENSE": "240e79d4976dbf1d4c76e0ac1da223df97935a75497eaf8dd045771c3e92de16",
-        "src/components/ui/licenses/jan-MODIFICATIONS.md": "e00d6596b6d3960c95d9603f81b0bd036abe43849fb7a5897615988d6918468d"
+        "src/components/ui/licenses/jan-MODIFICATIONS.md": "1a6a470d63c30817e647497349116b2c3d954870f73157d49b9d779e3a55f9d4"
       }
     }
   ]

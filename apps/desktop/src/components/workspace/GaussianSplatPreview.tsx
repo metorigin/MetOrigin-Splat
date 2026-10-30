@@ -28,9 +28,10 @@ interface Props {
   relativePath: string | null;
   live: boolean;
   running: boolean;
+  showToolbar?: boolean;
 }
 
-export function GaussianSplatPreview({ projectId, projectPath, relativePath, live, running }: Props) {
+export function GaussianSplatPreview({ projectId, projectPath, relativePath, live, running, showToolbar = true }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Viewer | null>(null);
   const [ready, setReady] = useState(false);
@@ -322,18 +323,19 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
               : hasCurrentLiveFrame ? t("训练实时预览") : t("等待首帧");
 
   return <div className="point-cloud-viewer gaussian-viewer" aria-busy={loading}>
-    <div className="preview-toolbar gaussian-toolbar">
+    {showToolbar && <div className="preview-toolbar gaussian-toolbar">
       <span className="gaussian-preview-label"><Eye size={15} />{displayed ? t("{0} 高斯", displayed.vertex_count.toLocaleString(getLocale())) : t("高斯模型")}<small>{statusText}</small></span>
       {displayed?.iteration != null && <span className="gaussian-iteration">{displayed.iteration.toLocaleString(getLocale())} step</span>}
       {live && <NativeSelect aria-label={t("训练预览刷新")} value={mode} onChange={(event) => setMode(event.target.value as LivePreviewMode)}><NativeSelectOption value="live">{t("实时")}</NativeSelectOption><NativeSelectOption value="low">{t("低频")}</NativeSelectOption><NativeSelectOption value="off">{t("暂停预览")}</NativeSelectOption></NativeSelect>}
       <Button variant="ghost" size="icon-sm"  type="button" onClick={() => viewerRef.current?.fit()} aria-label={t("重置高斯视角")} title={t("重置视角")}><ArrowsOut size={16} /></Button>
       <Button variant="ghost" size="icon-sm"  type="button" onClick={() => viewerRef.current?.fit(true)} aria-label={t("查看模型整体")} title={t("查看模型整体")}><Eye size={16} /></Button>
       <Button variant="ghost" size="icon-sm" aria-pressed={gridVisible} className={gridVisible ? "bg-white/10 text-white" : "text-slate-300"} type="button" onClick={() => setGridVisible((value) => !value)} aria-label={t("切换高斯地面网格")} title={t("切换地面网格")}><GridFour size={16} /></Button>
-    </div>
+    </div>}
     <div className="gaussian-canvas-wrapper">
       <div className="point-cloud-canvas" ref={hostRef} tabIndex={0} role="application" aria-label={t("三维高斯预览。拖动旋转，滚轮缩放，右键平移，R 重置视角。")} />
       {!displayed && <div className="gaussian-empty"><SpinnerGap size={30} className={loading || (live && running) ? "spin" : ""} /><strong>{loading ? t("正在加载高斯模型") : live ? t("等待训练模型") : t("暂无可显示模型")}</strong><span>{live ? t("模型准备好后会自动显示，可在训练过程中旋转和缩放。") : t("读取完整高斯参数后显示重建场景。")}</span></div>}
       {error && <div className="gaussian-error" role="alert"><span>{localizeMessage(error)}{displayed ? t(" 已保留上一帧。") : ""}</span><Button variant="outline" type="button" onClick={() => setRetry((value) => value + 1)}><ArrowClockwise size={15} />{t("重试")}</Button></div>}
+      {!showToolbar && <span role="status" className={!error && (resourceAction !== "allow" || previousSourceShown) ? "gaussian-preview-notice" : "sr-only"}>{statusText}</span>}
       {loading && displayed && <div className="gaussian-updating"><SpinnerGap size={13} className="spin" />{t("更新模型")}</div>}
       {lastUpdated && displayed && <span className="gaussian-updated">{new Date(lastUpdated).toLocaleTimeString(getLocale())} {t("更新")}</span>}
     </div>

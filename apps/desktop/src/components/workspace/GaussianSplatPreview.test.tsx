@@ -78,6 +78,27 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Gaussian preview model lifecycle", () => {
+  it("keeps a toolbar-free workspace preview navigable and reports resource pressure", async () => {
+    harness.get.mockResolvedValue({ ...first, relative_path: "output/scene.ply" });
+    const view = render(<GaussianSplatPreview {...props} live={false} running={false} relativePath="output/scene.ply" showToolbar={false} />);
+    await waitFor(() => expect(harness.meshes).toHaveLength(1));
+    expect(view.container.querySelector(".preview-toolbar")).toBeNull();
+    expect(screen.queryByRole("button", { name: "重置高斯视角" })).not.toBeInTheDocument();
+    const canvas = screen.getByRole("application");
+    expect(canvas.querySelector("canvas")).not.toBeNull();
+    const camera = harness.cameras[0];
+    camera.position.set(8, 9, 10);
+    fireEvent.keyDown(canvas, { key: "r" });
+    expect(camera.position.toArray()).not.toEqual([8, 9, 10]);
+
+    harness.policy.mockResolvedValue({ action: "release", reason: "critical_memory_pressure", memory_pressure: "critical", poll_interval_ms: 500, max_snapshot_bytes: 0 });
+    const notice = await screen.findByText("内存不足 · 预览已释放", {}, { timeout: 2000 });
+    expect(notice).toHaveClass("gaussian-preview-notice");
+    expect(harness.meshes[0].dispose).toHaveBeenCalledOnce();
+    expect(harness.poll).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
   it("releases an allocated renderer when Spark initialization fails", async () => {
     harness.sparkConstructorError = new Error("Spark initialization failed");
     const view = render(<GaussianSplatPreview {...props} />);
