@@ -2,11 +2,13 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import signal
 import struct
+import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 
 SPEC = importlib.util.spec_from_file_location("smoke", Path(__file__).parents[1] / "smoke-engines.py")
@@ -175,6 +177,122 @@ class SmokeTests(unittest.TestCase):
         time.sleep(1.2)
         self.assertFalse(marker.exists())
         self.assertGreater(report["commands"][0]["wall_seconds"], 2)
+
+    @unittest.skipUnless(os.name == "posix", "Unix process groups")
+    def test_real_command_receives_term_instead_of_inheriting_supervisor_handler(self):
+        marker = self.root / "received-term"
+        command = [sys.executable, "-c", "import pathlib,signal,sys,time; "
+                   "assert signal.getsignal(signal.SIGTERM) == signal.SIG_DFL; "
+                   "signal.signal(signal.SIGTERM, lambda *_: (pathlib.Path(sys.argv[1]).write_text('TERM'), sys.exit(0))); "
+                   "time.sleep(60)", str(marker)]
+        report = {"commands": []}
+        with self.assertRaises(smoke.subprocess.TimeoutExpired):
+            smoke.run_command("term", command, self.root, report, timeout=0.5)
+        self.assertEqual(marker.read_text(), "TERM")
+
+    @unittest.skipUnless(os.name == "posix", "Unix process groups")
+    def test_real_nonzero_command_exit_is_preserved_in_evidence(self):
+        command = ["/bin/sh", "-c", "exit 7"]
+        report = {"commands": []}
+        with self.assertRaisesRegex(RuntimeError, "failed"):
+            smoke.run_command("exit-code", command, self.root, report)
+        saved = json.loads((self.root / "evidence.json").read_text())["commands"][0]
+        self.assertEqual(saved["exit_code"], 7)
+        self.assertEqual(saved["execution_argv"], command)
+        self.assertNotIn("cleanup_error", saved)
+
+    @unittest.skipUnless(os.name == "posix", "Unix process groups")
+    def test_command_launch_failure_is_recorded_and_supervisor_is_cleaned(self):
+        report = {"commands": []}
+        with self.assertRaisesRegex(RuntimeError, "could not start.*FileNotFoundError"):
+            smoke.run_command("missing", [str(self.root / "missing-binary")], self.root, report)
+        saved = json.loads((self.root / "evidence.json").read_text())["commands"][0]
+        self.assertIn("FileNotFoundError", saved["error"])
+        self.assertNotIn("exit_code", saved)
+        self.assertNotIn("cleanup_error", saved)
+
+    @unittest.skipUnless(os.name == "posix", "Unix process groups")
+    def test_supervisor_failure_before_ack_cannot_launch_a_command(self):
+        marker = self.root / "must-not-run"
+        report = {"commands": []}
+        with patch.object(smoke, "SUPERVISOR", "raise RuntimeError('supervisor startup failed')"):
+            with self.assertRaisesRegex(RuntimeError, "supervisor disconnected"):
+                smoke.run_command("startup", ["/usr/bin/touch", str(marker)], self.root, report)
+        saved = json.loads((self.root / "evidence.json").read_text())["commands"][0]
+        self.assertFalse(marker.exists())
+        self.assertIn("supervisor disconnected", saved["error"])
+        self.assertNotIn("cleanup_error", saved)
+
+    @unittest.skipUnless(os.name == "posix", "Unix process groups")
+    def test_supervisor_disconnect_after_ack_still_cleans_owned_descendants(self):
+        marker = self.root / "descendant-wrote"
+        disconnected = r'''
+import signal, socket, subprocess, sys, time
+channel = socket.socket(fileno=int(sys.argv[1]))
+signal.signal(signal.SIGTERM, lambda *_: None)
+channel.sendall(b'{"ready":true}\n')
+assert channel.makefile('rb').readline(16) == b'run\n'
+subprocess.Popen(sys.argv[2:]).wait()
+channel.shutdown(socket.SHUT_RDWR)
+channel.close()
+time.sleep(60)
+'''
+        report = {"commands": []}
+        with patch.object(smoke, "SUPERVISOR", disconnected):
+            with self.assertRaisesRegex(RuntimeError, "supervisor disconnected"):
+                smoke.run_command("disconnected", ["/bin/sh", "-c", '(sleep 3; touch "$1") &', "sh", str(marker)],
+                                  self.root, report, timeout=5)
+        time.sleep(1.2)
+        self.assertFalse(marker.exists())
+        saved = json.loads((self.root / "evidence.json").read_text())["commands"][0]
+        self.assertIn("supervisor disconnected", saved["error"])
+        self.assertNotIn("cleanup_error", saved)
+
+    def test_cleanup_keeps_real_permission_errors_and_never_probes_with_signal_zero(self):
+        process = Mock(pid=1234, returncode=None)
+        with patch.object(smoke.os, "killpg", side_effect=PermissionError("real permission failure")) as killpg:
+            with self.assertRaisesRegex(PermissionError, "real permission failure"):
+                smoke.stop_group(process)
+        killpg.assert_called_once_with(process.pid, signal.SIGTERM)
+        process.wait.assert_not_called()
+
+        with patch.object(smoke.os, "killpg") as killpg, patch.object(smoke.time, "sleep"):
+            smoke.stop_group(process)
+        self.assertEqual(killpg.call_args_list, [call(process.pid, signal.SIGTERM), call(process.pid, signal.SIGKILL)])
+        process.wait.assert_called_once_with()
+
+    def test_cleanup_never_signals_a_reaped_potentially_reused_group(self):
+        process = Mock(pid=1234, returncode=0)
+        with patch.object(smoke.os, "killpg") as killpg, patch.object(smoke.os, "kill") as kill:
+            with self.assertRaisesRegex(RuntimeError, "reaped process group"):
+                smoke.stop_group(process)
+        killpg.assert_not_called()
+        kill.assert_not_called()
+
+    @unittest.skipUnless(os.name == "posix", "Unix process groups")
+    def test_cleanup_failure_is_recorded_and_raised_after_command_success(self):
+        report = {"commands": []}
+        processes = []
+        original_popen = smoke.subprocess.Popen
+
+        def capture(*args, **kwargs):
+            process = original_popen(*args, **kwargs)
+            processes.append(process)
+            return process
+
+        try:
+            with patch.object(smoke.subprocess, "Popen", side_effect=capture), \
+                    patch.object(smoke, "stop_group", side_effect=PermissionError("real permission failure")):
+                with self.assertRaisesRegex(PermissionError, "real permission failure"):
+                    smoke.run_command("cleanup-failure", ["/bin/sh", "-c", "exit 0"], self.root, report)
+            saved = json.loads((self.root / "evidence.json").read_text())["commands"][0]
+            self.assertEqual(saved["exit_code"], 0)
+            self.assertIn("PermissionError", saved["cleanup_error"])
+        finally:
+            # Closing the parent socket triggers the leader's own bounded group
+            # cleanup even when the caller cannot send the cleanup signals.
+            for process in processes:
+                process.wait(timeout=5)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,12 @@
+# Keep generated local source identities consistent across developer and CI hosts.
+* text=auto eol=lf
+
+# These trees contain hash-bound upstream sources, notices, evidence and patches.
+# Preserve the reviewed bytes rather than applying checkout/clean conversion.
+/integrations/** -text
+/packaging/** -text
+/patches/** -text
+
+# Copied original notices are hash-bound by the UI source manifest as well.
+/apps/desktop/src/components/ui/LICENSE -text
+/apps/desktop/src/components/ui/licenses/** -text

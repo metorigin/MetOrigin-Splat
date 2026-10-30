@@ -34,15 +34,19 @@ const run = (command, args, cwd = root, env = process.env) => new Promise((resol
   child.once('error', reject);
   child.once('exit', (code) => code === 0 ? resolveRun() : reject(new Error(`${command} failed (${code})`)));
 });
-const git = (...args) => run('git', ['-c', 'http.sslBackend=openssl', '-c', `safe.directory=${source.replaceAll('\\', '/')}`, ...args]);
+// This separate checkout has no root attributes; preserve the fixed LF blobs
+// even when Git for Windows inherits core.autocrlf=true from its global config.
+const git = (...args) => run('git', ['-c', 'core.autocrlf=false', '-c', 'core.eol=lf', '-c', 'http.sslBackend=openssl', '-c', `safe.directory=${source.replaceAll('\\', '/')}`, ...args]);
 await mkdir(dirname(source), { recursive: true });
 if (!await exists(join(source, '.git'))) await git('clone', '--no-checkout', '--filter=blob:none', upstream.repository, source);
 // A fixed commit already available locally needs no network access to rebuild.
 await git('-C', source, 'cat-file', '-e', `${upstream.commit}^{commit}`)
   .catch(() => git('-C', source, 'fetch', '--depth', '1', 'origin', upstream.commit));
 await git('-C', source, 'checkout', '--detach', upstream.commit);
-// These files are generated in target/, never in the user's checkout.
-await git('-C', source, 'restore', '--source', upstream.commit, '--', 'src/main.ts', 'src/ui');
+// Restore every tracked blob in this generated target/ checkout: changing Git's
+// EOL policy alone does not rewrite a cached checkout of the same commit.
+// Untracked node_modules and generated files are preserved.
+await git('-C', source, 'restore', '--source', upstream.commit, '--', '.');
 await applyThemeSources(integration, source);
 await writeFile(join(source, 'src/metorigin-bridge.ts'), bridge);
 const mainPath = join(source, 'src/main.ts');

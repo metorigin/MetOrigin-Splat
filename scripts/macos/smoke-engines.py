@@ -15,6 +15,7 @@ from pathlib import Path
 import platform
 import re
 import signal
+import socket
 import struct
 import subprocess
 import sys
@@ -147,21 +148,77 @@ def verify_current_binaries(report):
             raise ValueError(name + " binary changed during the run; use a stable engine build")
 
 
-def stop_group(process):
-    # A completed direct child may still have living descendants in its session.
+SUPERVISOR = r'''
+import json, os, select, signal, socket, subprocess, sys, time
+
+channel = socket.socket(fileno=int(sys.argv[1]))
+# A caught handler is reset by exec; the actual command receives normal TERM.
+signal.signal(signal.SIGTERM, lambda *_: None)
+
+def abandoned():
+    # The parent disappeared. This live session leader still owns this PGID.
+    os.killpg(os.getpgrp(), signal.SIGTERM)
+    time.sleep(2)
+    os.killpg(os.getpgrp(), signal.SIGKILL)
+
+def parent_disconnected():
     try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    deadline = time.monotonic() + 2
-    while time.monotonic() < deadline:
-        try:
-            os.killpg(process.pid, 0)
-        except ProcessLookupError:
-            break
-        time.sleep(0.05)
+        return not channel.recv(1)
+    except ConnectionResetError:
+        return True
+
+channel.sendall(b'{"ready":true}\n')
+with channel.makefile('rb') as control:
+    if control.readline(16) != b'run\n':
+        abandoned()
     try:
-        os.killpg(process.pid, signal.SIGKILL)
+        child = subprocess.Popen(sys.argv[2:])
+    except Exception as error:
+        result = {"launch_error": type(error).__name__ + ': ' + str(error)}
+    else:
+        while child.poll() is None:
+            if select.select([channel], [], [], 0.05)[0]:
+                parent_disconnected()
+                abandoned()
+        result = {"exit_code": child.returncode}
+    try:
+        channel.sendall(json.dumps(result).encode() + b'\n')
+    except (BrokenPipeError, ConnectionResetError):
+        abandoned()
+    # Keep the owned leader alive until group cleanup, even after command exit.
+    parent_disconnected()
+    abandoned()
+'''
+
+
+def supervisor_message(channel, stream, execution, timeout):
+    channel.settimeout(timeout)
+    try:
+        raw = stream.readline(4097)
+    except socket.timeout as error:
+        raise subprocess.TimeoutExpired(execution, timeout) from error
+    if not raw:
+        raise RuntimeError("Command supervisor disconnected before reporting a result")
+    if len(raw) > 4096 or not raw.endswith(b"\n"):
+        raise RuntimeError("Command supervisor returned an invalid message")
+    result = json.loads(raw)
+    if not isinstance(result, dict):
+        raise RuntimeError("Command supervisor returned an invalid result")
+    return result
+
+
+def stop_group(process, command_allowed=True):
+    if process.returncode is not None:
+        raise RuntimeError("Refusing to signal a reaped process group")
+    # Do not reap the supervisor before signalling: its owned PID pins the PGID
+    # against reuse. Before the handshake ACK no command can have been spawned.
+    try:
+        if command_allowed:
+            os.killpg(process.pid, signal.SIGTERM)
+            time.sleep(2)
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            os.kill(process.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
     process.wait()
@@ -178,26 +235,55 @@ def run_command(label, command, output, report, timeout=3600, env=None):
     atomic_json(output / "evidence.json", report)
     started = time.monotonic()
     process = None
+    channel, child_channel = socket.socketpair()
+    messages = None
+    command_allowed = False
     try:
         with log.open("wb") as stream:
-            process = subprocess.Popen(execution, stdout=stream, stderr=subprocess.STDOUT,
-                                       start_new_session=True, env=env)
-            entry["exit_code"] = process.wait(timeout=timeout)
+            process = subprocess.Popen([sys.executable, "-c", SUPERVISOR, str(child_channel.fileno()), *execution],
+                                       stdout=stream, stderr=subprocess.STDOUT, start_new_session=True,
+                                       pass_fds=(child_channel.fileno(),), env=env)
+            child_channel.close()
+            messages = channel.makefile("rb")
+            if supervisor_message(channel, messages, execution, 10) != {"ready": True}:
+                raise RuntimeError("Command supervisor did not establish its session")
+            # Mark ownership before sending: even a partial ACK must take the
+            # group-cleanup path while this unreaped leader still reserves its ID.
+            command_allowed = True
+            channel.sendall(b"run\n")
+            result = supervisor_message(channel, messages, execution, timeout)
+            if "launch_error" in result:
+                raise RuntimeError(label + " could not start: " + str(result["launch_error"]))
+            if type(result.get("exit_code")) is not int:
+                raise RuntimeError("Command supervisor did not report the command exit code")
+            entry["exit_code"] = result["exit_code"]
         if entry["exit_code"] != 0:
             raise RuntimeError(label + " failed; see " + log.name)
+    except BaseException as error:
+        entry["error"] = type(error).__name__ + ": " + str(error)
+        raise
     finally:
-        if process is not None:
-            stop_group(process)
-        entry["wall_seconds"] = round(time.monotonic() - started, 3)
-        if measured and log.is_file():
-            match = re.search(r"(?m)^\s*(\d+)\s+maximum resident set size\s*$",
-                              log.read_text(encoding="utf-8", errors="replace"))
-            entry["max_rss_bytes"] = int(match[1]) if match else None
-            footprint = re.search(r"(?m)^\s*(\d+)\s+peak memory footprint\s*$",
+        try:
+            if process is not None:
+                stop_group(process, command_allowed)
+        except BaseException as error:
+            entry["cleanup_error"] = type(error).__name__ + ": " + str(error)
+            raise
+        finally:
+            if messages is not None:
+                messages.close()
+            channel.close()
+            child_channel.close()
+            entry["wall_seconds"] = round(time.monotonic() - started, 3)
+            if measured and log.is_file():
+                match = re.search(r"(?m)^\s*(\d+)\s+maximum resident set size\s*$",
                                   log.read_text(encoding="utf-8", errors="replace"))
-            entry["peak_memory_footprint_bytes"] = int(footprint[1]) if footprint else None
-            entry["rss_scope"] = "macOS time -l child high-water RSS; not total unified physical memory"
-        atomic_json(output / "evidence.json", report)
+                entry["max_rss_bytes"] = int(match[1]) if match else None
+                footprint = re.search(r"(?m)^\s*(\d+)\s+peak memory footprint\s*$",
+                                      log.read_text(encoding="utf-8", errors="replace"))
+                entry["peak_memory_footprint_bytes"] = int(footprint[1]) if footprint else None
+                entry["rss_scope"] = "macOS time -l child high-water RSS; not total unified physical memory"
+            atomic_json(output / "evidence.json", report)
     verify_current_binaries(report)
     return log.read_text(encoding="utf-8", errors="replace")
 
