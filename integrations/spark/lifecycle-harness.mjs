@@ -9,6 +9,23 @@ const packagePath = fileURLToPath(new URL('../../apps/desktop/node_modules/@spar
 const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
 assert.equal(packageJson.version, '2.1.0', 'Reassess lifecycle coverage before changing Spark version');
 const modulePath = realpathSync(join(dirname(packagePath), 'dist/spark.module.js'));
+
+export function moduleFrameMatcher(sourcePath) {
+  // ESM stacks use file: URLs, including on Windows where the native path uses
+  // backslashes. Match complete V8 source frames, never error text or substrings.
+  const windows = /^[a-z]:[\\/]|^\\\\/i.test(sourcePath);
+  const locations = new Set([sourcePath, pathToFileURL(sourcePath, { windows }).href]);
+  if (windows) {
+    locations.add(sourcePath.replaceAll('\\', '/'));
+    locations.add(sourcePath.replaceAll('/', '\\'));
+  }
+  const aliases = [...locations].map(value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const location = `(?:${aliases}):\\d+:\\d+`;
+  const frame = new RegExp(`^\\s*at\\s+(?:async\\s+)?(?:${location}|[^\\r\\n]+ \\(${location}\\))\\s*$`);
+  return stack => typeof stack === 'string' && stack.split(/\r?\n/).some(line => frame.test(line));
+}
+
+const timerOriginatesInSpark = moduleFrameMatcher(modulePath);
 export const implementationIdentity = {
   name: packageJson.name,
   version: packageJson.version,
@@ -31,7 +48,7 @@ const nativeSetTimeout = globalThis.setTimeout;
 const nativeClearTimeout = globalThis.clearTimeout;
 globalThis.setTimeout = (callback, delay, ...args) => {
   // Do not intercept Node's test timeouts or the harness's own scheduling.
-  if (activeFixture && new Error().stack?.includes(modulePath)) return activeFixture.clock.schedule(callback, delay, args);
+  if (activeFixture && timerOriginatesInSpark(new Error().stack)) return activeFixture.clock.schedule(callback, delay, args);
   return nativeSetTimeout(callback, delay, ...args);
 };
 globalThis.clearTimeout = (handle) => {

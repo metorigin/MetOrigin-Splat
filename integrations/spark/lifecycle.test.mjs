@@ -1,9 +1,50 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { checkpoint, fixture, implementationIdentity, THREE } from './lifecycle-harness.mjs';
+import { checkpoint, fixture, implementationIdentity, moduleFrameMatcher, THREE } from './lifecycle-harness.mjs';
 
 console.log(`Spark lifecycle implementation: ${JSON.stringify(implementationIdentity)}`);
 const settings = { concurrency: false, timeout: 2000 };
+
+test('timer ownership recognizes Windows native paths and encoded ESM file URL frames', settings, () => {
+  const native = String.raw`D:\workspace\Spark lifecycle #1\node_modules\spark\dist\spark.module.js`;
+  const url = 'file:///D:/workspace/Spark%20lifecycle%20%231/node_modules/spark/dist/spark.module.js';
+  const matches = moduleFrameMatcher(native);
+  for (const location of [native, native.replaceAll('\\', '/'), url]) {
+    assert.equal(matches(`Error\r\n    at SparkRenderer.driveSort (${location}:2486:13)\r\n    at run (node:internal/test_runner/test:1:2)`), true);
+    assert.equal(matches(`Error\n    at async ${location}:2486:13`), true);
+  }
+});
+
+test('timer ownership recognizes POSIX paths and encoded file URL frames', settings, () => {
+  const matches = moduleFrameMatcher('/workspace/Spark lifecycle/dist/spark.module.js');
+  assert.equal(matches('Error\n    at driveSort (/workspace/Spark lifecycle/dist/spark.module.js:1:2)'), true);
+  assert.equal(matches('Error\n    at file:///workspace/Spark%20lifecycle/dist/spark.module.js:1:2'), true);
+});
+
+test('timer ownership rejects error prose, unrelated frames and module-name substrings', settings, () => {
+  const native = String.raw`D:\workspace\spark\dist\spark.module.js`;
+  const url = 'file:///D:/workspace/spark/dist/spark.module.js';
+  const matches = moduleFrameMatcher(native);
+  for (const stack of [
+    undefined,
+    `Error while reading ${native}\n    at Timeout._onTimeout (node:internal/test_runner/test:1:2)`,
+    `Error while reading ${url}\n    at run (file:///D:/workspace/integrations/spark/lifecycle.test.mjs:1:2)`,
+    `Error\n    at driveSort (${url}.map:1:2)`,
+    `Error\n    at driveSort (file:///D:/another/spark/dist/spark.module.js:1:2)`,
+    `Error\n    at driveSort (file:///unrelated${url}:1:2)`,
+    `Error\n    at driveSort (${url}:1:2`,
+  ]) assert.equal(matches(stack), false, String(stack));
+});
+
+test('harness and Node timers stay native while a Spark fixture is active', settings, async t => {
+  const f = fixture(t);
+  let handle;
+  const completed = new Promise(resolve => { handle = setTimeout(resolve, 0); });
+  assert.equal(f.clock.has(handle), false);
+  assert.equal(f.clock.size, 0);
+  await completed;
+  assert.equal(f.clock.size, 0);
+});
 
 test('normal sort and re-sort retain the same live Worker and ordering texture', settings, async t => {
   const f = fixture(t);
