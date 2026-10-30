@@ -572,11 +572,12 @@ mod tests {
         let renamed = root.path().join("quarantined");
         let occupied = root.path().join("occupied");
         std::fs::create_dir(&original).unwrap();
-        std::fs::write(&occupied, b"keep").unwrap();
+        std::fs::create_dir(&occupied).unwrap();
+        std::fs::write(occupied.join("keep.bin"), b"keep").unwrap();
         let mut guard = ProjectLock::try_lock(&original, "project_delete").unwrap();
         assert!(guard.rename_project_directory(&occupied).is_err());
         assert!(ProjectLock::try_lock(&original, "contender").is_err());
-        assert_eq!(std::fs::read(&occupied).unwrap(), b"keep");
+        assert_eq!(std::fs::read(occupied.join("keep.bin")).unwrap(), b"keep");
         guard.rename_project_directory(&renamed).unwrap();
         guard.rename_project_directory(&original).unwrap();
         assert!(!renamed.exists());
