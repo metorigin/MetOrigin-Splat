@@ -1,0 +1,54 @@
+{
+  "file": "metorigin-splat-icon-v4.png",
+  "size": [
+    1254,
+    1254
+  ],
+  "mode": "RGBA",
+  "alpha_extrema": [
+    0,
+    255
+  ],
+  "solid_bbox_alpha_128": [
+    75,
+    82,
+    1179,
+    1164
+  ],
+  "solid_width_fraction": 0.8803827751196173,
+  "solid_height_fraction": 0.8628389154704944,
+  "corners": [
+    [
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0
+    ]
+  ],
+  "tool": "built-in image_gen.imagegen",
+  "transparent_background": true,
+  "source": "metorigin-splat-icon-v3.png",
+  "solid_scale_vs_v3": {
+    "width": 1.0887573964497042,
+    "height": 1.0885311871227363
+  },
+  "note": "Dock optical-size adjustment; retain the spatial-slice design."
+}

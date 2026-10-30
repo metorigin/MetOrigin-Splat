@@ -67,6 +67,7 @@ verify_notice_inputs
 node scripts/macos/verify-supersplat-inputs.mjs --license-root "$license_root" --report "$work/supersplat-inputs-before.json"
 node integrations/spark/verify-patch.mjs --license-root "$license_root" --report "$work/spark-patch-before.json"
 node integrations/three/verify-patch.mjs --license-root "$license_root" --report "$work/three-patch-before.json"
+python3 scripts/macos/verify-app-icon.py
 before_licenses="$(/usr/bin/shasum -a 256 "$license_root/manifest.json" | cut -d ' ' -f 1)"
 before_manifest="$(/usr/bin/shasum -a 256 "$pack_root/engines/engine-manifest.json" | cut -d ' ' -f 1)"
 before_status="$(/usr/bin/shasum -a 256 "$pack_root/release-status.json" | cut -d ' ' -f 1)"
@@ -99,6 +100,7 @@ node scripts/macos/verify-supersplat-inputs.mjs --license-root "$license_root" -
 node integrations/spark/verify-patch.mjs --license-root "$license_root" --expected-report "$work/spark-patch-before.json" --report "$work/spark-patch-after.json"
 node integrations/three/verify-patch.mjs --license-root "$license_root" --expected-report "$work/three-patch-before.json" --report "$work/three-patch-after.json"
 app_path="$repo_root/target/aarch64-apple-darwin/$profile/bundle/macos/MetOrigin Splat.app"
+python3 scripts/macos/verify-app-icon.py --app "$app_path" > "$work/app-icon.json"
 # Tauri leaves the linker signature when no signing identity is configured.
 # Seal this explicitly requested internal build without rewriting nested engines.
 if [[ "${internal[0]-}" == --internal-alpha ]]; then

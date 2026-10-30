@@ -6,11 +6,13 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import type { PreviewCamera, PreviewPoint } from "../../types";
+import { inferSparseUp } from "./sparseFraming";
 
-export function PointCloudPreview({ points, cameras = [], label }: {
+export function PointCloudPreview({ points, cameras = [], label, showToolbar = true }: {
   points: PreviewPoint[];
   cameras?: PreviewCamera[];
   label: string;
+  showToolbar?: boolean;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const resetRef = useRef<(() => void) | null>(null);
@@ -23,6 +25,11 @@ export function PointCloudPreview({ points, cameras = [], label }: {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x11161c);
     const camera = new THREE.PerspectiveCamera(52, 1, 0.01, 10000);
+    const viewUp = inferSparseUp(cameras);
+    const viewRotation = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), viewUp);
+    // OrbitControls captures the up axis in its constructor. COLMAP's world
+    // axes need not match Three's +Y-up convention.
+    camera.up.copy(viewUp);
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     host.appendChild(renderer.domElement);
@@ -82,7 +89,12 @@ export function PointCloudPreview({ points, cameras = [], label }: {
     scene.add(cameraLines);
 
     const grid = new THREE.GridHelper(radius * 3, 20, 0x34404d, 0x232b34);
-    grid.position.y = geometry.boundingBox?.min.y ?? 0;
+    let floor = Infinity;
+    for (let index = 0; index < positions.length; index += 3) {
+      floor = Math.min(floor, positions[index] * viewUp.x + positions[index + 1] * viewUp.y + positions[index + 2] * viewUp.z);
+    }
+    grid.quaternion.copy(viewRotation);
+    grid.position.copy(center).addScaledVector(viewUp, floor - center.dot(viewUp));
     gridRef.current = grid;
     scene.add(grid);
 
@@ -90,7 +102,7 @@ export function PointCloudPreview({ points, cameras = [], label }: {
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     const reset = () => {
-      camera.position.copy(center).add(new THREE.Vector3(radius * 1.5, radius * 1.1, radius * 1.8));
+      camera.position.copy(center).add(new THREE.Vector3(radius * 1.5, radius * 1.1, radius * 1.8).applyQuaternion(viewRotation));
       camera.near = Math.max(radius / 1000, 0.001);
       camera.far = radius * 100;
       camera.updateProjectionMatrix();
@@ -102,7 +114,7 @@ export function PointCloudPreview({ points, cameras = [], label }: {
 
     const onKeyDown = (event: KeyboardEvent) => {
       const offset = camera.position.clone().sub(controls.target);
-      const verticalAxis = new THREE.Vector3(0, 1, 0);
+      const verticalAxis = viewUp;
       const rightAxis = new THREE.Vector3().crossVectors(verticalAxis, offset).normalize();
       if (event.key === "ArrowLeft") offset.applyAxisAngle(verticalAxis, 0.1);
       else if (event.key === "ArrowRight") offset.applyAxisAngle(verticalAxis, -0.1);
@@ -160,11 +172,11 @@ export function PointCloudPreview({ points, cameras = [], label }: {
 
   return (
     <div className="point-cloud-viewer">
-      <div className="preview-toolbar">
+      {showToolbar && <div className="preview-toolbar">
         <span><Eye size={15} />{label}</span>
         <Button variant="ghost" size="icon-sm"  type="button" onClick={() => resetRef.current?.()} aria-label={t("重置视角")} title={t("重置视角")}><ArrowsOut size={16} /></Button>
         <Button variant="ghost" size="icon-sm" aria-pressed={gridVisible} className={gridVisible ? "bg-white/10 text-white" : "text-slate-300"} type="button" onClick={() => setGridVisible((value) => !value)} aria-label={t("切换地面网格")} title={t("切换地面网格")}><GridFour size={16} /></Button>
-      </div>
+      </div>}
       <div className="point-cloud-canvas" ref={hostRef} tabIndex={0} role="application" aria-describedby="point-cloud-keyboard-help" aria-label={t("真实三维预览，共 {0} 个显示点", points.length)} />
       <span id="point-cloud-keyboard-help" className="visually-hidden">{t("方向键旋转视角，加号和减号缩放，R 重置视角。")}</span>
     </div>

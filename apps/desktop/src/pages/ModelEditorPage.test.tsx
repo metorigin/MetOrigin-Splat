@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, expect, it, vi } from "vitest";
 import { createRef } from "react";
 import { setLanguagePreference } from "../i18n";
+import { useTheme, type Theme } from "../hooks/useTheme";
 import ModelEditorPage, { type ModelEditorHandle } from "./ModelEditorPage";
 import type { EditorSession, GaussianCamera } from "../types";
 import type { EditorBridgeOptions } from "../services/editorBridge";
@@ -17,6 +18,13 @@ vi.mock("../services/editorBridge", () => ({ createEditorBridge: createBridge })
 vi.mock("../services/desktop", () => ({ desktopApi: { readGaussianPly: readPly, getGaussianCamera: readCamera, saveEditorImage: saveImage, saveEditedPly: savePly, confirm: confirmLeave } }));
 
 const session: EditorSession = { session_id: "editor", project_id: "p", project_path: "D:/场景", project_name: "中文项目", source: {relative_path:"output/scene.ply", revision:"r1", size_bytes:100, vertex_count:1, iteration:null} };
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const result = new Promise<T>((done) => { resolve = done; });
+  return { result, resolve };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.removeItem("metorigin.ui.theme");
@@ -47,19 +55,73 @@ it("changes editor language without reloading the iframe or model, preserving ed
   expect(bridge.dispose).not.toHaveBeenCalled();
 });
 
-it("initializes and changes the theme on the same frame without loading the model or acknowledging saved again", async () => {
-  render(<ModelEditorPage session={session} onBack={vi.fn()} />);
+it.each<Theme>(["light", "dark", "system"])("keeps the editor dark across host theme changes, starting from %s, without replacing the scene", async (initialTheme) => {
+  localStorage.setItem("metorigin.ui.theme", initialTheme);
+  function HostThemeControls() {
+    const { setTheme } = useTheme();
+    return <>{(["light", "dark", "system"] as const).map((theme) => <button key={theme} onClick={() => setTheme(theme)}>宿主{theme}</button>)}</>;
+  }
+  render(<><HostThemeControls /><ModelEditorPage session={session} onBack={vi.fn()} /></>);
   const frame = screen.getByTitle("SuperSplat 模型编辑器");
+  const editor = screen.getByRole("region", { name: "模型编辑工作区" });
+  expect(editor).toHaveAttribute("data-theme", "dark");
+  expect(editor.style.getPropertyValue("--background")).toBe("#121212");
+  expect(editor.style.colorScheme).toBe("dark");
   fireEvent.load(frame);
   await waitFor(() => expect(screen.getByRole("button", { name: "保存" })).toBeEnabled());
+  expect(bridge.request).toHaveBeenCalledWith("theme", { theme: "dark", version: "jan-v1" }, [], 3000);
   expect(bridge.request.mock.calls.findIndex(([command]) => command === "theme")).toBeLessThan(bridge.request.mock.calls.findIndex(([command]) => command === "load"));
   const count = bridge.request.mock.calls.filter(([command]) => command === "load").length;
-  act(() => { localStorage.setItem("metorigin.ui.theme", "dark"); window.dispatchEvent(new Event("metorigin-theme-change")); });
-  await waitFor(() => expect(bridge.request).toHaveBeenCalledWith("theme", { theme: "dark", version: "jan-v1" }, [], 3000));
+  // Paint is established before and after import. Entering ready must not
+  // schedule an extra theme request that can race with host interactions.
+  expect(bridge.request.mock.calls.filter(([command]) => command === "theme")).toHaveLength(2);
+  for (const theme of ["light", "dark", "system"]) {
+    fireEvent.click(screen.getByRole("button", { name: `宿主${theme}` }));
+    expect(document.documentElement.dataset.theme).toBe(theme === "dark" ? "dark" : "light");
+    expect(editor).toHaveAttribute("data-theme", "dark");
+  }
+  expect(bridge.request.mock.calls.filter(([command]) => command === "theme")).toHaveLength(2);
+  expect(bridge.request.mock.calls.filter(([command]) => command === "theme").every(([, payload]) => payload.theme === "dark")).toBe(true);
   expect(screen.getByTitle("SuperSplat 模型编辑器")).toBe(frame);
   expect(readPly).toHaveBeenCalledTimes(1);
   expect(bridge.request.mock.calls.filter(([command]) => command === "load")).toHaveLength(count);
   expect(bridge.request.mock.calls.some(([command]) => command === "saved")).toBe(false);
+  expect(bridge.dispose).not.toHaveBeenCalled();
+});
+
+it.each(["ping", "theme", "load"])("conceals the same mounted frame until the delayed %s completes", async (delayedCommand) => {
+  localStorage.setItem("metorigin.ui.theme", "light");
+  const pending = deferred<boolean>();
+  let commandCount = 0;
+  bridge.request.mockImplementation((command: string) => ({
+    id: "request",
+    result: command === delayedCommand && commandCount++ === 0 ? pending.result : Promise.resolve(true),
+  }));
+  render(<ModelEditorPage session={session} onBack={vi.fn()} />);
+  const frame = screen.getByTitle("SuperSplat 模型编辑器");
+  const originalUrl = frame.getAttribute("src");
+  expect(frame).not.toBeVisible();
+  expect(frame).toHaveAttribute("aria-hidden", "true");
+  expect(frame).toBeInTheDocument();
+  expect(frame.style.display).not.toBe("none");
+  expect(screen.getByText("正在载入")).toBeVisible();
+  expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+
+  fireEvent.load(frame);
+  await waitFor(() => expect(bridge.request.mock.calls.some(([command]) => command === delayedCommand)).toBe(true));
+  expect(frame).not.toBeVisible();
+  expect(screen.getByText("正在载入")).toBeVisible();
+  expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+  if (delayedCommand !== "load") expect(bridge.request.mock.calls.some(([command]) => command === "load")).toBe(false);
+
+  await act(async () => pending.resolve(true));
+  await waitFor(() => expect(screen.getByRole("button", { name: "保存" })).toBeEnabled());
+  expect(frame).toBeVisible();
+  expect(frame).toHaveAttribute("aria-hidden", "false");
+  expect(screen.getByTitle("SuperSplat 模型编辑器")).toBe(frame);
+  expect(frame).toHaveAttribute("src", originalUrl);
+  expect(readPly).toHaveBeenCalledTimes(1);
+  expect(bridge.request.mock.calls.filter(([command]) => command === "load")).toHaveLength(1);
   expect(bridge.dispose).not.toHaveBeenCalled();
 });
 
@@ -80,19 +142,31 @@ it("places editor actions in the shared titlebar without replacing the frame whe
   target.remove();
 });
 
-it("keeps a theme failure nonblocking and retries paint without replacing the loaded scene", async () => {
-  bridge.request.mockImplementation((command: string) => ({ id: "request", result: command === "theme" ? Promise.reject(new Error("timeout")) : Promise.resolve(true) }));
+it.each(["timeout", "invalid acknowledgement"])("conceals an unconfirmed theme after %s and retries without replacing the loaded scene", async (failure) => {
+  bridge.request.mockImplementation((command: string) => ({
+    id: "request",
+    result: command === "theme"
+      ? failure === "timeout" ? Promise.reject(new Error("timeout")) : Promise.resolve(false)
+      : Promise.resolve(true),
+  }));
   render(<ModelEditorPage session={session} onBack={vi.fn()} />);
   const frame = screen.getByTitle("SuperSplat 模型编辑器");
   fireEvent.load(frame);
-  await waitFor(() => expect(screen.getByRole("button", { name: "保存" })).toBeEnabled());
+  await waitFor(() => expect(bridge.request.mock.calls.filter(([command]) => command === "theme")).toHaveLength(2));
+  await waitFor(() => expect(screen.queryByText("正在载入")).not.toBeInTheDocument());
   expect(screen.getByText("编辑器外观未同步，模型修改已保留。")).toBeInTheDocument();
+  expect(frame).not.toBeVisible();
+  expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   bridge.request.mockImplementation(() => ({ id: "request", result: Promise.resolve(true) }));
   fireEvent.click(screen.getByRole("button", { name: "重试" }));
   await waitFor(() => expect(screen.queryByText("编辑器外观未同步，模型修改已保留。")).not.toBeInTheDocument());
+  expect(frame).toBeVisible();
+  expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
   expect(readPly).toHaveBeenCalledTimes(1);
+  expect(bridge.request.mock.calls.filter(([command]) => command === "load")).toHaveLength(1);
   expect(screen.getByTitle("SuperSplat 模型编辑器")).toBe(frame);
+  expect(bridge.dispose).not.toHaveBeenCalled();
 });
 
 it("loads optional capture metadata for the exact editor project path while transferring the PLY", async () => {

@@ -36,6 +36,13 @@ Modifications made 2026-10-29:
   No Jan font binaries or logo are copied. Viewport and model/export colors are
   independent of the UI palette.
 
+Modifications made 2026-10-30:
+
+- Restore Jan's full-thumb checked travel for the 34×18px default switch, while
+  retaining the smaller travel required by the 24×14px variant. Both sizes keep
+  equal 1px edge clearance with the existing transparent border; prevent thumb
+  shrinkage without changing Radix checked, disabled or keyboard behavior.
+
 The source manifest `apps/desktop/ui-sources.json` records exact upstream hashes,
 local paths and file-specific adaptations. Platform packaging collectors compute
 fresh hashes of the adapted source rather than claiming it is unchanged Jan code.

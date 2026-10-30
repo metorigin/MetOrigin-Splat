@@ -1,6 +1,6 @@
 @layer components {
   /* The viewport and its sibling inspector keep stable hosts across panel changes. */
-  .project-workspace-grid { @apply flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-4; }
+  .project-workspace-grid { @apply flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-4 pt-3; }
   .project-resource-feedback { @apply grid shrink-0 gap-2; }
   .project-resource-feedback:empty { display: none; }
   .timeline-panel { @apply relative z-10 shrink-0; }
@@ -102,6 +102,7 @@
   .gaussian-updating, .gaussian-updated { @apply pointer-events-none absolute bottom-3 rounded-sm px-2 py-1 text-xs; background: var(--card); color: var(--foreground); }
   .gaussian-updating { @apply left-3 flex items-center gap-2; }
   .gaussian-updated { @apply right-3; }
+  .gaussian-preview-notice { @apply pointer-events-none absolute left-3 right-3 top-3 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-xs text-warning; }
 
   .checkpoint-drawer { @apply grid w-[560px] max-w-[calc(100vw-32px)] grid-rows-[auto_minmax(0,1fr)] p-0; height: min(640px, calc(100dvh - 48px)); }
   .checkpoint-drawer > header, .workspace-activity-drawer > header { @apply flex shrink-0 items-center justify-between gap-4 border-b border-border px-6 py-4; }
@@ -122,7 +123,6 @@
   .activity-content { @apply min-h-0 overflow-auto; }
   .activity-search { @apply relative ml-auto flex w-56 items-center text-muted-foreground; }
   .activity-search > svg { @apply pointer-events-none absolute left-3; }
-  .activity-search input { @apply pl-9; }
   .activity-table-header, .activity-event-row { grid-template-columns: 76px 64px 120px minmax(0, 1fr); }
   .activity-table-header { @apply sticky top-0 z-10 grid gap-2 border-b border-border bg-card px-3 py-2 text-xs text-muted-foreground; }
   .activity-event-row { @apply gap-2 border-b border-border font-normal; }

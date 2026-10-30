@@ -5,7 +5,7 @@ import { getLocale, localizeMessage, t } from "@/i18n";
 import { getStageLabel } from "@/localization";
 import { phaseProgressPercent, PHASES, phaseStatus, phaseStatusLabel, stageStatusLabel } from "@/pages/projectTimeline";
 import type { PipelineStageId, PipelineState } from "@/types";
-import type { Dispatch, KeyboardEvent, SetStateAction } from "react";
+import { useEffect, useRef, type Dispatch, type KeyboardEvent, type SetStateAction } from "react";
 
 interface Props {
   pipelineError: string | null;
@@ -23,8 +23,33 @@ interface Props {
 
 /** Presentation only: stage selection controls the preview; recovery stays in the task inspector. */
 export function PipelineStageNavigator({ pipelineError, pipelineUpdatedAt, pipelineState, expandedPhase, setExpandedPhase, currentStage, stageFocus, setStageFocus, selectedStage, moveStageFocus, onSelectStage }: Props) {
+  const expandedPhaseElement = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!expandedPhase) return;
+    const dismissOutside = (event: Event) => {
+      if (event.target instanceof Node && !expandedPhaseElement.current?.contains(event.target)) {
+        setExpandedPhase(null);
+      }
+    };
+    document.addEventListener("pointerdown", dismissOutside, true);
+    document.addEventListener("focusin", dismissOutside);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside, true);
+      document.removeEventListener("focusin", dismissOutside);
+    };
+  }, [expandedPhase, setExpandedPhase]);
+
   return (
-      <section className="timeline-panel" tabIndex={-1}>
+      <section className="timeline-panel" tabIndex={-1} onKeyDown={(event) => {
+        if (expandedPhase && event.key === "Escape" && !event.defaultPrevented) {
+          event.preventDefault();
+          event.stopPropagation();
+          const trigger = document.getElementById(`phase-summary-${expandedPhase}`);
+          setExpandedPhase(null);
+          trigger?.focus();
+        }
+      }}>
         {pipelineError && (
           <div className="pipeline-stale-warning" role="status">
             <Warning size={16} weight="fill" />
@@ -44,6 +69,7 @@ export function PipelineStageNavigator({ pipelineError, pipelineUpdatedAt, pipel
             const showStatus = status !== "completed" && status !== "pending";
             return (
               <Collapsible
+                ref={expanded ? expandedPhaseElement : undefined}
                 className={`timeline-phase status-${status}${previewSelected ? " is-preview-phase" : ""}`}
                 key={phase.id}
                 open={expanded}

@@ -110,6 +110,8 @@ jobs:
       - run: pnpm test:three:lifecycle
       - run: pnpm build
       - run: python3 -m unittest discover -s scripts/macos -p 'test_*.py'
+      - run: python3 scripts/macos/verify-app-icon.py
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --locked --workspace --all-targets
       - run: pnpm --dir apps/desktop tauri build --debug --bundles app --config src-tauri/tauri.macos.conf.json
+      - run: python3 scripts/macos/verify-app-icon.py --app "target/debug/bundle/macos/MetOrigin Splat.app"

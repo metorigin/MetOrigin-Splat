@@ -267,7 +267,7 @@ function mockTauriBootstrap() {
           refreshed_project: project ?? null,
         };
       }
-      case "get_app_settings": return {
+      case "get_app_settings": return state.savedSettings ?? {
         engine_directory: "C:\\E2E\\engines",
         engine_executables: {},
         default_project_root: "C:\\E2E",
@@ -277,6 +277,10 @@ function mockTauriBootstrap() {
         log_retention_mb: 512,
         thumbnail_cache_mb: 1024,
       };
+      case "save_app_settings": {
+        state.savedSettings = { ...args.settings };
+        return state.savedSettings;
+      }
       case "get_project_thumbnail": return null;
       case "get_resource_metrics": return null;
       case "get_active_pipeline_summary": return state.activeSnapshot;
@@ -630,6 +634,52 @@ async function run() {
       && Boolean(document.querySelector('button[aria-label="关闭设置"]'))
       && [...document.querySelectorAll('h1,h2')].some(node => node.textContent.trim() === '项目中心')
     `), "Chinese selection restores localized settings and workspace without closing the drawer.");
+
+    progress("validating settings switch alignment in both themes");
+    report.settings_switch_geometry = [];
+    const checkSwitchAlignment = async (selector, theme) => {
+      for (const checked of [false, true]) {
+        await evaluate(`(() => {
+          const control = document.querySelector(${JSON.stringify(selector)});
+          if ((control.getAttribute('aria-checked') === 'true') !== ${checked}) control.click();
+        })()`);
+        await waitFor(`document.querySelector(${JSON.stringify(selector)})?.getAttribute('aria-checked') === '${checked}' && !document.querySelector(${JSON.stringify(selector)})?.disabled`);
+        await evaluate(`Promise.all(document.querySelector(${JSON.stringify(selector)}).getAnimations({ subtree: true }).filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))).then(() => true)`);
+        const geometry = await evaluate(`(() => {
+          const control = document.querySelector(${JSON.stringify(selector)});
+          const thumb = control.querySelector('[data-slot="switch-thumb"]');
+          const trackRect = control.getBoundingClientRect(), thumbRect = thumb.getBoundingClientRect();
+          const style = getComputedStyle(control);
+          const inset = ${checked} ? trackRect.right - thumbRect.right : thumbRect.left - trackRect.left;
+          const expectedInset = ${checked}
+            ? parseFloat(style.borderRightWidth) + parseFloat(style.paddingRight)
+            : parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+          return { inset, expectedInset, top: thumbRect.top - trackRect.top, bottom: trackRect.bottom - thumbRect.bottom,
+            thumbWidth: thumbRect.width, thumbHeight: thumbRect.height, trackWidth: trackRect.width, trackHeight: trackRect.height };
+        })()`);
+        report.settings_switch_geometry.push({ selector, theme, checked, ...geometry });
+        check(`settings-switch-${selector.slice(1)}-${theme}-${checked ? 'on' : 'off'}`,
+          Math.abs(geometry.inset - geometry.expectedInset) <= 0.35
+          && Math.abs(geometry.top - geometry.bottom) <= 0.35
+          && Math.abs(geometry.thumbWidth - geometry.thumbHeight) <= 0.35
+          && geometry.top >= 0.5 && geometry.bottom >= 0.5,
+          "The circular thumb stays centered vertically and reaches equal inset edges in each state.");
+      }
+    };
+    for (const theme of ["light", "dark"]) {
+      await evaluate(`localStorage.setItem('metorigin.ui.theme', '${theme}'); window.dispatchEvent(new Event('metorigin-theme-change')); true`);
+      await waitFor(`document.documentElement.dataset.theme === '${theme}'`);
+      await clickButton("常规");
+      await checkSwitchAlignment("#create-and-start", theme);
+      await capture(`settings-general-switch-${theme}`);
+      await clickButton("性能与存储");
+      if (await evaluate("Boolean(document.querySelector('#idle-sleep'))")) {
+        await checkSwitchAlignment("#idle-sleep", theme);
+        await capture(`settings-idle-sleep-switch-${theme}`);
+      }
+    }
+    await evaluate("localStorage.setItem('metorigin.ui.theme', 'light'); window.dispatchEvent(new Event('metorigin-theme-change')); true");
+    await waitFor("document.documentElement.dataset.theme === 'light'");
     await clickButton("关闭设置");
 
     await clickButton("自动化项目 B");
@@ -678,6 +728,7 @@ async function run() {
         inspector: rect('.inspector-column'),
         preview: rect('.preview-panel'),
         viewport: rect('.scene-viewport-panel'),
+        resizeHandle: rect('.workspace-resize-handle'),
         details: rect('.inspector-details-panel'),
         monitor: rect('.workspace-inspector-stack'),
         phases: [...document.querySelectorAll('.pipeline-timeline .phase-summary')].map(node => {
@@ -759,6 +810,23 @@ async function run() {
         ? "A 48px desktop header and four compact phase controls sit above the sibling resizable viewport and inspector within the visible workspace."
         : `Workspace children escaped their intended tracks: ${JSON.stringify(workspaceLayout)}`);
     await capture("project-workspace-layout-1440x1024-100pct");
+    check("workspace-titlebar-spacing", workspaceLayout.timeline.top - workspaceLayout.titlebar.bottom >= 11.5,
+      "The phase navigator has at least 12px of separation from the desktop titlebar.");
+    check("workspace-resize-handle-spacing", workspaceLayout.resizeHandle
+      && workspaceLayout.resizeHandle.left - workspaceLayout.viewport.right <= 4.5
+      && workspaceLayout.resizeHandle.left >= workspaceLayout.viewport.right,
+      "The inspector divider sits within 4px of the preview edge and retains its drag target.");
+    await evaluate("document.querySelector('#phase-summary-media').click(); true");
+    await waitFor("Boolean(document.querySelector('#phase-stage-list-media'))");
+    await capture("project-stage-popover-open");
+    const outsidePoint = await evaluate(`(() => {
+      const rect = document.querySelector('.preview-panel').getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    })()`);
+    await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", ...outsidePoint, button: "left", clickCount: 1 });
+    await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...outsidePoint, button: "left", clickCount: 1 });
+    await waitFor("!document.querySelector('#phase-stage-list-media')");
+    check("stage-popover-outside-click", true, "Clicking the preview closes the expanded stage details.");
 
     progress("collecting SC-003 action-feedback timing samples");
     await clickButton("暂停");
@@ -817,6 +885,17 @@ async function run() {
       "Search operates on a 1000-event synthetic source while retaining the selected-stage filter.");
     await clickButton("查看日志与活动");
     await waitFor("Boolean(document.querySelector('input[aria-label=\"搜索活动记录\"]'))", 10_000, "活动搜索框未出现。");
+    const searchGeometry = await evaluate(`(() => {
+      const input = document.querySelector('.activity-search input');
+      const icon = document.querySelector('.activity-search > svg');
+      const textLeft = input.getBoundingClientRect().left + parseFloat(getComputedStyle(input).paddingLeft);
+      return { textLeft, iconRight: icon.getBoundingClientRect().right, paddingLeft: getComputedStyle(input).paddingLeft };
+    })()`);
+    report.activity_search_geometry = searchGeometry;
+    check("activity-search-icon-spacing", searchGeometry.textLeft - searchGeometry.iconRight >= 8,
+      `The search text clears the icon by at least 8px (padding-left: ${searchGeometry.paddingLeft}).`);
+    await evaluate("Promise.all(document.querySelector('.workspace-activity-drawer').getAnimations({ subtree: true }).filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))).then(() => true)");
+    await capture("project-activity-search-spacing");
     const searchResultReady = (targetText) => `(() => {
       const rows = [...document.querySelectorAll('.activity-event-row')];
       return document.querySelector('.activity-panel')?.getAttribute('aria-busy') === 'false'
