@@ -578,6 +578,8 @@ async function run() {
       "--disable-sync",
     ], { cwd: repositoryRoot, stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"], windowsHide: true });
     cdp = new CdpClient(edgeProcess);
+    report.browser = await cdp.send("Browser.getVersion", {}, true);
+    progress(`browser version: ${JSON.stringify(report.browser)}`);
     const created = await cdp.send("Target.createTarget", { url: "about:blank" }, true);
     const attached = await cdp.send("Target.attachToTarget", { targetId: created.targetId, flatten: true }, true);
     cdp.setSessionId(attached.sessionId);
@@ -659,7 +661,8 @@ async function run() {
     await waitFor("[...document.querySelectorAll('h1')].some((node) => node.textContent?.trim() === '自动化项目 A')", 10_000, "未返回活动项目 A。");
     await waitFor("Boolean(document.querySelector('.preview-panel'))", 10_000, "项目工作区未完成加载。");
 
-    const workspaceLayout = await evaluate(`(() => {
+    await evaluate("document.fonts.ready.then(() => true)");
+    const measureWorkspace = () => evaluate(`(() => {
       const rect = (selector) => {
         const node = document.querySelector(selector);
         if (!node) return null;
@@ -683,7 +686,15 @@ async function run() {
         }),
       };
     })()`);
-    const workspaceLayoutValid = Boolean(
+    let workspaceLayout;
+    let workspaceLayoutValid = false;
+    const layoutDeadline = Date.now() + 3000;
+    do {
+      // The loading placeholder and workspace reuse a div. Wait through style,
+      // font and ResizeObserver frames before judging the final desktop layout.
+      await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))");
+      workspaceLayout = await measureWorkspace();
+      workspaceLayoutValid = Boolean(
       workspaceLayout.content
       && workspaceLayout.titlebar
       && workspaceLayout.grid
@@ -709,7 +720,40 @@ async function run() {
       && workspaceLayout.preview.right <= workspaceLayout.monitor.left + 1
       && workspaceLayout.preview.height >= 288
       && workspaceLayout.inspector.bottom <= workspaceLayout.content.bottom + 1
-    );
+      );
+      if (workspaceLayoutValid) break;
+      await sleep(50);
+    } while (Date.now() < layoutDeadline);
+    report.workspace_layout = workspaceLayout;
+    if (!workspaceLayoutValid) {
+      report.workspace_layout_diagnostics = await evaluate(`(() => {
+        const selectors = ['main', '.project-workspace-grid', '.timeline-panel', '.inspector-column', '.scene-viewport-panel', '.inspector-details-panel'];
+        const properties = ['display', 'position', 'box-sizing', 'width', 'min-width', 'max-width', 'height', 'flex', 'flex-grow', 'flex-shrink', 'flex-basis', 'flex-direction', 'align-items', 'align-self', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'gap', 'overflow', 'font-size'];
+        const describe = node => {
+          const style = getComputedStyle(node);
+          const rect = node.getBoundingClientRect();
+          return { tag: node.tagName, className: node.getAttribute('class'), hidden: Boolean(node.hidden), rect: { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left, width: rect.width, height: rect.height }, computed: { display: style.display, flex: style.flex } };
+        };
+        const nodes = selectors.map(selector => {
+          const node = document.querySelector(selector);
+          const style = node && getComputedStyle(node);
+          return { selector, className: node?.className, inlineStyle: node?.getAttribute('style'), computed: style && Object.fromEntries(properties.map(property => [property, style.getPropertyValue(property)])) };
+        });
+        const rules = [];
+        const visit = (list, sheet) => {
+          for (const rule of list) {
+            if (rule.selectorText && ['.project-workspace-grid', '.workspace-loading', '.workspace-empty-state'].some(selector => rule.selectorText.includes(selector))) rules.push({ sheet, selector: rule.selectorText, style: rule.style.cssText });
+            if (rule.cssRules) visit(rule.cssRules, sheet);
+          }
+        };
+        const stylesheets = [...document.styleSheets].map(sheet => {
+          try { visit(sheet.cssRules, sheet.href); return { href: sheet.href, disabled: sheet.disabled, rules: sheet.cssRules.length }; }
+          catch (error) { return { href: sheet.href, error: error.name }; }
+        });
+        return { viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio }, fonts: document.fonts.status, rootSpacing: getComputedStyle(document.documentElement).getPropertyValue('--spacing'), mainChildren: [...(document.querySelector('main')?.children ?? [])].map(describe), workspaceGrids: [...document.querySelectorAll('.project-workspace-grid')].map(describe), nodes, stylesheets, rules };
+      })()`);
+      progress(`workspace layout diagnostics: ${JSON.stringify(report.workspace_layout_diagnostics)}`);
+    }
     check("project-workspace-grid-placement", workspaceLayoutValid,
       workspaceLayoutValid
         ? "A 48px desktop header and four compact phase controls sit above the sibling resizable viewport and inspector within the visible workspace."
