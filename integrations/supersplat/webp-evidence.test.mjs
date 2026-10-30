@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, before, test } from 'node:test';
@@ -12,7 +13,7 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 let overlay, temporary;
 before(async () => {
   overlay = await loadWebpOverlay(root);
-  temporary = await mkdtemp('/tmp/metorigin-webp-evidence-');
+  temporary = await mkdtemp(join(tmpdir(), 'metorigin-webp-evidence-'));
   for (const file of webpBuildEvidenceFiles(overlay.evidence)) {
     const destination = join(temporary, file.path);
     await mkdir(dirname(destination), { recursive: true });

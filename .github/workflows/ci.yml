@@ -108,6 +108,7 @@ jobs:
       - run: pnpm test:supersplat:bridge
       - run: pnpm test:spark:lifecycle
       - run: pnpm test:three:lifecycle
+      - run: pnpm build
       - run: python3 -m unittest discover -s scripts/macos -p 'test_*.py'
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --locked --workspace --all-targets

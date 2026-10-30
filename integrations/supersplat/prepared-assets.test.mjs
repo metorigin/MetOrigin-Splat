@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
-import { devNull, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import test from 'node:test';
@@ -15,10 +15,12 @@ const integration = dirname(fileURLToPath(import.meta.url));
 test('fixed source preparation repairs a CRLF cache without deleting installed dependencies', async t => {
   const source = await mkdtemp(join(tmpdir(), 'supersplat-git-bytes-'));
   t.after(() => rm(source, { recursive: true, force: true }));
+  const globalConfig = join(source, 'fixture-global.gitconfig');
+  await writeFile(globalConfig, '');
   const execute = promisify(execFile);
   const run = (command, args) => execute(command, args, {
     cwd: source,
-    env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: devNull, GIT_TERMINAL_PROMPT: '0' },
+    env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: globalConfig, GIT_TERMINAL_PROMPT: '0' },
     windowsHide: true,
   });
   const rawGit = (...args) => run('git', args);
