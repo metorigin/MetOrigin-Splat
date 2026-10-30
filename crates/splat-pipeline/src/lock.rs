@@ -57,20 +57,51 @@ pub struct LockInfo {
     pub stage: String,
 }
 
+/// Explicitly unlock before closing: a concurrent fork can temporarily inherit
+/// the open file description until its close-on-exec descriptor is closed.
+/// Closing only the parent's handle would leave that inherited lock alive.
+struct KernelLock {
+    file: File,
+    locked: bool,
+}
+
+impl KernelLock {
+    fn try_acquire(file: File) -> Result<Self, TryLockError> {
+        file.try_lock()?;
+        Ok(Self { file, locked: true })
+    }
+
+    fn unlock(&mut self) -> std::io::Result<()> {
+        if self.locked {
+            self.file.unlock()?;
+            self.locked = false;
+        }
+        Ok(())
+    }
+}
+
+impl Drop for KernelLock {
+    fn drop(&mut self) {
+        if let Err(error) = self.unlock() {
+            tracing::warn!(%error, "Project kernel lock could not be explicitly released before closing");
+        }
+    }
+}
+
 /// Holds a kernel lock until metadata cleanup succeeds or this guard is dropped.
 /// The stable `.lock.guard` file survives release; `.lock` is owner metadata.
 #[must_use = "Lock guard will be dropped immediately; hold it for the duration of the pipeline"]
 pub struct LockGuard {
     lock_path: PathBuf,
     owner_json: Vec<u8>,
-    kernel_lock: Option<File>,
+    kernel_lock: Option<KernelLock>,
 }
 
 impl LockGuard {
     /// Verify that a borrowed guard still owns this project's kernel lock.
     /// This lets nested recovery reuse ownership without acquiring a second lock.
     pub fn covers_project(&self, project_dir: &Path) -> bool {
-        let Some(file) = self.kernel_lock.as_ref() else {
+        let Some(kernel_lock) = self.kernel_lock.as_ref() else {
             return false;
         };
         let Some(parent) = self.lock_path.parent() else {
@@ -86,7 +117,7 @@ impl LockGuard {
         let Ok(current) = regular_metadata(&project_dir.join(KERNEL_LOCK_FILE)) else {
             return false;
         };
-        let Ok(opened) = file.metadata() else {
+        let Ok(opened) = kernel_lock.file.metadata() else {
             return false;
         };
         #[cfg(unix)]
@@ -117,7 +148,9 @@ impl LockGuard {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
         }
-        // Closing the handle releases the kernel lock even after a crash.
+        // Release our ownership even if an unrelated concurrently spawned child
+        // still has a copy of this open file description before exec.
+        self.kernel_lock.as_mut().unwrap().unlock()?;
         drop(self.kernel_lock.take());
         Ok(())
     }
@@ -189,16 +222,16 @@ impl ProjectLock {
     /// owner. Reclaim and release are serialized with all new acquisitions.
     pub fn try_lock(project_dir: &Path, stage: &str) -> Result<LockGuard, LockError> {
         let lock_path = project_dir.join(LOCK_FILE);
-        let kernel_lock = open_kernel_lock(project_dir).map_err(LockError::Io)?;
-        match kernel_lock.try_lock() {
-            Ok(()) => {}
+        let file = open_kernel_lock(project_dir).map_err(LockError::Io)?;
+        let kernel_lock = match KernelLock::try_acquire(file) {
+            Ok(lock) => lock,
             Err(TryLockError::WouldBlock) => {
                 return Err(Self::read_lock_info(&lock_path)
                     .map(LockError::AlreadyLocked)
                     .unwrap_or(LockError::Busy));
             }
             Err(TryLockError::Error(error)) => return Err(LockError::Io(error)),
-        }
+        };
         let info = LockInfo {
             pid: std::process::id(),
             started_at: Utc::now(),
@@ -259,14 +292,15 @@ impl ProjectLock {
 
     /// Explicit metadata cleanup still cannot revoke a live kernel lock.
     pub fn force_unlock(project_dir: &Path) -> std::io::Result<()> {
-        let kernel_lock = open_kernel_lock(project_dir)?;
-        kernel_lock.try_lock().map_err(|error| match error {
-            TryLockError::WouldBlock => std::io::Error::new(
-                std::io::ErrorKind::WouldBlock,
-                "Project has an active operation",
-            ),
-            TryLockError::Error(error) => error,
-        })?;
+        let _kernel_lock = KernelLock::try_acquire(open_kernel_lock(project_dir)?).map_err(
+            |error| match error {
+                TryLockError::WouldBlock => std::io::Error::new(
+                    std::io::ErrorKind::WouldBlock,
+                    "Project has an active operation",
+                ),
+                TryLockError::Error(error) => error,
+            },
+        )?;
         let lock_path = project_dir.join(LOCK_FILE);
         match regular_metadata(&lock_path) {
             Ok(_) => {
@@ -347,23 +381,21 @@ mod tests {
 
     #[test]
     fn test_lock_nonexistent_project() {
-        let dir = std::env::temp_dir().join("splat-lock-nonexistent");
-        let _ = std::fs::remove_dir_all(&dir);
+        let temporary = tempfile::tempdir().unwrap();
+        let dir = temporary.path().join("nonexistent");
 
         // A lock cannot be created outside an existing project directory.
         let guard = ProjectLock::try_lock(&dir, "test");
         assert!(matches!(guard, Err(LockError::Io(_))));
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_lock_success_and_release() {
-        let dir = std::env::temp_dir().join("splat-lock-success");
-        let _ = std::fs::create_dir_all(&dir);
+        let temporary = tempfile::tempdir().unwrap();
+        let dir = temporary.path();
 
         // Acquire lock
-        let guard = ProjectLock::try_lock(&dir, "frame_extraction").unwrap();
+        let guard = ProjectLock::try_lock(dir, "frame_extraction").unwrap();
         assert!(dir.join(".lock").exists());
 
         // Release lock
@@ -371,23 +403,20 @@ mod tests {
         assert!(!dir.join(".lock").exists());
 
         // Can re-acquire
-        let guard2 = ProjectLock::try_lock(&dir, "training").unwrap();
+        let guard2 = ProjectLock::try_lock(dir, "training").unwrap();
         assert!(dir.join(".lock").exists());
         guard2.release();
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_double_lock_fails() {
-        let dir = std::env::temp_dir().join("splat-lock-double");
-        let _ = std::fs::remove_dir_all(&dir);
-        let _ = std::fs::create_dir_all(&dir);
+        let temporary = tempfile::tempdir().unwrap();
+        let dir = temporary.path();
 
-        let _guard = ProjectLock::try_lock(&dir, "stage1").unwrap();
+        let _guard = ProjectLock::try_lock(dir, "stage1").unwrap();
 
         // Second lock should fail
-        let result = ProjectLock::try_lock(&dir, "stage2");
+        let result = ProjectLock::try_lock(dir, "stage2");
         assert!(result.is_err());
         match result {
             Err(LockError::AlreadyLocked(info)) => {
@@ -395,45 +424,37 @@ mod tests {
             }
             _ => panic!("expected AlreadyLocked"),
         }
-
-        // Clean up
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_lock_drop_releases() {
-        let dir = std::env::temp_dir().join("splat-lock-drop");
-        let _ = std::fs::create_dir_all(&dir);
+        let temporary = tempfile::tempdir().unwrap();
+        let dir = temporary.path();
 
         {
-            let _guard = ProjectLock::try_lock(&dir, "stage").unwrap();
+            let _guard = ProjectLock::try_lock(dir, "stage").unwrap();
             assert!(dir.join(".lock").exists());
         }
         // Guard dropped → lock released
         assert!(!dir.join(".lock").exists());
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_check_unlocked() {
-        let dir = std::env::temp_dir().join("splat-lock-check");
-        let _ = std::fs::create_dir_all(&dir);
+        let temporary = tempfile::tempdir().unwrap();
+        let dir = temporary.path();
 
-        let status = ProjectLock::check(&dir);
+        let status = ProjectLock::check(dir);
         assert_eq!(status, LockStatus::Unlocked);
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_check_locked() {
-        let dir = std::env::temp_dir().join("splat-lock-check-locked");
-        let _ = std::fs::remove_dir_all(&dir);
-        let _ = std::fs::create_dir_all(&dir);
+        let temporary = tempfile::tempdir().unwrap();
+        let dir = temporary.path();
 
-        let _guard = ProjectLock::try_lock(&dir, "mapping").unwrap();
-        let status = ProjectLock::check(&dir);
+        let _guard = ProjectLock::try_lock(dir, "mapping").unwrap();
+        let status = ProjectLock::check(dir);
 
         match status {
             LockStatus::Locked { stage, .. } => {
@@ -441,20 +462,18 @@ mod tests {
             }
             _ => panic!("expected Locked"),
         }
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_force_unlock() {
-        let dir = std::env::temp_dir().join("splat-lock-force");
-        let _ = std::fs::create_dir_all(&dir);
+        let temporary = tempfile::tempdir().unwrap();
+        let dir = temporary.path();
 
-        let _guard = ProjectLock::try_lock(&dir, "test").unwrap();
+        let _guard = ProjectLock::try_lock(dir, "test").unwrap();
         assert!(dir.join(".lock").exists());
 
         assert_eq!(
-            ProjectLock::force_unlock(&dir).unwrap_err().kind(),
+            ProjectLock::force_unlock(dir).unwrap_err().kind(),
             std::io::ErrorKind::WouldBlock
         );
         assert!(dir.join(".lock").exists());
@@ -464,10 +483,59 @@ mod tests {
             "stale/corrupt metadata preserved until explicit cleanup",
         )
         .unwrap();
-        ProjectLock::force_unlock(&dir).unwrap();
+        ProjectLock::force_unlock(dir).unwrap();
         assert!(!dir.join(".lock").exists());
+    }
 
-        let _ = std::fs::remove_dir_all(&dir);
+    #[cfg(unix)]
+    #[test]
+    fn released_guard_unlocks_even_while_an_inherited_description_is_open() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut guard = ProjectLock::try_lock(directory.path(), "first-owner").unwrap();
+        // dup shares the same open file description, as a forked child's
+        // descriptor does before exec closes its close-on-exec descriptors.
+        let inherited = guard
+            .kernel_lock
+            .as_ref()
+            .unwrap()
+            .file
+            .try_clone()
+            .unwrap();
+        assert_eq!(
+            ProjectLock::force_unlock(directory.path())
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+
+        guard.try_release().unwrap();
+        assert!(!directory.path().join(LOCK_FILE).exists());
+        let next = ProjectLock::try_lock(directory.path(), "next-owner").unwrap();
+        drop(guard);
+        drop(inherited);
+        // Closing an old inherited descriptor cannot release the new owner.
+        assert_eq!(
+            ProjectLock::force_unlock(directory.path())
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+        next.release();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scoped_kernel_guard_unlocks_before_its_inherited_description_closes() {
+        let directory = tempfile::tempdir().unwrap();
+        let kernel = KernelLock::try_acquire(open_kernel_lock(directory.path()).unwrap()).unwrap();
+        let inherited = kernel.file.try_clone().unwrap();
+        drop(kernel);
+        // The scoped RAII path is also used for force_unlock and failed
+        // acquisitions after obtaining the kernel lock but before metadata.
+        let next = ProjectLock::try_lock(directory.path(), "next-owner").unwrap();
+        drop(inherited);
+        assert!(ProjectLock::try_lock(directory.path(), "contender").is_err());
+        next.release();
     }
 
     #[test]

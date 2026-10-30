@@ -13,8 +13,10 @@ const desktopRequire = createRequire(join(root, 'apps/desktop/package.json'));
 const ts = desktopRequire('typescript');
 const pin = JSON.parse(await readFile(join(integration, 'upstream.json'), 'utf8'));
 assert.equal(pin.commit, 'b89029dd20911fd18905b61de2701094ac390a73');
-assert.equal((await readFile(join(upstream, '.git/HEAD'), 'utf8')).trim(), pin.commit,
-    'Prepare the fixed SuperSplat source before running the real serializer regression.');
+const head = await readFile(join(upstream, '.git/HEAD'), 'utf8').catch((cause) => {
+    throw new Error('Run pnpm test:supersplat:bridge to prepare the fixed source for this integration test.', { cause });
+});
+assert.equal(head.trim(), pin.commit, 'The bridge regression requires the prepared fixed SuperSplat source.');
 assert.equal(JSON.parse(await readFile(join(upstream, 'node_modules/@playcanvas/splat-transform/package.json'), 'utf8')).version, '3.10.2');
 
 const transform = await import(pathToFileURL(join(upstream, 'node_modules/@playcanvas/splat-transform/dist/index.mjs')));

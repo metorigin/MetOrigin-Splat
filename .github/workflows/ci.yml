@@ -71,6 +71,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:supersplat:packaging
+      - run: pnpm test:supersplat:bridge
       - run: pnpm test:spark:lifecycle
       - run: pnpm test:three:lifecycle
       - run: pnpm build
@@ -104,6 +105,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:supersplat:packaging
+      - run: pnpm test:supersplat:bridge
       - run: pnpm test:spark:lifecycle
       - run: pnpm test:three:lifecycle
       - run: python3 -m unittest discover -s scripts/macos -p 'test_*.py'

@@ -10,7 +10,9 @@ const repositoryRoot = resolve(scriptDirectory, "..", "..");
 const artifactRoot = join(repositoryRoot, ".test-results", "ux-automation");
 const previewPort = 4173;
 const appUrl = `http://127.0.0.1:${previewPort}`;
-const edgeCandidates = [
+// An explicit override enables an isolated Chromium run on other hosts;
+// Windows continues to discover Microsoft Edge by default.
+const browserCandidates = process.env.METORIGIN_UX_BROWSER_EXECUTABLE ? [process.env.METORIGIN_UX_BROWSER_EXECUTABLE] : [
   process.env.PROGRAMFILES ? join(process.env.PROGRAMFILES, "Microsoft", "Edge", "Application", "msedge.exe") : null,
   process.env["PROGRAMFILES(X86)"] ? join(process.env["PROGRAMFILES(X86)"], "Microsoft", "Edge", "Application", "msedge.exe") : null,
 ].filter(Boolean);
@@ -46,7 +48,8 @@ class CdpClient {
     });
     this.output.on("error", (error) => this.rejectAll(new AutomationError(`CDP output pipe failed: ${error.message}`)));
     this.input.on("error", (error) => this.rejectAll(new AutomationError(`CDP input pipe failed: ${error.message}`)));
-    browserProcess.on("exit", (code) => this.rejectAll(new AutomationError(`Edge CDP process exited: code=${code ?? "unknown"}`)));
+    browserProcess.on("exit", (code) => this.rejectAll(new AutomationError(`Browser CDP process exited: code=${code ?? "unknown"}`)));
+    browserProcess.on("error", (error) => this.rejectAll(new AutomationError(`Browser failed to start: ${error.message}`)));
   }
 
   handleMessage(raw) {
@@ -113,10 +116,11 @@ function sleep(milliseconds) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 }
 
-async function waitForHttp(url, timeoutMs = 20_000) {
+async function waitForHttp(url, timeoutMs = 20_000, assertServerRunning = () => undefined) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
   while (Date.now() < deadline) {
+    assertServerRunning();
     try {
       const response = await fetch(url);
       if (response.ok) return response;
@@ -132,7 +136,7 @@ async function findExecutable(candidates) {
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
   }
-  throw new AutomationError("未找到 Microsoft Edge。请安装 Edge 后重试自动化验收。");
+  throw new AutomationError("未找到浏览器。Windows 默认使用 Microsoft Edge；其他主机可设置 METORIGIN_UX_BROWSER_EXECUTABLE 指向 Chromium 浏览器可执行文件。");
 }
 
 function mockTauriBootstrap() {
@@ -154,11 +158,29 @@ function mockTauriBootstrap() {
     status: "ready",
     updated_at: "2026-08-14T07:00:00Z",
   };
+  const stageIds = ["MediaValidation", "FrameExtraction", "ImagePreprocessing", "ColmapFeatureExtraction", "ColmapMatching", "ColmapMapping", "ColmapValidation", "TrainingPreparation", "BrushTraining", "ModelValidation", "PreviewGeneration", "Export"];
   const makeSnapshot = (project, stage, status = project.status, sequence = 1, progress = 0.42) => ({
     project_id: project.id,
     project_path: project.path,
     status,
-    state: { stages: {}, current_stage: stage, overall_progress: progress },
+    state: {
+      stages: Object.fromEntries(stageIds.map((stageId, index) => {
+        const currentIndex = stageIds.indexOf(stage);
+        const completed = status === "completed" || (currentIndex >= 0 && index < currentIndex);
+        return [stageId, {
+          stage_id: stageId,
+          status: completed ? "completed" : stageId === stage ? status : "pending",
+          progress: completed ? 1 : stageId === stage ? progress : 0,
+          started_at: completed || stageId === stage ? now() : null,
+          ended_at: completed ? now() : null,
+          retry_count: 0,
+          error: null,
+          log_path: null,
+        }];
+      })),
+      current_stage: stage,
+      overall_progress: progress,
+    },
     sequence,
     accepted_at: now(),
     started_at: "2026-08-14T08:00:01Z",
@@ -245,7 +267,17 @@ function mockTauriBootstrap() {
           refreshed_project: project ?? null,
         };
       }
-      case "get_app_settings": return null;
+      case "get_app_settings": return {
+        engine_directory: "C:\\E2E\\engines",
+        engine_executables: {},
+        default_project_root: "C:\\E2E",
+        default_preset: "balanced",
+        create_and_start: true,
+        prevent_idle_sleep: false,
+        log_retention_mb: 512,
+        thumbnail_cache_mb: 1024,
+      };
+      case "get_project_thumbnail": return null;
       case "get_resource_metrics": return null;
       case "get_active_pipeline_summary": return state.activeSnapshot;
       case "get_pipeline_state": {
@@ -414,7 +446,7 @@ async function run() {
   const report = {
     schema_version: 1,
     generated_at: new Date().toISOString(),
-    runner: "Microsoft Edge headless + Chrome DevTools Protocol",
+    runner: `${process.env.METORIGIN_UX_BROWSER_EXECUTABLE ? "Explicit Chromium browser" : "Microsoft Edge"} headless + Chrome DevTools Protocol`,
     fixture_policy: "synthetic-only; no real project, media, credential, or user path is collected",
     checks: [],
     timings: {},
@@ -451,7 +483,8 @@ async function run() {
   const waitFor = async (expression, timeoutMs = 10_000, message = "页面条件等待超时。") => {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      if (await evaluate(expression)) return;
+      // A condition may end in a DOM node; serialize only its truth value.
+      if (await evaluate(`Boolean(${expression})`)) return;
       await sleep(25);
     }
     throw new AutomationError(message, expression);
@@ -489,32 +522,43 @@ async function run() {
     await evaluate("window.dispatchEvent(new Event('resize')); true");
     await sleep(100);
   };
-  const dispatchKey = async (key) => {
-    const keyCode = { ArrowDown: 40, ArrowRight: 39, Escape: 27, Home: 36, End: 35 }[key] ?? 0;
-    await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key, code: key, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode });
-    await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key, code: key, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode });
+  const dispatchKey = async (key, modifiers = 0) => {
+    const keyCode = { Tab: 9, Enter: 13, ArrowDown: 40, ArrowRight: 39, Escape: 27, Home: 36, End: 35 }[key] ?? 0;
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key, code: key, modifiers, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode });
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key, code: key, modifiers, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode });
   };
 
   try {
-    progress("locating Edge and building frontend");
-    const edgeExecutable = await findExecutable(edgeCandidates);
-    const build = spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", "pnpm.CMD build"], {
+    progress("locating browser and building frontend");
+    const edgeExecutable = await findExecutable(browserCandidates);
+    const build = spawnSync(process.platform === "win32" ? process.env.ComSpec ?? "cmd.exe" : "pnpm", process.platform === "win32" ? ["/d", "/s", "/c", "pnpm.CMD build"] : ["build"], {
       cwd: repositoryRoot,
       encoding: "utf8",
       windowsHide: true,
     });
-    check("production-build", build.status === 0, build.status === 0 ? "Vite production build completed." : "Vite production build failed.");
+    check("production-build", build.status === 0, build.status === 0 ? "Vite production build completed." : `Vite production build failed: ${String(build.error?.message ?? build.stderr ?? "").slice(-1000)}`);
 
-    progress("starting preview server and Edge CDP session");
+    progress("starting preview server and isolated browser CDP session");
     const viteEntry = join(repositoryRoot, "apps", "desktop", "node_modules", "vite", "bin", "vite.js");
+    let previewOutput = "";
+    let previewFailure = null;
     previewProcess = spawn(process.execPath, [
       viteEntry,
       "preview",
       "--host", "127.0.0.1",
       "--port", String(previewPort),
-    ], { cwd: join(repositoryRoot, "apps", "desktop"), stdio: "ignore", windowsHide: true });
+      "--strictPort",
+    ], { cwd: join(repositoryRoot, "apps", "desktop"), stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const collectPreviewOutput = (chunk) => { previewOutput = `${previewOutput}${chunk}`.slice(-2000); };
+    previewProcess.stdout.on("data", collectPreviewOutput);
+    previewProcess.stderr.on("data", collectPreviewOutput);
+    previewProcess.on("error", (error) => { previewFailure = error.message; });
     previewProcess.unref();
-    await waitForHttp(appUrl);
+    await waitForHttp(appUrl, 20_000, () => {
+      if (previewFailure || previewProcess.exitCode !== null) {
+        throw new AutomationError(`Preview server failed to start: ${previewFailure || previewOutput.trim() || `exit=${previewProcess.exitCode}`}`);
+      }
+    });
 
     edgeProfilePath = await mkdtemp(join(artifactRoot, "edge-profile-"));
     edgeProcess = spawn(edgeExecutable, [
@@ -529,6 +573,9 @@ async function run() {
       "--no-first-run",
       "--disable-default-apps",
       "--disable-extensions",
+      "--disable-background-networking",
+      "--disable-component-update",
+      "--disable-sync",
     ], { cwd: repositoryRoot, stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"], windowsHide: true });
     cdp = new CdpClient(edgeProcess);
     const created = await cdp.send("Target.createTarget", { url: "about:blank" }, true);
@@ -556,10 +603,12 @@ async function run() {
 
     progress("validating language selection in the production build");
     await clickButton("设置与引擎");
-    await waitFor("Boolean(document.querySelector('.settings-language select'))");
+    await waitFor("[...document.querySelectorAll('#settings-drawer [role=tab]')].some(tab => tab.textContent.trim() === '外观')");
+    await clickButton("外观");
+    await waitFor("Boolean(document.querySelector('#settings-drawer #language-preference'))");
     const selectLanguage = async (locale) => {
       await evaluate(`(() => {
-        const select = document.querySelector('.settings-language select');
+        const select = document.querySelector('#settings-drawer #language-preference');
         select.value = ${JSON.stringify(locale)};
         select.dispatchEvent(new Event('change', { bubbles: true }));
       })()`);
@@ -583,25 +632,29 @@ async function run() {
 
     await clickButton("自动化项目 B");
     await waitFor("[...document.querySelectorAll('h1')].some((node) => node.textContent?.trim() === '自动化项目 B')", 10_000, "未进入项目 B。");
-    await waitFor("Boolean(document.querySelector('.run-actions button[aria-disabled=\"true\"][aria-describedby]'))", 10_000, "项目 B 未阻止与活动项目冲突的启动操作。");
+    await waitFor("Boolean(document.querySelector('button[aria-label=\"开始重建\"][aria-disabled=\"true\"][aria-describedby]'))", 10_000, "项目 B 未阻止与活动项目冲突的启动操作。");
     const conflictState = await evaluate(`(() => {
-      const button = [...document.querySelectorAll('button')].find((item) => item.textContent?.includes('开始重建'));
+      const button = document.querySelector('button[aria-label="开始重建"]');
       return button ? { focusable: !button.disabled, ariaDisabled: button.getAttribute('aria-disabled'), described: Boolean(document.getElementById(button.getAttribute('aria-describedby'))?.textContent?.trim()) } : null;
     })()`);
     check("active-project-conflict", conflictState?.focusable && conflictState.ariaDisabled === "true" && conflictState.described,
       "Project B remains navigable while its start action is focusable, described, and blocked by active project A.");
     await evaluate(`(() => {
-      const button = document.querySelector('.run-actions button[aria-disabled="true"]');
+      const button = document.querySelector('button[aria-label="开始重建"][aria-disabled="true"]');
       button.focus();
       button.click();
     })()`);
-    await waitFor("document.querySelector('.run-conflict-feedback[role=alert]')?.textContent?.includes('当前有重建任务尚未结束')", 2_000, "受阻的启动操作未显示原因。");
+    await waitFor("[...document.querySelectorAll('[role=alert]')].some(alert => alert.textContent.includes('当前有重建任务尚未结束'))", 2_000, "受阻的启动操作未说明原因。");
     const blockedAttempt = await evaluate(`({
       focusRetained: document.activeElement?.getAttribute('aria-disabled') === 'true',
       started: window.__E2E__.state.commandCalls.some((call) => call.command === 'start_pipeline'),
     })`);
     check("active-project-blocked-attempt", blockedAttempt.focusRetained && !blockedAttempt.started,
       "Attempting the blocked start explains the conflict, retains focus, and never invokes start_pipeline.");
+    // The approved sidebar contains only navigation/settings; the full gallery
+    // owns project switching rather than duplicating recent projects in the rail.
+    await clickButton("项目中心");
+    await waitFor("Boolean(document.querySelector('button[aria-label=\"自动化项目 A\"]'))");
     await clickButton("自动化项目 A");
     await waitFor("[...document.querySelectorAll('h1')].some((node) => node.textContent?.trim() === '自动化项目 A')", 10_000, "未返回活动项目 A。");
     await waitFor("Boolean(document.querySelector('.preview-panel'))", 10_000, "项目工作区未完成加载。");
@@ -614,34 +667,52 @@ async function run() {
         return { top: value.top, right: value.right, bottom: value.bottom, left: value.left, width: value.width, height: value.height };
       };
       return {
-        content: rect('.workspace-content'),
+        content: rect('main'),
+        titlebar: rect('.desktop-app-shell > header'),
         grid: rect('.project-workspace-grid'),
         feedback: rect('.project-resource-feedback'),
         timeline: rect('.timeline-panel'),
         inspector: rect('.inspector-column'),
         preview: rect('.preview-panel'),
+        viewport: rect('.scene-viewport-panel'),
+        details: rect('.inspector-details-panel'),
         monitor: rect('.workspace-inspector-stack'),
+        phases: [...document.querySelectorAll('.pipeline-timeline .phase-summary')].map(node => {
+          const value = node.getBoundingClientRect();
+          return { top: value.top, height: value.height };
+        }),
       };
     })()`);
     const workspaceLayoutValid = Boolean(
       workspaceLayout.content
+      && workspaceLayout.titlebar
       && workspaceLayout.grid
       && workspaceLayout.feedback
       && workspaceLayout.timeline
       && workspaceLayout.inspector
       && workspaceLayout.preview
+      && workspaceLayout.viewport
+      && workspaceLayout.details
       && workspaceLayout.monitor
+      && workspaceLayout.phases.length === 4
+      && workspaceLayout.phases.every(phase => phase.height > 0 && phase.height <= 48 && Math.abs(phase.top - workspaceLayout.phases[0].top) <= 1)
+      && Math.abs(workspaceLayout.titlebar.height - 48) <= 1
+      && workspaceLayout.titlebar.bottom <= workspaceLayout.grid.top + 1
       && (workspaceLayout.feedback.height === 0 || workspaceLayout.feedback.bottom <= workspaceLayout.timeline.top + 1)
       && workspaceLayout.timeline.height > 0
       && workspaceLayout.timeline.bottom <= workspaceLayout.inspector.top + 1
-      && Math.abs(workspaceLayout.preview.top - workspaceLayout.monitor.top) <= 1
+      && Math.abs(workspaceLayout.viewport.top - workspaceLayout.details.top) <= 1
+      && workspaceLayout.viewport.right <= workspaceLayout.details.left + 1
+      && workspaceLayout.preview.left >= workspaceLayout.viewport.left - 1
+      && workspaceLayout.preview.right <= workspaceLayout.viewport.right + 1
+      && workspaceLayout.monitor.top >= workspaceLayout.details.top - 1
       && workspaceLayout.preview.right <= workspaceLayout.monitor.left + 1
       && workspaceLayout.preview.height >= 288
       && workspaceLayout.inspector.bottom <= workspaceLayout.content.bottom + 1
     );
     check("project-workspace-grid-placement", workspaceLayoutValid,
       workspaceLayoutValid
-        ? "Stage milestones sit above the side-by-side preview and monitoring panels within the visible workspace."
+        ? "A 48px desktop header and four compact phase controls sit above the sibling resizable viewport and inspector within the visible workspace."
         : `Workspace children escaped their intended tracks: ${JSON.stringify(workspaceLayout)}`);
     await capture("project-workspace-layout-1440x1024-100pct");
 
@@ -675,7 +746,7 @@ async function run() {
 
     progress("collecting SC-009 pipeline-update timing samples");
     await evaluate("window.__E2E__.setStage('BrushTraining'); true");
-    await waitFor("[...document.querySelectorAll('.run-time-copy strong')][1]?.textContent?.includes('Brush 训练')", 3_000,
+    await waitFor("document.querySelector('.workspace-inspector-stack .task-progress-card > strong')?.textContent?.includes('Brush 训练')", 3_000,
       "Pipeline 状态传播预热失败。");
     const pipelineSamples = [];
     for (let index = 0; index < 20; index += 1) {
@@ -683,8 +754,8 @@ async function run() {
       const label = stage === "ModelValidation" ? "模型校验" : "Brush 训练";
       await evaluate(`window.__E2E_TIMING_START__ = performance.now(); window.__E2E__.setStage(${JSON.stringify(stage)}); true`);
       await waitFor(`(() => {
-        const values = [...document.querySelectorAll('.run-time-copy strong')];
-        return values[1]?.textContent?.includes(${JSON.stringify(label)});
+        const value = document.querySelector('.workspace-inspector-stack .task-progress-card > strong');
+        return value?.getClientRects().length > 0 && value.textContent.includes(${JSON.stringify(label)});
       })()`, 3_000, `阶段 ${label} 未及时显示。`);
       pipelineSamples.push(await evaluate("performance.now() - window.__E2E_TIMING_START__"));
     }
@@ -698,8 +769,15 @@ async function run() {
     check("SC-009-p95", report.timings.SC009.status === "PASS", `p95=${report.timings.SC009.p95_ms}ms; threshold=2000ms.`);
 
     progress("collecting SC-010 thousand-event search timing samples");
+    check("thousand-event-fixture", await evaluate("window.__E2E__.state.events.length === 1000"),
+      "Search operates on a 1000-event synthetic source while retaining the selected-stage filter.");
     await clickButton("查看日志与活动");
     await waitFor("Boolean(document.querySelector('input[aria-label=\"搜索活动记录\"]'))", 10_000, "活动搜索框未出现。");
+    const searchResultReady = (targetText) => `(() => {
+      const rows = [...document.querySelectorAll('.activity-event-row')];
+      return document.querySelector('.activity-panel')?.getAttribute('aria-busy') === 'false'
+        && rows.length === 1 && rows[0].textContent.includes(${JSON.stringify(targetText)});
+    })()`;
     await evaluate(`(() => {
       const input = document.querySelector('input[aria-label="搜索活动记录"]');
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
@@ -707,7 +785,7 @@ async function run() {
       input.dispatchEvent(new Event('input', { bubbles: true }));
       return true;
     })()`);
-    await waitFor("[...document.querySelectorAll('.activity-event-row')].some((item) => item.textContent?.includes('SyntheticTarget-0840'))", 3_000,
+    await waitFor(searchResultReady("SyntheticTarget-0840"), 3_000,
       "千条活动记录搜索预热失败。");
     const searchSamples = [];
     for (let index = 0; index < 20; index += 1) {
@@ -722,7 +800,9 @@ async function run() {
         input.dispatchEvent(new Event('input', { bubbles: true }));
         return true;
       })()`);
-      await waitFor(`[...document.querySelectorAll('.activity-event-row')].some((item) => item.textContent?.includes(${JSON.stringify(targetText)}))`, 3_000, "千条活动记录搜索未及时返回目标项。");
+      // A target can already exist in the previous unfiltered page. Require
+      // the settled query-specific result, including the real debounce/load.
+      await waitFor(searchResultReady(targetText), 3_000, "千条活动记录搜索未及时仅返回当前目标项。");
       searchSamples.push(await evaluate("performance.now() - window.__E2E_TIMING_START__"));
     }
     report.timings.SC010 = {
@@ -738,14 +818,14 @@ async function run() {
     await clickButton("关闭日志");
     await waitFor("!document.querySelector('.workspace-activity-drawer')", 2_000, "日志抽屉未关闭。");
     await evaluate(`(() => {
-      const trigger = [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === '操作');
+      const trigger = document.querySelector('button[aria-label="操作"]');
       trigger.focus();
       return document.activeElement === trigger;
     })()`);
     await dispatchKey("ArrowDown");
     await waitFor("document.activeElement?.getAttribute('role') === 'menuitem'", 2_000, "操作菜单未按方向键打开并聚焦菜单项。");
     await dispatchKey("Escape");
-    await waitFor("!document.querySelector('[role=menu]') && document.activeElement?.textContent?.trim() === '操作'", 2_000,
+    await waitFor("!document.querySelector('[role=menu]') && document.activeElement?.getAttribute('aria-label') === '操作'", 2_000,
       "Escape 关闭菜单后未恢复触发器焦点。");
     check("keyboard-menu-contract", true, "ArrowDown opens and Escape closes the menu with focus restored.");
 
@@ -758,7 +838,13 @@ async function run() {
     })()`);
     await dispatchKey("ArrowRight");
     await waitFor("[...document.querySelectorAll('[role=tab]')].some((item) => item.textContent?.trim() === '事件' && item.getAttribute('aria-selected') === 'true')", 2_000, "活动标签页方向键切换失败。");
-    check("keyboard-tabs-contract", true, "Right Arrow activates the next tab using a single roving tab stop.");
+    const tabsKeyboardState = await evaluate(`(() => {
+      const list = document.querySelector('[role=tablist][aria-label="Pipeline 活动筛选"]');
+      return list?.querySelectorAll('[role=tab][tabindex="0"]').length === 1
+        && document.activeElement?.getAttribute('role') === 'tab'
+        && document.activeElement?.getAttribute('aria-selected') === 'true';
+    })()`);
+    check("keyboard-tabs-contract", tabsKeyboardState, "Right Arrow activates the next tab using a single roving tab stop.");
 
     await cdp.send("Emulation.setEmulatedMedia", {
       features: [
@@ -789,29 +875,67 @@ async function run() {
       const cssWidth = Math.round(1024 / scale);
       const cssHeight = Math.round(768 / scale);
       await setViewport(cssWidth, cssHeight, scale);
-      await waitFor("Boolean(document.querySelector('button[aria-label=\"打开全部项目\"]'))", 3_000, "窄窗项目入口未出现。");
+      await waitFor("Boolean(document.querySelector('button[aria-label=\"打开项目导航\"]'))", 3_000, "窄窗项目导航入口未出现。");
       const drawerTrigger = await evaluate(`(() => {
-        const button = document.querySelector('button[aria-label="打开全部项目"]');
+        const button = document.querySelector('button[aria-label="打开项目导航"]');
         button.focus();
         button.click();
         return Boolean(button);
       })()`);
-      await waitFor("Boolean(document.querySelector('[role=dialog] h2')) && document.body.innerText.includes('全部项目')", 3_000, "完整项目抽屉未通过一次操作打开。");
+      await waitFor("document.querySelector('#project-drawer[role=dialog]')?.textContent.includes('项目导航')", 3_000, "项目导航抽屉未通过一次操作打开。");
       const drawerState = await evaluate(`(() => {
-        const dialog = document.querySelector('[role=dialog]');
+        const dialog = document.querySelector('#project-drawer[role=dialog]');
+        const names = dialog ? [...dialog.querySelectorAll('button')].map(button => (button.getAttribute('aria-label') || button.textContent).trim()) : [];
+        const rect = dialog?.getBoundingClientRect();
         return {
-          projects: dialog ? [...dialog.querySelectorAll('button')].filter((item) => item.getAttribute('aria-label')?.startsWith('自动化项目 ')).length : 0,
+          navigation: names.includes('项目中心') && names.includes('设置与引擎'),
+          duplicatedProjects: names.some(name => name.startsWith('自动化项目 ')),
           focusInside: Boolean(dialog?.contains(document.activeElement)),
+          named: Boolean(document.getElementById(dialog?.getAttribute('aria-labelledby'))?.textContent.trim()),
+          contained: Boolean(rect && rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth + 1 && rect.bottom <= innerHeight + 1),
           viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio },
         };
       })()`);
-      check(`compact-project-drawer-${scale}x`, drawerTrigger && drawerState.projects >= 2 && drawerState.focusInside,
-        `One action opens the complete project drawer at conservative ${cssWidth}x${cssHeight} CSS viewport emulation.`);
+      check(`compact-project-drawer-${scale}x`, drawerTrigger && drawerState.navigation && !drawerState.duplicatedProjects && drawerState.focusInside && drawerState.named && drawerState.contained,
+        `One action opens the named navigation/settings drawer, without duplicating the project gallery, inside ${cssWidth}x${cssHeight} CSS viewport emulation.`);
+      await evaluate("document.querySelector('#project-drawer button[aria-label=\"关闭项目抽屉\"]').focus(); true");
+      await dispatchKey("Tab", 8);
+      const reverseTabTrapped = await evaluate("document.querySelector('#project-drawer').contains(document.activeElement) && document.activeElement.textContent.trim() === '设置与引擎'");
+      await dispatchKey("Tab");
+      const forwardTabTrapped = await evaluate("document.activeElement?.getAttribute('aria-label') === '关闭项目抽屉'");
+      check(`compact-drawer-tab-trap-${scale}x`, reverseTabTrapped && forwardTabTrapped,
+        "Shift+Tab and Tab wrap inside the compact navigation dialog.");
       await capture(`project-drawer-1024x768-${String(scale).replace('.', '_')}x`);
       await dispatchKey("Escape");
-      await waitFor("!document.querySelector('[role=dialog]') && document.activeElement?.getAttribute('aria-label') === '打开全部项目'", 2_000,
+      await waitFor("!document.querySelector('#project-drawer') && document.activeElement?.getAttribute('aria-label') === '打开项目导航'", 2_000,
         "Escape 关闭项目抽屉后未恢复入口焦点。");
       check(`compact-drawer-focus-${scale}x`, true, "Escape closes the drawer and restores its trigger focus.");
+
+      // Full project access moves to Home in the approved desktop layout.
+      // Keep the old completeness check there instead of demanding removed UI.
+      await clickButton("打开项目导航");
+      await waitFor("Boolean(document.querySelector('#project-drawer'))");
+      await clickButton("项目中心");
+      await waitFor("!document.querySelector('#project-drawer') && Boolean(document.querySelector('button[aria-label=\"自动化项目 B\"]'))");
+      const libraryState = await evaluate(`(() => {
+        const visible = node => {
+          if (!node || !node.getClientRects().length) return false;
+          const rect = node.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && rect.left >= 0 && rect.right <= innerWidth + 1 && rect.top >= 0 && rect.bottom <= innerHeight + 1;
+        };
+        const buttons = [...document.querySelectorAll('main button')];
+        return {
+          projects: buttons.filter(button => ['自动化项目 A', '自动化项目 B'].includes(button.getAttribute('aria-label'))).length,
+          search: visible(document.querySelector('#project-center-search')),
+          create: visible(buttons.find(button => button.textContent.trim() === '新建项目')),
+          open: visible(buttons.find(button => button.textContent.trim() === '打开项目')),
+          sidebarHidden: !document.querySelector('.project-sidebar'),
+        };
+      })()`);
+      check(`compact-project-library-${scale}x`, libraryState.projects === 2 && libraryState.search && libraryState.create && libraryState.open && libraryState.sidebarHidden,
+        `The full two-project gallery, search, open and create actions remain visible in the compact project hub: ${JSON.stringify(libraryState)}`);
+      await clickButton("自动化项目 A");
+      await waitFor("document.querySelector('h1[aria-label=\"自动化项目 A\"]') && document.querySelector('.preview-panel')");
     }
 
     const axTree = await cdp.send("Accessibility.getFullAXTree");
@@ -830,6 +954,16 @@ async function run() {
       name: error?.name ?? "Error",
       message: String(error?.message ?? error).slice(0, 1000),
     };
+    if (cdp) {
+      // This browser/profile is owned by the harness and contains synthetic data only.
+      await capture("failure").catch(() => undefined);
+      report.failure.context = await evaluate(`({
+        headings: [...document.querySelectorAll('h1,h2')].map(node => node.textContent.trim()),
+        dialogs: [...document.querySelectorAll('[role=dialog],[role=alertdialog]')].map(node => ({ id: node.id, name: document.getElementById(node.getAttribute('aria-labelledby'))?.textContent.trim() })),
+        alerts: [...document.querySelectorAll('[role=alert]')].map(node => node.textContent.trim().slice(0, 300)),
+        buttons: [...document.querySelectorAll('button')].filter(node => node.getClientRects().length).map(node => (node.getAttribute('aria-label') || node.textContent).trim()).slice(0, 60),
+      })`).catch(() => null);
+    }
     throw error;
   } finally {
     report.status ??= report.checks.every((item) => item.status === "PASS") ? "PASS" : "FAIL";
