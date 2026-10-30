@@ -2,13 +2,12 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle,
-  SpinnerGap,
-  Warning
+  SpinnerGap
 } from "@/components/primitives/icons";
 import { localizeMessage, t } from "@/i18n";
 import { Fragment } from "react";
 
-import { ErrorNotice } from "@/components";
+import { ErrorNotice, Notification } from "@/components";
 import { ModalSurface } from "@/components/primitives/ModalSurface";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -129,7 +128,7 @@ export function NewProjectPage({ settings = null, onOpenSettings }: { settings?:
             />
           )}
 
-        {localError && <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm [&>svg]:shrink-0 [&>svg]:text-destructive" role="alert"><Warning size={17} />{localizeMessage(localError)}</div>}
+        {localError && <Notification variant="error" className="mt-4" message={localizeMessage(localError)} />}
         {creationError ? (
           <ErrorNotice
             error={creationError}
@@ -139,7 +138,7 @@ export function NewProjectPage({ settings = null, onOpenSettings }: { settings?:
             }}
           />
         ) : null}
-        {cancelOutcome ? <div className="mt-4 rounded-md border border-border bg-muted p-3 text-sm" role="status">{localizeMessage(cancelOutcome)}</div> : null}
+        {cancelOutcome ? <Notification className="mt-4" message={localizeMessage(cancelOutcome)} /> : null}
 
         {creating && (
           <div className="mt-4 space-y-3 rounded-lg border border-border bg-card p-4 [&>div:first-child]:flex [&>div:first-child]:items-center [&>div:first-child]:gap-2 [&_strong]:flex-1 [&_strong]:text-sm [&_span]:text-xs [&_span]:tabular-nums [&>p]:text-xs [&>p]:text-muted-foreground" aria-live="polite" aria-busy="true">

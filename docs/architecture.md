@@ -60,7 +60,7 @@ Each stage checks its prerequisites and existing output before execution. Valid 
 
 ## Persistence and recovery
 
-A `.splat-project` is a directory containing `project.json`, copied media, intermediate output, checkpoints, final artifacts and logs. [Project format](project-format.md) describes the layout and serialization.
+A project is an ordinary directory containing `project.json`, copied media, intermediate output, checkpoints, final artifacts and logs. New directories use the chosen project name; legacy `.splat-project` directories remain compatible. [Project format](project-format.md) describes the layout and serialization.
 
 Project locks prevent concurrent writers. Critical state is written atomically. On reopening an interrupted project, recovery validates persisted stage state and files before deciding what is reusable. A partial Brush checkpoint makes the stage resumable; it does not mark training complete.
 

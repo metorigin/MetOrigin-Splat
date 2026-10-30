@@ -1,5 +1,6 @@
-import { CaretDown, Check, PauseCircle, SpinnerGap, StopCircle, Warning, XCircle } from "@/components/primitives/icons";
+import { CaretDown, Check, PauseCircle, SpinnerGap, StopCircle, XCircle } from "@/components/primitives/icons";
 import { Button } from "@/components/ui/button";
+import { Notification } from "@/components/feedback";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { getLocale, localizeMessage, t } from "@/i18n";
 import { getStageLabel } from "@/localization";
@@ -51,10 +52,7 @@ export function PipelineStageNavigator({ pipelineError, pipelineUpdatedAt, pipel
         }
       }}>
         {pipelineError && (
-          <div className="pipeline-stale-warning" role="status">
-            <Warning size={16} weight="fill" />
-            <span>{t("Pipeline 状态更新失败，正在显示最后一次成功获取的数据")}{pipelineUpdatedAt ? `（${new Date(pipelineUpdatedAt).toLocaleTimeString(getLocale(), { hour12: false })}）` : ""}。</span>
-          </div>
+          <Notification variant="warning" className="mb-2" message={<>{t("Pipeline 状态更新失败，正在显示最后一次成功获取的数据")}{pipelineUpdatedAt ? `（${new Date(pipelineUpdatedAt).toLocaleTimeString(getLocale(), { hour12: false })}）` : ""}。</>} />
         )}
         <div className="panel-heading-row">
           <span>{t("里程碑 / 阶段")}</span>
@@ -138,7 +136,7 @@ export function PipelineStageNavigator({ pipelineError, pipelineUpdatedAt, pipel
                               {stageStatusLabel(stageStatus, stageState?.progress ?? 0)}
                             </span>
                           </Button>
-                          {selectedStage === stage && stageState?.error ? <p className="stage-inline-error" role="alert">{localizeMessage(stageState.error)}</p> : null}
+                          {selectedStage === stage && stageState?.error ? <Notification variant="error" message={localizeMessage(stageState.error)} /> : null}
                         </div>
                       );
                     })}

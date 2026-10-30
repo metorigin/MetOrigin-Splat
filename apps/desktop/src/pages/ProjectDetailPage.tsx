@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { PipelineStageNavigator } from "@/components/workspace/PipelineStageNavigator";
 import { QualityReportDialog } from "@/components/workspace/QualityReportDialog";
 import { SceneViewportHost } from "@/components/workspace/SceneViewportHost";
@@ -106,6 +105,13 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
     completeWorkspaceAction,
     acceptQualityRisk,
   } = workspace;
+  const selectPreviewStage = (stage: PipelineStageId) => {
+    // Selecting the current stage resumes automatic preview updates without
+    // needing a separate follow control above the canvas.
+    setFollowStage(!workspace.workspaceComplete && stage === workspace.followedStage);
+    setPreviewRelativePath(null);
+    setSelectedStage(stage);
+  };
   if (openCmd.loading && !project) {
     return (
       <div className="workspace-loading">
@@ -155,28 +161,27 @@ export function ProjectDetailPage({ projectId, projectPath, metrics = null, acti
         setStageFocus={setStageFocus}
         selectedStage={selectedStage}
         moveStageFocus={moveStageFocus}
-        onSelectStage={(stage) => { setFollowStage(false); setPreviewRelativePath(null); setSelectedStage(stage); }}
+        onSelectStage={selectPreviewStage}
       />
 
-      <ResizablePanelGroup direction="horizontal" className="inspector-column" autoSaveId="splat-workspace-panels">
-        <ResizablePanel id="scene-viewport" defaultSize={72} minSize={40} className="scene-viewport-panel flex min-w-0 flex-col">
+      <div className="inspector-column">
+        <div className="scene-viewport-panel flex min-w-0 flex-1 flex-col">
         <SceneViewportHost workspace={workspace} projectId={projectId} projectPath={projectPath} />
 
-        </ResizablePanel>
-        <ResizableHandle withHandle className="workspace-resize-handle ml-1 mr-2 max-[1120px]:hidden" />
-        <ResizablePanel id="scene-inspector" defaultSize={28} minSize={22} maxSize={45} className="inspector-details-panel min-w-0">
+        </div>
+        <div className="inspector-details-panel min-w-0">
         <ResponsiveInspectorSurface open={inspectorOpen} onClose={() => setInspectorOpen(false)} closeRef={inspectorCloseRef}>
         <TaskInspector workspace={workspace} metrics={metrics} />
         </ResponsiveInspectorSurface>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+        </div>
+      </div>
 
       {activityOpen && <ModalSurface id="workspace-activity" title={t("训练日志与活动")} titleHidden className="workspace-activity-drawer h-[min(672px,calc(100dvh-3rem))] w-[min(1152px,calc(100vw-2rem))] gap-0 overflow-hidden p-0" onClose={() => setActivityOpen(false)}>
         <header><div><strong>{t("训练日志与活动")}</strong><span>{t("保留当前项目的真实事件、诊断与错误上下文")}</span></div><Button variant="ghost" size="icon-sm" type="button" onClick={() => setActivityOpen(false)} aria-label={t("关闭日志")}><X size={18} /></Button></header>
         <ActivityWorkbench
           projectPath={projectPath}
           selectedStage={selectedStage}
-          onSelectStage={(stageId) => { setFollowStage(false); setPreviewRelativePath(null); setSelectedStage(stageId as PipelineStageId); }}
+          onSelectStage={(stageId) => selectPreviewStage(stageId as PipelineStageId)}
           refreshSignal={activityRefreshSignal}
         />
       </ModalSurface>}

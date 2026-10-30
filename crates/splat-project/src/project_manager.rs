@@ -23,11 +23,9 @@ impl ProjectManager {
 
     /// Create a new project directory with the given name and return the Project.
     ///
-    /// The project will be created at `{default_projects_dir}/{name}.splat-project/`.
+    /// The project will be created at `{default_projects_dir}/{name}/`.
     pub fn create_project(&self, name: &str) -> AppResult<(Project, PathBuf)> {
-        let project_dir = self
-            .default_projects_dir
-            .join(format!("{}.splat-project", name));
+        let project_dir = paths::project_dir(&self.default_projects_dir, name);
 
         if project_dir.exists() {
             return Err(AppError::new(
@@ -277,9 +275,14 @@ mod tests {
         let manager = ProjectManager::new(dir.clone());
 
         let (project, project_dir) = manager.create_project("test-create").unwrap();
+        assert_eq!(project_dir, dir.join("test-create"));
         assert_eq!(project.name, "test-create");
         assert!(project_dir.exists());
         assert!(paths::project_json_path(&project_dir).exists());
+        assert_eq!(
+            std::fs::read(project_dir.join(".gitignore")).unwrap(),
+            b"*\n"
+        );
 
         // Open it back
         let opened = manager.open_project(&project_dir).unwrap();
@@ -300,6 +303,36 @@ mod tests {
         let result = manager.create_project("duplicate");
         assert!(result.is_err());
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ordinary_names_preserve_dots_and_legacy_projects_remain_readable() {
+        let dir = temp_dir();
+        let manager = ProjectManager::new(dir.clone());
+        let (project, ordinary) = manager.create_project("场景 Café.v2").unwrap();
+        assert_eq!(ordinary, dir.join("场景 Café.v2"));
+        assert_eq!(manager.open_project(&ordinary).unwrap().id, project.id);
+        let legacy = dir.join("场景 Café.v2.splat-project");
+        std::fs::rename(&ordinary, &legacy).unwrap();
+        assert_eq!(manager.open_project(&legacy).unwrap().id, project.id);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ordinary_folder_collision_does_not_change_existing_files() {
+        let dir = temp_dir();
+        let existing = dir.join("capture");
+        std::fs::create_dir_all(&existing).unwrap();
+        std::fs::write(existing.join("original.txt"), b"original media").unwrap();
+        let manager = ProjectManager::new(dir.clone());
+        assert!(manager.create_project("capture").is_err());
+        assert_eq!(
+            std::fs::read(existing.join("original.txt")).unwrap(),
+            b"original media"
+        );
+        assert!(!existing.join("project.json").exists());
+        assert!(!existing.join("source").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -128,6 +128,17 @@ impl AppError {
     /// diagnostic logs, but are intentionally not exposed to end users.
     pub fn localized_for_ui(&self) -> Self {
         let mut localized = self.clone();
+        // E-1001 is shared with other input errors. Identify this known error
+        // before inspecting message language: a Chinese project path does not
+        // make the surrounding English diagnostic a localized user message.
+        if self.code == "E-1001" && self.title == "Project Not Found" {
+            localized.title = "项目位置不可用".to_string();
+            localized.user_message =
+                "找不到项目描述文件 project.json。请确认项目未被移动或删除，并重新定位项目目录。"
+                    .to_string();
+            localized.suggestions = vec!["重新定位包含 project.json 的项目目录。".to_string()];
+            return localized;
+        }
         let (title, message, suggestion) = match self.category {
             ErrorCategory::User => (
                 "输入内容有误",
@@ -307,6 +318,48 @@ mod tests {
             "请选择有效的媒体文件。",
         );
         assert_eq!(err.user_message_zh(), "请选择有效的媒体文件。");
+    }
+
+    #[test]
+    fn missing_project_localization_ignores_chinese_in_the_path() {
+        for path in [
+            "/Users/test/projects/M4 recovery/project.json",
+            "/Users/test/中文 空格 🧪/M4 恢复 Café 2500 🧪.splat-project/project.json",
+        ] {
+            let err = AppError::new(
+                "E-1001",
+                ErrorCategory::User,
+                "Project Not Found",
+                format!(
+                    "No project.json found at '{path}'. The directory may not be a valid project."
+                ),
+            )
+            .with_technical("original diagnostic retained");
+            let localized = err.localized_for_ui();
+            assert_eq!(localized.code, "E-1001");
+            assert_eq!(localized.title, "项目位置不可用");
+            assert!(localized
+                .user_message
+                .contains("找不到项目描述文件 project.json"));
+            assert!(!localized.user_message.contains(path));
+            assert!(!localized.user_message.contains("No project.json"));
+            assert_eq!(localized.technical_message, err.technical_message);
+            assert!(err.user_message_zh().contains("重新定位项目目录"));
+            assert_eq!(err.title, "Project Not Found");
+        }
+    }
+
+    #[test]
+    fn other_errors_sharing_e1001_are_not_reported_as_missing_projects() {
+        let err = AppError::new(
+            "E-1001",
+            ErrorCategory::User,
+            "Project Already Exists",
+            "A project with this name already exists.",
+        );
+        let localized = err.localized_for_ui();
+        assert_ne!(localized.title, "项目位置不可用");
+        assert!(!localized.user_message.contains("找不到项目描述文件"));
     }
 
     #[test]

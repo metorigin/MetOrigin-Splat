@@ -9,11 +9,13 @@ import {
   X
 } from "@/components/primitives/icons";
 import { Badge } from "@/components/ui/badge";
+import { Notification } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import type { useProjectWorkspace } from "@/hooks/useProjectWorkspace";
 import { getLocale, localizeMessage, t } from "@/i18n";
+import { isMacPlatform } from "@/lib/platformShortcuts";
 
 import { getStageLabel } from "@/localization";
 import { plyActionState } from "@/pages/projectTimeline";
@@ -25,6 +27,9 @@ type WorkspaceView = Pick<ReturnType<typeof useProjectWorkspace>, "project" | "a
 export function TaskInspector({ workspace, metrics }: { workspace: WorkspaceView; metrics: ResourceMetrics | null }) {
   const { project, artifacts, checkpoints, setCheckpointOpen, inspectorOpen, setInspectorOpen, setActivityOpen, qualityAction, recoveringStage, setQualityDialogOpen, qualityAccepting, inspectorCloseRef, pipelineState, workspaceStatus, workspaceComplete, openOutputDirectory, openScenePly, currentStageLabel, pipelineBusy, workspacePaused, workspaceFailed, overallPercent, failedStage, failureMessage, gpuPercent, memory, vramPercent, cpuPercent, recoverFromStage } = workspace;
   const workspaceCancelled = workspaceStatus === "cancelled";
+  const macResources = isMacPlatform() || /^mac(?:os)?$/i.test(metrics?.operating_system ?? "") || memory.unified;
+  const gpuUtilization = metrics?.gpu?.utilization_percent;
+  const showGpuUtilization = !macResources && gpuUtilization != null && Number.isFinite(gpuUtilization);
   const registrationLabel = project?.source?.type === "ImageFolder"
     ? t("照片注册率")
     : project?.source?.type === "Video" ? t("视频帧注册率") : t("图像注册率");
@@ -36,23 +41,24 @@ export function TaskInspector({ workspace, metrics }: { workspace: WorkspaceView
           <strong>{t("预览与质量")}</strong>
           <Button variant="ghost" size="icon-sm" ref={inspectorCloseRef} aria-label={t("关闭预览与质量")} onClick={() => setInspectorOpen(false)}><X size={18} /></Button>
         </div>
-        <section className="task-status-card rounded-xl bg-muted/50 p-4" aria-labelledby="task-status-heading">
+        {(workspaceFailed || workspaceComplete || workspacePaused || workspaceCancelled) && <section className="task-status-card workspace-inspector-card p-4" aria-labelledby="task-status-heading">
           <div className="task-status-heading">
             <div><h2 id="task-status-heading">{workspaceFailed ? t("错误与恢复") : workspaceComplete ? t("重建完成") : t("任务监控")}</h2>{!workspaceComplete && <p>{currentStageLabel}</p>}</div>
             {!workspaceComplete && <Badge variant={workspaceFailed ? "destructive" : workspacePaused ? "warning" : "secondary"}>{workspaceFailed ? t("已阻塞") : workspaceCancelled ? t("已取消") : workspacePaused ? t("已暂停") : pipelineBusy ? t("处理中") : t("等待中")}</Badge>}
           </div>
           {workspaceFailed ? (
-            <div className="task-error-card" role="alert">
-              <div className="task-error-message">
-                <strong>{localizeMessage(failureMessage ?? t("任务执行失败，请查看日志了解详情。"))}</strong>
-                <p>{failedStage ? t("{0}阶段中断。修复问题后可从此阶段重试。", getStageLabel(failedStage)) : t("未收到失败阶段信息，请先查看活动记录。")}</p>
-                <span>{t("失败阶段 · {0}", failedStage ?? t("未知"))}</span>
-              </div>
-              <div className="task-error-actions">
+            <Notification
+              variant="error"
+              className="mt-4"
+              title={localizeMessage(failureMessage ?? t("任务执行失败，请查看日志了解详情。"))}
+              message={failedStage ? t("{0}阶段中断。修复问题后可从此阶段重试。", getStageLabel(failedStage)) : t("未收到失败阶段信息，请先查看活动记录。")}
+              actions={<>
                 <Button variant="default" type="button" onClick={() => failedStage && void recoverFromStage(failedStage, "failed")} disabled={!failedStage || pipelineBusy || recoveringStage !== null}>{t("重试失败阶段")}</Button>
                 <Button variant="outline" type="button" onClick={() => setCheckpointOpen(true)} disabled={checkpoints.length === 0}>{t("查看可用恢复点")}</Button>
-              </div>
-            </div>
+              </>}
+            >
+              <span>{t("失败阶段 · {0}", failedStage ?? t("未知"))}</span>
+            </Notification>
           ) : workspaceComplete ? (
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{artifacts?.scene_ply.validated ? t("可预览模型或进入编辑。") : t("可查看输出文件与质量报告。")}</p>
           ) : (
@@ -63,9 +69,9 @@ export function TaskInspector({ workspace, metrics }: { workspace: WorkspaceView
               <p>{workspacePaused ? t("已保留 {0} 个恢复点，继续前将重新校验产物。", checkpoints.length) : `${currentStageLabel} · ${overallPercent == null ? t("等待进度更新") : t("已完成 {0}%", overallPercent)}`}</p>
             </div>
           )}
-        </section>
+        </section>}
 
-        <section className="quality-panel overflow-hidden rounded-xl border border-border/60 bg-card">
+        <section className="quality-panel workspace-inspector-card overflow-hidden border border-border/60">
           <div className="panel-title"><span>{t("重建质量")}</span><Button variant="ghost" size="xs" className="rounded-md text-xs text-muted-foreground" type="button" onClick={() => setQualityDialogOpen(true)}>{t("质量检查详情")}</Button></div>
           {artifacts?.colmap_validation && (
             <div className={`colmap-quality-decision decision-${artifacts.colmap_validation.decision}`} role="status">
@@ -150,14 +156,13 @@ export function TaskInspector({ workspace, metrics }: { workspace: WorkspaceView
             <Button variant="outline" size="sm" className="col-span-2 h-8 min-w-0 rounded-md px-2 text-xs" type="button" title={checkpoints.length === 0 ? t("Brush 训练开始后将在这里生成恢复点") : t("查看 {0} 个恢复点", checkpoints.length)} onClick={() => setCheckpointOpen(true)}><Database size={14} />{t("恢复点（{0}）", checkpoints.length)}</Button>
           </div>
         </section>
-        <section className="resource-monitor-card rounded-xl bg-muted/50 p-4" aria-labelledby="resource-monitor-heading">
+        <section className="resource-monitor-card workspace-inspector-card p-4" aria-labelledby="resource-monitor-heading">
           <div className="task-status-heading"><h3 id="resource-monitor-heading">{t("资源占用")}</h3></div>
-          <div className="resource-meter"><span>GPU { `${metrics?.gpu?.utilization_percent?.toFixed(0) ?? "—"}%${metrics?.gpu?.temperature_celsius != null ? ` · ${metrics.gpu.temperature_celsius.toFixed(0)}°C` : ""}`}</span><Progress value={metrics?.gpu?.utilization_percent != null ? gpuPercent : null} aria-label="GPU" /></div>
+          {showGpuUtilization && <div className="resource-meter"><span>GPU { `${gpuUtilization.toFixed(0)}%${metrics?.gpu?.temperature_celsius != null ? ` · ${metrics.gpu.temperature_celsius.toFixed(0)}°C` : ""}`}</span><Progress value={gpuPercent} aria-label="GPU" /></div>}
           <div className="resource-meter"><span>{memory.unified ? t("统一内存") : "VRAM"} { memory.used != null && memory.total != null ? `${(memory.used / 1024 ** 3).toFixed(1)} / ${(memory.total / 1024 ** 3).toFixed(0)} GiB` : t("尚未测量")}</span><Progress value={memory.used != null && memory.total != null ? vramPercent : null} aria-label={memory.unified ? t("统一内存") : "VRAM"} /></div>
           <div className="resource-meter"><span>CPU { cpuPercent != null ? `${cpuPercent.toFixed(0)}%` : t("尚未测量")}</span><Progress value={cpuPercent} aria-label="CPU" /></div>
         </section>
-        {artifacts?.latest_checkpoint ? <div className="recent-checkpoint-card"><span>{t("最近恢复点")}</span><strong>{t("{0} 次迭代", artifacts.latest_checkpoint.iteration.toLocaleString(getLocale()))}</strong><small>{new Date(artifacts.latest_checkpoint.created_at).toLocaleString(getLocale())}</small></div> : null}
-        <div className="workspace-background-note">{!workspaceComplete && <p>{t("任务可在应用内后台运行。关闭应用前，请先暂停并确认恢复点。")}</p>}<Button variant="ghost" size="sm" className="justify-start rounded-md px-0 text-xs text-muted-foreground" type="button" onClick={() => setActivityOpen(true)}>{t("查看日志与活动")}</Button></div>
+        <div className="workspace-background-note"><Button variant="ghost" size="sm" className="justify-start rounded-md px-0 text-xs text-muted-foreground" type="button" onClick={() => setActivityOpen(true)}>{t("查看日志与活动")}</Button></div>
         </aside>
   );
 }

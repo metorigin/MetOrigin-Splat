@@ -8,6 +8,7 @@ import { desktopApi } from "../services/desktop";
 import { createEditorBridge, type EditorBridge } from "../services/editorBridge";
 import type { EditorSession } from "../types";
 import janTheme from "../../../../integrations/jan/theme.json";
+import { Notification } from "../components/feedback";
 
 // The editing surface has its own dark palette; the shared titlebar keeps the
 // application's selected appearance and never changes the loaded scene.
@@ -185,8 +186,10 @@ export default forwardRef<ModelEditorHandle, Props>(function ModelEditorPage({ s
 
   return <section className="model-editor-page flex h-full min-h-0 min-w-0 flex-1 flex-col bg-card text-foreground" data-theme="dark" style={editorThemeStyle} aria-label={t("模型编辑工作区")}>
     {headerTarget ? createPortal(header, headerTarget) : header}
-    {error && <div className="model-editor-error shrink-0 border-b border-destructive/30 bg-destructive/10 px-5 py-3 text-sm text-destructive" role="alert">{localizeMessage(error)}</div>}
-    {themeError && <div className="flex shrink-0 items-center gap-3 border-b border-border bg-muted px-5 py-2 text-sm" role="status"><span>{t("编辑器外观未同步，模型修改已保留。")}</span><Button size="sm" variant="outline" onClick={() => { if (bridge.current) void syncTheme(bridge.current); }}>{t("重试")}</Button></div>}
+    {error && <Notification variant="error" className="model-editor-error shrink-0" message={localizeMessage(error)} />}
+    {themeError && <Notification variant="warning" className="shrink-0" message={t("编辑器外观未同步，模型修改已保留。")}
+      actions={<Button size="sm" variant="outline" onClick={() => { if (bridge.current) void syncTheme(bridge.current); }}>{t("重试")}</Button>}
+    />}
     <div className="model-editor-content relative min-h-0 flex-1 bg-background">
       <iframe className="block size-full border-0" style={{ visibility: frameVisible ? "visible" : "hidden" }} aria-hidden={!frameVisible} ref={frame} title={t("SuperSplat 模型编辑器")} src={editorUrl.current} onLoad={() => void initialize()} allow="webgpu" />
       {(phase === "loading" || phase === "saving" || phase === "exporting" || leaving) && <div className="model-editor-busy absolute inset-0 grid place-items-center bg-background text-sm text-foreground" role="status">

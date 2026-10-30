@@ -145,7 +145,7 @@ Do not commit:
 
 - Cargo targets (`target/`, root `target-*/`, `.codex-cargo-target/`), frontend output or dependency caches.
 - `.engines/`, `artifacts/`, `.artifacts/`, `.test-results/`, coverage or raw logs.
-- User `.splat-project` directories, source media, generated PLY/checkpoints or private datasets.
+- User project directories (ordinary names or legacy `.splat-project`), source media, generated PLY/checkpoints or private datasets.
 - Local environment files, credentials, signing keys or personal editor settings.
 
 Put local data inside the ignored directories instead of adding broad exclusions for every image or binary extension: application icons and deliberately licensed test fixtures may belong in Git. Git ignore rules do not remove already tracked files, so inspect both the tracked diff and untracked candidates before staging:

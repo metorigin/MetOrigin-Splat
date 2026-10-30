@@ -8,6 +8,8 @@ import App from "./App";
 import * as modelEditor from "./hooks/useModelEditor";
 import { selectProjectDirectory } from "./services/desktop";
 
+const longNotificationMessage = "训练无法继续，请检查输入素材和引擎设置。".repeat(12) + "UnsupportedEngineConfiguration".repeat(12);
+
 const projectA: ProjectInfo = {
   id: "project-a",
   name: "活动项目 A",
@@ -84,6 +86,8 @@ vi.mock("./pages/HomePage", async () => {
       项目中心内容
       <button onClick={onOpenProject}>{t("打开项目")}</button>
       <button onClick={() => dispatch({ type: "NAVIGATE", page: { type: "new-project" } })}>{t("新建项目")}</button>
+      <button onClick={() => dispatch({ type: "SET_ERROR", error: longNotificationMessage })}>显示长错误</button>
+      <button onClick={() => dispatch({ type: "SET_ENGINES", engines: [] })}>模拟后台刷新</button>
       {state.recentProjects.map((project) => <button key={project.id} onClick={() => onSelectProject(project)}>{project.name}</button>)}
       <input aria-label="首页输入框" />
       <textarea aria-label="首页多行输入" />
@@ -177,6 +181,48 @@ describe("App workspace contexts", () => {
       path === projectB.path ? readySnapshot : activeSnapshot,
     );
     api.isActivePipelineConflict.mockReturnValue(false);
+  });
+
+  it("renders long global errors through the shared surface and dismisses without replacing the page", async () => {
+    render(<App />);
+    const page = await screen.findByTestId("page");
+    fireEvent.click(screen.getByRole("button", { name: "显示长错误" }));
+    const error = screen.getByRole("alert");
+    expect(error).toHaveClass("feedback-notification", "feedback-notification--toast");
+    expect(error).toHaveTextContent(longNotificationMessage);
+    expect(error.parentElement).toHaveClass("feedback-notification-stack");
+    fireEvent.click(screen.getByRole("button", { name: "关闭错误提示" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByTestId("page")).toBe(page);
+  });
+
+  it("gives repeated global errors a new five seconds without extending their deadline for background updates", async () => {
+    const view = render(<App />);
+    const page = await screen.findByTestId("page");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const showError = screen.getByRole("button", { name: "显示长错误" });
+      fireEvent.click(showError);
+      expect(screen.getByRole("alert")).toHaveTextContent(longNotificationMessage);
+      act(() => vi.advanceTimersByTime(4000));
+      fireEvent.click(showError);
+      const repeatedError = screen.getByRole("alert");
+      expect(repeatedError).toHaveTextContent(longNotificationMessage);
+
+      act(() => vi.advanceTimersByTime(1000));
+      expect(screen.getByRole("alert")).toBe(repeatedError);
+      act(() => vi.advanceTimersByTime(3000));
+      fireEvent.click(screen.getByRole("button", { name: "模拟后台刷新" }));
+      expect(screen.getByRole("alert")).toBe(repeatedError);
+      act(() => vi.advanceTimersByTime(999));
+      expect(screen.getByRole("alert")).toBe(repeatedError);
+      act(() => vi.advanceTimersByTime(1));
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(screen.getByTestId("page")).toBe(page);
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
+    }
   });
 
   it("fully hides the sidebar and restores its width without remounting page content", async () => {

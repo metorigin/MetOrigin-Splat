@@ -112,6 +112,7 @@ pub struct DeleteProjectResult {
     project_id: String,
     deleted_path: String,
     removed_from_recent: bool,
+    pub(crate) files_deleted: bool,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -852,160 +853,370 @@ pub struct RelinkRecentProjectRequest {
     candidate_path: String,
 }
 
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum DeleteProjectMode {
+    Directory,
+    MissingDirectory,
+    MissingManifest,
+    InvalidManifest,
+}
+
+pub(super) struct DeleteProjectTarget {
+    pub project_dir: PathBuf,
+    pub record: ProjectInfo,
+    pub project: Option<Project>,
+    pub mode: DeleteProjectMode,
+    pub fingerprint: String,
+    projects: Vec<ProjectInfo>,
+}
+
+impl DeleteProjectTarget {
+    pub(super) fn record_only(&self) -> bool {
+        !matches!(self.mode, DeleteProjectMode::Directory)
+    }
+}
+
+fn deletion_error(code: &str, message: &str) -> String {
+    serde_json::json!({ "code": code, "message": message, "retryable": false }).to_string()
+}
+
+pub(super) fn deletion_is_stale(error: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(error)
+        .ok()
+        .is_some_and(|value| value["code"] == "UI-ACTION-PREVIEW-STALE")
+}
+
+pub(super) fn delete_project_blocked_reason(
+    request: &DeleteProjectRequest,
+    state: &AppState,
+) -> Result<Option<String>, String> {
+    let inner = state
+        .0
+        .lock()
+        .map_err(|_| "项目删除状态不可用，请重试。".to_string())?;
+    Ok(delete_project_blocker(request, &inner).map(str::to_owned))
+}
+
+fn delete_project_blocker(
+    request: &DeleteProjectRequest,
+    inner: &crate::state::AppStateInner,
+) -> Option<&'static str> {
+    let requested = Path::new(&request.project_path);
+    if inner.active_pipeline.as_ref().is_some_and(|active| {
+        active.project_id == request.project_id
+            || paths_refer_to_same_project(requested, &active.project_dir)
+    }) {
+        return Some("项目仍在处理，请先安全取消后再删除。");
+    }
+    if inner
+        .active_creation
+        .as_ref()
+        .is_some_and(|creation| creation.id == request.project_id)
+    {
+        return Some("项目仍在创建中，请先取消创建后再删除。");
+    }
+    None
+}
+
+/// Classify deletion without opening/migrating a project or writing its directory.
+/// Both preview and execution require the exact persisted index identity.
+pub(super) fn inspect_delete_target(
+    request: &DeleteProjectRequest,
+    index_path: &Path,
+) -> Result<DeleteProjectTarget, String> {
+    let projects = read_recent_project_index_path(index_path)?;
+    let record = projects
+        .iter()
+        .find(|item| item.id == request.project_id && item.path == request.project_path)
+        .cloned()
+        .ok_or_else(|| {
+            deletion_error(
+                "UI-PROJECT-DELETE-INDEX-CHANGED",
+                "项目记录已变化，请刷新项目中心后重试。",
+            )
+        })?;
+    let requested = PathBuf::from(&request.project_path);
+    let (project_dir, project, mode, manifest_stamp) = inspect_delete_directory(request)?;
+    let fingerprint = serde_json::to_string(&serde_json::json!({
+        "record": record, "path": requested, "resolved_path": project_dir,
+        "mode": mode, "project": project, "manifest": manifest_stamp,
+    }))
+    .map_err(|_| "无法生成项目删除影响指纹。".to_string())?;
+    Ok(DeleteProjectTarget {
+        project_dir,
+        record,
+        project,
+        mode,
+        fingerprint,
+        projects,
+    })
+}
+
+fn inspect_delete_directory(
+    request: &DeleteProjectRequest,
+) -> Result<
+    (
+        PathBuf,
+        Option<Project>,
+        DeleteProjectMode,
+        serde_json::Value,
+    ),
+    String,
+> {
+    let requested = PathBuf::from(&request.project_path);
+    if !requested.is_absolute() {
+        return Err(deletion_error(
+            "UI-PROJECT-DELETE-UNSAFE",
+            "项目路径无效，已拒绝删除。",
+        ));
+    }
+    match std::fs::symlink_metadata(&requested) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((
+                requested,
+                None,
+                DeleteProjectMode::MissingDirectory,
+                serde_json::Value::Null,
+            ));
+        }
+        Err(_) => {
+            return Err(deletion_error(
+                "UI-PROJECT-DELETE-ACCESS",
+                "项目目录无法访问，请检查磁盘或目录权限。",
+            ))
+        }
+        Ok(metadata) if !metadata.is_dir() || metadata.file_type().is_symlink() => {
+            return Err(deletion_error(
+                "UI-PROJECT-DELETE-UNSAFE",
+                "只允许操作真实的 MetOrigin 项目目录。",
+            ));
+        }
+        Ok(_) => {}
+    }
+    let canonical = requested.canonicalize().map_err(|_| {
+        deletion_error("UI-PROJECT-DELETE-ACCESS", "无法解析项目目录，已拒绝删除。")
+    })?;
+    validate_safe_delete_root(&canonical)?;
+    let manifest_path = canonical.join("project.json");
+    let metadata = match std::fs::symlink_metadata(&manifest_path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((
+                canonical,
+                None,
+                DeleteProjectMode::MissingManifest,
+                serde_json::Value::Null,
+            ));
+        }
+        Err(_) => {
+            return Err(deletion_error(
+                "UI-PROJECT-DELETE-ACCESS",
+                "项目文件无法访问，请检查目录权限。",
+            ))
+        }
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            return Err(deletion_error(
+                "UI-PROJECT-DELETE-UNSAFE",
+                "项目文件类型无法安全验证，已拒绝删除。",
+            ));
+        }
+        Ok(metadata) => metadata,
+    };
+    let bytes = std::fs::read(&manifest_path).map_err(|_| {
+        deletion_error(
+            "UI-PROJECT-DELETE-ACCESS",
+            "项目文件无法读取，请检查目录权限。",
+        )
+    })?;
+    let stamp = serde_json::json!({
+        "size": metadata.len(),
+        "modified": metadata.modified().ok().and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok()).map(|time| time.as_nanos().to_string()),
+    });
+    let parsed = serde_json::from_slice::<serde_json::Value>(&bytes);
+    // Even a partially damaged manifest must never authorize deleting another ID.
+    if parsed
+        .as_ref()
+        .ok()
+        .and_then(|value| value.get("id"))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|id| id != request.project_id)
+    {
+        return Err(deletion_error(
+            "UI-PROJECT-DELETE-ID-MISMATCH",
+            "项目身份校验失败，已拒绝删除。",
+        ));
+    }
+    let project = parsed.ok().and_then(|value| {
+        let version = splat_project::migration::detect_schema_version(&value);
+        splat_project::migration::migrate(
+            value,
+            version,
+            splat_project::migration::CURRENT_SCHEMA_VERSION,
+        )
+        .ok()
+        .and_then(|value| serde_json::from_value::<Project>(value).ok())
+    });
+    match project {
+        Some(project) if project.id.to_string() == request.project_id => Ok((
+            canonical,
+            Some(project),
+            DeleteProjectMode::Directory,
+            stamp,
+        )),
+        Some(_) => Err(deletion_error(
+            "UI-PROJECT-DELETE-ID-MISMATCH",
+            "项目身份校验失败，已拒绝删除。",
+        )),
+        None => Ok((canonical, None, DeleteProjectMode::InvalidManifest, stamp)),
+    }
+}
+
 pub(crate) fn delete_project_inner(
     request: DeleteProjectRequest,
     app_handle: &tauri::AppHandle,
     state: &AppState,
 ) -> Result<DeleteProjectResult, String> {
-    let _writer = state.recent_index_write_guard();
-    let requested = PathBuf::from(&request.project_path);
-    {
-        let inner = state
-            .0
-            .lock()
-            .map_err(|_| "项目删除状态不可用，请重启应用后重试。".to_string())?;
-        if inner.active_pipeline.as_ref().is_some_and(|active| {
-            active.project_id == request.project_id
-                || paths_refer_to_same_project(&requested, &active.project_dir)
-        }) {
-            return Err("运行中的项目不能永久删除，请先安全取消重建。".into());
-        }
-        if inner
-            .active_creation
-            .as_ref()
-            .is_some_and(|creation| creation.id == request.project_id)
-        {
-            return Err("项目仍在创建中，请先取消创建后再删除。".into());
-        }
-    }
-
-    match std::fs::symlink_metadata(&requested) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return remove_missing_project_record(&request, app_handle, state);
-        }
-        Err(_) => return Err("项目目录无法访问，请检查磁盘或目录权限。".into()),
-        Ok(_) => {}
-    }
-
-    let (project_dir, project) = validate_delete_request(&request)?;
-
-    let parent = project_dir
-        .parent()
-        .ok_or_else(|| "项目目录没有有效的父目录，已拒绝删除。".to_string())?;
-    let file_name = project_dir
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| "项目目录名称无效，已拒绝删除。".to_string())?;
-    let tombstone = parent.join(format!(".{file_name}.deleting-{}", project.id));
-    if tombstone.exists() {
-        return Err("项目删除临时目录已存在，请先检查磁盘状态。".into());
-    }
-    let original_projects = read_recent_project_index(app_handle)?;
-    let mut projects = original_projects.clone();
-    projects.retain(|item| item.id != request.project_id && item.path != request.project_path);
-    let removed_from_recent = projects.len() != original_projects.len();
-
-    std::fs::rename(&project_dir, &tombstone)
-        .map_err(|_| "无法锁定项目目录进行删除，请关闭占用该目录的程序后重试。".to_string())?;
-    if let Err(error) = write_recent_project_index(app_handle, &projects) {
-        let _ = std::fs::rename(&tombstone, &project_dir);
-        return Err(error);
-    }
-    if let Err(error) = std::fs::remove_dir_all(&tombstone) {
-        let _ = write_recent_project_index(app_handle, &original_projects);
-        let _ = std::fs::rename(&tombstone, &project_dir);
-        return Err(format!("删除项目文件失败，已尝试恢复原目录：{error}"));
-    }
-
-    let mut inner = state
-        .0
-        .lock()
-        .map_err(|_| "项目已删除，但应用状态刷新失败，请重启应用。".to_string())?;
-    inner.recent_projects = projects;
-    if inner
-        .project_dir
-        .as_ref()
-        .is_some_and(|current| paths_refer_to_same_project(current, &project_dir))
-    {
-        inner.project_dir = None;
-    }
-
-    Ok(DeleteProjectResult {
-        project_id: request.project_id,
-        deleted_path: project_dir.to_string_lossy().to_string(),
-        removed_from_recent,
-    })
+    delete_project_at_index(
+        request,
+        &recent_project_index_path(app_handle)?,
+        state,
+        None,
+    )
 }
 
-/// A missing directory has no files left to delete. Only remove the stale
-/// recent-project entry when both its persisted ID and path still match the
-/// request, so a forged request cannot clean unrelated history.
-fn remove_missing_project_record(
-    request: &DeleteProjectRequest,
+pub(super) fn delete_project_confirmed_inner(
+    request: DeleteProjectRequest,
     app_handle: &tauri::AppHandle,
     state: &AppState,
+    expected_target: &str,
 ) -> Result<DeleteProjectResult, String> {
-    let original_projects = read_recent_project_index(app_handle)?;
-    if !original_projects
-        .iter()
-        .any(|project| project.id == request.project_id && project.path == request.project_path)
-    {
-        return Err("项目目录已不存在，且最近项目记录已发生变化，请刷新后重试。".into());
-    }
-    let mut projects = original_projects;
-    remove_recent_entries(&mut projects, &request.project_id, &request.project_path);
-    write_recent_project_index(app_handle, &projects)?;
+    delete_project_at_index(
+        request,
+        &recent_project_index_path(app_handle)?,
+        state,
+        Some(expected_target),
+    )
+}
 
-    let requested = PathBuf::from(&request.project_path);
+fn delete_project_at_index(
+    request: DeleteProjectRequest,
+    index_path: &Path,
+    state: &AppState,
+    expected_target: Option<&str>,
+) -> Result<DeleteProjectResult, String> {
+    let _writer = state.recent_index_write_guard();
+    let stale = || {
+        deletion_error(
+            "UI-ACTION-PREVIEW-STALE",
+            "项目状态已变化，尚未执行任何操作，请重新确认。",
+        )
+    };
+    // Retain admission state through the writes so a new in-app owner cannot
+    // appear between the active check and record/directory removal.
     let mut inner = state
         .0
         .lock()
-        .map_err(|_| "最近项目已清理，但应用状态刷新失败，请重启应用。".to_string())?;
+        .map_err(|_| "项目删除状态不可用，请重试。".to_string())?;
+    if let Some(reason) = delete_project_blocker(&request, &inner) {
+        return Err(if expected_target.is_some() {
+            stale()
+        } else {
+            deletion_error("UI-PROJECT-DELETE-ACTIVE", reason)
+        });
+    }
+    let target = inspect_delete_target(&request, index_path).map_err(|error| {
+        if expected_target.is_some() {
+            stale()
+        } else {
+            error
+        }
+    })?;
+    if expected_target.is_some_and(|expected| target.fingerprint != expected) {
+        return Err(stale());
+    }
+    let before_lock = target.fingerprint.clone();
+    let _project_lock = if !target.record_only() {
+        Some(
+            splat_pipeline::ProjectLock::try_lock(&target.project_dir, "project_delete").map_err(
+                |_| {
+                    deletion_error(
+                        "UI-PROJECT-DELETE-ACTIVE",
+                        "项目仍被其他操作或应用占用，请稍后重试。",
+                    )
+                },
+            )?,
+        )
+    } else {
+        None
+    };
+    // Recheck after acquiring the physical deletion guard. Never expand a
+    // record-only confirmation into recursive deletion when files reappear.
+    let target = inspect_delete_target(&request, index_path).map_err(|error| {
+        if expected_target.is_some() {
+            stale()
+        } else {
+            error
+        }
+    })?;
+    if target.fingerprint != before_lock
+        || expected_target.is_some_and(|expected| target.fingerprint != expected)
+    {
+        return Err(stale());
+    }
+    let record_only = target.record_only();
+    let original_projects = target.projects;
+    let mut projects = original_projects.clone();
+    projects.retain(|item| !(item.id == request.project_id && item.path == request.project_path));
+
+    if record_only {
+        install_recent_project_index(index_path, &projects)?;
+    } else {
+        let project_dir = &target.project_dir;
+        let parent = project_dir
+            .parent()
+            .ok_or_else(|| "项目目录没有有效的父目录，已拒绝删除。".to_string())?;
+        let file_name = project_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| "项目目录名称无效，已拒绝删除。".to_string())?;
+        let tombstone = parent.join(format!(".{file_name}.deleting-{}", request.project_id));
+        if tombstone.exists() {
+            return Err("项目删除临时目录已存在，请先检查磁盘状态。".into());
+        }
+        std::fs::rename(project_dir, &tombstone)
+            .map_err(|_| "无法锁定项目目录进行删除，请关闭占用该目录的程序后重试。".to_string())?;
+        if let Err(error) = install_recent_project_index(index_path, &projects) {
+            let _ = std::fs::rename(&tombstone, project_dir);
+            return Err(error);
+        }
+        if let Err(error) = std::fs::remove_dir_all(&tombstone) {
+            let _ = install_recent_project_index(index_path, &original_projects);
+            let _ = std::fs::rename(&tombstone, project_dir);
+            return Err(format!("删除项目文件失败，已尝试恢复原目录：{error}"));
+        }
+    }
     inner.recent_projects = projects;
     if inner
         .project_dir
         .as_ref()
-        .is_some_and(|current| paths_refer_to_same_project(current, &requested))
+        .is_some_and(|current| paths_refer_to_same_project(current, &target.project_dir))
     {
         inner.project_dir = None;
     }
-
     Ok(DeleteProjectResult {
-        project_id: request.project_id.clone(),
-        deleted_path: request.project_path.clone(),
+        project_id: request.project_id,
+        deleted_path: target.project_dir.to_string_lossy().to_string(),
         removed_from_recent: true,
+        files_deleted: !record_only,
     })
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────
-
+#[cfg(test)]
 fn validate_delete_request(request: &DeleteProjectRequest) -> Result<(PathBuf, Project), String> {
-    let requested = PathBuf::from(&request.project_path);
-    let metadata = std::fs::symlink_metadata(&requested)
-        .map_err(|_| "项目目录不存在或无法访问。".to_string())?;
-    if !metadata.is_dir() || metadata.file_type().is_symlink() {
-        return Err("只允许删除真实的 MetOrigin 项目目录。".into());
-    }
-    let canonical = requested
-        .canonicalize()
-        .map_err(|_| "无法解析项目目录，已拒绝删除。".to_string())?;
-    validate_safe_delete_root(&canonical)?;
-    if !canonical.join("project.json").is_file() {
-        return Err("目标目录不是有效的 MetOrigin 项目。".into());
-    }
-    let manager = ProjectManager::new(
-        canonical
-            .parent()
-            .ok_or_else(|| "项目目录无效。".to_string())?
-            .to_path_buf(),
-    );
-    let project = manager
-        .open_project(&canonical)
-        .map_err(|error| error.user_message_zh())?;
-    if project.id.to_string() != request.project_id {
-        return Err("项目身份校验失败，已拒绝删除。".into());
-    }
-    Ok((canonical, project))
+    let (path, project, _, _) = inspect_delete_directory(request)?;
+    project
+        .map(|project| (path, project))
+        .ok_or_else(|| "目标目录不是有效的 MetOrigin 项目。".into())
 }
 
 fn validate_safe_delete_root(path: &Path) -> Result<(), String> {
@@ -1039,10 +1250,6 @@ fn paths_refer_to_same_project(left: &Path, right: &Path) -> bool {
         (Ok(left), Ok(right)) => left == right,
         _ => left == right,
     }
-}
-
-fn remove_recent_entries(projects: &mut Vec<ProjectInfo>, project_id: &str, project_path: &str) {
-    projects.retain(|project| project.id != project_id && project.path != project_path);
 }
 
 fn default_projects_dir() -> PathBuf {
@@ -1188,15 +1395,176 @@ fn validate_project_name(name: &str) -> Result<(), String> {
     }
     if name.len() > 80
         || name.chars().any(|character| {
-            matches!(
-                character,
-                '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
-            )
+            character.is_control()
+                || matches!(
+                    character,
+                    '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+                )
         })
     {
         return Err("项目名称包含 Windows 不支持的字符或长度超过 80。".into());
     }
+    let stem = name
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .trim_end()
+        .to_ascii_uppercase();
+    let reserved = matches!(
+        stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) || ["COM", "LPT"].iter().any(|prefix| {
+        stem.strip_prefix(prefix).is_some_and(|suffix| {
+            matches!(
+                suffix,
+                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+            )
+        })
+    });
+    if name.ends_with('.') || reserved {
+        return Err("项目名称不能以句点结尾，也不能使用 Windows 保留名称。".into());
+    }
     Ok(())
+}
+
+/// This owner exists only after an exclusive directory creation succeeds.
+/// Never adopt/clean a pre-existing directory based on its name or suffix.
+struct CreatingDirectory {
+    path: PathBuf,
+    remove_on_drop: bool,
+}
+
+impl Drop for CreatingDirectory {
+    fn drop(&mut self) {
+        if self.remove_on_drop {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+}
+
+fn with_project_creation_directory<T>(
+    project_root: &Path,
+    name: &str,
+    project_id: &str,
+    build: impl FnOnce(&Path) -> Result<T, String>,
+) -> Result<(T, PathBuf), String> {
+    validate_project_name(name)?;
+    std::fs::create_dir_all(project_root)
+        .map_err(|_| "创建项目根目录失败，请检查访问权限。".to_string())?;
+    let final_dir = paths::project_dir(project_root, name.trim());
+    match std::fs::symlink_metadata(&final_dir) {
+        Ok(_) => return Err("同名文件或文件夹已经存在，请更换项目名称。".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return Err("创建项目目录失败，请检查目标目录权限。".into()),
+    }
+    let creating_dir = project_root.join(format!(".metorigin-create-{project_id}.creating"));
+    std::fs::create_dir(&creating_dir).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::AlreadyExists {
+            "项目创建临时目录已经存在，请重试。".to_string()
+        } else {
+            "创建项目目录失败，请检查目标目录权限。".to_string()
+        }
+    })?;
+    let mut staging = CreatingDirectory {
+        path: creating_dir,
+        remove_on_drop: true,
+    };
+    let value = build(&staging.path)?;
+    publish_project_directory(&staging.path, &final_dir)
+        .map_err(|_| "完成项目创建失败，请确认目标目录未被占用。".to_string())?;
+    // Do not clean even the old path after publication: another owner could
+    // subsequently create a different directory at that now-unused name.
+    staging.remove_on_drop = false;
+    Ok((value, final_dir))
+}
+
+/// Publish atomically without replacing even an empty directory created while
+/// importing. A preflight exists() check cannot provide that guarantee.
+#[cfg(target_os = "macos")]
+fn publish_project_directory(source: &Path, destination: &Path) -> std::io::Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+    let source = std::ffi::CString::new(source.as_os_str().as_bytes())?;
+    let destination = std::ffi::CString::new(destination.as_os_str().as_bytes())?;
+    // SAFETY: both pointers are valid NUL-terminated paths for this call.
+    if unsafe { libc::renamex_np(source.as_ptr(), destination.as_ptr(), libc::RENAME_EXCL) } == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(windows)]
+fn publish_project_directory(source: &Path, destination: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        #[link_name = "MoveFileW"]
+        fn move_file_w(source: *const u16, destination: *const u16) -> i32;
+    }
+    // canonicalize supplies extended-length Windows paths. Resolve only the
+    // destination parent so an existing final link is still rejected, not followed.
+    let source = source.canonicalize()?;
+    let parent = destination
+        .parent()
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "missing destination parent",
+            )
+        })?
+        .canonicalize()?;
+    let name = destination.file_name().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing destination name")
+    })?;
+    let destination = parent.join(name);
+    let source = source
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let destination = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    // MoveFileW fails when destination already exists; it has no replace flag.
+    // SAFETY: both buffers are valid NUL-terminated Windows paths for this call.
+    if unsafe { move_file_w(source.as_ptr(), destination.as_ptr()) } != 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn publish_project_directory(source: &Path, destination: &Path) -> std::io::Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+    unsafe extern "C" {
+        fn renameat2(
+            old_dir: std::ffi::c_int,
+            source: *const std::ffi::c_char,
+            new_dir: std::ffi::c_int,
+            destination: *const std::ffi::c_char,
+            flags: std::ffi::c_uint,
+        ) -> std::ffi::c_int;
+    }
+    let source = std::ffi::CString::new(source.as_os_str().as_bytes())?;
+    let destination = std::ffi::CString::new(destination.as_os_str().as_bytes())?;
+    // AT_FDCWD=-100 and RENAME_NOREPLACE=1. Unsupported kernels fail closed.
+    // SAFETY: both pointers are valid NUL-terminated paths for this call.
+    if unsafe { renameat2(-100, source.as_ptr(), -100, destination.as_ptr(), 1) } == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+fn publish_project_directory(_source: &Path, _destination: &Path) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "atomic no-replace directory publication is unavailable",
+    ))
 }
 
 fn create_project_transaction(
@@ -1210,73 +1578,65 @@ fn create_project_transaction(
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(default_projects_dir);
-    std::fs::create_dir_all(&project_root)
-        .map_err(|_| "创建项目根目录失败，请检查访问权限。".to_string())?;
-    let safe_name = request.name.trim();
-    let final_dir = project_root.join(format!("{safe_name}.splat-project"));
-    let creating_dir = project_root.join(format!("{safe_name}.splat-project.creating"));
-    if final_dir.exists() || creating_dir.exists() {
-        return Err("同名项目或未完成创建目录已经存在，请更换名称或清理旧目录。".into());
-    }
+    let creation_id = project.id.to_string();
+    let (project, final_dir) = with_project_creation_directory(
+        &project_root,
+        &request.name,
+        &creation_id,
+        |creating_dir| {
+            paths::create_project_directories(creating_dir)
+                .map_err(|_| "创建项目目录失败，请检查目标目录权限。".to_string())?;
+            let manager = ProjectManager::new(project_root.clone());
+            project.status = ProjectStatus::Creating;
+            manager
+                .save_project(&project, creating_dir)
+                .map_err(|error| error.user_message_zh())?;
 
-    let result = (|| -> Result<(Project, PathBuf), String> {
-        paths::create_project_directories(&creating_dir)
-            .map_err(|_| "创建项目目录失败，请检查目标目录权限。".to_string())?;
-        let manager = ProjectManager::new(project_root.clone());
-        project.status = ProjectStatus::Creating;
-        manager
-            .save_project(&project, &creating_dir)
-            .map_err(|error| error.user_message_zh())?;
+            let source = PathBuf::from(&request.source_path);
+            let imported_source = copy_source_media(
+                &source,
+                &creating_dir.join("source"),
+                &app_handle,
+                &project.id.to_string(),
+                &cancel,
+            )?;
+            if cancel.load(Ordering::SeqCst) {
+                return Err("项目创建已取消，未完成目录已清理。".into());
+            }
 
-        let source = PathBuf::from(&request.source_path);
-        let imported_source = copy_source_media(
-            &source,
-            &creating_dir.join("source"),
-            &app_handle,
-            &project.id.to_string(),
-            &cancel,
-        )?;
-        if cancel.load(Ordering::SeqCst) {
-            return Err("项目创建已取消，未完成目录已清理。".into());
-        }
-
-        let preset = preset_files()?
-            .into_iter()
-            .find(|preset| preset.id == request.preset)
-            .ok_or_else(|| "所选质量预设无效。".to_string())?;
-        project.source = Some(imported_source);
-        project.settings.preset = preset.id;
-        project.settings.max_frames = preset.frame_extraction.max_frames;
-        project.settings.max_long_edge = preset.frame_extraction.target_long_edge;
-        project.settings.colmap_max_long_edge = if preset.frame_extraction.colmap_long_edge > 0 {
-            preset.frame_extraction.colmap_long_edge
-        } else {
-            preset.frame_extraction.target_long_edge
-        };
-        project.status = ProjectStatus::Ready;
-        project.touch();
-        manager
-            .save_project(&project, &creating_dir)
-            .map_err(|error| error.user_message_zh())?;
-        std::fs::rename(&creating_dir, &final_dir)
-            .map_err(|_| "完成项目创建失败，请确认目标目录未被占用。".to_string())?;
-        let _ = app_handle.emit(
-            "project://copy-progress",
-            serde_json::json!({
-                "project_id": project.id.to_string(),
-                "copied_bytes": project_source_size(&final_dir.join("source")),
-                "total_bytes": project_source_size(&final_dir.join("source")),
-                "percent": 1.0,
-                "completed": true,
-            }),
-        );
-        Ok((project, final_dir))
-    })();
-
-    if result.is_err() {
-        let _ = std::fs::remove_dir_all(&creating_dir);
-    }
-    result
+            let preset = preset_files()?
+                .into_iter()
+                .find(|preset| preset.id == request.preset)
+                .ok_or_else(|| "所选质量预设无效。".to_string())?;
+            project.source = Some(imported_source);
+            project.settings.preset = preset.id;
+            project.settings.max_frames = preset.frame_extraction.max_frames;
+            project.settings.max_long_edge = preset.frame_extraction.target_long_edge;
+            project.settings.colmap_max_long_edge = if preset.frame_extraction.colmap_long_edge > 0
+            {
+                preset.frame_extraction.colmap_long_edge
+            } else {
+                preset.frame_extraction.target_long_edge
+            };
+            project.status = ProjectStatus::Ready;
+            project.touch();
+            manager
+                .save_project(&project, creating_dir)
+                .map_err(|error| error.user_message_zh())?;
+            Ok(project)
+        },
+    )?;
+    let _ = app_handle.emit(
+        "project://copy-progress",
+        serde_json::json!({
+            "project_id": project.id.to_string(),
+            "copied_bytes": project_source_size(&final_dir.join("source")),
+            "total_bytes": project_source_size(&final_dir.join("source")),
+            "percent": 1.0,
+            "completed": true,
+        }),
+    );
+    Ok((project, final_dir))
 }
 
 fn copy_source_media(
@@ -1634,7 +1994,7 @@ fn record_recent_project(
     Ok(())
 }
 
-fn recent_project_index_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub(super) fn recent_project_index_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
     app_handle
         .path()
         .app_config_dir()
@@ -1708,7 +2068,10 @@ fn read_recent_project_index_path(path: &Path) -> Result<Vec<ProjectInfo>, Strin
     }
 }
 
-fn install_recent_project_index(path: &Path, projects: &[ProjectInfo]) -> Result<(), String> {
+pub(super) fn install_recent_project_index(
+    path: &Path,
+    projects: &[ProjectInfo],
+) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| "应用配置目录无效。".to_string())?;
@@ -1898,28 +2261,282 @@ mod tests {
     }
 
     #[test]
-    fn stale_recent_project_cleanup_removes_matching_identity_or_path() {
-        let mut projects = vec![
-            ProjectInfo {
-                id: "stale-id".into(),
-                name: "失效项目".into(),
-                path: r"D:\missing\stale.splat-project".into(),
-                status: "ready".into(),
-                updated_at: "2026-07-14T00:00:00Z".into(),
-                stage_label: None,
+    fn deleting_unavailable_projects_only_removes_the_exact_persisted_record() {
+        for missing in ["directory", "manifest", "corrupt"] {
+            let root = temporary_test_root(&format!("delete-record-{missing}"));
+            let directory = root.join("project.splat-project");
+            let index = root.join("recent-projects.json");
+            let project = Project::new("失效项目");
+            let id = project.id.to_string();
+            if missing != "directory" {
+                std::fs::create_dir_all(&directory).unwrap();
+                std::fs::write(directory.join("keep.bin"), b"residual project files").unwrap();
+                if missing == "corrupt" {
+                    std::fs::write(directory.join("project.json"), b"{damaged").unwrap();
+                }
+            }
+            let target = recent_info(&id, &directory);
+            let others = vec![
+                recent_info("other", &root.join("other.splat-project")),
+                recent_info(&id, &root.join("copied.splat-project")),
+                recent_info("different-id", &directory),
+            ];
+            let mut entries = vec![target.clone()];
+            entries.extend(others.clone());
+            install_recent_project_index(&index, &entries).unwrap();
+            let state = AppState::new();
+            state.0.lock().unwrap().recent_projects = entries;
+            state.0.lock().unwrap().project_dir = Some(directory.clone());
+            let result = delete_project_at_index(
+                DeleteProjectRequest {
+                    project_id: id,
+                    project_path: directory.to_string_lossy().into(),
+                },
+                &index,
+                &state,
+                None,
+            )
+            .unwrap();
+            assert!(!result.files_deleted && result.removed_from_recent);
+            assert_eq!(read_recent_project_index_path(&index).unwrap(), others);
+            assert_eq!(state.0.lock().unwrap().recent_projects, others);
+            assert!(state.0.lock().unwrap().project_dir.is_none());
+            if missing == "directory" {
+                assert!(!directory.exists());
+            } else {
+                assert_eq!(
+                    std::fs::read(directory.join("keep.bin")).unwrap(),
+                    b"residual project files"
+                );
+            }
+            if missing == "corrupt" {
+                assert_eq!(
+                    std::fs::read(directory.join("project.json")).unwrap(),
+                    b"{damaged"
+                );
+            }
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
+    fn delete_requires_persisted_identity_and_rejects_a_valid_different_project() {
+        let root = temporary_test_root("delete-persisted-identity");
+        let directory = root.join("valid.splat-project");
+        paths::create_project_directories(&directory).unwrap();
+        let project = Project::new("真实项目");
+        ProjectManager::new(root.clone())
+            .save_project(&project, &directory)
+            .unwrap();
+        let before = std::fs::read(directory.join("project.json")).unwrap();
+        let requested_id = splat_domain::project::ProjectId::new().to_string();
+        let target = recent_info(&requested_id, &directory);
+        let index = root.join("recent-projects.json");
+        let state = AppState::new();
+        state.0.lock().unwrap().recent_projects = vec![target.clone()];
+        install_recent_project_index(&index, &[]).unwrap();
+        let request = DeleteProjectRequest {
+            project_id: requested_id,
+            project_path: directory.to_string_lossy().into(),
+        };
+        assert!(
+            delete_project_at_index(request.clone(), &index, &state, None)
+                .unwrap_err()
+                .contains("INDEX-CHANGED")
+        );
+        install_recent_project_index(&index, std::slice::from_ref(&target)).unwrap();
+        assert!(delete_project_at_index(request, &index, &state, None)
+            .unwrap_err()
+            .contains("ID-MISMATCH"));
+        assert_eq!(
+            std::fs::read(directory.join("project.json")).unwrap(),
+            before
+        );
+        assert_eq!(
+            read_recent_project_index_path(&index).unwrap(),
+            vec![target]
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delete_retains_active_missing_projects_and_does_not_touch_the_index() {
+        for owner in ["creation", "pipeline-id", "pipeline-path"] {
+            let root = temporary_test_root(&format!("delete-active-{owner}"));
+            let directory = root.join("missing.splat-project");
+            let project = Project::new("活动项目");
+            let id = project.id.to_string();
+            let target = recent_info(&id, &directory);
+            let index = root.join("recent-projects.json");
+            install_recent_project_index(&index, &[target]).unwrap();
+            let state = AppState::new();
+            if owner == "creation" {
+                state.0.lock().unwrap().active_creation = Some(ActiveProjectCreation {
+                    id: id.clone(),
+                    cancel: Arc::new(AtomicBool::new(false)),
+                });
+            } else {
+                let (_sender, completion) = tokio::sync::watch::channel(false);
+                state.0.lock().unwrap().active_pipeline = Some(crate::state::ActivePipeline {
+                    project_id: if owner == "pipeline-id" {
+                        id.clone()
+                    } else {
+                        "another-id".into()
+                    },
+                    project_dir: if owner == "pipeline-path" {
+                        directory.clone()
+                    } else {
+                        root.join("other-path")
+                    },
+                    orchestrator: Arc::new(splat_pipeline::PipelineOrchestrator::new_default(
+                        directory.clone(),
+                    )),
+                    completion,
+                    control_intent: Arc::new(std::sync::Mutex::new(
+                        crate::state::PipelineControlIntent::None,
+                    )),
+                    accepted_at: "2026-08-14T00:00:00Z".into(),
+                    started_at: Arc::new(std::sync::Mutex::new(None)),
+                    sequence: Arc::new(std::sync::atomic::AtomicU64::new(1)),
+                    abort_handle: Arc::new(std::sync::Mutex::new(None)),
+                    finalization: Arc::new(tokio::sync::Mutex::new(
+                        crate::state::PipelineFinalization::Running,
+                    )),
+                    process_scope: splat_process::ProcessScope::default(),
+                    event_forwarder: Arc::new(tokio::sync::Mutex::new(None)),
+                });
+            }
+            let before = std::fs::read(&index).unwrap();
+            assert!(delete_project_at_index(
+                DeleteProjectRequest {
+                    project_id: id,
+                    project_path: directory.to_string_lossy().into()
+                },
+                &index,
+                &state,
+                None
+            )
+            .unwrap_err()
+            .contains("DELETE-ACTIVE"));
+            assert_eq!(std::fs::read(&index).unwrap(), before);
+            assert!(!directory.exists());
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
+    fn record_only_execution_refuses_reappearing_files_and_retains_state_if_index_install_fails() {
+        let root = temporary_test_root("delete-confirmed-scope");
+        let directory = root.join("project.splat-project");
+        let project = Project::new("测试项目");
+        let index = root.join("recent-projects.json");
+        let target = recent_info(&project.id.to_string(), &directory);
+        install_recent_project_index(&index, std::slice::from_ref(&target)).unwrap();
+        let state = AppState::new();
+        state.0.lock().unwrap().recent_projects = vec![target.clone()];
+        let request = DeleteProjectRequest {
+            project_id: project.id.to_string(),
+            project_path: directory.to_string_lossy().into(),
+        };
+        let previous = inspect_delete_target(&request, &index).unwrap().fingerprint;
+        paths::create_project_directories(&directory).unwrap();
+        ProjectManager::new(root.clone())
+            .save_project(&project, &directory)
+            .unwrap();
+        assert!(deletion_is_stale(
+            &delete_project_at_index(request.clone(), &index, &state, Some(&previous)).unwrap_err()
+        ));
+        assert!(directory.join("project.json").is_file());
+
+        std::fs::remove_file(directory.join("project.json")).unwrap();
+        std::fs::write(directory.join("keep.bin"), b"keep").unwrap();
+        std::fs::create_dir_all(index_temporary_path(&index)).unwrap();
+        assert!(delete_project_at_index(request, &index, &state, None).is_err());
+        assert_eq!(
+            read_recent_project_index_path(&index).unwrap(),
+            vec![target.clone()]
+        );
+        assert_eq!(state.0.lock().unwrap().recent_projects, vec![target]);
+        assert_eq!(std::fs::read(directory.join("keep.bin")).unwrap(), b"keep");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn valid_project_delete_requires_the_project_guard_then_removes_files() {
+        let root = temporary_test_root("delete-physical");
+        let manager = ProjectManager::new(root.clone());
+        let (project, directory) = manager.create_project("有效项目").unwrap();
+        let index = root.join("recent-projects.json");
+        install_recent_project_index(&index, &[recent_info(&project.id.to_string(), &directory)])
+            .unwrap();
+        let request = DeleteProjectRequest {
+            project_id: project.id.to_string(),
+            project_path: directory.to_string_lossy().into(),
+        };
+        let state = AppState::new();
+        let guard =
+            splat_pipeline::ProjectLock::try_lock(&directory, "pipeline_admission").unwrap();
+        assert!(
+            delete_project_at_index(request.clone(), &index, &state, None)
+                .unwrap_err()
+                .contains("DELETE-ACTIVE")
+        );
+        assert!(directory.join("project.json").is_file());
+        drop(guard);
+        assert!(
+            delete_project_at_index(request, &index, &state, None)
+                .unwrap()
+                .files_deleted
+        );
+        assert!(!directory.exists());
+        assert!(read_recent_project_index_path(&index).unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delete_rejects_directory_and_manifest_symlinks_without_changing_their_targets() {
+        let root = temporary_test_root("delete-symlinks");
+        let manager = ProjectManager::new(root.clone());
+        let (project, directory) = manager.create_project("真实项目").unwrap();
+        let alias = root.join("alias.splat-project");
+        std::os::unix::fs::symlink(&directory, &alias).unwrap();
+        let index = root.join("recent-projects.json");
+        install_recent_project_index(&index, &[recent_info(&project.id.to_string(), &alias)])
+            .unwrap();
+        let state = AppState::new();
+        assert!(delete_project_at_index(
+            DeleteProjectRequest {
+                project_id: project.id.to_string(),
+                project_path: alias.to_string_lossy().into()
             },
-            ProjectInfo {
-                id: "valid-id".into(),
-                name: "保留项目".into(),
-                path: r"D:\projects\valid.splat-project".into(),
-                status: "completed".into(),
-                updated_at: "2026-07-14T00:00:00Z".into(),
-                stage_label: None,
+            &index,
+            &state,
+            None
+        )
+        .is_err());
+        let residual = root.join("residual.splat-project");
+        std::fs::create_dir(&residual).unwrap();
+        std::os::unix::fs::symlink(
+            directory.join("project.json"),
+            residual.join("project.json"),
+        )
+        .unwrap();
+        install_recent_project_index(&index, &[recent_info(&project.id.to_string(), &residual)])
+            .unwrap();
+        assert!(delete_project_at_index(
+            DeleteProjectRequest {
+                project_id: project.id.to_string(),
+                project_path: residual.to_string_lossy().into()
             },
-        ];
-        remove_recent_entries(&mut projects, "stale-id", r"D:\missing\stale.splat-project");
-        assert_eq!(projects.len(), 1);
-        assert_eq!(projects[0].id, "valid-id");
+            &index,
+            &state,
+            None
+        )
+        .is_err());
+        assert!(directory.join("project.json").is_file());
+        assert!(alias.is_dir() && residual.is_dir());
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -2003,6 +2620,201 @@ mod tests {
         assert!(validate_project_name("自行车街景测试").is_ok());
         assert!(validate_project_name("bad:name").is_err());
         assert!(validate_project_name("").is_err());
+    }
+
+    #[test]
+    fn ordinary_project_names_reject_windows_device_names_trailing_dots_and_controls() {
+        for name in [
+            "CON",
+            "con.txt",
+            "PrN.data",
+            "AUX",
+            "NUL",
+            "COM1",
+            "lpt9.png",
+            "COM¹.bin",
+            "CONIN$",
+            "CONOUT$",
+            ".",
+            "..",
+            "街景.",
+            "bad\nname",
+            "bad\0name",
+        ] {
+            assert!(validate_project_name(name).is_err(), "must reject {name:?}");
+        }
+        for name in [
+            "街景 v2",
+            "capture.v2",
+            "sample.creating",
+            "COM10",
+            "complete.splat-project",
+        ] {
+            assert!(validate_project_name(name).is_ok(), "must accept {name:?}");
+        }
+    }
+
+    #[test]
+    fn desktop_creation_transaction_publishes_the_trimmed_plain_name_and_retains_old_projects() {
+        let root = temporary_test_root("plain-project-transaction");
+        let legacy = root.join("街景.v2.creating.splat-project");
+        paths::create_project_directories(&legacy).unwrap();
+        let old_project = Project::new("旧项目");
+        let manager = ProjectManager::new(root.clone());
+        manager.save_project(&old_project, &legacy).unwrap();
+        let legacy_before = std::fs::read(legacy.join("project.json")).unwrap();
+        let mut staging_path = None;
+        let new_project = Project::new("街景.v2.creating");
+        let id = new_project.id.to_string();
+        let (created, directory) =
+            with_project_creation_directory(&root, "  街景.v2.creating  ", &id, |staging| {
+                staging_path = Some(staging.to_path_buf());
+                paths::create_project_directories(staging).map_err(|error| error.to_string())?;
+                manager
+                    .save_project(&new_project, staging)
+                    .map_err(|error| error.to_string())?;
+                Ok(new_project)
+            })
+            .unwrap();
+        assert_eq!(directory, root.join("街景.v2.creating"));
+        assert_eq!(manager.open_project(&directory).unwrap().id, created.id);
+        assert!(directory.join("source").is_dir() && directory.join("frames").is_dir());
+        assert!(!staging_path.unwrap().exists());
+        assert_eq!(
+            std::fs::read(legacy.join("project.json")).unwrap(),
+            legacy_before
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn desktop_creation_never_adopts_existing_final_or_staging_files_and_directories() {
+        for occupied in [
+            "folder",
+            "source",
+            "file",
+            "old-project",
+            "staging-folder",
+            "staging-file",
+        ] {
+            let root = temporary_test_root(&format!("creation-collision-{occupied}"));
+            std::fs::create_dir_all(&root).unwrap();
+            let name = if occupied == "old-project" {
+                "capture.splat-project"
+            } else {
+                "capture"
+            };
+            let final_path = root.join(name);
+            let staging_path = root.join(".metorigin-create-owned-id.creating");
+            let occupied_path = if occupied.starts_with("staging-") {
+                &staging_path
+            } else {
+                &final_path
+            };
+            let sentinel = if occupied.ends_with("file") || occupied == "file" {
+                std::fs::write(occupied_path, b"existing file").unwrap();
+                occupied_path.clone()
+            } else {
+                std::fs::create_dir(occupied_path).unwrap();
+                let sentinel = occupied_path.join("keep.bin");
+                std::fs::write(&sentinel, b"existing file").unwrap();
+                sentinel
+            };
+            let result = with_project_creation_directory::<()>(&root, name, "owned-id", |_| {
+                panic!("must not enter a pre-existing directory")
+            });
+            assert!(result.is_err());
+            assert_eq!(std::fs::read(sentinel).unwrap(), b"existing file");
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
+    fn desktop_creation_failed_or_cancelled_import_only_cleans_its_owned_temporary_directory() {
+        for failure in ["copy failed", "项目创建已取消，未完成目录已清理。"] {
+            let root = temporary_test_root("creation-owned-cleanup");
+            std::fs::create_dir_all(&root).unwrap();
+            let source = root.join("source.bin");
+            std::fs::write(&source, b"original media").unwrap();
+            let unrelated = root.join("existing.creating");
+            std::fs::create_dir(&unrelated).unwrap();
+            std::fs::write(unrelated.join("keep.bin"), b"unrelated data").unwrap();
+            let result = with_project_creation_directory::<()>(
+                &root,
+                "new-project",
+                "owned-id",
+                |staging| {
+                    paths::create_project_directories(staging)
+                        .map_err(|error| error.to_string())?;
+                    std::fs::write(staging.join("source/partial.bin"), b"partial import")
+                        .map_err(|error| error.to_string())?;
+                    Err(failure.into())
+                },
+            );
+            assert_eq!(result.unwrap_err(), failure);
+            assert!(!root.join("new-project").exists());
+            assert!(!root.join(".metorigin-create-owned-id.creating").exists());
+            assert_eq!(std::fs::read(&source).unwrap(), b"original media");
+            assert_eq!(
+                std::fs::read(unrelated.join("keep.bin")).unwrap(),
+                b"unrelated data"
+            );
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
+    fn desktop_creation_publication_does_not_replace_a_destination_that_appears_during_import() {
+        for existing in ["empty-folder", "folder-with-files", "file"] {
+            let root = temporary_test_root(&format!("creation-publish-race-{existing}"));
+            let final_path = root.join("capture");
+            let result = with_project_creation_directory(&root, "capture", "owned-id", |staging| {
+                paths::create_project_directories(staging).map_err(|error| error.to_string())?;
+                std::fs::write(staging.join("project.json"), b"new project")
+                    .map_err(|error| error.to_string())?;
+                if existing == "file" {
+                    std::fs::write(&final_path, b"existing file").unwrap();
+                } else {
+                    std::fs::create_dir(&final_path).unwrap();
+                    if existing == "folder-with-files" {
+                        std::fs::write(final_path.join("keep.bin"), b"existing file").unwrap();
+                    }
+                }
+                Ok(())
+            });
+            assert!(result.is_err());
+            assert!(!root.join(".metorigin-create-owned-id.creating").exists());
+            if existing == "file" {
+                assert_eq!(std::fs::read(&final_path).unwrap(), b"existing file");
+            } else if existing == "empty-folder" {
+                assert_eq!(std::fs::read_dir(&final_path).unwrap().count(), 0);
+            } else {
+                assert_eq!(
+                    std::fs::read(final_path.join("keep.bin")).unwrap(),
+                    b"existing file"
+                );
+            }
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn desktop_creation_preserves_dangling_destination_links() {
+        let root = temporary_test_root("creation-linked-destination");
+        std::fs::create_dir_all(&root).unwrap();
+        let final_path = root.join("capture");
+        let missing_target = root.join("missing-target");
+        std::os::unix::fs::symlink(&missing_target, &final_path).unwrap();
+        assert!(
+            with_project_creation_directory::<()>(&root, "capture", "owned-id", |_| panic!(
+                "must not enter a linked destination"
+            ))
+            .is_err()
+        );
+        assert_eq!(std::fs::read_link(&final_path).unwrap(), missing_target);
+        assert!(!root.join(".metorigin-create-owned-id.creating").exists());
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

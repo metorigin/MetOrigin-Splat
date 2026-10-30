@@ -18,6 +18,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { Notification } from "@/components/feedback";
 import type {
   ImagePreview,
   MediaAnalysis,
@@ -87,7 +88,7 @@ export function ImportStep({ analysis, analyzing, analyzingKind, estimate, image
               {previewsLoading ? (
                 <div className="flex items-center gap-2 rounded-md bg-muted p-3 text-sm text-muted-foreground"><SpinnerGap className="animate-spin motion-reduce:animate-none" size={17} />{t("正在生成安全缩略图…")}</div>
               ) : previewError ? (
-                <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert"><Warning size={17} />{localizeMessage(previewError)}</div>
+                <Notification variant="error" message={localizeMessage(previewError)} />
               ) : imagePreviews.length > 0 ? (
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
                   {imagePreviews.map((preview) => <ImagePreviewTile key={preview.relative_path} preview={preview} />)}
@@ -105,13 +106,13 @@ export function ImportStep({ analysis, analyzing, analyzingKind, estimate, image
           {analysis.warnings.length > 0 ? (
             <section className="space-y-2 [&>h3]:text-sm [&>h3]:font-medium" aria-label={t("可以继续的提醒")}>
               <h3>{t("可以继续的提醒")}</h3>
-              {analysis.warnings.map((warning) => <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm [&>svg]:mt-0.5 [&>svg]:shrink-0 [&>svg]:text-warning" key={warning}><Warning size={16} />{localizeMessage(warning)}</div>)}
+              {analysis.warnings.map((warning) => <Notification variant="warning" key={warning} message={localizeMessage(warning)} />)}
             </section>
           ) : null}
           {analysis.blockers.length > 0 ? (
             <section className="space-y-2 [&>h3]:text-sm [&>h3]:font-medium [&>h3]:text-destructive" aria-label={t("需要处理的问题")}>
               <h3>{t("需要处理后才能继续")}</h3>
-              {analysis.blockers.map((blocker) => <div className="flex flex-wrap items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm [&>svg]:mt-0.5 [&>svg]:shrink-0 [&>svg]:text-destructive [&_small]:mt-1 [&_small]:block [&_small]:text-xs" key={blocker}><Warning size={16} />{localizeMessage(blocker)}<span>{t("请重新选择可读取的素材后再次分析。")}</span></div>)}
+              {analysis.blockers.map((blocker) => <Notification variant="error" role="status" key={blocker} message={localizeMessage(blocker)}><p>{t("请重新选择可读取的素材后再次分析。")}</p></Notification>)}
             </section>
           ) : null}
         </div>
@@ -199,12 +200,12 @@ export function PreflightStep({ analysis, preflight, checking, selectedPreset, o
 
         {warnings.map((warning) => {
           const executionSummary = macExecutionSummary(warning);
-          return <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm [&>svg]:mt-0.5 [&>svg]:shrink-0 [&>svg]:text-warning" key={warning} title={executionSummary ? localizeMessage(warning) : undefined}><Warning size={16} /><span className={executionSummary ? "min-w-0 truncate" : undefined}>{executionSummary ?? localizeMessage(warning)}</span></div>;
+          return <Notification variant="warning" key={warning} message={<span title={executionSummary ? localizeMessage(warning) : undefined}>{executionSummary ?? localizeMessage(warning)}</span>} />;
         })}
         {preflight?.blockers.length ? (
           <section className="space-y-2 [&>h3]:text-sm [&>h3]:font-medium [&>h3]:text-destructive" aria-label={t("需要处理的问题")}>
             <h3>{t("需要处理后才能继续")}</h3>
-            {preflight.blockers.map((blocker) => <div className="flex flex-wrap items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm [&>svg]:mt-0.5 [&>svg]:shrink-0 [&>svg]:text-destructive [&_small]:mt-1 [&_small]:block [&_small]:text-xs" key={blocker}><Warning size={16} /><span>{localizeMessage(blocker)}<small>{t("修复相关组件、显卡环境或保存位置后重新检查。")}</small></span></div>)}
+            {preflight.blockers.map((blocker) => <Notification variant="error" role="status" key={blocker} message={localizeMessage(blocker)}><p>{t("修复相关组件、显卡环境或保存位置后重新检查。")}</p></Notification>)}
             <div className="flex flex-wrap gap-2">
               {onOpenSettings ? <Button type="button" variant="outline" onClick={onOpenSettings}>{t("打开设置")}</Button> : null}
             </div>
@@ -247,25 +248,15 @@ export function ConfirmStep({ analysis, estimate, preflight, directoryCheck, pro
             <Button variant="outline" size="sm" className="rounded-md" type="button" onClick={() => void onChooseRoot()} disabled={directoryCheck.status === "checking"}><FolderOpen size={16} />{t("更改目录")}</Button>
           </div>
           {directoryCheck.status !== "idle" && (
-            <div
-              className={cn("flex flex-wrap items-start gap-2 rounded-md border p-3 text-sm [&>svg]:shrink-0 [&>div]:min-w-0 [&>div]:flex-1 [&_strong]:block [&_strong]:font-medium [&_span]:mt-1 [&_span]:block [&_span]:text-xs", directoryCheck.status === "error" ? "border-destructive/30 bg-destructive/10" : "border-border bg-muted")}
-              role={directoryCheck.status === "error" ? "alert" : "status"}
-              aria-live={directoryCheck.status === "error" ? "assertive" : "polite"}
-            >
-              {directoryCheck.status === "checking" && <SpinnerGap className="animate-spin motion-reduce:animate-none" size={18} />}
-              {directoryCheck.status === "success" && <CheckCircle size={18} />}
-              {directoryCheck.status === "error" && <Warning size={18} />}
-              <div>
-                <strong>{directoryCheck.status === "checking" ? t("正在检查新目录") : directoryCheck.status === "success" ? t("新目录可用") : t("新目录不可用")}</strong>
-                {directoryCheck.message && <span>{localizeMessage(directoryCheck.message)}</span>}
-              </div>
-              {directoryCheck.status === "error" && (
-                <Button variant="outline" type="button" onClick={() => void onChooseRoot()}>{t("重新选择目录")}</Button>
-              )}
-            </div>
+            <Notification
+              variant={directoryCheck.status === "error" ? "error" : directoryCheck.status === "success" ? "success" : "info"}
+              title={directoryCheck.status === "checking" ? t("正在检查新目录") : directoryCheck.status === "success" ? t("新目录可用") : t("新目录不可用")}
+              message={directoryCheck.message ? localizeMessage(directoryCheck.message) : undefined}
+              actions={directoryCheck.status === "error" ? <Button variant="outline" type="button" onClick={() => void onChooseRoot()}>{t("重新选择目录")}</Button> : undefined}
+            />
           )}
           {directoryCheck.status === "error" && preflight?.blockers.map((blocker) => (
-            <div className="flex items-start gap-2 text-sm text-destructive [&>svg]:shrink-0" key={blocker}><Warning size={15} />{localizeMessage(blocker)}</div>
+            <Notification variant="error" role="status" key={blocker} message={localizeMessage(blocker)} />
           ))}
           </div>
         </div>

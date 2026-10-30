@@ -1,7 +1,8 @@
 //! Project management for MetOrigin Splat.
 //!
 //! Handles creation, opening, saving, validation, and migration of
-//! `.splat-project` directories.
+//! project directories containing `project.json`, including legacy
+//! `.splat-project` folders.
 
 pub mod execution_profile;
 pub mod migration;

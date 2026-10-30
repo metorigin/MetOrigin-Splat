@@ -55,6 +55,40 @@ describe("normalizeCommandError", () => {
     expect(error.retryable).toBe(true);
   });
 
+  it.each([
+    ["preview_workspace_action", "UI-ACTION-PREVIEW-FAILED"],
+    ["execute_workspace_action", "UI-ACTION-EXECUTE"],
+  ])("identifies a failed %s without reporting an unknown command", (command, code) => {
+    const error = normalizeCommandError("操作暂时不可用", command);
+    expect(error.code).toBe(code);
+    expect(error.retryable).toBe(false);
+    expect(error.message).toBe("操作暂时不可用");
+  });
+
+  it.each(["preview_workspace_action", "execute_workspace_action"])("localizes legacy missing-project errors with Chinese, spaces and emoji for %s", (command) => {
+    const path = "/Users/private/中文 空格 🧪/M4 恢复 Café 2500 🧪.splat-project/project.json";
+    const error = normalizeCommandError(`No project.json found at '${path}'. The directory may not be a valid project.`, command);
+    expect(error.code).toBe("UI-PROJECT-PATH-UNAVAILABLE");
+    expect(error.title).toBe("项目位置不可用");
+    expect(error.message).toContain("找不到项目描述文件 project.json");
+    expect(error.message).not.toContain("No project.json");
+    expect(error.message).not.toContain("M4 恢复");
+    expect(error.suggestions).toContain("重新定位包含 project.json 的项目目录。");
+  });
+
+  it("retains a structured backend code while localizing its known legacy missing-project message", () => {
+    const error = normalizeCommandError({ code: "E-1001", title: "Project Not Found", user_message: "No project.json found at '/Users/private/中文 项目/project.json'. The directory may not be a valid project.", retryable: false }, "preview_workspace_action");
+    expect(error.code).toBe("E-1001");
+    expect(error.title).toBe("项目位置不可用");
+    expect(error.message).toContain("找不到项目描述文件 project.json");
+  });
+
+  it("preserves structured action errors instead of replacing their precise codes", () => {
+    const error = normalizeCommandError({ code: "UI-ACTION-PREVIEW-EXPIRED", user_message: "操作影响说明已过期，尚未执行任何操作，请重新确认。", retryable: false }, "execute_workspace_action");
+    expect(error.code).toBe("UI-ACTION-PREVIEW-EXPIRED");
+    expect(error.message).toContain("操作影响说明已过期");
+  });
+
   it("redacts credentials and private Windows paths", () => {
     const source =
       "token=METORIGIN_TEST_SECRET_DO_NOT_EXPOSE at C:\\Users\\PrivateUser\\Projects\\secret.splat-project";

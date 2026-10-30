@@ -46,6 +46,17 @@ function props(overrides: Partial<ProjectNavigatorProps> = {}): ProjectNavigator
 }
 
 describe("ProjectNavigator", () => {
+  it.each(["missing", "unreadable"] as const)("allows a %s project with a cached running status to reach backend deletion checks", async (status) => {
+    const item = project(1, "running");
+    const value = props({ projects: [item], availability: { [item.id]: availability(item, status) } });
+    render(<ProjectNavigator {...value} gallery />);
+    fireEvent.keyDown(screen.getByRole("button", { name: `${item.name} 项目操作` }), { key: "ArrowDown" });
+    const deletion = await screen.findByRole("menuitem", { name: "永久删除项目" });
+    expect(deletion).not.toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(deletion);
+    expect(value.onDeleteProject).toHaveBeenCalledWith(item);
+  });
+
   it("shows up to fifty projects immediately and searches by name or full path", () => {
     const projects = Array.from({ length: 55 }, (_, index) => project(index));
     render(<ProjectNavigator {...props({ projects, availability: {} })} />);
@@ -484,6 +495,8 @@ describe("ProjectNavigator", () => {
       fireEvent.click(screen.getByRole("button", { name: "重新定位" }));
     }
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("原记录未更改"));
+    expect(screen.getByRole("alert")).toHaveClass("feedback-notification");
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveFocus());
     expect(screen.getByRole("button", { name: "扫描项目 1" })).toBeInTheDocument();
     expect(onOpenIndependent).not.toHaveBeenCalled();
 

@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { t, getLocale } from "../i18n";
-import { FolderOpen, MagnifyingGlass, Plus, WarningCircle } from "../components/primitives/icons";
+import { FolderOpen, MagnifyingGlass, Plus } from "../components/primitives/icons";
 import { useAppContext } from "../context";
 import type { EngineInfo, ProjectInfo, RecentProjectAvailability } from "../types";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Notification } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,7 +44,7 @@ export function HomePage({ engines, onOpenProject, onOpenSettings, onRetry, titl
       <div className="mx-auto flex w-full max-w-[1600px] flex-col px-5 pt-4 pb-8 lg:px-6">
         {!titleInWindowHeader ? <PageHeader title={t("项目中心")} className="mb-4 min-h-9 p-0" /> : null}
 
-        {unavailableEngines.length > 0 ? <Alert className="mb-4 border-warning/20 bg-warning-soft/35 py-2.5"><WarningCircle size={16} className="text-warning" /><AlertDescription className="flex flex-wrap items-center justify-between gap-2"><span>{t("部分引擎需要处理")} · {unavailableEngines.map((engine) => engine.name).join(", ")}</span>{onOpenSettings ? <Button variant="ghost" size="xs" onClick={onOpenSettings}>{t("打开设置")}</Button> : null}</AlertDescription></Alert> : null}
+        {unavailableEngines.length > 0 ? <Notification variant="warning" role="alert" className="mb-4" message={<>{t("部分引擎需要处理")} · {unavailableEngines.map((engine) => engine.name).join(", ")}</>} actions={onOpenSettings ? <Button variant="ghost" size="xs" onClick={onOpenSettings}>{t("打开设置")}</Button> : null} /> : null}
 
         <section className="min-w-0" aria-labelledby="recent-project-heading">
           <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
@@ -63,7 +63,7 @@ export function HomePage({ engines, onOpenProject, onOpenSettings, onRetry, titl
               <Button size="sm" onClick={create}><Plus size={15} />{t("新建项目")}</Button>
             </div>
           </div>
-          {state.recentProjectsError ? <Alert className="mb-3"><WarningCircle size={16} /><AlertDescription className="flex flex-wrap items-center justify-between gap-2"><span>{t("最近项目读取失败，正在显示已加载的记录。")}</span>{onRetry ? <Button variant="outline" size="sm" onClick={onRetry}>{t("重新加载")}</Button> : null}</AlertDescription></Alert> : null}
+          {state.recentProjectsError ? <Notification variant="warning" role="alert" className="mb-3" message={t("最近项目读取失败，正在显示已加载的记录。")} actions={onRetry ? <Button variant="outline" size="sm" onClick={onRetry}>{t("重新加载")}</Button> : null} /> : null}
           {filtered.length > 0 ? <div className="border-t border-border/70 pt-4">
             <ProjectNavigator projects={filtered} availability={availability} activeProjectPath={null}
               loading={state.recentProjectsLoading} gallery showSearch={false} maxItems={filtered.length} showHealthyAvailability={false}

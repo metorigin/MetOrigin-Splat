@@ -1,5 +1,5 @@
 import { localizeMessage, t } from "./i18n";
-import { SpinnerGap, WarningCircle, X } from "./components/primitives/icons";
+import { SpinnerGap } from "./components/primitives/icons";
 import { listen } from "@tauri-apps/api/event";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -11,7 +11,7 @@ import { ProjectSidebar } from "./components/shell/ProjectSidebar";
 import { TitleRunBar } from "./components/shell/TitleRunBar";
 import { SettingsDrawer } from "./components/settings";
 import { ConfirmationProvider } from "./components/confirmation/ConfirmationProvider";
-import { ActionReceipt, StatusAnnouncer } from "./components/feedback";
+import { ActionReceipt, Notification, NotificationStack, StatusAnnouncer } from "./components/feedback";
 import { WorkspaceActionDialog } from "./components/workspace/WorkspaceActionDialog";
 import {
   AppProvider,
@@ -35,7 +35,7 @@ import {
   selectProjectDirectory,
 } from "./services/desktop";
 import { isUiPreviewMode } from "./services/uiPreview";
-import { commandErrorSummary } from "./services/errors";
+import { commandErrorSummary, redactSensitiveText } from "./services/errors";
 import type {
   AppSettings,
   PipelineConflictInfo,
@@ -55,7 +55,6 @@ import { useLanguage } from "./hooks/useLanguage";
 import "@fontsource-variable/inter";
 import "@fontsource/jetbrains-mono/400.css";
 import "./styles/app.css";
-import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const ProjectDetailPage = lazy(() => import("./pages/ProjectDetailPage").then((module) => ({ default: module.ProjectDetailPage })));
@@ -691,6 +690,7 @@ export function AppWorkspace() {
       {workspaceAction && (
         <WorkspaceActionDialog
           request={workspaceAction}
+          projectName={deleteCandidate?.name}
           onClose={() => {
             setWorkspaceAction(null);
             if (workspaceAction.action === "delete_project") setDeleteCandidate(null);
@@ -698,24 +698,16 @@ export function AppWorkspace() {
           onCompleted={handleWorkspaceActionCompleted}
         />
       )}
-      {actionReceipt ? <ActionReceipt receipt={actionReceipt} onDismiss={() => setActionReceipt(null)} /> : null}
+      {(actionReceipt || state.error) && <NotificationStack>
+        {actionReceipt ? <ActionReceipt receipt={actionReceipt} onDismiss={() => setActionReceipt(null)} /> : null}
+        {state.error && <Notification key={state.errorRevision} variant="error" placement="toast"
+          message={redactSensitiveText(localizeMessage(state.error))}
+          onDismiss={() => dispatch({ type: "SET_ERROR", error: null })}
+          dismissLabel={t("关闭错误提示")}
+        />}
+      </NotificationStack>}
 
       {isUiPreviewMode() ? <div role="note" className="flex h-[22px] shrink-0 items-center justify-center border-t border-border/60 bg-sidebar px-2 text-[11px] text-muted-foreground">{t("界面预览 · 示例数据")}</div> : null}
-
-      {state.error && (
-        <div className="fixed right-6 bottom-12 z-[70] flex max-w-[min(40rem,calc(100vw-3rem))] items-start gap-3 rounded-lg border border-destructive/40 bg-popover p-4 text-sm text-destructive shadow-lg" role="alert">
-          <WarningCircle size={19} weight="fill" />
-          <span>{localizeMessage(state.error)}</span>
-          <Button
-            variant="ghost" size="icon-sm"
-            type="button"
-            onClick={() => dispatch({ type: "SET_ERROR", error: null })}
-            aria-label={t("关闭错误提示")}
-          >
-            <X size={17} />
-          </Button>
-        </div>
-      )}
 
       {state.loading && (
         <div className="fixed inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-background/90 text-sm" aria-live="polite">

@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Notification } from "@/components/feedback";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { localizeMessage, t, getLocale } from "../../i18n";
 import { useEffect, useRef, useState } from "react";
@@ -48,6 +49,13 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
   const [resourceReason, setResourceReason] = useState<string | null>(null);
   const [resourceAction, setResourceAction] = useState<"allow" | "pause" | "release">("allow");
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const liveFallbackPath = useRef(relativePath);
+  const staticRelativePath = live ? null : relativePath;
+
+  useEffect(() => {
+    // New checkpoints change the live stream's fallback, not its session or ACK.
+    liveFallbackPath.current = relativePath;
+  }, [relativePath]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -263,8 +271,9 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
           setLiveStreamRunning(status.running);
           if (sessionId !== status.session_id) { sessionId = status.session_id; revision = 0; setHasCurrentLiveFrame(false); }
           if (currentResourceAction === "allow" && !document.hidden && (mode !== "off" || !viewerRef.current?.mesh)) {
-            if (!running && relativePath) {
-              await apply(await desktopApi.getGaussianPreview(projectId, projectPath, relativePath));
+            const fallbackPath = liveFallbackPath.current;
+            if (!running && fallbackPath) {
+              await apply(await desktopApi.getGaussianPreview(projectId, projectPath, fallbackPath));
               if (!disposed) setHasCurrentLiveFrame(false);
             } else if (status.frame) {
               if (await apply(status.frame)) {
@@ -272,8 +281,8 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
                 // ACK only a model installed before any intervening pressure event.
                 revision = status.revision;
               }
-            } else if (relativePath && revision === 0) {
-              await apply(await desktopApi.getGaussianPreview(projectId, projectPath, relativePath));
+            } else if (fallbackPath && revision === 0) {
+              await apply(await desktopApi.getGaussianPreview(projectId, projectPath, fallbackPath));
             }
           }
         } else if (!document.hidden) {
@@ -281,7 +290,7 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
           // Keep the installed model visible, but label it as the previous source
           // until the requested static model has actually been installed.
           setLoading(true);
-          await apply(await desktopApi.getGaussianPreview(projectId, projectPath, relativePath));
+          await apply(await desktopApi.getGaussianPreview(projectId, projectPath, staticRelativePath));
         }
       } catch (cause) {
         if (!disposed && currentResourceAction === "allow") setError(cause instanceof Error ? cause.message : String(cause));
@@ -305,7 +314,7 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
       // Requests also expire after 10 seconds if the window or process disappears.
       if (live) void desktopApi.pollLivePreview(projectId, projectPath, "off", revision, sessionId).catch(() => {});
     };
-  }, [ready, projectId, projectPath, relativePath, live, running, mode, retry]);
+  }, [ready, projectId, projectPath, staticRelativePath, live, running, mode, retry]);
 
   const previousSourceShown = !live && displayed !== null
     && displayed.relative_path !== (relativePath?.replaceAll("\\", "/") ?? "output/scene.ply");
@@ -334,8 +343,13 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
     <div className="gaussian-canvas-wrapper">
       <div className="point-cloud-canvas" ref={hostRef} tabIndex={0} role="application" aria-label={t("三维高斯预览。拖动旋转，滚轮缩放，右键平移，R 重置视角。")} />
       {!displayed && <div className="gaussian-empty"><SpinnerGap size={30} className={loading || (live && running) ? "spin" : ""} /><strong>{loading ? t("正在加载高斯模型") : live ? t("等待训练模型") : t("暂无可显示模型")}</strong><span>{live ? t("模型准备好后会自动显示，可在训练过程中旋转和缩放。") : t("读取完整高斯参数后显示重建场景。")}</span></div>}
-      {error && <div className="gaussian-error" role="alert"><span>{localizeMessage(error)}{displayed ? t(" 已保留上一帧。") : ""}</span><Button variant="outline" type="button" onClick={() => setRetry((value) => value + 1)}><ArrowClockwise size={15} />{t("重试")}</Button></div>}
-      {!showToolbar && <span role="status" className={!error && (resourceAction !== "allow" || previousSourceShown) ? "gaussian-preview-notice" : "sr-only"}>{statusText}</span>}
+      {error && <Notification variant="error" className="gaussian-error"
+        message={`${localizeMessage(error)}${displayed ? t(" 已保留上一帧。") : ""}`}
+        actions={<Button variant="outline" type="button" onClick={() => setRetry((value) => value + 1)}><ArrowClockwise size={15} />{t("重试")}</Button>}
+      />}
+      {!showToolbar && (!error && (resourceAction !== "allow" || previousSourceShown)
+        ? <Notification variant="warning" className="gaussian-preview-notice" message={statusText} />
+        : <span role="status" className="sr-only">{statusText}</span>)}
       {loading && displayed && <div className="gaussian-updating"><SpinnerGap size={13} className="spin" />{t("更新模型")}</div>}
       {lastUpdated && displayed && <span className="gaussian-updated">{new Date(lastUpdated).toLocaleTimeString(getLocale())} {t("更新")}</span>}
     </div>

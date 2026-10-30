@@ -19,6 +19,7 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Notification } from "@/components/feedback";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { DesktopMenu } from "./DesktopMenu";
 import { DesktopContextMenu, DesktopContextMenuItem, DesktopContextMenuSeparator } from "./DesktopContextMenu";
@@ -203,6 +204,9 @@ export function ProjectNavigator({
           const availabilityView = availabilityCopy(availabilityState);
           const rowRelink = relinkResult[project.id];
           const active = ["starting", "running", "pausing", "cancelling", "recovering"].includes(project.status);
+          // A cached running status cannot prove that an unavailable project
+          // still owns a task. The backend checks actual owners before deletion.
+          const deletionBlocked = active && !["missing", "unreadable"].includes(availabilityState?.status ?? "");
           const statusTitle = project.stage_label ? `${getProjectStatusLabel(project.status)} · ${getStageLabel(project.stage_label)}` : getProjectStatusLabel(project.status);
           const summaryId = `${summaryPrefix}-project-summary-${project.id}`;
           const availabilityProblem = ["missing", "unreadable", "check_failed"].includes(availabilityState?.status ?? "");
@@ -219,7 +223,7 @@ export function ProjectNavigator({
             ...((compact || galleryView) && availabilityState?.status === "check_failed" ? [{ key: "retry", label: t("重试检查"), icon: <ArrowClockwise size={15} />, disabled: retryBusyIds.has(project.id), onSelect: () => retryAvailability(project.id) }] : []),
             ...(["missing", "unreadable"].includes(availabilityState?.status ?? "") ? [{ key: "relink", label: t("重新定位"), icon: <LinkSimple size={15} />, onSelect: () => void relink(project) }] : []),
             { key: "separator", separator: true },
-            { key: "delete", label: t("永久删除项目"), icon: <Trash size={15} />, disabled: active, title: active ? t("请先安全取消重建") : undefined, destructive: true, onSelect: () => onDeleteProject(project) },
+            { key: "delete", label: t("永久删除项目"), icon: <Trash size={15} />, disabled: deletionBlocked, title: deletionBlocked ? t("请先安全取消重建") : undefined, destructive: true, onSelect: () => onDeleteProject(project) },
           ];
           const projectMenu = <DesktopMenu open={menuProjectId === project.id} onOpenChange={(open) => { setMenuProjectId(open ? project.id : null); if (open) setContextProjectId(null); }} trigger={<Button ref={(node) => { if (node) menuTriggers.current.set(project.id, node); else menuTriggers.current.delete(project.id); }} variant="ghost" size="icon-sm" className={galleryView ? "absolute top-2 right-2 size-7 rounded-md bg-background/90 text-foreground opacity-0 shadow-sm group-hover/project:opacity-100 group-focus-within/project:opacity-100 data-[state=open]:opacity-100 hover:bg-background dark:hover:bg-background" : compact ? "size-6 shrink-0 text-muted-foreground opacity-0 group-hover/project:opacity-100 group-focus-within/project:opacity-100 data-[state=open]:opacity-100" : undefined} aria-label={t("{0} 项目操作", project.name)}><DotsThreeVertical size={17} /></Button>}>
             {projectMenuContent(actions)}
@@ -288,21 +292,19 @@ export function ProjectNavigator({
               </div> : null}
 
               {rowRelink?.kind === "mismatch" ? (
-                <div
+                <Notification variant="error"
                   ref={(node) => { if (node) mismatchHeadings.current.set(project.id, node); else mismatchHeadings.current.delete(project.id); }}
-                  className="mt-2 space-y-2 rounded-md bg-destructive/5 p-3 text-xs break-words [&>strong]:block [&>span]:block [&>div]:flex [&>div]:flex-wrap [&>div]:gap-2"
-                  role="alert"
+                  className="mt-2"
                   tabIndex={-1}
-                >
-                  <strong>{t("所选目录属于另一个项目")}</strong>
-                  <span>{t("原记录未更改（")}{rowRelink.code}）。</span>
-                  <div>
+                  title={t("所选目录属于另一个项目")}
+                  message={<>{t("原记录未更改（")}{rowRelink.code}）。</>}
+                  actions={<>
                     <Button variant="outline" size="sm" type="button" onClick={() => void relink(project)}>{t("选择其他位置")}</Button>
                     <Button variant="outline" size="sm" type="button" onClick={() => { void onOpenIndependent(rowRelink.candidatePath); onNavigate(); }}>{t("作为独立项目打开")}</Button>
-                  </div>
-                </div>
+                  </>}
+                />
               ) : rowRelink?.kind === "error" ? (
-                <div className="mt-2 space-y-2 rounded-md bg-destructive/5 p-3 text-xs [&>strong]:block [&>span]:block [&>div]:flex [&>div]:flex-wrap [&>div]:gap-2" role="alert"><strong>{t("无法重新定位")}</strong><span>{localizeMessage(rowRelink.message)}（{rowRelink.code}）</span></div>
+                <Notification variant="error" className="mt-2" title={t("无法重新定位")} message={<>{localizeMessage(rowRelink.message)}（{rowRelink.code}）</>} />
               ) : null}
             </div>
           );

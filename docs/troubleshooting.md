@@ -50,7 +50,7 @@ A higher preset cannot compensate for missing viewpoints or wrong camera reconst
 
 Pause/cancel requests are not necessarily instantaneous. Wait for the application to apply the operation and settle its state before restarting or moving the project. A valid saved checkpoint can support geometry recovery, but does not restore the entire optimizer state.
 
-After an interruption, open the full `.splat-project` directory and allow artifact checks to finish. A partial checkpoint is not a completed model. If an engine process failed, use the recorded stage error and retry/recovery action rather than changing `project.json` by hand. See [project format](project-format.md).
+After an interruption, open the full project directory containing `project.json` and allow artifact checks to finish. Legacy `.splat-project` folders remain supported. A partial checkpoint is not a completed model. If an engine process failed, use the recorded stage error and retry/recovery action rather than changing `project.json` by hand. See [project format](project-format.md).
 
 ## Preview problems
 

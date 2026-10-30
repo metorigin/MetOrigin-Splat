@@ -2,6 +2,7 @@ import { localizeMessage, t } from "@/i18n";
 import type { AppSettings, ResourceMetrics } from "@/types";
 import { isMacPlatform } from "@/lib/platformShortcuts";
 import { Button } from "@/components/ui/button";
+import { Notification } from "@/components/feedback";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -33,6 +34,6 @@ export function PerformanceSettings({ settings, metrics, busy, logLimit, cacheLi
       </SettingsRow>
       <p id="idle-sleep-description" className={`${noteClass} mt-3`}>{t("仅影响之后启动的任务。允许屏幕休眠；合盖、手动睡眠和低电量仍可能中断任务。")}</p>
     </SettingsSection>}
-    <SettingsSection><RuntimeResources metrics={metrics} />{metrics?.warnings.map((warning) => <p className={`${noteClass} mt-3`} role="status" key={warning}>{localizeMessage(warning)}</p>)}</SettingsSection>
+    <SettingsSection><RuntimeResources metrics={metrics} />{metrics?.warnings.map((warning) => <Notification variant="warning" className="mt-3" key={warning} message={localizeMessage(warning)} />)}</SettingsSection>
   </div>;
 }

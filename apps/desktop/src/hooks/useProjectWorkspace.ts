@@ -145,11 +145,13 @@ export function useProjectWorkspace(projectId: string, projectPath: string, metr
           };
         },
         (error) => normalizeCommandError(error, "get_project_artifacts"),
+        { background: true },
       ),
       loadCheckpoints(
         `${projectPath}:checkpoints:${requestId}`,
         () => desktopApi.listCheckpoints(projectPath),
         (error) => normalizeCommandError(error, "list_checkpoints"),
+        { background: true },
       ),
     ]);
     if (artifactResult.status === "fulfilled") {

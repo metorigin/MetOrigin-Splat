@@ -164,11 +164,17 @@ fn directory_size(path: &Path) -> Result<u64, String> {
     Ok(total)
 }
 
-async fn derive_impact(
+async fn derive_impact_at_index(
     request: &WorkspaceActionRequest,
     state: &AppState,
+    index_path: Option<&Path>,
 ) -> Result<ImpactDraft, String> {
     validate_request_shape(request)?;
+    if request.action == WorkspaceActionKind::DeleteProject {
+        let index_path =
+            index_path.ok_or_else(|| "项目删除缺少索引上下文，未执行任何操作。".to_string())?;
+        return derive_delete_impact(request, state, index_path);
+    }
     let project_dir = PathBuf::from(&request.project_path);
     let project = manager_for(&project_dir)
         .open_project(&project_dir)
@@ -363,43 +369,7 @@ async fn derive_impact(
                     .map_err(|_| "无法生成 Checkpoint 影响指纹。".to_string())?,
             }
         }
-        WorkspaceActionKind::DeleteProject => {
-            let creation_active = {
-                let inner = state
-                    .0
-                    .lock()
-                    .map_err(|_| "项目删除状态不可用。".to_string())?;
-                inner
-                    .active_creation
-                    .as_ref()
-                    .is_some_and(|creation| creation.id == request.project_id)
-            };
-            let allowed = !targets_active && !creation_active;
-            let size_bytes = directory_size(&project_dir)?;
-            ImpactDraft {
-                action: request.action,
-                target_label: format!("永久删除项目“{}”", project.name),
-                allowed,
-                blocked_reason: (!allowed).then(|| "项目仍在处理或创建中，请先安全停止。".into()),
-                irreversible: true,
-                preserved: vec!["应用设置与其他项目".into()],
-                invalidated: vec![
-                    "项目素材副本".into(),
-                    "重建产物".into(),
-                    "Checkpoint".into(),
-                    "日志与导出".into(),
-                ],
-                regenerated: Vec::new(),
-                warnings: vec!["项目目录将从磁盘永久移除，此操作不可撤销。".into()],
-                size_bytes: Some(size_bytes),
-                fingerprint: serde_json::to_string(&serde_json::json!({
-                    "project_updated_at": project.updated_at,
-                    "creation_active": creation_active,
-                    "size_bytes": size_bytes,
-                }))
-                .map_err(|_| "无法生成项目删除影响指纹。".to_string())?,
-            }
-        }
+        WorkspaceActionKind::DeleteProject => unreachable!("handled before opening the project"),
     };
     draft.fingerprint = serde_json::to_string(&serde_json::json!({
         "project": project_fact,
@@ -414,6 +384,119 @@ async fn derive_impact(
     }))
     .map_err(|_| "无法生成操作影响指纹。".to_string())?;
     Ok(draft)
+}
+
+#[cfg(test)]
+async fn derive_impact(
+    request: &WorkspaceActionRequest,
+    state: &AppState,
+) -> Result<ImpactDraft, String> {
+    derive_impact_at_index(request, state, None).await
+}
+
+fn derive_delete_impact(
+    request: &WorkspaceActionRequest,
+    state: &AppState,
+    index_path: &Path,
+) -> Result<ImpactDraft, String> {
+    let delete_request = project::DeleteProjectRequest {
+        project_id: request.project_id.clone(),
+        project_path: request.project_path.clone(),
+    };
+    let (active_blocker, target) = {
+        // Index reads can recover staged/backup files, so previews use the same
+        // writer gate as execution and the other persisted-index operations.
+        let _writer = state.recent_index_write_guard();
+        (
+            project::delete_project_blocked_reason(&delete_request, state)?,
+            project::inspect_delete_target(&delete_request, index_path),
+        )
+    };
+    let (target, error) = match target {
+        Ok(target) => (Some(target), None),
+        Err(error) => (None, Some(error)),
+    };
+    let error_message = error.as_ref().map(|error| {
+        serde_json::from_str::<serde_json::Value>(error)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("message")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+            })
+            .unwrap_or_else(|| error.clone())
+    });
+    let blocked_reason = active_blocker.or(error_message);
+    let record_only = target
+        .as_ref()
+        .is_none_or(project::DeleteProjectTarget::record_only);
+    let size_bytes = if record_only {
+        0
+    } else {
+        directory_size(&target.as_ref().unwrap().project_dir)?
+    };
+    let target_label = target.as_ref().map_or_else(
+        || "删除项目记录".to_string(),
+        |target| {
+            if record_only {
+                format!("移除项目“{}”的记录", target.record.name)
+            } else {
+                format!("永久删除项目“{}”", target.project.as_ref().unwrap().name)
+            }
+        },
+    );
+    let warnings = if record_only {
+        vec![match target.as_ref().map(|target| target.mode) {
+            Some(project::DeleteProjectMode::MissingDirectory) => {
+                "项目目录已丢失，本次只移除项目记录，不会删除任何磁盘文件。"
+            }
+            Some(
+                project::DeleteProjectMode::MissingManifest
+                | project::DeleteProjectMode::InvalidManifest,
+            ) => "项目文件缺失或损坏，本次只移除项目记录；残留目录及文件保持不变。",
+            _ => "目标状态无法安全验证，尚未执行任何操作。",
+        }
+        .into()]
+    } else {
+        vec!["项目目录将从磁盘永久移除，此操作不可撤销。".into()]
+    };
+    let fingerprint = serde_json::to_string(&serde_json::json!({
+        "action": request.action,
+        "delete_target": target.as_ref().map(|target| &target.fingerprint),
+        "delete_error": error,
+        "allowed": blocked_reason.is_none(), "blocked": blocked_reason, "size_bytes": size_bytes,
+    }))
+    .map_err(|_| "无法生成项目删除影响指纹。".to_string())?;
+    Ok(ImpactDraft {
+        action: request.action,
+        target_label,
+        allowed: blocked_reason.is_none(),
+        blocked_reason,
+        irreversible: !record_only,
+        preserved: if record_only {
+            vec![
+                "项目目录及其中的残留文件（如有）".into(),
+                "应用设置与其他项目".into(),
+            ]
+        } else {
+            vec!["应用设置与其他项目".into()]
+        },
+        invalidated: if record_only {
+            vec!["当前项目在项目中心的记录".into()]
+        } else {
+            vec![
+                "项目素材副本".into(),
+                "重建产物".into(),
+                "Checkpoint".into(),
+                "日志与导出".into(),
+            ]
+        },
+        regenerated: Vec::new(),
+        warnings,
+        size_bytes: (!record_only).then_some(size_bytes),
+        fingerprint,
+    })
 }
 
 fn issue_preview(
@@ -442,9 +525,11 @@ fn issue_preview(
 #[tauri::command]
 pub async fn preview_workspace_action(
     request: WorkspaceActionRequest,
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<ActionImpactPreview, String> {
-    let draft = derive_impact(&request, state.inner()).await?;
+    let index_path = project::recent_project_index_path(&app_handle)?;
+    let draft = derive_impact_at_index(&request, state.inner(), Some(&index_path)).await?;
     issue_preview(request, draft, state.inner())
 }
 
@@ -465,11 +550,12 @@ fn token_error(error: ActionTokenError) -> String {
 async fn consume_revalidated_preview(
     preview_token: &str,
     state: &AppState,
+    index_path: Option<&Path>,
 ) -> Result<PreviewExecutionGate, String> {
     let record = state
         .consume_action_preview(preview_token)
         .map_err(token_error)?;
-    let current = derive_impact(&record.request, state).await?;
+    let current = derive_impact_at_index(&record.request, state, index_path).await?;
     if current.fingerprint != record.fingerprint || !current.allowed {
         let preview = issue_preview(record.request, current, state)?;
         return Ok(PreviewExecutionGate::Stale(
@@ -489,6 +575,7 @@ async fn dispatch_ready_action(
     state: &AppState,
 ) -> Result<WorkspaceActionReceipt, String> {
     let action = record.request.action;
+    let mut record_only_delete = false;
     let affected_resources = match action {
         WorkspaceActionKind::Pause => {
             pipeline::control_pipeline(state, PipelineControlIntent::Pause).await?;
@@ -526,23 +613,45 @@ async fn dispatch_ready_action(
         WorkspaceActionKind::DeleteProject => {
             let app_handle =
                 app_handle.ok_or_else(|| "项目删除缺少应用上下文，未执行任何操作。".to_string())?;
-            project::delete_project_inner(
+            let fingerprint: serde_json::Value = serde_json::from_str(&record.fingerprint)
+                .map_err(|_| "项目删除确认无效，未执行任何操作。".to_string())?;
+            let expected_target = fingerprint
+                .get("delete_target")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "项目删除确认无效，未执行任何操作。".to_string())?;
+            let deleted = project::delete_project_confirmed_inner(
                 project::DeleteProjectRequest {
                     project_id: record.request.project_id,
                     project_path: record.request.project_path,
                 },
                 app_handle,
                 state,
+                expected_target,
             )?;
-            vec!["recent_projects", "project_storage"]
+            record_only_delete = !deleted.files_deleted;
+            if record_only_delete {
+                vec!["recent_projects"]
+            } else {
+                vec!["recent_projects", "project_storage"]
+            }
         }
     };
     Ok(WorkspaceActionReceipt {
         id: uuid::Uuid::now_v7().to_string(),
         action,
         status: "success".into(),
-        title: "操作已完成".into(),
-        message: "已按确认的影响范围完成操作，并刷新相关状态。".into(),
+        title: if record_only_delete {
+            "项目记录已移除"
+        } else {
+            "操作已完成"
+        }
+        .into(),
+        message: if record_only_delete {
+            "仅移除了项目中心的记录，没有删除任何磁盘文件。"
+        } else {
+            "已按确认的影响范围完成操作，并刷新相关状态。"
+        }
+        .into(),
         completed_at: Utc::now().to_rfc3339(),
         affected_resources: affected_resources.into_iter().map(str::to_string).collect(),
         dismissible: true,
@@ -555,13 +664,32 @@ pub async fn execute_workspace_action(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<WorkspaceActionExecution, String> {
-    let record = match consume_revalidated_preview(&preview_token, state.inner()).await? {
+    let index_path = project::recent_project_index_path(&app_handle)?;
+    let record = match consume_revalidated_preview(&preview_token, state.inner(), Some(&index_path))
+        .await?
+    {
         PreviewExecutionGate::Ready(record) => record,
         PreviewExecutionGate::Stale(response) => return Ok(response),
     };
 
-    let receipt = dispatch_ready_action(record, Some(&app_handle), state.inner()).await?;
-    Ok(WorkspaceActionExecution::Completed { receipt })
+    let request = record.request.clone();
+    match dispatch_ready_action(record, Some(&app_handle), state.inner()).await {
+        Ok(receipt) => Ok(WorkspaceActionExecution::Completed { receipt }),
+        Err(error)
+            if request.action == WorkspaceActionKind::DeleteProject
+                && project::deletion_is_stale(&error) =>
+        {
+            let current =
+                derive_impact_at_index(&request, state.inner(), Some(&index_path)).await?;
+            let preview = issue_preview(request, current, state.inner())?;
+            Ok(WorkspaceActionExecution::Stale {
+                code: "UI-ACTION-PREVIEW-STALE".into(),
+                message: "项目状态已变化，尚未执行任何操作。请检查最新影响后再次确认。".into(),
+                preview,
+            })
+        }
+        Err(error) => Err(error),
+    }
 }
 
 #[cfg(test)]
@@ -602,6 +730,23 @@ mod tests {
             stage_id: None,
             checkpoint_iteration: None,
         }
+    }
+
+    fn index_project(root: &Path, project_dir: &Path, project: &splat_domain::Project) -> PathBuf {
+        let index = root.join("test-recent-projects.json");
+        project::install_recent_project_index(
+            &index,
+            &[crate::state::ProjectInfo {
+                id: project.id.to_string(),
+                name: project.name.clone(),
+                path: project_dir.to_string_lossy().into(),
+                status: project.status.to_string(),
+                updated_at: project.updated_at.to_rfc3339(),
+                stage_label: None,
+            }],
+        )
+        .unwrap();
+        index
     }
 
     fn install_active_pipeline(state: &AppState, project: &splat_domain::Project, path: &Path) {
@@ -645,7 +790,7 @@ mod tests {
         let draft = derive_impact(&request, state).await.unwrap();
         assert!(draft.allowed);
         let issued = issue_preview(request, draft, state).unwrap();
-        match consume_revalidated_preview(&issued.preview_token, state)
+        match consume_revalidated_preview(&issued.preview_token, state, None)
             .await
             .unwrap()
         {
@@ -805,13 +950,16 @@ mod tests {
     #[tokio::test]
     async fn project_delete_impact_is_path_safe_and_tracks_range_size_and_identity() {
         let (root, project_dir, project) = test_project("delete-impact");
+        let index = index_project(&root, &project_dir, &project);
         let output = project_dir.join("output/data.bin");
         std::fs::create_dir_all(output.parent().unwrap()).unwrap();
         std::fs::write(&output, [1_u8; 64]).unwrap();
         let state = AppState::new();
         let request = request_for(&project, &project_dir, WorkspaceActionKind::DeleteProject);
 
-        let before = derive_impact(&request, &state).await.unwrap();
+        let before = derive_impact_at_index(&request, &state, Some(&index))
+            .await
+            .unwrap();
         assert!(before.allowed && before.irreversible);
         assert!(before.size_bytes.unwrap() >= 64);
         assert!(!before.invalidated.is_empty());
@@ -821,13 +969,20 @@ mod tests {
         assert!(!serialized.contains(&project_dir.to_string_lossy().to_string()));
 
         std::fs::write(project_dir.join("output/added.bin"), [2_u8; 32]).unwrap();
-        let after = derive_impact(&request, &state).await.unwrap();
+        let after = derive_impact_at_index(&request, &state, Some(&index))
+            .await
+            .unwrap();
         assert_ne!(after.fingerprint, before.fingerprint);
 
         let bytes_before = std::fs::read(project_dir.join("project.json")).unwrap();
         let mut wrong = request;
         wrong.project_id = uuid::Uuid::now_v7().to_string();
-        assert!(derive_impact(&wrong, &state).await.is_err());
+        assert!(
+            !derive_impact_at_index(&wrong, &state, Some(&index))
+                .await
+                .unwrap()
+                .allowed
+        );
         assert_eq!(
             std::fs::read(project_dir.join("project.json")).unwrap(),
             bytes_before
@@ -838,15 +993,18 @@ mod tests {
     #[tokio::test]
     async fn stale_preview_is_consumed_without_domain_writes_and_replay_is_rejected() {
         let (root, project_dir, project) = test_project("stale-delete");
+        let index = index_project(&root, &project_dir, &project);
         let state = AppState::new();
         let request = request_for(&project, &project_dir, WorkspaceActionKind::DeleteProject);
-        let draft = derive_impact(&request, &state).await.unwrap();
+        let draft = derive_impact_at_index(&request, &state, Some(&index))
+            .await
+            .unwrap();
         let issued = issue_preview(request, draft, &state).unwrap();
 
         let external_change = project_dir.join("output/external-change.bin");
         std::fs::create_dir_all(external_change.parent().unwrap()).unwrap();
         std::fs::write(&external_change, [9_u8; 12]).unwrap();
-        let gate = consume_revalidated_preview(&issued.preview_token, &state)
+        let gate = consume_revalidated_preview(&issued.preview_token, &state, Some(&index))
             .await
             .unwrap();
         match gate {
@@ -861,10 +1019,159 @@ mod tests {
         assert!(project_dir.join("project.json").is_file());
         assert_eq!(std::fs::read(&external_change).unwrap(), [9_u8; 12]);
 
-        let replay = consume_revalidated_preview(&issued.preview_token, &state)
+        let replay = consume_revalidated_preview(&issued.preview_token, &state, Some(&index))
             .await
             .unwrap_err();
         assert!(replay.contains("UI-ACTION-PREVIEW-INVALID"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn delete_record_only_previews_preserve_residual_files_and_become_stale_when_project_returns(
+    ) {
+        for missing in ["directory", "manifest", "corrupt"] {
+            let (root, project_dir, project) = test_project(&format!("missing-{missing}"));
+            let index = index_project(&root, &project_dir, &project);
+            match missing {
+                "directory" => std::fs::remove_dir_all(&project_dir).unwrap(),
+                "manifest" => std::fs::remove_file(project_dir.join("project.json")).unwrap(),
+                _ => std::fs::write(project_dir.join("project.json"), b"{damaged").unwrap(),
+            }
+            let state = AppState::new();
+            let request = request_for(&project, &project_dir, WorkspaceActionKind::DeleteProject);
+            let index_before = std::fs::read(&index).unwrap();
+            let before = derive_impact_at_index(&request, &state, Some(&index))
+                .await
+                .unwrap();
+            assert!(before.allowed && !before.irreversible);
+            assert_eq!(before.size_bytes, None);
+            assert!(before
+                .warnings
+                .iter()
+                .any(|text| text.contains("只移除项目记录")));
+            assert!(before
+                .preserved
+                .iter()
+                .any(|text| text.contains("残留文件")));
+            let issued = issue_preview(request, before, &state).unwrap();
+            assert_eq!(std::fs::read(&index).unwrap(), index_before);
+
+            std::fs::create_dir_all(&project_dir).unwrap();
+            manager_for(&project_dir)
+                .save_project(&project, &project_dir)
+                .unwrap();
+            let manifest_before = std::fs::read(project_dir.join("project.json")).unwrap();
+            match consume_revalidated_preview(&issued.preview_token, &state, Some(&index))
+                .await
+                .unwrap()
+            {
+                PreviewExecutionGate::Stale(WorkspaceActionExecution::Stale {
+                    code,
+                    preview,
+                    ..
+                }) => {
+                    assert_eq!(code, "UI-ACTION-PREVIEW-STALE");
+                    assert!(preview.allowed && preview.irreversible);
+                    assert!(preview.target_label.contains("永久删除"));
+                }
+                _ => panic!("restored files must never expand an old record-only confirmation"),
+            }
+            assert_eq!(
+                std::fs::read(project_dir.join("project.json")).unwrap(),
+                manifest_before
+            );
+            assert_eq!(std::fs::read(&index).unwrap(), index_before);
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_confirmation_rechecks_persisted_identity_and_active_owners() {
+        for change in ["index", "creation", "pipeline"] {
+            let (root, project_dir, project) = test_project(&format!("delete-change-{change}"));
+            let index = index_project(&root, &project_dir, &project);
+            std::fs::remove_dir_all(&project_dir).unwrap();
+            let state = AppState::new();
+            let request = request_for(&project, &project_dir, WorkspaceActionKind::DeleteProject);
+            let draft = derive_impact_at_index(&request, &state, Some(&index))
+                .await
+                .unwrap();
+            let issued = issue_preview(request, draft, &state).unwrap();
+            match change {
+                "index" => {
+                    project::install_recent_project_index(&index, &[]).unwrap();
+                }
+                "creation" => {
+                    state.0.lock().unwrap().active_creation =
+                        Some(crate::state::ActiveProjectCreation {
+                            id: project.id.to_string(),
+                            cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                        })
+                }
+                _ => install_active_pipeline(&state, &project, &project_dir),
+            }
+            let index_before = std::fs::read(&index).unwrap();
+            match consume_revalidated_preview(&issued.preview_token, &state, Some(&index))
+                .await
+                .unwrap()
+            {
+                PreviewExecutionGate::Stale(WorkspaceActionExecution::Stale {
+                    preview, ..
+                }) => assert!(!preview.allowed),
+                _ => panic!(
+                    "identity/active-owner changes must block and require a new confirmation"
+                ),
+            }
+            assert_eq!(std::fs::read(&index).unwrap(), index_before);
+            assert!(!project_dir.exists());
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
+    fn delete_preview_waits_for_index_writes_before_read_recovery_can_touch_staged_files() {
+        let (root, project_dir, project) = test_project("delete-preview-index-writer");
+        let index = index_project(&root, &project_dir, &project);
+        std::fs::remove_dir_all(&project_dir).unwrap();
+        let state = AppState::new();
+        let writer = state.recent_index_write_guard();
+        let staged = index.with_extension("json.installing");
+        std::fs::write(&staged, b"writer-owned staged contents").unwrap();
+        let request = request_for(&project, &project_dir, WorkspaceActionKind::DeleteProject);
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let state_for_preview = state.clone();
+        let index_for_preview = index.clone();
+        let preview = std::thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            done_tx
+                .send(derive_delete_impact(
+                    &request,
+                    &state_for_preview,
+                    &index_for_preview,
+                ))
+                .unwrap();
+        });
+        started_rx.recv().unwrap();
+        assert!(matches!(
+            done_rx.recv_timeout(std::time::Duration::from_millis(100)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ));
+        assert_eq!(
+            std::fs::read(&staged).unwrap(),
+            b"writer-owned staged contents"
+        );
+        // The synthetic writer aborts its staged update before releasing ownership.
+        std::fs::remove_file(&staged).unwrap();
+        drop(writer);
+        assert!(
+            done_rx
+                .recv_timeout(std::time::Duration::from_secs(2))
+                .unwrap()
+                .unwrap()
+                .allowed
+        );
+        preview.join().unwrap();
         let _ = std::fs::remove_dir_all(root);
     }
 

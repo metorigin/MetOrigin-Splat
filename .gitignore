@@ -30,6 +30,7 @@ apps/desktop/src-tauri/gen/schemas/
 # Project files
 *.splat-project/
 **/*.splat-project/
+.metorigin-create-*.creating/
 
 # IDE
 .idea/

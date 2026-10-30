@@ -112,6 +112,46 @@ describe("AsyncResource", () => {
     expect(stale).toBe(loading);
   });
 
+  it("keeps background reads quiet while publishing changes and reporting failures", async () => {
+    const { result } = renderHook(() => useAsyncResource<string[]>(["checkpoint-1"]));
+    let publish!: (data: string[]) => void;
+    let request!: Promise<string[]>;
+    act(() => {
+      request = result.current.load("poll-1", () => new Promise((resolve) => { publish = resolve; }),
+        () => retryableError, { background: true });
+    });
+    expect(result.current.resource).toMatchObject({ status: "success", data: ["checkpoint-1"] });
+    await act(async () => { publish(["checkpoint-1", "checkpoint-2"]); await request; });
+    expect(result.current.resource.data).toEqual(["checkpoint-1", "checkpoint-2"]);
+
+    await act(async () => {
+      await result.current.load("poll-2", () => Promise.reject(new Error("offline")),
+        () => retryableError, { background: true }).catch(() => undefined);
+    });
+    expect(result.current.resource).toMatchObject({ status: "stale", error: retryableError, data: ["checkpoint-1", "checkpoint-2"] });
+    act(() => {
+      request = result.current.load("poll-3", () => new Promise((resolve) => { publish = resolve; }),
+        () => retryableError, { background: true });
+    });
+    expect(result.current.resource.status).toBe("stale");
+    expect(result.current.resource.error).toEqual(retryableError);
+    await act(async () => { publish(["checkpoint-2"]); await request; });
+    expect(result.current.resource).toMatchObject({ status: "success", error: null, data: ["checkpoint-2"] });
+  });
+
+  it("still reports the first background read as loading when no data exists", async () => {
+    const { result } = renderHook(() => useAsyncResource<string[]>());
+    let publish!: (data: string[]) => void;
+    let request!: Promise<string[]>;
+    act(() => {
+      request = result.current.load("initial", () => new Promise((resolve) => { publish = resolve; }),
+        () => retryableError, { background: true });
+    });
+    expect(result.current.resource.status).toBe("loading");
+    await act(async () => { publish([]); await request; });
+    expect(result.current.resource).toMatchObject({ status: "success", data: [] });
+  });
+
   it("runs one mutation per action key and reuses its promise", async () => {
     let resolveMutation: ((value: string) => void) | undefined;
     const mutation = vi.fn(

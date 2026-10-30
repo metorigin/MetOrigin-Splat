@@ -104,6 +104,7 @@ export interface DeleteProjectResult {
   project_id: string;
   deleted_path: string;
   removed_from_recent: boolean;
+  files_deleted: boolean;
 }
 
 /** Preset option presented in the UI. */

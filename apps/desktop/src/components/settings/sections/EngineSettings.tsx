@@ -1,5 +1,6 @@
 import { localizeMessage, t } from "@/i18n";
-import { FolderOpen, WarningCircle } from "@/components/primitives/icons";
+import { FolderOpen } from "@/components/primitives/icons";
+import { Notification } from "@/components/feedback";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { resourceMemory } from "@/lib/resourcePresentation";
@@ -17,7 +18,9 @@ export function EngineSettings({ engines, loading, error, allReady, busy, metric
     <SettingsSection title={t("重建引擎")} description={t("查看组件状态，启动任务前会再次检查运行环境。")}>
       <div className="mb-4"><Badge variant={allReady ? "success" : "warning"}>{allReady ? t("已就绪") : t("待检查")}</Badge></div>
       {loading && <p role="status" className={noteClass}>{t("正在检测引擎…")}</p>}
-      {error && <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm" role="alert"><WarningCircle size={16} /><span className="min-w-0 flex-1">{t("引擎检测失败：")}{localizeMessage(error)}</span><Button variant="outline" size="sm" disabled={busy} onClick={onRefresh}>{t("重试检测")}</Button></div>}
+      {error && <Notification variant="error" className="mb-4" message={<>{t("引擎检测失败：")}{localizeMessage(error)}</>}
+        actions={<Button variant="outline" size="sm" disabled={busy} onClick={onRefresh}>{t("重试检测")}</Button>}
+      />}
       {!loading && !error && engines.length === 0 && <p className="mb-4 text-sm text-muted-foreground">{t("尚未检测")}</p>}
       <div className="divide-y divide-border/40">
         {engines.map((engine) => <article key={engine.name} className="space-y-3 py-4 first:pt-0">

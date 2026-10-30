@@ -12,7 +12,7 @@ use splat_pipeline::{
     FrameExtractionStage, ImagePreprocessingStage, MediaValidationStage, PipelineConfig,
     PipelineOrchestrator, TrainingPreparationStage,
 };
-use splat_project::ProjectManager;
+use splat_project::{paths, ProjectManager};
 
 #[tokio::test]
 #[ignore = "requires METORIGIN_TEST_IMAGE_DIR, METORIGIN_TEST_PROJECT_ROOT, and METORIGIN_TEST_COLMAP"]
@@ -28,7 +28,7 @@ async fn reconstructs_real_image_folder_without_ffmpeg() {
     );
 
     let manager = ProjectManager::new(project_root.clone());
-    let expected_project_dir = project_root.join("real-image-enhanced.splat-project");
+    let expected_project_dir = paths::project_dir(&project_root, "real-image-enhanced");
     let (mut project, project_dir) = if expected_project_dir.exists() {
         (
             manager.open_project(&expected_project_dir).unwrap(),
