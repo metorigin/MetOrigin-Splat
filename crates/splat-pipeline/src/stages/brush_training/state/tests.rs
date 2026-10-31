@@ -252,3 +252,21 @@ fn managed_dataset_symlinks_are_not_fingerprinted_as_trusted_inputs() {
     let config = TrainingConfig::from_builtin("fast").unwrap();
     assert!(fingerprint(&ctx, &config, "v1", "hash", None).is_err());
 }
+
+#[test]
+fn windows1_fingerprint_binds_selected_adapter_without_invalidating_on_display_label() {
+    let (_dir, mut ctx) = context();
+    let profile = ExecutionProfile::from_json(include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../schemas/examples/execution-profile/windows1-dx12.valid.json"
+    )))
+    .unwrap();
+    ctx.execution_profile = Some(Arc::new(profile));
+    let initial = key(&ctx);
+    let profile = Arc::make_mut(ctx.execution_profile.as_mut().unwrap());
+    profile.brush.probe_result.device_name = Some("fresh label".into());
+    assert_eq!(initial, key(&ctx));
+    let profile = Arc::make_mut(ctx.execution_profile.as_mut().unwrap());
+    profile.brush.probe_result.device_id = Some("another-adapter".into());
+    assert_ne!(initial, key(&ctx));
+}

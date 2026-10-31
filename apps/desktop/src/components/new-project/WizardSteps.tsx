@@ -29,7 +29,7 @@ import type {
 
 
 import type { DirectoryCheckState } from "./wizardPresentation";
-import { formatBytes, formatDuration, macExecutionSummary, presetDescription, presetLabel } from "./wizardPresentation";
+import { currentPresetPreflight, formatBytes, formatDuration, macExecutionSummary, presetDescription, presetLabel, trainingParameters, trainingSummary } from "./wizardPresentation";
 
 export function ImportStep({ analysis, analyzing, analyzingKind, estimate, imagePreviews, previewsLoading, previewError, onChoose, onClear }: {
   analysis: MediaAnalysis | null;
@@ -156,18 +156,20 @@ export function PreflightStep({ analysis, preflight, checking, selectedPreset, o
   onOpenSettings?: () => void;
 }) {
   const selectedEstimate = analysis?.preset_estimates.find((preset) => preset.id === selectedPreset);
-  const effectiveFrameCount = selectedEstimate?.estimated_frames ?? preflight?.estimated_frames;
+  const checked = currentPresetPreflight(preflight, selectedPreset, checking);
+  const parameters = selectedEstimate ? trainingParameters(selectedEstimate, checked) : null;
+  const effectiveFrameCount = checked?.estimated_frames ?? selectedEstimate?.estimated_frames;
   const resolution = analysis?.video_metadata ? `${analysis.video_metadata.width} × ${analysis.video_metadata.height}` : t("原始分辨率");
-  const warnings = [...new Set([...(analysis?.warnings ?? []), ...(preflight?.warnings ?? [])])];
-  const [environmentOpen, setEnvironmentOpen] = useState(preflight?.can_continue === false);
+  const warnings = [...new Set([...(analysis?.warnings ?? []), ...(checked?.warnings ?? [])])];
+  const [environmentOpen, setEnvironmentOpen] = useState(checked?.can_continue === false);
   useEffect(() => {
-    if (preflight?.can_continue === false) setEnvironmentOpen(true);
-  }, [preflight?.can_continue]);
+    if (checked?.can_continue === false) setEnvironmentOpen(true);
+  }, [checked?.can_continue]);
   return (
     <section className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 space-y-1"><h2 id="wizard-step-heading-1" tabIndex={-1} className="text-base font-semibold">{t("素材分析结果")}</h2><p className="truncate text-sm text-muted-foreground" title={analysis?.source_path}>{analysis?.display_name ?? t("等待素材分析")}</p></div>
-        <Badge variant={checking ? "secondary" : preflight?.can_continue ? "success" : "destructive"}>{checking ? t("检查中") : preflight?.can_continue ? t("已完成") : t("需处理")}</Badge>
+        <Badge variant={checking || !checked ? "secondary" : checked.can_continue ? "success" : "destructive"}>{checking ? t("检查中") : !checked ? t("待检查") : checked.can_continue ? t("已完成") : t("需处理")}</Badge>
       </header>
 
       <section className="space-y-3" aria-labelledby="wizard-presets-heading">
@@ -176,7 +178,10 @@ export function PreflightStep({ analysis, preflight, checking, selectedPreset, o
           {analysis?.preset_estimates.map((preset) => (
             <Button type="button" key={preset.id} variant={selectedPreset === preset.id ? "default" : "outline"} aria-pressed={selectedPreset === preset.id} className={cn("h-auto w-full flex-col items-stretch justify-start gap-3 whitespace-normal rounded-lg p-4 text-left [&>span]:text-xs [&>span]:font-normal [&>span]:leading-relaxed [&>span:first-child]:flex [&>span:first-child]:items-center [&>span:first-child]:justify-between [&_strong]:text-sm [&_strong]:font-medium [&_em]:ml-2 [&_em]:text-xs [&_em]:font-normal [&_em]:not-italic", selectedPreset === preset.id ? "ring-2 ring-primary ring-offset-2 ring-offset-background [&>span]:text-primary-foreground [&_strong]:text-primary-foreground [&_em]:text-primary-foreground" : "[&>span]:text-muted-foreground [&_strong]:text-foreground [&_em]:text-primary")} onClick={() => onSelectPreset(preset.id)}>
               <span><strong>{presetLabel(preset.id)}{preset.id === "balanced" && <em>{t("推荐")}</em>}</strong><small className="flex items-center gap-1">{selectedPreset === preset.id ? <><CheckCircle size={14} />{t("已选择")}</> : t("选择")}</small></span>
-              <span>{preset.estimated_frames} {t("帧 ·")}{preset.iterations.toLocaleString(getLocale())} {t("次迭代 · 约")}{formatBytes(preset.estimated_disk_bytes)}</span>
+              <span>{preset.estimated_frames} {t("帧 ·")}{formatBytes(preset.estimated_disk_bytes)}</span>
+              <span>{selectedPreset === preset.id && parameters?.effective ? t("本次实际执行") : t("预设请求")} · {selectedPreset === preset.id && parameters?.effective ? trainingSummary(parameters.iterations, parameters.shDegree, parameters.resolution) : trainingSummary(preset.iterations, preset.sh_degree, preset.target_long_edge)}</span>
+              {selectedPreset === preset.id && parameters?.adjusted && <span>{t("预设请求")} · {trainingSummary(preset.iterations, preset.sh_degree, preset.target_long_edge)}</span>}
+              {selectedPreset === preset.id && !checked && <span>{t("实际参数待预检")}</span>}
               <span>{presetDescription(preset.id, preset.description)}</span>
             </Button>
           ))}
@@ -184,11 +189,11 @@ export function PreflightStep({ analysis, preflight, checking, selectedPreset, o
         <Collapsible className="border-b border-border pb-2">
           <CollapsibleTrigger asChild><Button variant="ghost" type="button" className="h-9 w-full justify-between gap-3 rounded-md px-2 text-sm text-muted-foreground [&[data-state=open]>svg]:rotate-180">{t("参数详情")}<span className="ml-auto text-xs font-normal">{t("当前预设")}</span><CaretDown size={14} /></Button></CollapsibleTrigger>
           <CollapsibleContent>
-            {selectedEstimate ? <div className="grid grid-cols-1 gap-x-5 gap-y-2 px-2 py-3 text-xs leading-relaxed text-muted-foreground sm:grid-cols-2"><div>{t("训练最长边：")}{selectedEstimate.target_long_edge} px</div><div>{t("相机重建最长边：")}{selectedEstimate.colmap_long_edge} px</div><div>{t("检查点间隔：")}{selectedEstimate.checkpoint_interval} {t("次迭代")}</div><div>{t("球谐阶数：")}{selectedEstimate.sh_degree}</div></div> : null}
+            {selectedEstimate && parameters ? <><TrainingSummary preset={selectedEstimate} preflight={checked} /><div className="grid grid-cols-1 gap-x-5 gap-y-2 px-2 py-3 text-xs leading-relaxed text-muted-foreground sm:grid-cols-2"><div>{t("训练最长边：")}{parameters.resolution === null ? t("原始分辨率") : `${parameters.resolution} px`}</div><div>{t("相机重建最长边：")}{selectedEstimate.colmap_long_edge} px</div><div>{t("检查点间隔：")}{selectedEstimate.checkpoint_interval} {t("次迭代")}</div><div>{t("球谐阶数：")}{parameters.shDegree}</div></div></> : null}
             <div className="grid grid-cols-1 gap-3 border-t border-border px-2 py-3 sm:grid-cols-3">
               <Metric label={t("预计处理帧数")} value={effectiveFrameCount?.toLocaleString(getLocale()) ?? "—"} detail={t("根据素材与所选预设估算")} />
               <Metric label={t("源分辨率")} value={resolution} detail={t("保留原始长宽比")} />
-              <Metric label={t("训练迭代")} value={selectedEstimate?.iterations.toLocaleString(getLocale()) ?? "—"} detail={t("预设目标次数")} />
+              <Metric label={t("训练迭代")} value={parameters?.iterations.toLocaleString(getLocale()) ?? "—"} detail={parameters?.effective ? t("本次实际执行") : t("预设请求")} />
             </div>
           </CollapsibleContent>
         </Collapsible>
@@ -197,15 +202,16 @@ export function PreflightStep({ analysis, preflight, checking, selectedPreset, o
       <section className="space-y-3 rounded-lg border border-border bg-card p-4" aria-labelledby="wizard-preflight-heading">
         <div className="flex flex-wrap items-center justify-between gap-2"><h3 id="wizard-preflight-heading" className="text-sm font-medium">{t("预检结果")}</h3><Button type="button" variant="outline" size="sm" className="rounded-md" onClick={onRecheck} disabled={checking}>{checking ? t("检查中…") : t("重新检查")}</Button></div>
         {checking && <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status"><SpinnerGap className="animate-spin motion-reduce:animate-none" size={16} />{t("正在按当前预设检查磁盘空间与运行环境…")}</p>}
+        {selectedEstimate && <TrainingSummary preset={selectedEstimate} preflight={checked} />}
 
         {warnings.map((warning) => {
           const executionSummary = macExecutionSummary(warning);
           return <Notification variant="warning" key={warning} message={<span title={executionSummary ? localizeMessage(warning) : undefined}>{executionSummary ?? localizeMessage(warning)}</span>} />;
         })}
-        {preflight?.blockers.length ? (
+        {checked?.blockers.length ? (
           <section className="space-y-2 [&>h3]:text-sm [&>h3]:font-medium [&>h3]:text-destructive" aria-label={t("需要处理的问题")}>
             <h3>{t("需要处理后才能继续")}</h3>
-            {preflight.blockers.map((blocker) => <Notification variant="error" role="status" key={blocker} message={localizeMessage(blocker)}><p>{t("修复相关组件、显卡环境或保存位置后重新检查。")}</p></Notification>)}
+            {checked.blockers.map((blocker) => <Notification variant="error" role="status" key={blocker} message={localizeMessage(blocker)}><p>{t("修复相关组件、显卡环境或保存位置后重新检查。")}</p></Notification>)}
             <div className="flex flex-wrap gap-2">
               {onOpenSettings ? <Button type="button" variant="outline" onClick={onOpenSettings}>{t("打开设置")}</Button> : null}
             </div>
@@ -216,7 +222,7 @@ export function PreflightStep({ analysis, preflight, checking, selectedPreset, o
           <CollapsibleContent className="px-2 pt-3">
             <div className="divide-y divide-border [&>div]:flex [&>div]:items-center [&>div]:justify-between [&>div]:gap-3 [&>div]:py-2 [&>div:first-child]:pt-0 [&>div:last-child]:pb-0 [&_strong]:text-sm [&_strong]:font-medium [&_small]:mt-0.5 [&_small]:block [&_small]:break-words [&_small]:text-xs [&_small]:text-muted-foreground">
               <div><span className="min-w-0"><strong>{t("素材可用性")}</strong><small>{analysis?.valid ? t("素材格式与读取检查通过") : t("等待素材检查")}</small></span><Badge variant={analysis?.valid ? "success" : "secondary"}>{analysis?.valid ? t("通过") : t("待检查")}</Badge></div>
-              {(preflight?.engine_checks ?? []).map((engine) => <div key={engine.name}><span className="min-w-0"><strong>{engine.name}</strong>{engine.actual_version ? <small>{engine.actual_version}</small> : null}<small>{localizeMessage(engine.diagnostic) ?? (engine.available ? t("组件检查通过") : t("未通过组件检查"))}</small></span><Badge variant={engine.available ? "success" : "destructive"}>{engine.available ? t("就绪") : t("不可用")}</Badge></div>)}
+              {(checked?.engine_checks ?? []).map((engine) => <div key={engine.name}><span className="min-w-0"><strong>{engine.name}</strong>{engine.actual_version ? <small>{engine.actual_version}</small> : null}<small>{localizeMessage(engine.diagnostic) ?? (engine.available ? t("组件检查通过") : t("未通过组件检查"))}</small></span><Badge variant={engine.available ? "success" : "destructive"}>{engine.available ? t("就绪") : t("不可用")}</Badge></div>)}
             </div>
           </CollapsibleContent>
         </Collapsible>
@@ -235,6 +241,7 @@ export function ConfirmStep({ analysis, estimate, preflight, directoryCheck, pro
   onNameChange: (value: string) => void;
   onChooseRoot: () => Promise<void>;
 }) {
+  const checked = currentPresetPreflight(preflight, estimate.id, directoryCheck.status === "checking");
   return (
     <section className="space-y-5">
       <header><h2 id="wizard-step-heading-2" tabIndex={-1} className="text-base font-semibold">{t("确认创建")}</h2></header>
@@ -255,7 +262,7 @@ export function ConfirmStep({ analysis, estimate, preflight, directoryCheck, pro
               actions={directoryCheck.status === "error" ? <Button variant="outline" type="button" onClick={() => void onChooseRoot()}>{t("重新选择目录")}</Button> : undefined}
             />
           )}
-          {directoryCheck.status === "error" && preflight?.blockers.map((blocker) => (
+          {directoryCheck.status === "error" && checked?.blockers.map((blocker) => (
             <Notification variant="error" role="status" key={blocker} message={localizeMessage(blocker)} />
           ))}
           </div>
@@ -263,11 +270,20 @@ export function ConfirmStep({ analysis, estimate, preflight, directoryCheck, pro
       </div>
       <dl className="divide-y divide-border [&>div]:grid [&>div]:grid-cols-[100px_minmax(0,1fr)] [&>div]:gap-3 [&>div]:py-3 sm:[&>div]:grid-cols-[120px_minmax(0,1fr)] [&_dt]:flex [&_dt]:items-center [&_dt]:gap-2 [&_dt]:text-xs [&_dt]:text-muted-foreground [&_dd]:min-w-0 [&_dd]:break-words [&_dd]:text-sm">
         <div><dt>{analysis.source_kind === "images" ? <Images size={16} /> : <FilmStrip size={16} />}{t("素材")}</dt><dd title={analysis.source_path}>{analysis.display_name}</dd></div>
-        <div><dt><Gauge size={16} />{t("质量方案")}</dt><dd>{presetLabel(estimate.id)} · {estimate.estimated_frames} {t("帧 ·")}{estimate.iterations.toLocaleString(getLocale())} {t("次训练")}</dd></div>
+        <div><dt><Gauge size={16} />{t("质量方案")}</dt><dd>{presetLabel(estimate.id)} · {checked?.estimated_frames ?? estimate.estimated_frames} {t("帧 ·")}<TrainingSummary preset={estimate} preflight={checked} /></dd></div>
         <div><dt><FolderOpen size={16} />{t("复制方式")}</dt><dd>{t("复制到项目（")}{formatBytes(analysis.size_bytes)}）</dd></div>
       </dl>
     </section>
   );
+}
+
+function TrainingSummary({ preset, preflight }: { preset: PresetEstimate; preflight: ProjectPreflight | null }) {
+  const parameters = trainingParameters(preset, preflight);
+  return <div className="space-y-1 py-2 text-xs leading-relaxed" aria-live="polite">
+    <p><strong>{parameters.effective ? t("本次实际执行") : t("预设请求")}</strong> · {trainingSummary(parameters.iterations, parameters.shDegree, parameters.resolution)}</p>
+    {parameters.adjusted && <p className="text-muted-foreground">{t("预设请求")} · {trainingSummary(preset.iterations, preset.sh_degree, preset.target_long_edge)}</p>}
+    <p className="text-muted-foreground">{!parameters.checked ? t("实际参数待预检") : !parameters.effective ? t("当前引擎未提供实际参数，当前显示预设请求。") : parameters.adjusted ? t("本次执行参数已调整，以预检结果为准。") : null}</p>
+  </div>;
 }
 
 function Metric({ label, value, detail }: { label: string; value: string; detail?: string }) {

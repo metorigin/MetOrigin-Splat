@@ -1,0 +1,64 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
+  "productName": "MetOrigin Splat",
+  "mainBinaryName": "MetOrigin Splat",
+  "version": "0.1.0",
+  "identifier": "com.metorigin.splat.alignment-candidate",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "MetOrigin Splat",
+        "width": 1200,
+        "height": 768,
+        "minWidth": 640,
+        "minHeight": 480,
+        "center": true,
+        "preventOverflow": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "useLocalToolsDir": true,
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/windows/32x32.png",
+      "icons/windows/128x128.png",
+      "icons/windows/128x128@2x.png",
+      "icons/windows/icon.ico"
+    ],
+    "resources": {},
+    "windows": {
+      "allowDowngrades": false,
+      "webviewInstallMode": {
+        "type": "offlineInstaller",
+        "silent": true
+      },
+      "wix": null,
+      "nsis": {
+        "template": "nsis/alignment-installer.nsi",
+        "installerIcon": "icons/windows/icon.ico",
+        "uninstallerIcon": "icons/windows/icon.ico",
+        "installMode": "currentUser",
+        "languages": [
+          "English",
+          "SimpChinese"
+        ],
+        "displayLanguageSelector": false,
+        "compression": "lzma",
+        "installerHooks": "nsis/alignment-installer-hooks.nsh"
+      }
+    }
+  }
+}

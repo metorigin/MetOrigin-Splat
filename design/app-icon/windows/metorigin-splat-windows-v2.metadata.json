@@ -1,0 +1,31 @@
+{
+  "file": "metorigin-splat-windows-v2.png",
+  "size": [
+    1254,
+    1254
+  ],
+  "mode": "RGBA",
+  "transparent_background": true,
+  "solid_bbox_alpha_128": [
+    17,
+    17,
+    1238,
+    1229
+  ],
+  "solid_width_fraction": 0.9736842105263158,
+  "solid_height_fraction": 0.9665071770334929,
+  "light_emblem_bbox_alpha_128_rgb_gt_135": [
+    136,
+    111,
+    1109,
+    1118
+  ],
+  "emblem_width_fraction": 0.7759170653907496,
+  "emblem_height_fraction": 0.803030303030303,
+  "sha256": "9ceeded960c807024a165d7eb30d257df652d0d72b1215635b37783cb7ea9a8c",
+  "source_reference": "metorigin-splat-windows-v1.png",
+  "tool": "built-in image_gen.imagegen",
+  "use": "Windows native application/taskbar icon",
+  "prompt_file": "metorigin-splat-windows-v2.prompt.md",
+  "note": "Measured alpha and high-luminance emblem bounds; Windows-only optical-size change. No change to Mac icon assets."
+}

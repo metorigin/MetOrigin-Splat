@@ -8,7 +8,7 @@ use splat_process::CommandSpec;
 use splat_process::{background_command, probe_output_sync};
 
 use crate::database::DatabaseCreator;
-use crate::execution::{gpu_flag, ColmapExecutionSettings};
+use crate::execution::{gpu_flag, validate_engine_version, ColmapExecutionSettings};
 use crate::feature::{FeatureExtractionOptions, FeatureExtractor};
 use crate::mapper::ColmapMapper;
 use crate::runtime;
@@ -42,11 +42,12 @@ impl ColmapAdapter {
         match Self::find_colmap() {
             Ok(path) => {
                 let version = Self::get_colmap_version(&path, None).unwrap_or_default();
+                let available = validate_engine_version(&version).is_ok();
                 EngineInfo {
                     name: "colmap".into(),
                     version: Some(version),
                     path: Some(path.to_string_lossy().to_string()),
-                    available: true,
+                    available,
                 }
             }
             Err(_) => EngineInfo {
@@ -63,24 +64,18 @@ impl ColmapAdapter {
     /// Returns `None` if COLMAP is not available.
     pub fn new() -> Option<Self> {
         let colmap_path = Self::find_colmap().ok()?;
-        let colmap_version = Self::get_colmap_version(&colmap_path, None).ok()?;
-        Some(Self {
-            colmap_path,
-            colmap_version,
-            execution_settings: None,
-        })
+        Self::from_path(colmap_path).ok()
     }
 
     /// Create an adapter from a path resolved by the application.
     pub fn from_path(colmap_path: PathBuf) -> AppResult<Self> {
         let colmap_version = Self::get_colmap_version(&colmap_path, None)?;
-        let adapter = Self {
+        validate_engine_version(&colmap_version)?;
+        Ok(Self {
             colmap_path,
             colmap_version,
             execution_settings: None,
-        };
-        adapter.validate()?;
-        Ok(adapter)
+        })
     }
 
     /// Resolve a known binary using a frozen, platform-explicit execution profile.
@@ -101,13 +96,11 @@ impl ColmapAdapter {
     ) -> AppResult<Self> {
         let colmap_version = Self::get_colmap_version(&colmap_path, Some(&settings))?;
         settings.validate_engine_version(&colmap_version)?;
-        let adapter = Self {
+        Ok(Self {
             colmap_path,
             colmap_version,
             execution_settings: Some(settings),
-        };
-        adapter.validate()?;
-        Ok(adapter)
+        })
     }
 
     /// Existing callers retain their original defaults until they opt in here.
@@ -132,34 +125,9 @@ impl ColmapAdapter {
 
     /// Validate that COLMAP is functional by running `colmap -h`.
     pub fn validate(&self) -> AppResult<()> {
-        let output = probe_colmap_help(
-            runtime::command_with_settings(&self.colmap_path, self.execution_settings.as_ref())
-                .arg("-h"),
-        )
-        .map_err(|e| {
-            AppError::new(
-                "E-3001",
-                ErrorCategory::Engine,
-                "COLMAP Validation Failed",
-                format!(
-                    "Could not run COLMAP at '{}': {}",
-                    self.colmap_path.display(),
-                    e
-                ),
-            )
-            .retryable(true)
-        })?;
-
-        if !output.status.success() {
-            return Err(AppError::new(
-                "E-3002",
-                ErrorCategory::Engine,
-                "COLMAP Not Responding",
-                "COLMAP is installed but returned an error when running a basic check.",
-            ));
-        }
-
-        Ok(())
+        let version =
+            Self::get_colmap_version(&self.colmap_path, self.execution_settings.as_ref())?;
+        validate_engine_version(&version)
     }
 
     /// Return the detected COLMAP version.

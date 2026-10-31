@@ -1145,6 +1145,8 @@
   "系统可用内存": "Available system memory",
   "系统内存压力": "System memory pressure",
   "Metal 建议工作集": "Metal recommended working set",
+  "训练设备可用预算": "Available training adapter budget",
+  "资源预算是训练策略，不是分配保证；系统内存和训练设备显存分别观测，缺失指标保持未知。": "Resource budgets guide training and do not guarantee allocations. System RAM and training adapter memory are observed separately; missing metrics remain unknown.",
   "资源预算是训练策略，不是进程内存硬上限；统一内存由系统、训练和预览共享。": "Resource budgets guide training; they are not hard process memory limits. The system, training and previews share unified memory.",
   "进程驻留内存": "Process resident memory",
   "RSS 可能包含共享页，不能相加。未归属的 WebKit 进程不计入，缺失指标保持未知。": "RSS can include shared pages and must not be added together. Unattributed WebKit processes are excluded; missing metrics remain unknown.",
@@ -1272,5 +1274,12 @@
   "项目状态已变化，请重新确认。": "The project state changed. Please confirm again.",
   "项目名称不能以句点结尾，也不能使用 Windows 保留名称。": "Project names cannot end with a period or use a Windows reserved name.",
   "同名文件或文件夹已经存在，请更换项目名称。": "A file or folder with that name already exists. Choose a different project name.",
-  "项目创建临时目录已经存在，请重试。": "The temporary project folder already exists. Try again."
+  "项目创建临时目录已经存在，请重试。": "The temporary project folder already exists. Try again.",
+  "预设请求": "Preset request",
+  "本次实际执行": "Effective for this run",
+  "实际参数待预检": "Effective settings await preflight",
+  "当前引擎未提供实际参数，当前显示预设请求。": "The current engine did not report effective settings; the preset request is shown.",
+  "本次执行参数已调整，以预检结果为准。": "Settings for this run were adjusted; the preflight values apply.",
+  "{0} 步 · SH{1} · {2}": "{0} steps · SH{1} · {2}",
+  "预检结果与当前预设不匹配，请重新检查。": "The preflight result does not match the selected preset. Run the check again."
 }

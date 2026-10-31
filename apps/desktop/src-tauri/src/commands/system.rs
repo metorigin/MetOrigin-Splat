@@ -140,11 +140,18 @@ pub fn resolve_engine_resolution(app_handle: &tauri::AppHandle) -> EngineResolut
                 path: path.join("engine-pack-integrity.json"),
                 app_version: env!("CARGO_PKG_VERSION").into(),
             });
+    let require_resource_manifest = cfg!(target_os = "windows")
+        && resource_engines.as_ref().is_some_and(|path| {
+            path.ends_with("target/distribution/windows-x64/engines")
+                || path.ends_with("target/distribution/windows-x64-alignment/engines")
+                || std::env::var_os("METORIGIN_PREPARED_ENGINE_DIR").is_some()
+        });
     EngineLocator::resolve_detailed(EngineLocatorOptions {
         configured_dir: settings.engine_directory.map(PathBuf::from),
         configured_executables,
         resource_dir: resource_engines,
         integrity_cache,
+        require_resource_manifest,
         ..EngineLocatorOptions::default()
     })
 }
@@ -152,7 +159,7 @@ pub fn resolve_engine_resolution(app_handle: &tauri::AppHandle) -> EngineResolut
 /// Finds a portable/developer `.engines` pack without embedding a machine
 /// path into the application. This covers launching from the repository root
 /// and launching `target/debug/splat-desktop.exe` directly.
-#[cfg(debug_assertions)]
+#[cfg(all(debug_assertions, not(target_os = "windows")))]
 fn local_engine_dir() -> Option<PathBuf> {
     let current_directory = std::env::current_dir()
         .ok()
@@ -168,6 +175,70 @@ fn local_engine_dir() -> Option<PathBuf> {
             .map(|ancestor| ancestor.join(".engines"))
             .find(|path| path.is_dir())
     })
+}
+
+#[cfg(all(debug_assertions, target_os = "windows"))]
+fn local_engine_dir() -> Option<PathBuf> {
+    let mut roots = vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")];
+    // A dev launcher hint is lower priority than saved overrides. It never
+    // changes METORIGIN_ENGINE_DIR and never affects release discovery.
+    if let Some(path) = std::env::var_os("METORIGIN_PREPARED_ENGINE_DIR") {
+        return Some(PathBuf::from(path));
+    }
+    if let Ok(directory) = std::env::current_dir() {
+        roots.push(directory);
+    }
+    if let Ok(executable) = std::env::current_exe() {
+        roots.extend(
+            executable
+                .ancestors()
+                .skip(1)
+                .take(6)
+                .map(Path::to_path_buf),
+        );
+    }
+    windows_development_engine_dir(&roots)
+}
+
+#[cfg(any(all(debug_assertions, target_os = "windows"), test))]
+fn windows_development_engine_dir(roots: &[PathBuf]) -> Option<PathBuf> {
+    // All prepared candidates precede compatibility directories. Merely having
+    // a directory selects it: a missing/damaged manifest must remain an error.
+    for suffix in ["target/distribution/windows-x64/engines", ".engines"] {
+        if let Some(path) = roots
+            .iter()
+            .map(|root| root.join(suffix))
+            .find(|path| path.is_dir())
+        {
+            return Some(path);
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod windows_discovery_tests {
+    use super::*;
+
+    #[test]
+    fn prepared_pack_precedes_compatibility_directory_across_launch_roots() {
+        let root = std::env::temp_dir().join(format!("windows-discovery-{}", uuid::Uuid::now_v7()));
+        let checkout = root.join("checkout");
+        let launch = root.join("other-cwd");
+        let prepared = checkout.join("target/distribution/windows-x64/engines");
+        std::fs::create_dir_all(&prepared).unwrap();
+        std::fs::create_dir_all(launch.join(".engines")).unwrap();
+        assert_eq!(
+            windows_development_engine_dir(&[launch.clone(), checkout.clone()]),
+            Some(prepared.clone())
+        );
+        std::fs::remove_dir(&prepared).unwrap();
+        assert_eq!(
+            windows_development_engine_dir(&[launch.clone(), checkout]),
+            Some(launch.join(".engines"))
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
 
 /// Detects all engines and returns their availability status.
@@ -1220,6 +1291,7 @@ mod tests {
                 memory_pressure: Some(resources::MemoryPressure::Normal),
                 poll_interval_ms: 2_000,
                 max_snapshot_bytes: 1024 * 1024 * 1024,
+                recovery_samples: None,
             },
             warnings: vec![format!(
                 "Read {} with {} using {}/settings token=SYSTEM_DIAGNOSTIC_SECRET",

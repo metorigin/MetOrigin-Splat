@@ -24,6 +24,8 @@ pub mod scope;
 pub mod sync_probe;
 #[cfg(unix)]
 mod unix_group;
+#[cfg(windows)]
+mod windows_job;
 
 pub use command::CommandSpec;
 pub use encoding::decode_process_output;

@@ -7,7 +7,8 @@ use splat_domain::progress::TaskProgress;
 use splat_domain::project::{Project, ProjectSource};
 use splat_engine_ffmpeg::progress::FfmpegFrameParser;
 use splat_engine_ffmpeg::{
-    load_builtin_preset, validate_frames, write_manifest_atomic, FfmpegAdapter, FrameManifest,
+    load_builtin_preset, plan_extraction, validate_frames, write_manifest_atomic, ExtractionPlan,
+    FfmpegAdapter, FrameManifest, VideoMetadata,
 };
 use splat_process::{CompositeParser, ProcessRunner};
 use tokio::sync::broadcast;
@@ -64,25 +65,29 @@ impl PipelineStage for FrameExtractionStage {
         if !ctx.paths.frames_manifest.exists() || !has_frames(&ctx.paths.frames_dir) {
             return Ok(false);
         }
-        if is_image_project(ctx)? {
+        let project = load_project(ctx)?;
+        let preset_name = ctx.preset.as_deref().unwrap_or(&self.preset_name);
+        if matches!(project.source, Some(ProjectSource::ImageFolder(_))) {
             let manifest = match read_image_manifest(&ctx.paths.frames_manifest) {
                 Ok(Some(manifest)) => manifest,
                 _ => return Ok(false),
             };
-            return Ok(validate_image_manifest(&ctx.paths.frames_dir, &manifest).is_ok());
+            return Ok(image_plan_matches(ctx, &project, preset_name, &manifest)?
+                && validate_image_manifest(&ctx.paths.frames_dir, &manifest).is_ok());
         }
         let manifest = match read_manifest(&ctx.paths.frames_manifest) {
             Ok(manifest) => manifest,
             Err(_) => return Ok(false),
         };
-        let validated = match validate_frames(
-            &ctx.paths.frames_dir,
-            &manifest.extraction_plan,
-            &manifest.source_metadata,
-        ) {
-            Ok(validated) => validated,
-            Err(_) => return Ok(false),
-        };
+        let plan = requested_video_plan(&project, preset_name, &manifest.source_metadata)?;
+        if !same_video_plan(&plan, &manifest.extraction_plan) {
+            return Ok(false);
+        }
+        let validated =
+            match validate_frames(&ctx.paths.frames_dir, &plan, &manifest.source_metadata) {
+                Ok(validated) => validated,
+                Err(_) => return Ok(false),
+            };
         Ok(validated.total_frames == manifest.total_frames)
     }
 
@@ -105,15 +110,7 @@ impl PipelineStage for FrameExtractionStage {
             .probe_metadata_async(&video_path, ctx.cancellation.clone())
             .await?;
         let project = load_project(ctx)?;
-        let mut preset = load_builtin_preset(preset_name)?;
-        preset.frame_extraction.target_long_edge = project.settings.resolved_colmap_max_long_edge();
-        if project.settings.max_frames > 0 {
-            preset.frame_extraction.max_frames = project.settings.max_frames;
-        }
-        if let Some(fps) = project.settings.frame_fps.filter(|fps| *fps > 0.0) {
-            preset.frame_extraction.fps = fps;
-        }
-        let plan = adapter.plan_extraction(&metadata, &preset.frame_extraction);
+        let plan = requested_video_plan(&project, preset_name, &metadata)?;
 
         prepare_output_directory(&ctx.paths.frames_dir, &ctx.paths.frames_manifest)?;
         let command = adapter
@@ -236,28 +233,101 @@ fn is_image_project(ctx: &StageContext) -> AppResult<bool> {
     ))
 }
 
+fn requested_video_plan(
+    project: &Project,
+    preset_name: &str,
+    metadata: &VideoMetadata,
+) -> AppResult<ExtractionPlan> {
+    let mut preset = load_builtin_preset(preset_name)?;
+    preset.frame_extraction.target_long_edge = project.settings.resolved_colmap_max_long_edge();
+    if project.settings.max_frames > 0 {
+        preset.frame_extraction.max_frames = project.settings.max_frames;
+    }
+    if let Some(fps) = project.settings.frame_fps.filter(|fps| *fps > 0.0) {
+        preset.frame_extraction.fps = fps;
+    }
+    Ok(plan_extraction(metadata, &preset.frame_extraction))
+}
+
+fn same_video_plan(requested: &ExtractionPlan, stored: &ExtractionPlan) -> bool {
+    // Compare execution inputs, not preset names or disk-space estimates.
+    requested.fps == stored.fps
+        && requested.target_frame_count == stored.target_frame_count
+        && requested.will_scale == stored.will_scale
+        && requested.rotation_correction == stored.rotation_correction
+        && requested.output_width == stored.output_width
+        && requested.output_height == stored.output_height
+        && requested.filter_graph == stored.filter_graph
+        && requested.output_pattern == stored.output_pattern
+}
+
+struct ImagePreparationPlan {
+    max_frames: usize,
+    reconstruction_long_edge: u32,
+    training_long_edge: u32,
+}
+
+fn requested_image_plan(project: &Project, preset_name: &str) -> AppResult<ImagePreparationPlan> {
+    let preset = load_builtin_preset(preset_name)?;
+    Ok(ImagePreparationPlan {
+        max_frames: if project.settings.max_frames > 0 {
+            project.settings.max_frames
+        } else {
+            preset.frame_extraction.max_frames
+        } as usize,
+        reconstruction_long_edge: if project.settings.resolved_colmap_max_long_edge() > 0 {
+            project.settings.resolved_colmap_max_long_edge()
+        } else {
+            preset.frame_extraction.resolved_colmap_long_edge()
+        },
+        training_long_edge: if project.settings.max_long_edge > 0 {
+            project.settings.max_long_edge
+        } else {
+            preset.frame_extraction.target_long_edge
+        },
+    })
+}
+
+fn image_plan_matches(
+    ctx: &StageContext,
+    project: &Project,
+    preset_name: &str,
+    manifest: &ImageFrameManifest,
+) -> AppResult<bool> {
+    let plan = requested_image_plan(project, preset_name)?;
+    let scan = scan_image_directory(&ctx.paths.source_dir)?;
+    let selected = uniform_sample_indices(scan.images.len(), plan.max_frames);
+    if scan.images.len() != manifest.source_image_count as usize
+        || selected.len() != manifest.frame_sources.len()
+    {
+        return Ok(false);
+    }
+    Ok(selected
+        .iter()
+        .zip(&manifest.frame_sources)
+        .all(|(index, old)| {
+            let source = &scan.images[*index];
+            let source_long_edge = source.width.max(source.height);
+            source.relative_path == old.source_relative_path
+                && source.width == old.original_width
+                && source.height == old.original_height
+                && source.camera == old.camera
+                && source_long_edge.min(plan.reconstruction_long_edge)
+                    == source_long_edge.min(manifest.reconstruction_long_edge)
+        }))
+}
+
 async fn prepare_image_frames(
     ctx: &StageContext,
     preset_name: &str,
     progress_tx: broadcast::Sender<TaskProgress>,
 ) -> AppResult<StageState> {
     let project = load_project(ctx)?;
-    let preset = load_builtin_preset(preset_name)?;
-    let max_frames = if project.settings.max_frames > 0 {
-        project.settings.max_frames
-    } else {
-        preset.frame_extraction.max_frames
-    } as usize;
-    let reconstruction_long_edge = if project.settings.resolved_colmap_max_long_edge() > 0 {
-        project.settings.resolved_colmap_max_long_edge()
-    } else {
-        preset.frame_extraction.resolved_colmap_long_edge()
-    };
-    let training_long_edge = if project.settings.max_long_edge > 0 {
-        project.settings.max_long_edge
-    } else {
-        preset.frame_extraction.target_long_edge
-    };
+    let ImagePreparationPlan {
+        max_frames,
+        reconstruction_long_edge,
+        training_long_edge,
+    } = requested_image_plan(&project, preset_name)?;
     let scan = scan_image_directory(&ctx.paths.source_dir)?;
     if scan.images.len() < 3 {
         return Err(AppError::new(
@@ -602,6 +672,113 @@ mod tests {
     use splat_domain::project::{ImageFolderSource, ProjectStatus};
     use std::path::Path;
 
+    fn save_project(root: &Path, project: &Project) {
+        std::fs::write(
+            root.join("project.json"),
+            serde_json::to_vec_pretty(project).unwrap(),
+        )
+        .unwrap();
+    }
+
+    fn cached_video_fixture(rotation: Option<i32>) -> (tempfile::TempDir, Project, StageContext) {
+        let root = tempfile::tempdir().unwrap();
+        let mut project = Project::new("video-plan-cache");
+        project.source = Some(ProjectSource::Video(splat_domain::project::VideoSource {
+            filename: "input.mp4".into(),
+            copied_to_project: true,
+        }));
+        project.settings.preset = "fast".into();
+        project.settings.max_long_edge = 1000;
+        save_project(root.path(), &project);
+        let ctx = StageContext::new(
+            PipelineStageId::FrameExtraction,
+            root.path(),
+            Some("fast".into()),
+        );
+        std::fs::create_dir_all(&ctx.paths.frames_dir).unwrap();
+        let metadata = VideoMetadata {
+            width: 256,
+            height: 128,
+            fps: 30.0,
+            frame_count: 90,
+            duration_seconds: 3.0,
+            codec: "h264".into(),
+            rotation,
+        };
+        let plan = requested_video_plan(&project, "fast", &metadata).unwrap();
+        for index in 1..=plan.target_frame_count {
+            image::RgbImage::from_pixel(
+                plan.output_width,
+                plan.output_height,
+                image::Rgb([index as u8, 50, 100]),
+            )
+            .save_with_format(
+                ctx.paths.frames_dir.join(format!("{index:06}.jpg")),
+                image::ImageFormat::Jpeg,
+            )
+            .unwrap();
+        }
+        let manifest = validate_frames(&ctx.paths.frames_dir, &plan, &metadata).unwrap();
+        write_manifest_atomic(&manifest, &ctx.paths.frames_manifest).unwrap();
+        (root, project, ctx)
+    }
+
+    #[test]
+    fn video_cache_rejects_changed_effective_preset_and_explicit_frame_parameters() {
+        let (root, project, mut ctx) = cached_video_fixture(None);
+        let stage = FrameExtractionStage::new("fast");
+        assert!(stage.check_cached(&ctx).unwrap());
+        let original_manifest = std::fs::read(&ctx.paths.frames_manifest).unwrap();
+
+        ctx.preset = Some("quality".into());
+        assert!(!stage.check_cached(&ctx).unwrap());
+        ctx.preset = Some("fast".into());
+        for changed in [
+            {
+                let mut changed = project.clone();
+                changed.settings.frame_fps = Some(1.0);
+                changed
+            },
+            {
+                let mut changed = project.clone();
+                changed.settings.max_frames = 3;
+                changed
+            },
+            {
+                let mut changed = project.clone();
+                changed.settings.colmap_max_long_edge = 128;
+                changed
+            },
+        ] {
+            save_project(root.path(), &changed);
+            assert!(!stage.check_cached(&ctx).unwrap());
+        }
+        assert_eq!(
+            std::fs::read(&ctx.paths.frames_manifest).unwrap(),
+            original_manifest
+        );
+    }
+
+    #[test]
+    fn video_cache_reuses_equal_effective_plan_across_preset_names_and_source_caps() {
+        let (root, mut project, mut ctx) = cached_video_fixture(Some(-90));
+        project.settings.frame_fps = Some(2.0);
+        project.settings.max_frames = 1200;
+        project.settings.colmap_max_long_edge = 2000;
+        project.settings.max_long_edge = 2560;
+        project.settings.preset = "quality".into();
+        save_project(root.path(), &project);
+        ctx.preset = Some("quality".into());
+        let stage = FrameExtractionStage::new("fast");
+        assert!(stage.check_cached(&ctx).unwrap());
+
+        // Reject historical rotation plans even when JPEG dimensions still match.
+        let mut manifest = read_manifest(&ctx.paths.frames_manifest).unwrap();
+        manifest.extraction_plan.rotation_correction = Some("transpose=cclock".into());
+        write_manifest_atomic(&manifest, &ctx.paths.frames_manifest).unwrap();
+        assert!(!stage.check_cached(&ctx).unwrap());
+    }
+
     #[tokio::test]
     async fn test_frame_extraction_validate_inputs_missing_source() {
         let stage = FrameExtractionStage::new("balanced");
@@ -701,5 +878,28 @@ mod tests {
         assert!(!manifest.camera_groups.is_empty());
         assert!(stage.check_cached(&ctx).unwrap());
         stage.validate_outputs(&ctx).unwrap();
+
+        // Real image normalization output cannot satisfy a different selected set.
+        project.settings.max_frames = 4;
+        save_project(root.path(), &project);
+        assert!(!stage.check_cached(&ctx).unwrap());
+
+        // Training-only changes and another preset with the same effective frame
+        // inputs leave the reconstruction JPEG cache usable.
+        project.settings.max_frames = 3;
+        project.settings.colmap_max_long_edge = 24;
+        project.settings.max_long_edge = 96;
+        project.settings.preset = "quality".into();
+        save_project(root.path(), &project);
+        let quality_ctx = StageContext::new(
+            PipelineStageId::FrameExtraction,
+            root.path(),
+            Some("quality".into()),
+        );
+        assert!(stage.check_cached(&quality_ctx).unwrap());
+        project.settings.colmap_max_long_edge = 48;
+        save_project(root.path(), &project);
+        assert!(!stage.check_cached(&quality_ctx).unwrap());
+        stage.validate_outputs(&quality_ctx).unwrap();
     }
 }

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "policy": "Raw downloads, extracted images, videos and models stay in ignored target directories. Attribution applies to any published derived evidence.",
+  "photographs": {
+    "id": "james-sample-cc0-40-v1",
+    "source": "https://doi.org/10.6084/m9.figshare.9120020.v1",
+    "download": "https://ndownloader.figshare.com/files/16636739",
+    "license": "CC0-1.0",
+    "authors": ["Mike R. James", "Stuart Robson"],
+    "size_bytes": 611535084,
+    "sha256": "b0d0995be5652d453fdb0d809a364ccd4a8a5040cae35fb6e748f0ff1783d2d1",
+    "selection": "IMG_1928.jpg through IMG_1967.jpg inclusive, unchanged",
+    "extractor": "scripts/macos/prepare-smoke-fixture.py"
+  },
+  "video": {
+    "id": "tum-rgbd-freiburg1-desk-rgb-v1",
+    "source": "https://cvg.cit.tum.de/data/datasets/rgbd-dataset/download",
+    "download": "https://webshare.cvg.cit.tum.de/g/rgbd/dataset/freiburg1/rgbd_dataset_freiburg1_desk-rgb.avi",
+    "license": "CC-BY-4.0",
+    "license_evidence": "https://cvg.cit.tum.de/data/datasets/rgbd-dataset#license",
+    "authors": ["J. Sturm", "N. Engelhard", "F. Endres", "W. Burgard", "D. Cremers"],
+    "citation": "A Benchmark for the Evaluation of RGB-D SLAM Systems, IROS 2012",
+    "size_bytes": 6141142,
+    "sha256": "3faa0fa667fa95d28ecf0d231c3383ddef8695f391f07d48f484af39de43a854",
+    "provider_duration_seconds": 23.4,
+    "selection": "Complete published real RGB movie, no re-encoding; 5 fps extraction through the production adapter. Not a smartphone orientation-metadata fixture.",
+    "groundtruth": {
+      "download": "https://webshare.cvg.cit.tum.de/g/rgbd/dataset/freiburg1/rgbd_dataset_freiburg1_desk-groundtruth.txt",
+      "sha256": "48c4fa61f5d78310ea579f404d31d296738c4210c19c2bdac4a5cdf6bff50831",
+      "format": "timestamp tx ty tz qx qy qz qw; camera-motion reference, not a substitute for video rotation metadata"
+    }
+  },
+  "acceptance": {
+    "photo_sfm_minimum_registration_fraction": 0.8,
+    "video_sfm_minimum_registration_fraction": 0.5,
+    "smoke_iterations": 300,
+    "long_iterations": 3000,
+    "max_resolution": 960,
+    "max_splats": 300000,
+    "sh_degree": 0,
+    "lod_levels": 0,
+    "checks": ["finite cameras and Gaussian properties", "complete checkpoints and final PLY", "input hashes unchanged", "live/checkpoint agreement within the same training iteration", "no engine children after cancellation"],
+    "performance": "Record cold and warm time, RSS and GPU observations; no cross-run byte determinism or unmeasured performance claim."
+  }
+}

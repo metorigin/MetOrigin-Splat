@@ -4,7 +4,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use tauri::Emitter;
 use tauri::Manager;
 
@@ -50,7 +50,7 @@ impl Drop for PendingWork {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn show_main(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         if let Err(error) = window.show().and_then(|_| window.set_focus()) {
@@ -59,7 +59,7 @@ fn show_main(app: &tauri::AppHandle) {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn request_safe_exit(app: &tauri::AppHandle) {
     if app.state::<EditorState>().has_sessions() {
         show_main(app);
@@ -74,6 +74,32 @@ fn request_safe_exit(app: &tauri::AppHandle) {
                 let _ = app.emit("app-exit-failed", error);
             }
         });
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn handle_event(app: &tauri::AppHandle, event: tauri::RunEvent) {
+    match event {
+        tauri::RunEvent::ExitRequested { api, .. } => {
+            if app.state::<ExitState>().allowed.load(Ordering::SeqCst) {
+                return;
+            }
+            api.prevent_exit();
+            request_safe_exit(app);
+        }
+        tauri::RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::CloseRequested { api, .. },
+            ..
+        } if label == "main" => {
+            api.prevent_close();
+            // Match the existing editor's first-close save/discard/cancel flow.
+            // The next close drains engines and persisted state before exit.
+            if !app.state::<EditorState>().has_sessions() {
+                request_safe_exit(app);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -255,6 +281,73 @@ async fn wait_for_completion(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn final_exit_requires_shutdown_and_no_pending_or_retained_run_owner() {
+        use crate::state::{ActivePipeline, PipelineFinalization};
+        use std::sync::atomic::AtomicU64;
+        use std::sync::{Arc, Mutex};
+
+        let state = AppState::new();
+        let editors = EditorState::default();
+        // A quiescent-looking state is insufficient until admission is closed.
+        assert!(validate_exit_complete(&state, &editors).is_err());
+        let pending = PendingWork::begin(&state).unwrap();
+        begin_shutdown(&state).unwrap();
+        assert!(validate_exit_complete(&state, &editors).is_err());
+        assert!(PendingWork::begin(&state).is_err());
+        drop(pending);
+        validate_exit_complete(&state, &editors).unwrap();
+
+        let cancellation = Arc::new(AtomicBool::new(false));
+        state.0.lock().unwrap().active_creation = Some(crate::state::ActiveProjectCreation {
+            id: "retained-creation".into(),
+            cancel: cancellation,
+        });
+        assert!(validate_exit_complete(&state, &editors).is_err());
+        state.0.lock().unwrap().active_creation = None;
+
+        let directory = std::path::PathBuf::from("retained-finalization-owner");
+        let (_completed, completion) = tokio::sync::watch::channel(true);
+        state.0.lock().unwrap().active_pipeline = Some(ActivePipeline {
+            project_id: "retained-run".into(),
+            orchestrator: Arc::new(splat_pipeline::PipelineOrchestrator::new(directory.clone())),
+            project_dir: directory,
+            completion,
+            control_intent: Arc::new(Mutex::new(PipelineControlIntent::Pause)),
+            accepted_at: "2026-10-30T00:00:00Z".into(),
+            started_at: Arc::new(Mutex::new(None)),
+            sequence: Arc::new(AtomicU64::new(0)),
+            abort_handle: Arc::new(Mutex::new(None)),
+            // Even a completed finalization receipt is insufficient while the
+            // application still retains the accepted run's ownership record.
+            finalization: Arc::new(tokio::sync::Mutex::new(PipelineFinalization::Complete)),
+            process_scope: splat_process::ProcessScope::default(),
+            event_forwarder: Arc::new(tokio::sync::Mutex::new(None)),
+        });
+        assert!(validate_exit_complete(&state, &editors).is_err());
+        state.0.lock().unwrap().active_pipeline = None;
+        validate_exit_complete(&state, &editors).unwrap();
+    }
+
+    #[test]
+    fn poisoned_state_cannot_authorize_exit_or_lose_pending_work_cleanup() {
+        let state = AppState::new();
+        let pending = PendingWork::begin(&state).unwrap();
+        let poisoned = state.clone();
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = poisoned.0.lock().unwrap();
+            panic!("injected lifecycle state poison");
+        }));
+        assert!(outcome.is_err());
+        assert!(begin_shutdown(&state).is_err());
+        assert!(PendingWork::begin(&state).is_err());
+        assert!(validate_exit_complete(&state, &EditorState::default()).is_err());
+        drop(pending);
+        let recovered = state.0.lock().err().unwrap().into_inner();
+        assert_eq!(recovered.pending_work, 0);
+        assert!(!recovered.shutting_down);
+    }
 
     #[tokio::test]
     async fn idle_shutdown_closes_gate_and_is_idempotent() {

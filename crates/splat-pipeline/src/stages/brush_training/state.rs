@@ -92,6 +92,14 @@ pub(super) fn fingerprint(
             "live_protocol": p.live_protocol, "resume_mode": p.resume_mode,
         })
     });
+    let mut profile = profile;
+    if let (Some(frozen), Some(value)) = (ctx.execution_profile.as_ref(), profile.as_mut()) {
+        if frozen.platform == splat_domain::runtime::RuntimePlatform::Windows
+            && frozen.brush.cli_profile == splat_domain::runtime::BrushCliProfile::Metorigin1
+        {
+            value["device_id"] = serde_json::json!(frozen.brush.probe_result.device_id);
+        }
+    }
     let value = serde_json::json!({
         "schema_version": VERSION,
         "algorithm": "brush-managed-dataset-v1",

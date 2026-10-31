@@ -35,9 +35,9 @@ impl ProbeExitStatus {
 
 /// Apply a ten-second execution deadline and 64 KiB capture limit to a probe.
 /// Cleanup of the process group, output readers and log is awaited before
-/// returning. Unix cleanup has separate grace periods; Windows retains the
-/// shared runner's taskkill behavior, so this is not a cross-platform bound on
-/// total cleanup time.
+/// returning. Unix process groups and Windows owned jobs have separate bounded
+/// cleanup grace periods, in addition to the execution deadline. Windows probe
+/// descendants also die if the application owner is forcibly terminated.
 ///
 /// Preserves the program, OS-native arguments, current directory and added
 /// environment variables. Use an ordinary background command: custom stdio,

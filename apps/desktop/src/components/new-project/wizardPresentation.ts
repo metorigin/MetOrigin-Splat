@@ -1,9 +1,31 @@
 import { getLocale, t } from "@/i18n";
+import type { PresetEstimate, ProjectPreflight } from "@/types";
 
 export type DirectoryCheckState = {
   status: "idle" | "checking" | "success" | "error";
   message?: string;
 };
+
+export function currentPresetPreflight(preflight: ProjectPreflight | null, preset: string, checking = false): ProjectPreflight | null {
+  return !checking && preflight?.preset === preset ? preflight : null;
+}
+
+export function trainingParameters(preset: PresetEstimate, preflight: ProjectPreflight | null, checking = false) {
+  const checked = currentPresetPreflight(preflight, preset.id, checking);
+  const effective = checked?.effective_training ?? null;
+  return {
+    checked,
+    effective,
+    iterations: effective?.iterations ?? preset.iterations,
+    shDegree: effective?.sh_degree ?? preset.sh_degree,
+    resolution: effective ? effective.resolution ?? null : preset.target_long_edge,
+    adjusted: Boolean(effective && (effective.iterations !== preset.iterations || effective.sh_degree !== preset.sh_degree || (effective.resolution ?? null) !== preset.target_long_edge)),
+  };
+}
+
+export function trainingSummary(iterations: number, shDegree: number, resolution: number | null): string {
+  return t("{0} 步 · SH{1} · {2}", iterations.toLocaleString(getLocale()), shDegree, resolution === null ? t("原始分辨率") : `${resolution} px`);
+}
 
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return t("尚未测量");

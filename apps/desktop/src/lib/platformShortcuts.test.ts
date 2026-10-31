@@ -1,9 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { hasPrimaryModifier, isMacPlatform } from "./platformShortcuts";
+import { hasPrimaryModifier, isMacPlatform, isWindowsPlatform } from "./platformShortcuts";
 
 describe("platform navigation shortcuts", () => {
   const control = { ctrlKey: true, metaKey: false, altKey: false, shiftKey: false };
   const command = { ...control, ctrlKey: false, metaKey: true };
+
+  it("identifies Windows explicitly instead of treating every non-Mac platform as Windows", () => {
+    for (const platform of ["Win32", "Win64", "win32"]) {
+      expect(isWindowsPlatform(platform)).toBe(true);
+    }
+    for (const platform of ["MacIntel", "Darwin", "Linux x86_64", "Linux aarch64", ""]) {
+      expect(isWindowsPlatform(platform)).toBe(false);
+    }
+  });
 
   it("uses Command on WKWebView Macs and Control on Windows/Linux", () => {
     expect(isMacPlatform("MacIntel")).toBe(true);

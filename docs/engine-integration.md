@@ -6,7 +6,18 @@ The application runs FFmpeg, COLMAP and Brush as local child processes. Engine a
 
 [engine-lock.json](../packaging/windows-x64/engine-lock.json) is the authority for packaged archives, versions, download locations and SHA-256 values. The current set is FFmpeg/FFprobe **8.1.2**, COLMAP **4.1.0 CUDA** and Brush **0.3.0**, with the locked Microsoft VC++ runtime prerequisite. A different executable passing a version command does not establish full pipeline compatibility.
 
-The macOS development path uses native arm64 FFmpeg/FFprobe **8.1.2**, COLMAP **4.1.0 CPU**, and the pinned Brush **1.0.0** source plus tracked MetOrigin patches. Recipes and actual engine evidence are in [macOS build scripts](../scripts/macos/README.md) and [M0 validation](validation/macos-m0.md). These development artifacts have not passed self-contained app/dmg acceptance. Windows continues to use its existing engine lock and CLI contract.
+The macOS development path uses native arm64 FFmpeg/FFprobe **8.1.2**, COLMAP **4.1.0 CPU**, and the pinned Brush **1.0.0** source plus tracked MetOrigin patches. Recipes and actual engine evidence are in [macOS build scripts](../scripts/macos/README.md) and [M0 validation](validation/macos-m0.md). These development artifacts have not passed self-contained app/dmg acceptance. Windows retains its existing release engine lock and legacy CLI contract. The separate opt-in [Windows Brush 1 candidate](validation/windows-alignment.md) adds a paired CLI and frozen measured device selection; it is not an accepted release default.
+
+The rebuilt Windows1 candidate application selects DX12 for ordinary installed
+startup when no backend override is supplied. Users can double-click the
+application; the production preflight performs a real Gaussian forward/backward
+probe and binds training to its verified canonical device. Backend/device
+environment variables remain optional advanced overrides, with unsupported
+values rejected. This Windows1 selection rule leaves the legacy 0.3 and Mac
+paths unchanged. Historical application artifacts need a new source-bound build
+to include the fix; their earlier validation records remain attached to their
+original hashes. The opt-in `scripts/windows/Test-AlignmentDefaultRuntime.ps1`
+checks this no-environment production preflight without a project, training or UI.
 
 Configure local executable paths or a containing engine directory through Settings & Engines. To prepare the locked pack from the repository root:
 

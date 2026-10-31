@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::hardware::EngineInfo;
-use splat_domain::runtime::{BrushCliProfile, ExecutionProfile, LiveProtocol, ResumeMode};
+use splat_domain::runtime::{
+    BrushCliProfile, ExecutionProfile, LiveProtocol, ResumeMode, RuntimePlatform,
+};
 use splat_process::{background_command, probe_output_sync, CommandSpec};
 
 use crate::checkpoint::{Checkpoint, CheckpointScanner};
@@ -15,7 +17,7 @@ use crate::runtime::VerifiedBrushRuntime;
 pub struct ProfiledTrainingRequest<'a> {
     pub config: &'a TrainingConfig,
     pub profile: &'a ExecutionProfile,
-    /// Required for the Metal path; legacy Windows keeps its existing contract.
+    /// Required for Brush 1; legacy Windows keeps its existing contract.
     pub verified_runtime: Option<&'a VerifiedBrushRuntime>,
     pub dataset_path: &'a Path,
     pub checkpoint_path: &'a Path,
@@ -216,7 +218,7 @@ impl BrushAdapter {
         }
         if cli == BrushCliProfile::Metorigin1 {
             let runtime = request.verified_runtime.ok_or_else(|| {
-                runtime_contract_error("The Metal training path requires verified compute evidence")
+                runtime_contract_error("Brush 1 training requires verified compute evidence")
             })?;
             if runtime.binary_sha256 != profile.engines.brush.binary_sha256
                 || runtime.capabilities.cli_profile != cli
@@ -225,6 +227,13 @@ impl BrushAdapter {
                 || profile.engines.brush.source_commit.as_deref()
                     != Some(runtime.capabilities.identity.source_commit.as_str())
                 || runtime.capabilities.identity.engine_version != profile.engines.brush.version
+                || runtime.capabilities.target
+                    != match profile.platform {
+                        RuntimePlatform::Macos => "aarch64-apple-darwin",
+                        RuntimePlatform::Windows => "x86_64-pc-windows-msvc",
+                    }
+                || (profile.platform == RuntimePlatform::Windows
+                    && !runtime.capabilities.supports("backend_device_selection"))
                 || !runtime.capabilities.supports("loader_thread_limit")
                 || (profile.live_protocol != LiveProtocol::Disabled
                     && (runtime.capabilities.live_protocol != profile.live_protocol
@@ -236,13 +245,21 @@ impl BrushAdapter {
             }
             validate_managed_dataset(request.dataset_path, request.start_iteration, profile)?;
         }
-        let args = request.config.to_cli_args_for_profile(
+        let mut args = request.config.to_cli_args_for_profile(
             cli,
             &profile.effective_training,
             request.dataset_path,
             request.checkpoint_path,
             request.start_iteration,
         )?;
+        if let Some(selection) = crate::runtime::BrushDeviceSelection::for_profile(profile)? {
+            args.extend(
+                selection
+                    .arguments()?
+                    .into_iter()
+                    .map(std::ffi::OsString::from),
+            );
+        }
         let mut command = CommandSpec::new(&self.brush_path, args, request.log_path);
         if cli == BrushCliProfile::Metorigin1 {
             let threads = profile.effective_training.threads.to_string();
@@ -342,7 +359,7 @@ impl BrushAdapter {
     }
 }
 
-fn cli_profile_from_version(version: &str) -> AppResult<BrushCliProfile> {
+pub(crate) fn cli_profile_from_version(version: &str) -> AppResult<BrushCliProfile> {
     let token = version.split_whitespace().find(|token| {
         token
             .trim_start_matches('v')

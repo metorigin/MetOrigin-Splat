@@ -89,6 +89,7 @@ struct EngineCheck {
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ProjectPreflight {
+    preset: String,
     can_continue: bool,
     engine_checks: Vec<EngineCheck>,
     estimated_frames: u64,
@@ -432,12 +433,20 @@ async fn build_project_preflight(
                 } else {
                     "使用检查点预览"
                 };
+            let platform = if profile.platform == splat_domain::runtime::RuntimePlatform::Windows {
+                "Windows 候选"
+            } else {
+                "Mac"
+            };
             let training = profile.effective_training;
             warnings.push(format!(
-                "本次 Mac 执行参数：{} 步，SH{}，训练长边 {} px，最多 {} 个高斯，图像缓存 {} MiB，{} 个加载线程；{preview}。",
+                "本次 {platform} 执行参数：{} 步，SH{}，训练长边 {} px，最多 {} 个高斯，图像缓存 {} MiB，{} 个加载线程；{preview}。",
                 training.iterations, training.sh_degree, training.resolution.unwrap_or(0),
                 training.max_splats.unwrap_or(0), training.image_cache_budget_bytes.unwrap_or(0) / (1024 * 1024), training.threads,
             ));
+            if profile.platform == splat_domain::runtime::RuntimePlatform::Windows {
+                warnings.push("当前 Windows 训练限制仍为候选策略，GPU 动态可用预算未知，不能据此保证预设可运行。".into());
+            }
             Some(training)
         }
         Ok(None) => None,
@@ -486,6 +495,7 @@ async fn build_project_preflight(
         blockers.push("另一个项目正在创建，请等待完成或先取消。".into());
     }
     Ok(ProjectPreflight {
+        preset: request.preset,
         can_continue: blockers.is_empty(),
         engine_checks,
         estimated_frames,
@@ -1357,7 +1367,7 @@ fn training_runtime_check(
     let name = if cfg!(target_os = "macos") {
         "Metal GPU / 计算验证"
     } else {
-        "NVIDIA GPU / 驱动"
+        "训练 GPU / 运行验证"
     };
     match runtime {
         Ok(info) => EngineCheck {
@@ -1369,7 +1379,8 @@ fn training_runtime_check(
                 splat_engine_brush::TrainingRuntimeEvidence::LegacyNvidia(gpu) => {
                     Some(gpu.driver_version.clone())
                 }
-                splat_engine_brush::TrainingRuntimeEvidence::Metal(brush) => {
+                splat_engine_brush::TrainingRuntimeEvidence::Metal(brush)
+                | splat_engine_brush::TrainingRuntimeEvidence::WindowsWgpu(brush) => {
                     Some(brush.capabilities.identity.engine_version.clone())
                 }
             },
@@ -1383,7 +1394,11 @@ fn training_runtime_check(
             path: None,
             expected_version: None,
             actual_version: None,
-            diagnostic: Some(error.user_message_zh()),
+            diagnostic: Some(format!(
+                "{}（错误代码：{}）",
+                error.user_message_zh(),
+                error.code
+            )),
             source: Some("runtime_probe".into()),
             integrity_status: None,
         },
@@ -2144,6 +2159,60 @@ fn refresh_recent_projects(projects: &mut [ProjectInfo]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn training_runtime_failure_keeps_safe_actionable_message_and_error_code() {
+        for (code, message, technical) in [
+            (
+                "E-5005",
+                "应用的高级训练配置无效。请移除自定义启动配置后重新检查。",
+                "unsupported Windows graphics backend",
+            ),
+            (
+                "E-5004",
+                "训练 GPU 计算验证超时。请重新检查。",
+                "--probe-json: exit=None, timed_out=true, cancelled=false",
+            ),
+            (
+                "E-2101",
+                "训练引擎未能启动。请修复配套引擎。",
+                "program: C:\\PRIVATE_FIXTURE\\brush.exe, error: denied",
+            ),
+        ] {
+            let error = splat_domain::AppError::new(
+                code,
+                splat_domain::ErrorCategory::Environment,
+                "训练检查未通过",
+                message,
+            )
+            .with_technical(technical)
+            .with_log_path(PathBuf::from("C:/PRIVATE_FIXTURE/runtime-failure.json"));
+            let check = training_runtime_check(&Err(error));
+            assert!(!check.available);
+            assert_eq!(check.source.as_deref(), Some("runtime_probe"));
+            let diagnostic = check.diagnostic.as_deref().unwrap();
+            assert!(diagnostic.contains(message));
+            assert!(diagnostic.contains(code));
+            assert!(!diagnostic.contains(technical));
+            assert!(!diagnostic.contains("PRIVATE_FIXTURE"));
+        }
+    }
+
+    #[test]
+    fn training_runtime_success_keeps_legacy_driver_evidence() {
+        let runtime = splat_engine_brush::TrainingRuntimeEvidence::LegacyNvidia(
+            splat_engine_brush::NvidiaSmiInfo {
+                gpu_name: "NVIDIA test fixture".into(),
+                driver_version: "592.01".into(),
+                memory_total_bytes: 8 * 1024 * 1024 * 1024,
+            },
+        );
+        let summary = runtime.summary();
+        let check = training_runtime_check(&Ok(runtime));
+        assert!(check.available);
+        assert_eq!(check.actual_version.as_deref(), Some("592.01"));
+        assert_eq!(check.diagnostic.as_deref(), Some(summary.as_str()));
+    }
 
     #[tokio::test]
     async fn creation_worker_panic_releases_its_owner_and_pending_work() {

@@ -3,6 +3,10 @@ export function isMacPlatform(platform = navigator.platform): boolean {
   return /^Mac/i.test(platform);
 }
 
+export function isWindowsPlatform(platform = navigator.platform): boolean {
+  return /^Win/i.test(platform);
+}
+
 export function primaryModifierLabel(): string {
   return isMacPlatform() ? "⌘" : "Ctrl";
 }

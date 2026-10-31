@@ -2,7 +2,7 @@
 
 本文档集描述当前实现。中英文项目介绍分别见 [English README](../README.md) 和[中文 README](../README.zh-CN.md)。
 
-macOS 验收文档中指向 `target/` 的链接是本地构建与原生测试证据，原始产物不随 Git 提交。文档保留构建身份、结果和未通过项；新克隆需要另行生成或取得对应证据，不能把源码提交视作完整验收通过。
+Windows 和 macOS 验收文档中指向 `target/` 的链接是本地构建与原生测试证据，原始产物不随 Git 提交。文档保留构建身份、结果和未通过项；新克隆需要另行生成或取得对应证据，不能把源码提交视作完整验收通过。
 
 ## 使用 / Usage
 
@@ -20,6 +20,13 @@ macOS 验收文档中指向 `target/` 的链接是本地构建与原生测试证
 | [Development](development.md) | 工具链、启动、测试、构建和提交范围 |
 | [Architecture](architecture.md) | 模块边界、状态流、流水线和渲染 |
 | [Engine integration](engine-integration.md) | 版本锁定、路径解析、适配器和恢复边界 |
+| [Windows 高斯生成对齐方案](windows-gaussian-alignment-plan.zh-CN.md) | 实施中：同源 Brush 1.0、Windows 运行配置、引擎准备与原生验证，以及 Mac 回归保护 |
+| [Windows 对齐验证记录](validation/windows-alignment.md) | WIN-01–22 分层进度、最终来源/安装与不同应用身份边界；当前优先Windows，Mac和发布默认门槛保留 |
+| [Windows 核心流水线验证](validation/windows-core-pipeline.md) | 照片、实际视频、中型307帧、混合EXIF/旋转和故障输入的真实核心结果 |
+| [Windows COLMAP 验证](validation/windows-colmap.md) | 严格4.1门禁、实际CUDA特征/匹配与明确CPU GP/BA |
+| [Windows 候选包验证](validation/windows-engine-pack.md) | 874来源/451工具、16测试、安装exit0/158资源与重定位静态运行；clean VM和许可未验收 |
+| [Windows 原生 UI 验证](validation/windows-native-ui.md) | 7348照片/六轮/编辑导出单列；最终5386视频、强制退出恢复、直接暂停/继续与预览开关；取消按钮/跨项目及睡眠/压力仍待验收 |
+| [Windows legacy 迁移与回退](validation/windows-legacy-migration.md) | 生产新attempt、独立PLY warm start及11阶段缓存回退；匹配旧GUI查看、只读编辑器往返与正常退出通过 |
 | [Project format](project-format.md) | 目录结构、持久化字段和产物 |
 | [Contributing](../CONTRIBUTING.md) | 贡献与审阅约定 |
 | [Localization](localization.md) | 中英文资源、后端消息兼容与翻译贡献 |

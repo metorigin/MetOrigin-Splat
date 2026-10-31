@@ -5,10 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DesktopTitlebar } from "./DesktopTitlebar";
 
-const platform = vi.hoisted(() => ({ desktop: true, mac: true }));
+const platform = vi.hoisted(() => ({ desktop: true, mac: false, windows: true }));
 
 vi.mock("../../services/desktop", () => ({ isDesktopRuntime: () => platform.desktop }));
-vi.mock("../../lib/platformShortcuts", () => ({ isMacPlatform: () => platform.mac }));
+vi.mock("../../lib/platformShortcuts", () => ({
+  isMacPlatform: () => platform.mac,
+  isWindowsPlatform: () => platform.windows,
+}));
 
 type TitlebarProps = ComponentProps<typeof DesktopTitlebar>;
 
@@ -32,7 +35,8 @@ function titlebar(value: TitlebarProps) {
 describe("DesktopTitlebar regions", () => {
   beforeEach(() => {
     platform.desktop = true;
-    platform.mac = true;
+    platform.mac = false;
+    platform.windows = true;
     vi.stubGlobal("ResizeObserver", class {
       observe = vi.fn();
       unobserve = vi.fn();
@@ -42,10 +46,19 @@ describe("DesktopTitlebar regions", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("keeps the sidebar toggle adjacent to page content without history controls", () => {
+  it("shows the application brand on Windows with only the sidebar toggle beside page content", () => {
     const view = render(titlebar(props()));
     const navigation = view.container.querySelector('[data-window-region="navigation"]')!;
     const toggle = screen.getByRole("button", { name: "折叠项目栏" });
+    const brand = within(navigation as HTMLElement).getByText("MetOrigin Splat");
+    expect(brand).toBeVisible();
+    expect(brand).toHaveAttribute("data-tauri-drag-region");
+    const icon = navigation.querySelector('img')!;
+    expect(icon).toHaveAttribute("width", "28");
+    expect(icon).toHaveAttribute("height", "28");
+    expect(icon).toHaveAttribute("draggable", "false");
+    expect(icon).toHaveAttribute("alt", "");
+    expect(icon).toHaveAttribute("data-tauri-drag-region");
     expect(within(navigation as HTMLElement).getAllByRole("button")).toEqual([toggle]);
     const pageHeader = view.container.querySelector('[data-window-region="page-header"]')!;
     expect(view.container.querySelector('[data-window-region="history"]')).toBeNull();
@@ -56,8 +69,26 @@ describe("DesktopTitlebar regions", () => {
     expect(within(pageHeader as HTMLElement).getByRole("heading", { name: "项目中心" })).toBeVisible();
   });
 
-  it.each([true, false])("preserves controls, focus, and the header target across collapse on nativeMac=%s", (nativeMac) => {
-    platform.desktop = nativeMac;
+  it.each([
+    { name: "macOS", mac: true },
+    { name: "Linux", mac: false },
+  ])("hides the application brand on $name", ({ mac }) => {
+    platform.mac = mac;
+    platform.windows = false;
+    const view = render(titlebar(props()));
+    const navigation = view.container.querySelector('[data-window-region="navigation"]')!;
+    const toggle = screen.getByRole("button", { name: "折叠项目栏" });
+    expect(screen.queryByText("MetOrigin Splat")).not.toBeInTheDocument();
+    expect(navigation.querySelector("img")).toBeNull();
+    expect(within(navigation as HTMLElement).getAllByRole("button")).toEqual([toggle]);
+  });
+
+  it.each([
+    { name: "Windows", mac: false, windows: true },
+    { name: "macOS", mac: true, windows: false },
+  ])("preserves controls, focus, and the header target across collapse on $name", ({ mac, windows }) => {
+    platform.mac = mac;
+    platform.windows = windows;
     const headerTargetRef = vi.fn((_node: HTMLDivElement | null) => undefined);
     const value = props({ headerTargetRef, children: <input aria-label="页头草稿" defaultValue="draft" /> });
     const view = render(titlebar(value));
@@ -74,6 +105,7 @@ describe("DesktopTitlebar regions", () => {
 
     expect(screen.getByRole("button", { name: "展开项目栏" })).toBe(toggle);
     expect(toggle).toHaveFocus();
+    expect(screen.queryByText("MetOrigin Splat")).not.toBeInTheDocument();
     expect(navigation).toHaveStyle({ width: "auto" });
     expect(view.container.querySelector('[data-window-region="page-header"]')).toBe(pageHeader);
     expect(headerTargetRef.mock.calls).toEqual([[pageHeader]]);
@@ -83,6 +115,11 @@ describe("DesktopTitlebar regions", () => {
 
     expect(screen.getByRole("button", { name: "折叠项目栏" })).toBe(toggle);
     expect(toggle).toHaveFocus();
+    if (windows) {
+      expect(screen.getByText("MetOrigin Splat")).toBeVisible();
+    } else {
+      expect(screen.queryByText("MetOrigin Splat")).not.toBeInTheDocument();
+    }
     expect(navigation).toHaveStyle({ width: `${resizedWidth}px` });
     expect(view.container.querySelector('[data-window-region="page-header"]')).toBe(pageHeader);
     expect(headerTargetRef.mock.calls).toEqual([[pageHeader]]);
@@ -113,6 +150,7 @@ describe("DesktopTitlebar regions", () => {
     const value = props({ compact: true, sidebarCollapsed: true });
     const view = render(titlebar(value));
     const toggle = screen.getByRole("button", { name: "打开项目导航" });
+    expect(screen.queryByText("MetOrigin Splat")).not.toBeInTheDocument();
     expect(toggle).toHaveAttribute("aria-haspopup", "dialog");
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(toggle);
@@ -121,6 +159,7 @@ describe("DesktopTitlebar regions", () => {
     view.rerender(titlebar({ ...value, drawerOpen: true }));
     expect(screen.getByRole("button", { name: "打开项目导航" })).toBe(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByText("MetOrigin Splat")).not.toBeInTheDocument();
 
     view.rerender(titlebar({ ...value, compact: false }));
     expect(screen.getByRole("button", { name: "展开项目栏" })).toBe(toggle);

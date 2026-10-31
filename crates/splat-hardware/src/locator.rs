@@ -42,6 +42,8 @@ pub struct EngineLocatorOptions {
     pub configured_executables: BTreeMap<String, PathBuf>,
     pub resource_dir: Option<PathBuf>,
     pub integrity_cache: Option<EngineIntegrityCacheOptions>,
+    /// Prepared Windows packs require a manifest even in development builds.
+    pub require_resource_manifest: bool,
     pub mode: EngineResolutionMode,
 }
 
@@ -118,11 +120,77 @@ impl EngineLocator {
             .flatten();
         let resource_exists = options.resource_dir.as_deref().is_some_and(Path::is_dir);
 
-        if options.mode == EngineResolutionMode::Release
+        // Windows development directories can be complete managed packs. Verify
+        // them before the historical loose-executable fast path, even when all
+        // four executables exist. A selected broken pack must not leak into PATH.
+        if options.mode == EngineResolutionMode::Development && expected_platform == "windows-x64" {
+            if environment_dir.is_none() {
+                let mut individual_options = options.clone();
+                individual_options.configured_dir = None;
+                Self::fill_explicit_overrides(
+                    &mut resolution,
+                    &individual_options,
+                    None,
+                    expected_platform,
+                );
+                if Self::paths_are_complete(&resolution.paths) {
+                    return resolution;
+                }
+            }
+            let selected = environment_dir
+                .as_deref()
+                .or(options.configured_dir.as_deref());
+            if let Some(root) = selected {
+                if !root.is_dir() {
+                    return Self::block_corrupt_pack(
+                        resolution,
+                        None,
+                        format!(
+                            "Explicit engine directory does not exist: {}",
+                            root.display()
+                        ),
+                    );
+                }
+                if Self::managed_directory_required(root, &options) {
+                    match Self::verify_selected_pack(root, &options, expected_platform) {
+                        Ok(mut pack) => {
+                            if environment_dir.is_some() {
+                                for status in pack.statuses.values_mut() {
+                                    status.source = EnginePackSource::Environment;
+                                }
+                                return pack;
+                            }
+                            for status in pack.statuses.values_mut() {
+                                status.source = EnginePackSource::ConfiguredOrPath;
+                            }
+                            // Individual saved paths precede the saved directory.
+                            let mut executable_options = options.clone();
+                            executable_options.configured_dir = None;
+                            Self::fill_explicit_overrides(
+                                &mut resolution,
+                                &executable_options,
+                                None,
+                                expected_platform,
+                            );
+                            Self::fill_from_pack(
+                                &mut resolution,
+                                Self::executable_map(&pack.paths),
+                                pack.statuses,
+                            );
+                            Self::finalize_missing(&mut resolution);
+                            return resolution;
+                        }
+                        Err(error) => return Self::block_corrupt_pack(resolution, None, error),
+                    }
+                }
+            }
+        }
+
+        if (options.mode == EngineResolutionMode::Release || options.require_resource_manifest)
             && options.resource_dir.is_some()
             && !resource_exists
         {
-            Self::fill_explicit_overrides(&mut resolution, &options, None);
+            Self::fill_explicit_overrides(&mut resolution, &options, None, expected_platform);
             let missing_root = options
                 .resource_dir
                 .as_deref()
@@ -136,7 +204,15 @@ impl EngineLocator {
         }
 
         if options.mode == EngineResolutionMode::Development {
-            Self::fill_explicit_overrides(&mut resolution, &options, environment_dir.as_deref());
+            Self::fill_explicit_overrides(
+                &mut resolution,
+                &options,
+                environment_dir.as_deref(),
+                expected_platform,
+            );
+            if resolution.pack_error.is_some() {
+                return resolution;
+            }
             if Self::paths_are_complete(&resolution.paths) {
                 return resolution;
             }
@@ -163,6 +239,7 @@ impl EngineLocator {
                                     &mut resolution,
                                     &options,
                                     environment_dir.as_deref(),
+                                    expected_platform,
                                 );
                             }
                             return Self::block_corrupt_pack(
@@ -175,6 +252,7 @@ impl EngineLocator {
                 }
                 Err(error) => {
                     if options.mode == EngineResolutionMode::Development
+                        && !options.require_resource_manifest
                         && matches!(error, crate::manifest::EnginePackError::MissingManifest(_))
                     {
                         Self::fill_from_directory(
@@ -188,6 +266,7 @@ impl EngineLocator {
                                 &mut resolution,
                                 &options,
                                 environment_dir.as_deref(),
+                                expected_platform,
                             );
                         }
                         return Self::block_corrupt_pack(resolution, None, error.to_string());
@@ -197,7 +276,15 @@ impl EngineLocator {
         }
 
         if options.mode == EngineResolutionMode::Release {
-            Self::fill_explicit_overrides(&mut resolution, &options, environment_dir.as_deref());
+            Self::fill_explicit_overrides(
+                &mut resolution,
+                &options,
+                environment_dir.as_deref(),
+                expected_platform,
+            );
+            if resolution.pack_error.is_some() {
+                return resolution;
+            }
         }
         Self::fill_from_path(&mut resolution, path_value.as_deref());
         Self::finalize_missing(&mut resolution);
@@ -210,6 +297,47 @@ impl EngineLocator {
             statuses: BTreeMap::new(),
             pack_error: None,
         }
+    }
+
+    fn verify_selected_pack(
+        root: &Path,
+        options: &EngineLocatorOptions,
+        platform: &str,
+    ) -> Result<EngineResolution, String> {
+        let (manifest, digest) =
+            EnginePackManifest::load_with_digest(root).map_err(|error| error.to_string())?;
+        let cache = options
+            .integrity_cache
+            .as_ref()
+            .map(|cache| (cache.path.as_path(), cache.app_version.as_str()));
+        let pack = manifest
+            .verify(root, &digest, cache, platform)
+            .map_err(|error| error.to_string())?;
+        Ok(Self::resolution_from_pack(pack.executables, pack.statuses))
+    }
+
+    fn managed_directory_required(root: &Path, options: &EngineLocatorOptions) -> bool {
+        root.join("engine-manifest.json").exists()
+            || root.join("BUILD-INFO.json").exists()
+            || root.ends_with("target/distribution/windows-x64/engines")
+            || root.ends_with("target/distribution/windows-x64-alignment/engines")
+            || (options.require_resource_manifest
+                && options.resource_dir.as_deref().is_some_and(|resource| {
+                    root == resource
+                        || std::fs::canonicalize(root)
+                            .ok()
+                            .zip(std::fs::canonicalize(resource).ok())
+                            .is_some_and(|(selected, prepared)| selected == prepared)
+                }))
+    }
+
+    fn executable_map(paths: &EnginePaths) -> BTreeMap<String, PathBuf> {
+        LOGICAL_ENGINES
+            .into_iter()
+            .filter_map(|name| {
+                Self::path_for(paths, name).map(|path| (name.to_string(), path.clone()))
+            })
+            .collect()
     }
 
     fn resolution_from_pack(
@@ -241,6 +369,7 @@ impl EngineLocator {
         resolution: &mut EngineResolution,
         options: &EngineLocatorOptions,
         environment_dir: Option<&Path>,
+        expected_platform: &str,
     ) {
         if let Some(environment_dir) = environment_dir {
             Self::fill_from_directory(resolution, environment_dir, EnginePackSource::Environment);
@@ -263,6 +392,34 @@ impl EngineLocator {
             }
         }
         if let Some(configured_dir) = options.configured_dir.as_deref() {
+            if expected_platform == "windows-x64" {
+                if !configured_dir.is_dir() {
+                    *resolution = Self::block_corrupt_pack(
+                        resolution.clone(),
+                        None,
+                        "Explicit engine directory does not exist".into(),
+                    );
+                    return;
+                }
+                if Self::managed_directory_required(configured_dir, options) {
+                    match Self::verify_selected_pack(configured_dir, options, expected_platform) {
+                        Ok(mut pack) => {
+                            for status in pack.statuses.values_mut() {
+                                status.source = EnginePackSource::ConfiguredOrPath;
+                            }
+                            Self::fill_from_pack(
+                                resolution,
+                                Self::executable_map(&pack.paths),
+                                pack.statuses,
+                            );
+                        }
+                        Err(error) => {
+                            *resolution = Self::block_corrupt_pack(resolution.clone(), None, error)
+                        }
+                    }
+                    return;
+                }
+            }
             Self::fill_from_directory(
                 resolution,
                 configured_dir,
@@ -400,6 +557,12 @@ impl EngineLocator {
             root.join(name).join("bin").join(&executable),
         ];
         if cfg!(windows) && name == "brush" {
+            candidates.extend([
+                root.join("brush-cli.exe"),
+                root.join("bin/brush-cli.exe"),
+                root.join("brush/brush-cli.exe"),
+                root.join("brush/bin/brush-cli.exe"),
+            ]);
             candidates.push(root.join("brush_app.exe"));
             candidates.push(root.join("bin").join("brush_app.exe"));
         }
@@ -430,6 +593,8 @@ impl EngineLocator {
                 candidates.push(versioned_root.join(&executable));
                 candidates.push(versioned_root.join("bin").join(&executable));
                 if cfg!(windows) && name == "brush" {
+                    candidates.push(versioned_root.join("brush-cli.exe"));
+                    candidates.push(versioned_root.join("bin/brush-cli.exe"));
                     candidates.push(versioned_root.join("brush_app.exe"));
                     candidates.push(versioned_root.join("bin").join("brush_app.exe"));
                 }
@@ -455,6 +620,7 @@ impl EngineLocator {
                 .flat_map(|directory| {
                     let mut candidates = vec![directory.join(&executable)];
                     if cfg!(windows) && name == "brush" {
+                        candidates.push(directory.join("brush-cli.exe"));
                         candidates.push(directory.join("brush_app.exe"));
                     }
                     if cfg!(unix) && name == "brush" {
@@ -576,6 +742,153 @@ mod tests {
             serde_json::to_vec_pretty(&manifest).unwrap(),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn windows_explicit_managed_directory_verifies_all_files_before_fast_path() {
+        let root = TestDirectory::new("dev-managed");
+        write_valid_pack(root.path());
+        let options = EngineLocatorOptions {
+            configured_dir: Some(root.path().into()),
+            mode: EngineResolutionMode::Development,
+            ..Default::default()
+        };
+        let good =
+            EngineLocator::resolve_detailed_inner(options.clone(), None, None, "windows-x64");
+        assert!(good.paths.is_complete());
+        assert_eq!(
+            good.status("brush").unwrap().integrity_status,
+            IntegrityStatus::Valid
+        );
+        std::fs::write(root.path().join("brush/LICENSE"), b"tampered notice").unwrap();
+        let bad = EngineLocator::resolve_detailed_inner(options.clone(), None, None, "windows-x64");
+        assert!(bad.pack_error.is_some());
+        assert!(!bad.paths.is_complete());
+        let bad_env = EngineLocator::resolve_detailed_inner(
+            options,
+            Some(root.path().into()),
+            None,
+            "windows-x64",
+        );
+        assert!(bad_env.pack_error.is_some());
+        assert!(!bad_env.paths.is_complete());
+    }
+
+    #[test]
+    fn windows_missing_explicit_directory_and_prepared_manifest_block_fallback() {
+        let root = TestDirectory::new("dev-missing");
+        let options = EngineLocatorOptions {
+            configured_dir: Some(root.path().join("missing")),
+            mode: EngineResolutionMode::Development,
+            ..Default::default()
+        };
+        let bad = EngineLocator::resolve_detailed_inner(options, None, None, "windows-x64");
+        assert!(bad.pack_error.is_some());
+        let bad = EngineLocator::resolve_detailed_inner(
+            EngineLocatorOptions {
+                resource_dir: Some(root.path().into()),
+                require_resource_manifest: true,
+                mode: EngineResolutionMode::Development,
+                ..Default::default()
+            },
+            None,
+            None,
+            "windows-x64",
+        );
+        assert!(bad.pack_error.is_some());
+        assert!(!bad.paths.is_complete());
+    }
+
+    #[test]
+    fn windows_release_external_managed_pack_is_verified_when_resources_absent() {
+        let root = TestDirectory::new("release-external-managed");
+        write_valid_pack(root.path());
+        let options = EngineLocatorOptions {
+            configured_dir: Some(root.path().into()),
+            mode: EngineResolutionMode::Release,
+            ..Default::default()
+        };
+        let good =
+            EngineLocator::resolve_detailed_inner(options.clone(), None, None, "windows-x64");
+        assert!(good.paths.is_complete());
+        assert_eq!(
+            good.status("brush").unwrap().integrity_status,
+            IntegrityStatus::Valid
+        );
+        std::fs::write(root.path().join("brush/LICENSE"), b"corrupt").unwrap();
+        let bad = EngineLocator::resolve_detailed_inner(options, None, None, "windows-x64");
+        assert!(bad.pack_error.is_some());
+        assert!(!bad.paths.is_complete());
+    }
+
+    #[test]
+    fn windows_selected_prepared_directory_cannot_bypass_a_deleted_manifest() {
+        let root = TestDirectory::new("deleted-prepared-manifest");
+        for name in LOGICAL_ENGINES {
+            std::fs::write(
+                root.path().join(EngineLocator::executable_name(name)),
+                b"loose executable",
+            )
+            .unwrap();
+        }
+        let options = EngineLocatorOptions {
+            configured_dir: Some(root.path().into()),
+            resource_dir: Some(root.path().into()),
+            require_resource_manifest: true,
+            mode: EngineResolutionMode::Development,
+            ..Default::default()
+        };
+        for environment in [None, Some(root.path().to_path_buf())] {
+            let result = EngineLocator::resolve_detailed_inner(
+                options.clone(),
+                environment,
+                None,
+                "windows-x64",
+            );
+            assert!(result.pack_error.is_some());
+            assert!(!result.paths.is_complete());
+        }
+        // Relocated packs retain their managed marker even without a resource hint.
+        std::fs::write(root.path().join("BUILD-INFO.json"), b"{}").unwrap();
+        let result = EngineLocator::resolve_detailed_inner(
+            EngineLocatorOptions {
+                configured_dir: Some(root.path().into()),
+                mode: EngineResolutionMode::Release,
+                ..Default::default()
+            },
+            None,
+            None,
+            "windows-x64",
+        );
+        assert!(result.pack_error.is_some());
+        assert!(!result.paths.is_complete());
+    }
+
+    #[test]
+    fn windows_individual_overrides_precede_an_unused_directory_but_partial_ones_do_not() {
+        let root = TestDirectory::new("individual-priority");
+        let executables = LOGICAL_ENGINES
+            .into_iter()
+            .map(|name| {
+                let file = root.path().join(EngineLocator::executable_name(name));
+                std::fs::write(&file, b"explicit executable").unwrap();
+                (name.to_string(), file)
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut options = EngineLocatorOptions {
+            configured_dir: Some(root.path().join("old-directory-no-longer-exists")),
+            configured_executables: executables,
+            mode: EngineResolutionMode::Development,
+            ..Default::default()
+        };
+        let complete =
+            EngineLocator::resolve_detailed_inner(options.clone(), None, None, "windows-x64");
+        assert!(complete.paths.is_complete());
+        assert!(complete.pack_error.is_none());
+        options.configured_executables.remove("brush");
+        let partial = EngineLocator::resolve_detailed_inner(options, None, None, "windows-x64");
+        assert!(!partial.paths.is_complete());
+        assert!(partial.pack_error.is_some());
     }
 
     fn release_options(resource_dir: &Path) -> EngineLocatorOptions {

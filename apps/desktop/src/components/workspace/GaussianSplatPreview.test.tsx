@@ -363,6 +363,33 @@ describe("Gaussian preview model lifecycle", () => {
     view.unmount();
   });
 
+  it("waits for consecutive healthy Windows observations before resuming preview", async () => {
+    let action: "allow" | "pause" | "release" = "release";
+    let healthySamples = 0;
+    harness.policy.mockImplementation(async () => {
+      if (action === "allow") healthySamples += 1;
+      return { action, reason: null, memory_pressure: null, poll_interval_ms: 500,
+        max_snapshot_bytes: 1024 ** 3, recovery_samples: 3 };
+    });
+    harness.poll.mockImplementation(async () => ({ ...status(), resource_policy: {
+      action, reason: null, memory_pressure: null, poll_interval_ms: 500,
+      max_snapshot_bytes: 1024 ** 3, recovery_samples: 3,
+    } }));
+    const view = render(<GaussianSplatPreview {...props} />);
+    await screen.findByText("内存不足 · 已释放预览 · 训练继续");
+    action = "allow";
+    await waitFor(() => expect(healthySamples).toBeGreaterThanOrEqual(1), { timeout: 1500 });
+    expect(harness.read).not.toHaveBeenCalled();
+    action = "pause";
+    await screen.findByText("内存压力升高 · 预览暂停 · 训练继续", {}, { timeout: 1500 });
+    healthySamples = 0;
+    action = "allow";
+    await screen.findByText("5 step", {}, { timeout: 4500 });
+    expect(healthySamples).toBeGreaterThanOrEqual(3);
+    expect(harness.read).toHaveBeenCalledOnce();
+    view.unmount();
+  }, 8000);
+
   it("loads the completed checkpoint instead of retaining an older acknowledged live frame", async () => {
     const view = render(<GaussianSplatPreview {...props} />);
     await screen.findByText("5 step");

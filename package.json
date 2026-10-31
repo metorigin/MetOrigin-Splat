@@ -9,6 +9,10 @@
   "scripts": {
     "prepare:supersplat": "node integrations/supersplat/prepare.mjs",
     "dev": "pnpm --dir apps/desktop dev",
+    "dev:windows": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/windows/Start-Development.ps1",
+    "prepare:windows:alignment": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/windows/Prepare-AlignmentEnginePack.ps1",
+    "verify:windows:alignment": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/windows/Test-AlignmentEnginePack.ps1",
+    "test:windows:alignment-pack": "node --test scripts/windows/AlignmentPack.test.mjs scripts/windows/AlignmentNaming.test.mjs scripts/windows/BuildSourceInventory.test.mjs scripts/windows/BundleIdentity.test.mjs scripts/windows/BuildBundlerReceipt.test.mjs",
     "build": "pnpm --dir apps/desktop build",
     "lint": "pnpm --dir apps/desktop lint",
     "typecheck": "pnpm --dir apps/desktop typecheck",

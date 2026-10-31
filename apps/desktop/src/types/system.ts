@@ -60,10 +60,11 @@ export interface PreviewResourcePolicy {
   memory_pressure: MemoryPressure | null;
   poll_interval_ms: number;
   max_snapshot_bytes: number;
+  recovery_samples?: number;
 }
 export interface ProcessMemory {
   pid: number;
-  role: "application" | "brush" | "colmap" | "webkit";
+  role: "application" | "brush" | "colmap" | "webkit" | "webview2";
   resident_bytes: number;
 }
 export interface RuntimeResourceSummary {

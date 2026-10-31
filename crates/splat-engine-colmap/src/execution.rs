@@ -71,28 +71,35 @@ impl ColmapExecutionSettings {
     }
 
     pub(crate) fn validate_engine_version(&self, version: &str) -> AppResult<()> {
-        let (base, metadata) = version.split_once('+').unwrap_or((version, ""));
-        let valid_metadata = !version.contains('+')
-            || metadata.split('.').all(|part| {
-                !part.is_empty()
-                    && part
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-            });
-        if base != "4.1.0" || !valid_metadata {
-            return Err(AppError::new(
-                "E-3006",
-                ErrorCategory::Engine,
-                "Incompatible COLMAP Version",
-                "This execution profile requires the verified COLMAP 4.1.0 command interface.",
-            )
-            .with_technical(format!("detected COLMAP version: {version}"))
-            .with_suggestions(vec![
-                "Select the COLMAP 4.1.0 engine pack and run preflight again.",
-            ]));
-        }
-        Ok(())
+        validate_engine_version(version)
     }
+}
+
+/// Check the command/database contract before constructing an executable
+/// adapter, including legacy runs that do not have an execution profile.
+/// COLMAP 4.3 may migrate a 4.1 database as soon as it opens it.
+pub(crate) fn validate_engine_version(version: &str) -> AppResult<()> {
+    let (base, metadata) = version.split_once('+').unwrap_or((version, ""));
+    let valid_metadata = !version.contains('+')
+        || metadata.split('.').all(|part| {
+            !part.is_empty()
+                && part
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        });
+    if base != "4.1.0" || !valid_metadata {
+        return Err(AppError::new(
+            "E-3006",
+            ErrorCategory::Engine,
+            "Incompatible COLMAP Version",
+            "This application requires the verified COLMAP 4.1.0 command and database interface.",
+        )
+        .with_technical(format!("detected COLMAP version: {version}"))
+        .with_suggestions(vec![
+            "Select the COLMAP 4.1.0 engine pack and run preflight again.",
+        ]));
+    }
+    Ok(())
 }
 
 pub(crate) fn gpu_flag(backend: ColmapBackend) -> &'static str {

@@ -90,7 +90,10 @@ export function useNewProjectWizard(settings: AppSettings | null) {
         projectRoot: settings?.default_project_root ?? null,
         preset,
       });
-      if (!disposed) setPreflight(checked);
+      if (!disposed) {
+        if (checked.preset !== preset) setLocalError(t("预检结果与当前预设不匹配，请重新检查。"));
+        else setPreflight(checked);
+      }
     });
     return () => { disposed = true; };
   }, [analysis, settings?.default_project_root, step]);
@@ -197,6 +200,7 @@ export function useNewProjectWizard(settings: AppSettings | null) {
         preset,
       });
       if (requestId !== preflightRequest.current) return;
+      if (result.preset !== preset) throw new Error(t("预检结果与当前预设不匹配，请重新检查。"));
       setPreflight(result);
       if (announceDirectoryResult) {
         setDirectoryCheck(result.can_continue
@@ -231,14 +235,14 @@ export function useNewProjectWizard(settings: AppSettings | null) {
   const goNext = useCallback(async () => {
     if (step === 0) {
       await runPreflight();
-    } else if (step === 1 && preflight?.can_continue) {
+    } else if (step === 1 && !checking && preflight?.preset === selectedPreset && preflight.can_continue) {
       setStep(2);
     }
-  }, [preflight?.can_continue, runPreflight, step]);
+  }, [checking, preflight?.can_continue, preflight?.preset, runPreflight, selectedPreset, step]);
 
   const createProject = useCallback(
     (startAfterCreate: boolean) => {
-      if (!analysis || !projectName.trim() || checking || !preflight?.can_continue || createInFlight.current) {
+      if (!analysis || !projectName.trim() || checking || preflight?.preset !== selectedPreset || !preflight?.can_continue || createInFlight.current) {
         return Promise.resolve();
       }
       setCreating(true);
@@ -351,7 +355,7 @@ export function useNewProjectWizard(settings: AppSettings | null) {
       createInFlight.current = operation;
       return operation;
     },
-    [activePipeline, analysis, checking, dispatch, preflight?.can_continue, projectName, projectRoot, selectedPreset],
+    [activePipeline, analysis, checking, dispatch, preflight?.can_continue, preflight?.preset, projectName, projectRoot, selectedPreset],
   );
 
   const requestCancelCreation = useCallback(() => {

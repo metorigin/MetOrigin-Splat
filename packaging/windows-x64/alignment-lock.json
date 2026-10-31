@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "pack_version": "0.1.0-internal.windows-alignment.1",
+  "platform": "windows-x64",
+  "target": "x86_64-pc-windows-msvc",
+  "brush_version": "1.0.0+metorigin-windows.1",
+  "brush_source_lock": "integrations/brush-windows/source-lock.json",
+  "archive_lock": "packaging/windows-x64/engine-lock.json",
+  "distribution_status": "candidate_native_macos_and_license_gates_pending"
+}

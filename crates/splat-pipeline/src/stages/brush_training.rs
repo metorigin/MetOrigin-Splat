@@ -9,9 +9,9 @@ use splat_domain::runtime::{
     BrushCliProfile, CapabilityStatus, LiveProtocol, ResumeMode, RuntimePlatform,
 };
 use splat_engine_brush::{
-    current_runtime_platform, probe_training_runtime, BrushAdapter, BrushProgressParser,
-    Checkpoint, CheckpointScanner, ExportManager, ProfiledTrainingRequest, TrainingConfig,
-    TrainingRuntimeEvidence,
+    current_runtime_platform, probe_training_runtime_with_selection, BrushAdapter,
+    BrushDeviceSelection, BrushProgressParser, Checkpoint, CheckpointScanner, ExportManager,
+    ProfiledTrainingRequest, TrainingConfig, TrainingRuntimeEvidence,
 };
 use splat_process::{CompositeParser, ProcessResult, ProcessRunner};
 use tokio::sync::broadcast;
@@ -153,15 +153,23 @@ impl PipelineStage for BrushTrainingStage {
 
         // Run the shared cancellable capability check immediately before GPU
         // training; the earlier desktop preflight may precede a lengthy SfM run.
-        let runtime = probe_training_runtime(
+        let selection = ctx
+            .execution_profile
+            .as_deref()
+            .map(BrushDeviceSelection::for_profile)
+            .transpose()?
+            .flatten();
+        let runtime = probe_training_runtime_with_selection(
             current_runtime_platform()?,
             adapter.brush_path(),
             &ctx.paths.training_logs,
             ctx.cancellation.clone(),
+            selection.as_ref(),
         )
         .await?;
         let verified_runtime = match &runtime {
-            TrainingRuntimeEvidence::Metal(runtime) => Some(runtime.as_ref()),
+            TrainingRuntimeEvidence::Metal(runtime)
+            | TrainingRuntimeEvidence::WindowsWgpu(runtime) => Some(runtime.as_ref()),
             TrainingRuntimeEvidence::LegacyNvidia(_) => None,
         };
 
@@ -343,7 +351,13 @@ fn prepare_resume_ply(ctx: &StageContext, checkpoint: Option<&Checkpoint>) -> Ap
         let temporary = resume_path.with_extension("ply.tmp");
         std::fs::copy(&checkpoint.path, &temporary).map_err(io_error)?;
         ExportManager::validate_ply(&temporary)?;
-        std::fs::File::open(&temporary)
+        // Windows FlushFileBuffers requires a write-capable handle. Keep the
+        // existing Unix reopen/fsync behavior for the shared Mac path.
+        #[cfg(windows)]
+        let durable_copy = std::fs::OpenOptions::new().write(true).open(&temporary);
+        #[cfg(not(windows))]
+        let durable_copy = std::fs::File::open(&temporary);
+        durable_copy
             .and_then(|file| file.sync_all())
             .map_err(io_error)?;
         std::fs::rename(temporary, resume_path).map_err(io_error)?;
@@ -469,6 +483,11 @@ fn training_fingerprint(
 ) -> AppResult<String> {
     let hash = adapter.binary_sha256()?;
     let cli = adapter.cli_profile()?;
+    if cli == BrushCliProfile::Metorigin1 && ctx.execution_profile.is_none() {
+        return Err(runtime_error(
+            "Brush 1 training requires a frozen execution profile.",
+        ));
+    }
     if let Some(profile) = &ctx.execution_profile {
         profile.validate_for_execution()?;
         if hash != profile.engines.brush.binary_sha256 || cli != profile.brush.cli_profile {
@@ -504,6 +523,46 @@ fn io_error(error: std::io::Error) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_resume_copy_flushes_with_write_access_and_preserves_source_on_failure() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = StageContext::new(
+            PipelineStageId::BrushTraining,
+            dir.path(),
+            Some("fast".into()),
+        );
+        std::fs::create_dir_all(&ctx.paths.training_dataset).unwrap();
+        std::fs::create_dir_all(&ctx.paths.training_checkpoints).unwrap();
+        let original = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../test-fixtures/gaussian/minimal-sh0-ascii.ply"
+        ));
+        let source = ctx.paths.training_checkpoints.join("checkpoint_100.ply");
+        std::fs::write(&source, original).unwrap();
+        let checkpoint = CheckpointScanner::find_latest(&ctx.paths.training_checkpoints)
+            .unwrap()
+            .unwrap();
+        prepare_resume_ply(&ctx, Some(&checkpoint)).unwrap();
+        let init = ctx.paths.training_dataset.join("init.ply");
+        let reader = std::fs::File::open(&init).unwrap();
+        prepare_resume_ply(&ctx, Some(&checkpoint)).unwrap();
+        assert_eq!(std::fs::read(&init).unwrap(), original);
+        drop(reader);
+        let temporary = ctx.paths.training_dataset.join("init.ply.tmp");
+        let blocked = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .share_mode(0)
+            .open(&temporary)
+            .unwrap();
+        assert!(prepare_resume_ply(&ctx, Some(&checkpoint)).is_err());
+        assert_eq!(std::fs::read(&init).unwrap(), original);
+        assert_eq!(std::fs::read(&source).unwrap(), original);
+        drop(blocked);
+    }
 
     #[tokio::test]
     async fn test_brush_training_no_dataset() {
