@@ -1,4 +1,4 @@
-//! Keep AppKit's real window buttons on the 48-point desktop header centerline.
+//! Align AppKit's real window buttons with the desktop header and sidebar.
 //!
 //! Tao/Wry's traffic-light inset only resizes the titlebar container; AppKit can
 //! lay its buttons back out at the default top inset. Position the actual button
@@ -12,12 +12,16 @@ use dispatch2::DispatchQueue;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::MainThreadMarker;
-use objc2_app_kit::{NSWindow, NSWindowButton, NSWindowDidUpdateNotification, NSWindowStyleMask};
+use objc2_app_kit::{
+    NSView, NSWindow, NSWindowButton, NSWindowDidUpdateNotification, NSWindowStyleMask,
+};
 use objc2_foundation::{NSNotificationCenter, NSObjectProtocol, NSPoint};
 use tauri::Manager;
 
 // Matches DesktopTitlebar's h-12 at the application's 16px base size.
 const HEADER_HEIGHT: f64 = 48.0;
+// Matches ProjectSidebar's px-3 navigation inset at the 16px base size.
+const SIDEBAR_NAVIGATION_INSET: f64 = 12.0;
 
 thread_local! {
     static UPDATE_OBSERVER: std::cell::RefCell<Option<Retained<ProtocolObject<dyn NSObjectProtocol>>>> = const { std::cell::RefCell::new(None) };
@@ -132,6 +136,9 @@ fn needs_alignment(window: &tauri::WebviewWindow) -> bool {
         return false;
     };
     let bounds = content.bounds();
+    if horizontal_offset(native, &content).abs() > 0.01 {
+        return true;
+    }
     let target = center_from_top(bounds.origin.y, bounds.size.height, content.isFlipped());
     [
         NSWindowButton::CloseButton,
@@ -203,6 +210,7 @@ fn schedule_debug_readback(window: tauri::WebviewWindow, generation: Arc<AtomicU
                 Some(serde_json::json!({
                     "center_from_content_top": from_top,
                     "center_x": rect.origin.x + rect.size.width / 2.0,
+                    "left_from_content_edge": rect.origin.x - bounds.origin.x,
                     "width": rect.size.width,
                     "height": rect.size.height,
                     "hidden": button.isHidden(),
@@ -217,6 +225,7 @@ fn schedule_debug_readback(window: tauri::WebviewWindow, generation: Arc<AtomicU
                 "window_width": native.frame().size.width,
                 "window_height": native.frame().size.height,
                 "content_height": bounds.size.height,
+                "sidebar_navigation_inset": SIDEBAR_NAVIGATION_INSET,
                 "fullscreen": native.styleMask().contains(NSWindowStyleMask::FullScreen),
                 "buttons": buttons,
             });
@@ -255,6 +264,7 @@ fn align_buttons(window: &tauri::WebviewWindow) {
     // Convert through each button's actual parent. The AppKit titlebar ancestor
     // hierarchy varies by OS version; do not resize an assumed two-level parent.
     let target_y = center_from_top(bounds.origin.y, bounds.size.height, content.isFlipped());
+    let offset_x = horizontal_offset(native, &content);
     for kind in [
         NSWindowButton::CloseButton,
         NSWindowButton::MiniaturizeButton,
@@ -275,15 +285,27 @@ fn align_buttons(window: &tauri::WebviewWindow) {
             ),
             Some(&content),
         );
+        target.x += offset_x;
         target.y = target_y;
         let center = parent.convertPoint_fromView(target, Some(&content));
         let mut button_frame = button.frame();
+        button_frame.origin.x = center.x - button_frame.size.width / 2.0;
         button_frame.origin.y = center.y - button_frame.size.height / 2.0;
-        // Preserve AppKit's horizontal positions, sizes, hit regions and actions.
-        if (button.frame().origin.y - button_frame.origin.y).abs() > 0.01 {
+        // Move the group together, preserving AppKit's spacing, sizes and actions.
+        if (button.frame().origin.x - button_frame.origin.x).abs() > 0.01
+            || (button.frame().origin.y - button_frame.origin.y).abs() > 0.01
+        {
             button.setFrameOrigin(button_frame.origin);
         }
     }
+}
+
+fn horizontal_offset(native: &NSWindow, content: &NSView) -> f64 {
+    let Some(close) = native.standardWindowButton(NSWindowButton::CloseButton) else {
+        return 0.0;
+    };
+    let rect = close.convertRect_toView(close.bounds(), Some(content));
+    content.bounds().origin.x + SIDEBAR_NAVIGATION_INSET - rect.origin.x
 }
 
 fn center_from_top(origin_y: f64, height: f64, flipped: bool) -> f64 {
