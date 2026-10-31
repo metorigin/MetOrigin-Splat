@@ -158,6 +158,13 @@ function mockTauriBootstrap() {
     status: "ready",
     updated_at: "2026-08-14T07:00:00Z",
   };
+  const missingProject = {
+    id: "e2e-project-missing",
+    name: "失效项目 Café 🧪",
+    path: "C:\\E2E\\missing\\Café 🧪.splat-project",
+    status: "running",
+    updated_at: "2026-08-13T07:00:00Z",
+  };
   const stageIds = ["MediaValidation", "FrameExtraction", "ImagePreprocessing", "ColmapFeatureExtraction", "ColmapMatching", "ColmapMapping", "ColmapValidation", "TrainingPreparation", "BrushTraining", "ModelValidation", "PreviewGeneration", "Export"];
   const makeSnapshot = (project, stage, status = project.status, sequence = 1, progress = 0.42) => ({
     project_id: project.id,
@@ -187,7 +194,7 @@ function mockTauriBootstrap() {
     control_intent: "none",
   });
   const state = {
-    projects: [projectA, projectB],
+    projects: [projectA, projectB, missingProject],
     activeSnapshot: makeSnapshot(projectA, "BrushTraining", "running", 12, 0.42),
     snapshots: {
       [projectA.id]: makeSnapshot(projectA, "BrushTraining", "running", 12, 0.42),
@@ -197,6 +204,8 @@ function mockTauriBootstrap() {
     callbacks: new Map(),
     callbackSequence: 1,
     previewSequence: 1,
+    previewRequests: new Map(),
+    removedProjectRecords: [],
     commandCalls: [],
     events: Array.from({ length: 1000 }, (_, index) => ({
       event_id: `e2e-event-${index}`,
@@ -251,6 +260,9 @@ function mockTauriBootstrap() {
   };
   const handleCommand = async (command, args = {}) => {
     state.commandCalls.push({ command, at: performance.now() });
+    if (["get_project_artifacts", "list_checkpoints"].includes(command) && state.resourceGate) {
+      await state.resourceGate.promise;
+    }
     switch (command) {
       case "app_version": return "0.1.0-e2e";
       case "check_engines": return [];
@@ -261,10 +273,10 @@ function mockTauriBootstrap() {
         return {
           project_id: args.projectId,
           checked_path: args.projectPath,
-          availability: "available",
+          availability: args.projectId === missingProject.id ? "missing" : "available",
           checked_at: now(),
           reason_code: null,
-          refreshed_project: project ?? null,
+          refreshed_project: args.projectId === missingProject.id ? null : project ?? null,
         };
       }
       case "get_app_settings": return state.savedSettings ?? {
@@ -295,18 +307,18 @@ function mockTauriBootstrap() {
       case "get_project_artifacts": return {
         frames_manifest: artifact("frames/manifest.json", true),
         colmap_result: artifact("colmap/sparse/0", true),
-        latest_checkpoint: null,
+        latest_checkpoint: state.latestCheckpoint ?? null,
         scene_ply: artifact("output/scene.ply", false),
         output_manifest: artifact("output/manifest.json", false),
         registered_images: 80,
         total_images: 100,
-        sparse_points: 12345,
+        sparse_points: state.sparsePoints ?? 12345,
         mean_reprojection_error: 0.51,
         colmap_validation: null,
         colmap_attempts: [],
         splat_count: null,
       };
-      case "list_checkpoints": return [];
+      case "list_checkpoints": return state.checkpoints ?? [];
       case "get_frame_preview": return { items: [], total_frames: 100 };
       case "get_sparse_preview_pack": return {
         model_path: "colmap/sparse/0",
@@ -337,6 +349,24 @@ function mockTauriBootstrap() {
       }
       case "preview_workspace_action": {
         const token = `e2e-preview-${state.previewSequence++}`;
+        state.previewRequests.set(token, args.request);
+        if (args.request.action === "delete_project" && args.request.projectId === missingProject.id) {
+          return {
+            action: "delete_project",
+            targetLabel: `移除项目“${missingProject.name}”的记录`,
+            allowed: true,
+            blockedReason: null,
+            irreversible: false,
+            preserved: ["项目目录及其中的残留文件（如有）", "应用设置与其他项目"],
+            invalidated: ["当前项目在项目中心的记录"],
+            regenerated: [],
+            warnings: ["项目目录已丢失，本次只移除项目记录，不会删除任何磁盘文件。"],
+            sizeBytes: null,
+            previewToken: token,
+            createdAt: now(),
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          };
+        }
         return {
           action: args.request.action,
           targetLabel: args.request.action === "pause" ? "暂停当前重建" : "当前重建",
@@ -353,11 +383,30 @@ function mockTauriBootstrap() {
           expiresAt: new Date(Date.now() + 60_000).toISOString(),
         };
       }
-      case "execute_workspace_action": return {
+      case "execute_workspace_action": {
+        const request = state.previewRequests.get(args.previewToken);
+        if (request?.action === "delete_project" && request.projectId === missingProject.id) {
+          state.projects = state.projects.filter(project => project.id !== missingProject.id);
+          state.removedProjectRecords.push(missingProject.id);
+          return {
+            kind: "completed",
+            receipt: {
+              id: "e2e-record-removal-receipt",
+              action: "delete_project",
+              status: "success",
+              title: "项目记录已移除",
+              message: "仅移除了项目中心的记录，没有删除任何磁盘文件。",
+              completedAt: now(),
+              affectedResources: ["recent_projects"],
+              dismissible: true,
+            },
+          };
+        }
+        return {
         kind: "completed",
         receipt: {
           id: "e2e-receipt",
-          action: "pause",
+          action: request?.action ?? "pause",
           status: "success",
           title: "合成操作已完成",
           message: "没有修改真实数据。",
@@ -365,12 +414,13 @@ function mockTauriBootstrap() {
           affectedResources: [],
           dismissible: true,
         },
-      };
+        };
+      }
       case "open_project_location": return {
-        opened: true,
-        missing: false,
+        opened: !state.locationError,
+        missing: Boolean(state.locationError),
         target_type: args.request?.targetType ?? "project_root",
-        message: null,
+        message: state.locationError ?? null,
       };
       default: return null;
     }
@@ -417,18 +467,29 @@ function mockTauriBootstrap() {
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: unregisterCallback };
   window.__E2E__ = {
     state,
-    setStage(stageId) {
+    deferWorkspaceResources() {
+      let release;
+      const promise = new Promise(resolvePromise => { release = resolvePromise; });
+      state.resourceGate = { promise, release };
+    },
+    releaseWorkspaceResources() {
+      const gate = state.resourceGate;
+      state.resourceGate = null;
+      gate?.release();
+    },
+    setStage(stageId, status = "running") {
       const nextSequence = state.activeSnapshot.sequence + 1;
-      const progress = stageId === "ModelValidation" ? 0.82 : 0.52;
-      const snapshot = makeSnapshot(projectA, stageId, "running", nextSequence, progress);
+      const progress = status === "completed" ? 1 : stageId === "ModelValidation" ? 0.82 : 0.52;
+      const snapshot = makeSnapshot(projectA, stageId, status, nextSequence, progress);
       state.activeSnapshot = snapshot;
       state.snapshots[projectA.id] = snapshot;
       projectA.stage_label = stageId;
+      projectA.status = status;
       emit("pipeline://event", {
         project_id: projectA.id,
         sequence: nextSequence,
         timestamp: now(),
-        event: { kind: "stage_started", stage_id: stageId },
+        event: status === "completed" ? { kind: "pipeline_completed" } : { kind: "stage_started", stage_id: stageId },
       });
     },
     emit,
@@ -728,7 +789,6 @@ async function run() {
         inspector: rect('.inspector-column'),
         preview: rect('.preview-panel'),
         viewport: rect('.scene-viewport-panel'),
-        resizeHandle: rect('.workspace-resize-handle'),
         details: rect('.inspector-details-panel'),
         monitor: rect('.workspace-inspector-stack'),
         phases: [...document.querySelectorAll('.pipeline-timeline .phase-summary')].map(node => {
@@ -807,15 +867,138 @@ async function run() {
     }
     check("project-workspace-grid-placement", workspaceLayoutValid,
       workspaceLayoutValid
-        ? "A 48px desktop header and four compact phase controls sit above the sibling resizable viewport and inspector within the visible workspace."
+        ? "A 48px desktop header and four compact phase controls sit above the sibling viewport and inspector within the visible workspace."
         : `Workspace children escaped their intended tracks: ${JSON.stringify(workspaceLayout)}`);
+    check("workspace-redundant-content-hidden", await evaluate(`
+      !document.querySelector('.preview-panel > .panel-title')
+      && !document.querySelector('.workspace-inspector-stack .task-status-card')
+      && !document.querySelector('.workspace-background-note p')
+      && !document.querySelector('.resource-meter [aria-label="GPU"]')
+      && [...document.querySelectorAll('button')].some(button => button.textContent.trim() === '查看日志与活动')
+    `), "The active workspace uses its phase navigator for progress, omits repeated preview/status copy and unavailable GPU data, and keeps logs accessible.");
     await capture("project-workspace-layout-1440x1024-100pct");
     check("workspace-titlebar-spacing", workspaceLayout.timeline.top - workspaceLayout.titlebar.bottom >= 11.5,
       "The phase navigator has at least 12px of separation from the desktop titlebar.");
-    check("workspace-resize-handle-spacing", workspaceLayout.resizeHandle
-      && workspaceLayout.resizeHandle.left - workspaceLayout.viewport.right <= 4.5
-      && workspaceLayout.resizeHandle.left >= workspaceLayout.viewport.right,
-      "The inspector divider sits within 4px of the preview edge and retains its drag target.");
+    const viewportInspectorGap = workspaceLayout.details.left - workspaceLayout.viewport.right;
+    check("workspace-divider-hidden", await evaluate(`
+      !document.querySelector('.workspace-resize-handle, .inspector-column [role="separator"], .inspector-column [data-slot="resizable-handle"]')
+      && parseFloat(getComputedStyle(document.querySelector('.inspector-details-panel')).borderLeftWidth) === 0
+      && parseFloat(getComputedStyle(document.querySelector('.scene-viewport-panel')).borderRightWidth) === 0
+    `) && Math.abs(viewportInspectorGap - 12) <= 0.5,
+      "The preview and inspector keep a 12px visible gap with no separator, drag handle or separating panel border.");
+    const measureInspectorAlignment = () => evaluate(`(() => {
+      const rect = node => {
+        const value = node.getBoundingClientRect();
+        return { top: value.top, left: value.left, right: value.right, width: value.width };
+      };
+      return { phase: rect(document.querySelector('.timeline-phase:last-child')),
+        cards: [...document.querySelectorAll('.workspace-inspector-card')].map(rect),
+        preview: rect(document.querySelector('.preview-panel')),
+        viewport: { width: innerWidth, height: innerHeight },
+        sidebarCollapsed: Boolean(document.querySelector('button[aria-label="展开项目栏"]')) };
+    })()`);
+    const inspectorMatchesPhase = layout => layout.cards.length >= 2
+      && layout.cards.every(card => ['left', 'right', 'width'].every(property => Math.abs(card[property] - layout.phase[property]) <= 0.5))
+      && Math.abs(layout.cards[0].top - layout.preview.top) <= 0.5
+      && Math.abs(layout.cards[0].left - layout.preview.right - 12) <= 0.5;
+    report.inspector_phase_alignment = [];
+    for (const [width, collapsed] of [[1440, false], [1920, false], [1920, true], [1440, true], [1280, false]]) {
+      await setViewport(width, width === 1920 ? 1080 : 1024);
+      const sidebarCollapsed = await evaluate("Boolean(document.querySelector('button[aria-label=\"展开项目栏\"]'))");
+      if (sidebarCollapsed !== collapsed) await clickButton(collapsed ? "折叠项目栏" : "展开项目栏");
+      await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))");
+      const alignment = await measureInspectorAlignment();
+      report.inspector_phase_alignment.push(alignment);
+      check(`workspace-inspector-phase-${width}-${collapsed ? 'collapsed' : 'expanded'}`, inspectorMatchesPhase(alignment),
+        "All right-hand cards share the fourth phase's left edge, right edge and width, stay aligned with the preview top and keep a 12px preview gap.");
+      await capture(`project-inspector-phase-${width}-${collapsed ? 'collapsed' : 'expanded'}`);
+    }
+    const chineseHeader = await evaluate(`(() => {
+      const header = document.querySelector('.quality-panel .panel-title');
+      const title = header.querySelector('span');
+      const button = header.querySelector('button');
+      const titleRect = title.getBoundingClientRect(), buttonRect = button.getBoundingClientRect(), headerRect = header.getBoundingClientRect();
+      return { centerDelta: Math.abs((titleRect.top + titleRect.bottom - buttonRect.top - buttonRect.bottom) / 2),
+        titleHeight: titleRect.height, lineHeight: parseFloat(getComputedStyle(title).lineHeight),
+        buttonContained: buttonRect.left >= headerRect.left && buttonRect.right <= headerRect.right };
+    })()`);
+    report.inspector_chinese_header = chineseHeader;
+    check("workspace-inspector-chinese-header-1280", chineseHeader.centerDelta <= 0.5
+      && chineseHeader.titleHeight <= chineseHeader.lineHeight + 0.5 && chineseHeader.buttonContained,
+      "The Chinese quality heading and details button remain on one row at 1280px with the sidebar expanded.");
+    await evaluate("localStorage.setItem('metorigin.ui.language', 'en'); window.dispatchEvent(new Event('metorigin-language-change')); true");
+    await waitFor("document.documentElement.lang === 'en'");
+    const englishInspector = await evaluate(`(() => {
+      const quality = document.querySelector('.quality-panel');
+      const cardRect = quality.getBoundingClientRect();
+      return { cardWidth: cardRect.width, buttons: [...quality.querySelectorAll('button')].map(button => {
+        const rect = button.getBoundingClientRect();
+        return { label: (button.getAttribute('aria-label') || button.textContent).trim(),
+          left: rect.left, right: rect.right, cardLeft: cardRect.left, cardRight: cardRect.right,
+          clientWidth: button.clientWidth, scrollWidth: button.scrollWidth };
+      }) };
+    })()`);
+    report.inspector_english_controls = englishInspector;
+    check("workspace-inspector-english-controls-1280", englishInspector.buttons.every(button => button.left >= button.cardLeft - 0.5
+      && button.right <= button.cardRight + 0.5 && button.scrollWidth <= button.clientWidth + 1),
+      "The narrower fourth-phase-width inspector keeps English action buttons within their card without clipped content at 1280px with the sidebar expanded.");
+    await capture("project-inspector-phase-1280-expanded-english");
+    await evaluate("localStorage.setItem('metorigin.ui.language', 'zh-CN'); window.dispatchEvent(new Event('metorigin-language-change')); true");
+    await waitFor("document.documentElement.lang === 'zh-CN'");
+    await setViewport(1440, 1024);
+    await waitFor("Boolean(document.querySelector('button[aria-label=\"折叠项目栏\"]'))");
+    await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))");
+
+    progress("validating silent background resource polling");
+    // The workspace shell can settle before the lazy Gaussian module mounts.
+    // Take the refresh baseline only after that initial preview mount commits.
+    await waitFor("Boolean(document.querySelector('.point-cloud-canvas'))", 10_000, "高斯预览容器未完成首次挂载。");
+    const pollBaseline = await measureWorkspace();
+    await evaluate(`(() => {
+      const state = window.__E2E__.state;
+      state.resourceCallStart = state.commandCalls.length;
+      state.workspaceNodes = ['.project-workspace-grid', '.timeline-panel', '.preview-panel', '.point-cloud-canvas'].map(selector => document.querySelector(selector));
+      window.__E2E__.deferWorkspaceResources();
+      return true;
+    })()`);
+    await waitFor(`(() => {
+      const calls = window.__E2E__.state.commandCalls.slice(window.__E2E__.state.resourceCallStart);
+      return calls.some(call => call.command === 'get_project_artifacts') && calls.some(call => call.command === 'list_checkpoints');
+    })()`, 12_000, "工作区后台轮询未开始。");
+    await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))");
+    const pendingLayout = await measureWorkspace();
+    const backgroundIdentity = () => evaluate(`(() => {
+      const selectors = ['.project-workspace-grid', '.timeline-panel', '.preview-panel', '.point-cloud-canvas'];
+      return selectors.every((selector, index) => window.__E2E__.state.workspaceNodes[index] === document.querySelector(selector))
+        && !document.querySelector('.project-resource-feedback')?.textContent.trim();
+    })()`);
+    const stablePreviewLayout = layout => ['timeline', 'viewport', 'preview'].every(selector =>
+      ['top', 'left', 'width', 'height'].every(property => Math.abs(layout[selector][property] - pollBaseline[selector][property]) <= 0.5));
+    const pendingIdentity = await backgroundIdentity();
+    report.workspace_background_poll = { baseline: pollBaseline, pending: pendingLayout, pendingIdentity };
+    check("workspace-background-poll-pending", pendingIdentity && stablePreviewLayout(pendingLayout),
+      "A delayed 10-second artifact/checkpoint poll preserves the workspace, phase navigator and preview nodes and rectangles without inserting a refresh message.");
+    await capture("project-background-poll-pending");
+    await evaluate(`(() => {
+      window.__E2E__.state.sparsePoints = 23456;
+      const checkpoint = { iteration: 500, relative_path: 'checkpoints/500.ply', size_bytes: 128, created_at: '2026-10-31T00:00:00Z', vertex_count: 4, brush_version: 'e2e', valid: true, current: false };
+      window.__E2E__.state.checkpoints = [checkpoint];
+      window.__E2E__.state.latestCheckpoint = checkpoint;
+      window.__E2E__.releaseWorkspaceResources();
+      return true;
+    })()`);
+    await waitFor("document.querySelector('.quality-metric-grid')?.textContent.includes('23,456') && [...document.querySelectorAll('button')].some(button => button.textContent.includes('恢复点（1）'))", 3_000, "后台结果未更新质量与恢复点数据。");
+    const completedPollLayout = await measureWorkspace();
+    check("workspace-background-poll-complete", await backgroundIdentity() && stablePreviewLayout(completedPollLayout),
+      "New quality/checkpoint data updates in place while the workspace, phase navigator and preview keep their DOM identities and geometry.");
+    report.workspace_background_poll.completed = completedPollLayout;
+    check("workspace-latest-checkpoint-card-hidden", await evaluate(`
+      Boolean(window.__E2E__.state.latestCheckpoint)
+      && !document.querySelector('.recent-checkpoint-card')
+      && !document.querySelector('.workspace-inspector-stack')?.textContent.includes('最近恢复点')
+      && [...document.querySelectorAll('.workspace-inspector-stack button')].some(button => button.textContent.includes('恢复点（1）'))
+    `), "Even with a published latest checkpoint, its redundant card stays hidden and the checkpoint-management button remains available.");
+
     await evaluate("document.querySelector('#phase-summary-media').click(); true");
     await waitFor("Boolean(document.querySelector('#phase-stage-list-media'))");
     await capture("project-stage-popover-open");
@@ -856,9 +1039,71 @@ async function run() {
     };
     check("SC-003-p95", report.timings.SC003.status === "PASS", `p95=${report.timings.SC003.p95_ms}ms; threshold=1000ms.`);
 
+    progress("validating shared notifications from independent page and app owners");
+    await clickButton("恢复点（1）");
+    await waitFor("Boolean(document.querySelector('#checkpoint-drawer'))");
+    await clickButton("删除");
+    await waitFor("Boolean(document.querySelector('#workspace-action-dialog'))");
+    await evaluate(`(() => {
+      [...document.querySelectorAll('#workspace-action-dialog button')].find(button => button.textContent.trim() === '删除').click();
+      return true;
+    })()`);
+    await waitFor("!document.querySelector('#workspace-action-dialog') && Boolean(document.querySelector('.feedback-notification--success'))");
+    await clickButton("关闭 Checkpoint 管理器");
+    await waitFor("!document.querySelector('#checkpoint-drawer')");
+    await evaluate(`window.__E2E__.state.locationError = '项目已创建；另一个项目仍在运行，因此本项目未启动，也未进入队列。'.repeat(2) + 'LongDiagnosticWithoutSpaces'.repeat(7); true`);
+    await clickButton("打开输出目录");
+    await waitFor("document.querySelector('.feedback-notification-stack .feedback-notification--error')?.textContent.includes(window.__E2E__.state.locationError)");
+    report.notification_geometry = [];
+    for (const width of [1440, 320]) {
+      await setViewport(width, width === 1440 ? 1024 : 768);
+      const geometry = await evaluate(`(() => {
+        const cards = [...document.querySelectorAll('.feedback-notification-stack .feedback-notification')];
+        const rect = node => {
+          const value = node.getBoundingClientRect();
+          return { top: value.top, right: value.right, bottom: value.bottom, left: value.left, width: value.width, height: value.height };
+        };
+        return {
+          width: innerWidth,
+          stacks: document.querySelectorAll('.feedback-notification-stack').length,
+          cards: cards.map(card => ({ rect: rect(card), dismiss: rect(card.querySelector('.feedback-notification__dismiss')), scrollWidth: card.scrollWidth, clientWidth: card.clientWidth })),
+          fullMessage: cards.some(card => card.textContent.includes(window.__E2E__.state.locationError)),
+        };
+      })()`);
+      report.notification_geometry.push(geometry);
+      const sorted = geometry.cards.toSorted((left, right) => left.rect.top - right.rect.top);
+      check(`shared-notification-layout-${width}`, geometry.stacks === 1 && geometry.cards.length === 2 && geometry.fullMessage
+        && sorted[0].rect.bottom + 7.5 <= sorted[1].rect.top
+        && geometry.cards.every(card => card.rect.left >= 0 && card.rect.right <= width + 0.5 && card.scrollWidth <= card.clientWidth + 1
+          && card.rect.height <= 64
+          && card.dismiss.left >= card.rect.left && card.dismiss.right <= card.rect.right && card.dismiss.top >= card.rect.top && card.dismiss.bottom <= card.rect.bottom),
+        "Success and error share a compact non-overlapping stack, show at most two lines and keep dismiss controls inside each card.");
+      await capture(`shared-notifications-${width}`);
+    }
+    await clickButton("关闭错误提示");
+    await waitFor("!document.querySelector('.feedback-notification-stack .feedback-notification--error')");
+    check("shared-notification-independent-dismiss", await evaluate("document.querySelector('.feedback-notification--success')?.textContent.includes('恢复点已删除')"),
+      "Dismissing the global error preserves the independently owned page receipt.");
+    await evaluate("document.querySelector('.feedback-notification--success .feedback-notification__dismiss').click(); window.__E2E__.state.locationError = null; true");
+    await waitFor("!document.querySelector('.feedback-notification-stack .feedback-notification')");
+    await setViewport(1440, 1024);
+
+    await evaluate("window.__E2E__.state.locationError = '项目位置不可用'; window.__E2E_TOAST_START__ = performance.now(); true");
+    await clickButton("打开输出目录");
+    await waitFor("Boolean(document.querySelector('.feedback-notification-stack .feedback-notification--error'))");
+    await sleep(4200);
+    check("error-notification-visible-before-timeout", await evaluate("Boolean(document.querySelector('.feedback-notification-stack .feedback-notification--error'))"),
+      "The error notification remains visible before its five-second timeout.");
+    await waitFor("!document.querySelector('.feedback-notification-stack .feedback-notification--error')", 2500);
+    const errorToastDuration = await evaluate("performance.now() - window.__E2E_TOAST_START__");
+    check("error-notification-five-second-timeout", errorToastDuration >= 4900 && errorToastDuration <= 6500,
+      `The app-owned error clears itself after five seconds (${rounded(errorToastDuration)}ms).`);
+    await evaluate("window.__E2E__.state.locationError = null; true");
+
     progress("collecting SC-009 pipeline-update timing samples");
     await evaluate("window.__E2E__.setStage('BrushTraining'); true");
-    await waitFor("document.querySelector('.workspace-inspector-stack .task-progress-card > strong')?.textContent?.includes('Brush 训练')", 3_000,
+    await evaluate("document.querySelector('#phase-summary-training').click(); true");
+    await waitFor("document.querySelector('#stage-button-BrushTraining')?.getAttribute('aria-current') === 'step'", 3_000,
       "Pipeline 状态传播预热失败。");
     const pipelineSamples = [];
     for (let index = 0; index < 20; index += 1) {
@@ -866,8 +1111,11 @@ async function run() {
       const label = stage === "ModelValidation" ? "模型校验" : "Brush 训练";
       await evaluate(`window.__E2E_TIMING_START__ = performance.now(); window.__E2E__.setStage(${JSON.stringify(stage)}); true`);
       await waitFor(`(() => {
-        const value = document.querySelector('.workspace-inspector-stack .task-progress-card > strong');
-        return value?.getClientRects().length > 0 && value.textContent.includes(${JSON.stringify(label)});
+        const value = document.querySelector('#stage-button-${stage}');
+        return value?.getClientRects().length > 0
+          && value.getAttribute('aria-current') === 'step'
+          && value.textContent.includes(${JSON.stringify(label)})
+          && value.querySelector('.stage-list-progress')?.textContent.includes('运行中');
       })()`, 3_000, `阶段 ${label} 未及时显示。`);
       pipelineSamples.push(await evaluate("performance.now() - window.__E2E_TIMING_START__"));
     }
@@ -879,6 +1127,54 @@ async function run() {
       status: percentile95(pipelineSamples) <= 2000 ? "PASS" : "FAIL",
     };
     check("SC-009-p95", report.timings.SC009.status === "PASS", `p95=${report.timings.SC009.p95_ms}ms; threshold=2000ms.`);
+    await evaluate("document.querySelector('#phase-summary-training').click(); true");
+
+    progress("validating the three inspector card surfaces in both themes");
+    await evaluate("window.__E2E__.setStage(null, 'completed'); true");
+    await waitFor("document.querySelectorAll('.workspace-inspector-card').length === 3 && document.querySelector('.task-status-card')?.textContent.includes('重建完成')", 3_000, "合成完成状态的三个信息卡未出现。");
+    report.inspector_card_surfaces = [];
+    for (const theme of ["light", "dark"]) {
+      await evaluate(`localStorage.setItem('metorigin.ui.theme', '${theme}'); window.dispatchEvent(new Event('metorigin-theme-change')); true`);
+      await waitFor(`document.documentElement.dataset.theme === '${theme}'`);
+      await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))");
+      const surfaces = await evaluate(`(() => {
+        const cards = [...document.querySelectorAll('.workspace-inspector-card')];
+        const rect = node => {
+          const value = node.getBoundingClientRect();
+          return { top: value.top, left: value.left, right: value.right, width: value.width };
+        };
+        const quality = document.querySelector('.quality-panel');
+        return { theme: document.documentElement.dataset.theme,
+          cards: cards.map(card => ({ background: getComputedStyle(card).backgroundColor, rect: rect(card) })),
+          qualityHeaderBackground: getComputedStyle(quality.querySelector('.panel-title')).backgroundColor,
+          qualityBackground: getComputedStyle(quality).backgroundColor,
+          phase: rect(document.querySelector('.timeline-phase:last-child')),
+          preview: rect(document.querySelector('.preview-panel')) };
+      })()`);
+      report.inspector_card_surfaces.push(surfaces);
+      check(`workspace-inspector-card-surfaces-${theme}`, surfaces.cards.length === 3
+        && surfaces.cards.every(card => card.background === surfaces.cards[0].background)
+        && surfaces.qualityHeaderBackground === 'rgba(0, 0, 0, 0)'
+        && Math.abs(surfaces.cards[0].rect.top - surfaces.preview.top) <= 0.5
+        && surfaces.cards.every(card => ['left', 'right', 'width'].every(property => Math.abs(card.rect[property] - surfaces.phase[property]) <= 0.5))
+        && Math.abs(surfaces.cards[0].rect.left - surfaces.preview.right - 12) <= 0.5,
+        "Completion, reconstruction-quality and resource cards use the same surface and fourth-phase width; the transparent quality header preserves that surface, with top alignment and a 12px preview gap.");
+      await capture(`project-inspector-cards-${theme}`);
+    }
+    await evaluate("localStorage.setItem('metorigin.ui.theme', 'light'); window.dispatchEvent(new Event('metorigin-theme-change')); true");
+    await waitFor("document.documentElement.dataset.theme === 'light'");
+    await setViewport(1920, 1080);
+    await clickButton("折叠项目栏");
+    await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))");
+    const completedAlignment = await measureInspectorAlignment();
+    report.inspector_completed_alignment = completedAlignment;
+    check("workspace-inspector-phase-1920-collapsed-completed", completedAlignment.cards.length === 3 && inspectorMatchesPhase(completedAlignment),
+      "All three completed-project cards align with the fourth phase at 1920px with the sidebar collapsed.");
+    await capture("project-inspector-phase-1920-collapsed-completed");
+    await clickButton("展开项目栏");
+    await setViewport(1440, 1024);
+    await evaluate("localStorage.setItem('metorigin.ui.theme', 'light'); window.dispatchEvent(new Event('metorigin-theme-change')); window.__E2E__.setStage('BrushTraining'); true");
+    await waitFor("document.documentElement.dataset.theme === 'light' && !document.querySelector('.task-status-card')", 3_000, "无法恢复合成训练状态。");
 
     progress("collecting SC-010 thousand-event search timing samples");
     check("thousand-event-fixture", await evaluate("window.__E2E__.state.events.length === 1000"),
@@ -1060,6 +1356,55 @@ async function run() {
       await clickButton("自动化项目 A");
       await waitFor("document.querySelector('h1[aria-label=\"自动化项目 A\"]') && document.querySelector('.preview-panel')");
     }
+
+    progress("validating deletion of an unavailable project record");
+    await setViewport(1440, 1024, 1);
+    await clickButton("项目中心");
+    await waitFor("Boolean(document.querySelector('button[aria-label=\"失效项目 Café 🧪\"]'))");
+    const openMissingDeletion = async () => {
+      await evaluate(`document.querySelector('button[aria-label="失效项目 Café 🧪 项目操作"]').focus(); true`);
+      await dispatchKey("ArrowDown");
+      await waitFor("Boolean(document.querySelector('[role=menu]'))");
+      await evaluate(`(() => {
+        [...document.querySelectorAll('[role=menuitem]')].find(item => item.textContent.trim() === '永久删除项目').click();
+        return true;
+      })()`);
+      await waitFor("document.querySelector('#workspace-action-dialog')?.textContent.includes('确认删除项目“失效项目 Café 🧪”的记录吗？')");
+    };
+    const executionsBeforeCancel = await evaluate("window.__E2E__.state.commandCalls.filter(call => call.command === 'execute_workspace_action').length");
+    await openMissingDeletion();
+    check("missing-project-record-impact", await evaluate(`(() => {
+      const dialog = document.querySelector('#workspace-action-dialog');
+      return dialog.textContent.includes('确认删除项目“失效项目 Café 🧪”的记录吗？')
+        && !dialog.querySelector('.impact-columns')
+        && !dialog.querySelector('.impact-preview')
+        && [...dialog.querySelectorAll('button')].map(button => button.textContent.trim()).join(',') === '取消,删除'
+        && !dialog.textContent.includes('UI-UNKNOWN-COMMAND');
+    })()`), "An unavailable project uses a single record-only confirmation question and cancel/delete buttons.");
+    await capture("missing-project-record-deletion-impact");
+    await sleep(5200);
+    check("deletion-confirmation-does-not-expire", await evaluate("Boolean(document.querySelector('#workspace-action-dialog')) && window.__E2E__.state.removedProjectRecords.length === 0"),
+      "Deletion confirmation stays open beyond five seconds and never executes automatically.");
+    await clickButton("取消");
+    await waitFor("!document.querySelector('#workspace-action-dialog')");
+    check("missing-project-record-cancel", await evaluate(`Boolean(document.querySelector('button[aria-label="失效项目 Café 🧪"]'))
+      && window.__E2E__.state.removedProjectRecords.length === 0
+      && window.__E2E__.state.commandCalls.filter(call => call.command === 'execute_workspace_action').length === ${executionsBeforeCancel}`),
+      "Cancelling keeps the unavailable project record and sends no execution request.");
+    await openMissingDeletion();
+    await clickButton("删除");
+    await waitFor("!document.querySelector('#workspace-action-dialog') && !document.querySelector('button[aria-label=\"失效项目 Café 🧪\"]')");
+    check("missing-project-record-deleted", await evaluate(`
+      window.__E2E__.state.removedProjectRecords.join(',') === 'e2e-project-missing'
+      && window.__E2E__.state.projects.length === 2
+      && Boolean(document.querySelector('button[aria-label="自动化项目 A"]'))
+      && Boolean(document.querySelector('button[aria-label="自动化项目 B"]'))
+      && [...document.querySelectorAll('.feedback-notification--success')].some(card => card.textContent.trim() === '项目记录已移除')
+    `), "Confirming removes only the requested missing record, retains both other projects and reports that disk files were not deleted.");
+    await waitFor("!document.querySelector('.feedback-notification--success')", 6500);
+    check("success-notification-five-second-timeout", true, "The short project-record success notification disappears automatically.");
+    await clickButton("自动化项目 A");
+    await waitFor("Boolean(document.querySelector('.preview-panel'))");
 
     const axTree = await cdp.send("Accessibility.getFullAXTree");
     const unnamedInteractive = (axTree.nodes ?? []).filter((node) =>

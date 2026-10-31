@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PerspectiveCamera, Quaternion, Vector3 } from "three";
+import type { Object3D, PerspectiveCamera, Quaternion, Vector3 } from "three";
 import { GaussianSplatPreview } from "./GaussianSplatPreview";
 import type { GaussianCamera, GaussianPreviewSource, LivePreviewStatus } from "../../types";
 
@@ -9,8 +9,9 @@ const harness = vi.hoisted(() => ({
   meshInitialization: null as Promise<unknown> | null,
   meshSplatCount: 4,
   centers: [] as number[][],
-  meshes: [] as { bytes: ArrayBuffer; dispose: ReturnType<typeof vi.fn> }[],
+  meshes: [] as { bytes: ArrayBuffer; dispose: ReturnType<typeof vi.fn>; object: Object3D }[],
   cameras: [] as PerspectiveCamera[],
+  rendererCreate: vi.fn(),
   rendererDispose: vi.fn(),
   sparkDispose: vi.fn(),
   rendererConstructorError: null as Error | null,
@@ -29,7 +30,7 @@ vi.mock("three", async (original) => {
       constructor(...args: ConstructorParameters<typeof actual.PerspectiveCamera>) { super(...args); harness.cameras.push(this); }
     },
     WebGLRenderer: class {
-      constructor() { if (harness.rendererConstructorError) throw harness.rendererConstructorError; }
+      constructor() { harness.rendererCreate(); if (harness.rendererConstructorError) throw harness.rendererConstructorError; }
       domElement = document.createElement("canvas");
       setPixelRatio() {} setClearColor() {} setSize() {} setAnimationLoop() {} render() {}
       dispose = harness.rendererDispose;
@@ -48,7 +49,7 @@ vi.mock("@sparkjsdev/spark", async () => {
       numSplats = harness.meshSplatCount;
       initialized = harness.meshInitialization ?? Promise.resolve(this);
       dispose = vi.fn();
-      constructor(options: { fileBytes: ArrayBuffer }) { super(); harness.meshes.push({ bytes: options.fileBytes, dispose: this.dispose }); }
+      constructor(options: { fileBytes: ArrayBuffer }) { super(); harness.meshes.push({ bytes: options.fileBytes, dispose: this.dispose, object: this }); }
       forEachSplat(callback: (index: number, center: Vector3, scales: Vector3, rotation: Quaternion, opacity: number) => void) {
         harness.centers.forEach((center, index) => callback(index, new THREE.Vector3(...center), new THREE.Vector3(1, 1, 1), new THREE.Quaternion(), 1));
       }
@@ -93,7 +94,8 @@ describe("Gaussian preview model lifecycle", () => {
 
     harness.policy.mockResolvedValue({ action: "release", reason: "critical_memory_pressure", memory_pressure: "critical", poll_interval_ms: 500, max_snapshot_bytes: 0 });
     const notice = await screen.findByText("内存不足 · 预览已释放", {}, { timeout: 2000 });
-    expect(notice).toHaveClass("gaussian-preview-notice");
+    expect(notice.closest('[role="status"]')).toHaveClass("gaussian-preview-notice");
+    expect(notice.closest('[role="status"]')).toHaveAttribute("data-feedback-variant", "warning");
     expect(harness.meshes[0].dispose).toHaveBeenCalledOnce();
     expect(harness.poll).not.toHaveBeenCalled();
     view.unmount();
@@ -245,6 +247,66 @@ describe("Gaussian preview model lifecycle", () => {
     expect(harness.meshes).toHaveLength(1);
     expect(harness.meshes[0].dispose).not.toHaveBeenCalled();
     expect(screen.getByText("5 step")).toBeInTheDocument();
+    view.unmount();
+  });
+
+  it("keeps the live session, acknowledged revision and canvas when checkpoint paths change during a pending poll", async () => {
+    let finishPoll!: (value: LivePreviewStatus) => void;
+    harness.poll.mockImplementation(async (_projectId, _projectPath, mode, revision) => {
+      if (mode === "off") return { ...status(), frame: null };
+      if (revision === 0) return status();
+      if (revision === 1) return new Promise<LivePreviewStatus>((resolve) => { finishPoll = resolve; });
+      return { ...status(second, 2), frame: null };
+    });
+    const view = render(<GaussianSplatPreview {...props} relativePath="checkpoints/500.ply" />);
+    await screen.findByText("5 step");
+    const canvas = view.container.querySelector("canvas");
+    const camera = harness.cameras[0];
+    camera.position.set(8, 9, 10);
+    const installed = harness.meshes[0];
+    const scene = installed.object.parent;
+    await waitFor(() => expect(finishPoll).toBeTypeOf("function"));
+
+    view.rerender(<GaussianSplatPreview {...props} relativePath="checkpoints/1000.ply" />);
+    view.rerender(<GaussianSplatPreview {...props} relativePath="checkpoints/1500.ply" />);
+    expect(harness.poll.mock.calls.some((call) => call[2] === "off")).toBe(false);
+    expect(harness.poll.mock.calls.filter((call) => call[2] === "live")).toHaveLength(2);
+    expect(view.container.querySelector("canvas")).toBe(canvas);
+    expect(harness.rendererCreate).toHaveBeenCalledOnce();
+    expect(harness.read).toHaveBeenCalledOnce();
+    expect(harness.get).not.toHaveBeenCalled();
+    expect(installed.object.parent).toBe(scene);
+    expect(installed.dispose).not.toHaveBeenCalled();
+
+    await act(async () => finishPoll(status(second, 2)));
+    await screen.findByText("10 step");
+    await waitFor(() => expect(harness.poll).toHaveBeenCalledWith("project", "D:/project", "live", 2, "session"));
+    expect(view.container.querySelector("canvas")).toBe(canvas);
+    expect(harness.rendererCreate).toHaveBeenCalledOnce();
+    expect(camera.position.toArray()).toEqual([8, 9, 10]);
+    expect(installed.dispose).toHaveBeenCalledOnce();
+    expect(harness.meshes[1].object.parent).toBe(scene);
+    expect(harness.rendererDispose).not.toHaveBeenCalled();
+    expect(harness.poll.mock.calls.some((call) => call[2] === "off")).toBe(false);
+    view.unmount();
+    expect(harness.poll).toHaveBeenLastCalledWith("project", "D:/project", "off", 2, "session");
+  });
+
+  it("loads an explicitly selected static checkpoint after its path changes without replacing the canvas", async () => {
+    const firstPath = "checkpoints/500.ply", secondPath = "checkpoints/1000.ply";
+    harness.get.mockResolvedValueOnce({ ...first, relative_path: firstPath })
+      .mockResolvedValue({ ...second, relative_path: secondPath });
+    const view = render(<GaussianSplatPreview {...props} live={false} running={false} relativePath={firstPath} />);
+    await screen.findByText("5 step");
+    const canvas = view.container.querySelector("canvas");
+    view.rerender(<GaussianSplatPreview {...props} live={false} running={false} relativePath={secondPath} />);
+    await screen.findByText("10 step");
+    expect(harness.get).toHaveBeenCalledWith("project", "D:/project", firstPath);
+    expect(harness.get).toHaveBeenCalledWith("project", "D:/project", secondPath);
+    expect(harness.meshes[0].dispose).toHaveBeenCalledOnce();
+    expect(view.container.querySelector("canvas")).toBe(canvas);
+    expect(harness.rendererCreate).toHaveBeenCalledOnce();
+    expect(harness.poll).not.toHaveBeenCalled();
     view.unmount();
   });
 

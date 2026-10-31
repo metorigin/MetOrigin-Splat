@@ -2,7 +2,6 @@ import {
   Cube,
   SpinnerGap
 } from "@/components/primitives/icons";
-import { Button } from "@/components/ui/button";
 import { GAUSSIAN_STAGES, TRAINING_PREVIEW_STAGES } from "@/components/workspace/workspacePresentation";
 import type { useProjectWorkspace } from "@/hooks/useProjectWorkspace";
 import { getLocale, t } from "@/i18n";
@@ -12,21 +11,13 @@ import { AsyncStatus } from "@/components";
 import {
   PointCloudPreview
 } from "@/components/workspace";
-import { getStageLabel } from "@/localization";
-import type {
-  PipelineStageId
-} from "@/types";
 
 const GaussianSplatPreview = lazy(() => import("./GaussianSplatPreview").then((module) => ({ default: module.GaussianSplatPreview })));
-type WorkspaceView = Pick<ReturnType<typeof useProjectWorkspace>, "previewMode" | "selectedStage" | "setSelectedStage" | "previewRelativePath" | "setPreviewRelativePath" | "setFollowStage" | "previewResource" | "workspaceComplete" | "latestCheckpointPath" | "followedStage" | "gaussianSourceMissing" | "loadSelectedPreview" | "currentPreviewRequest" | "selectedPreview" | "currentStageLabel" | "pipelineBusy">;
+type WorkspaceView = Pick<ReturnType<typeof useProjectWorkspace>, "previewMode" | "selectedStage" | "previewRelativePath" | "previewResource" | "latestCheckpointPath" | "gaussianSourceMissing" | "loadSelectedPreview" | "currentPreviewRequest" | "selectedPreview" | "pipelineBusy">;
 export function SceneViewportHost({ workspace, projectId, projectPath }: { workspace: WorkspaceView; projectId: string; projectPath: string }) {
-  const { previewMode, selectedStage, setSelectedStage, previewRelativePath, setPreviewRelativePath, setFollowStage, previewResource, workspaceComplete, latestCheckpointPath, followedStage, gaussianSourceMissing, loadSelectedPreview, currentPreviewRequest, selectedPreview, currentStageLabel, pipelineBusy } = workspace;
+  const { previewMode, selectedStage, previewRelativePath, previewResource, latestCheckpointPath, gaussianSourceMissing, loadSelectedPreview, currentPreviewRequest, selectedPreview, pipelineBusy } = workspace;
   return (
         <section className="preview-panel flex-1 rounded-lg border border-border" tabIndex={-1}>
-          {!workspaceComplete && <div className="panel-title">
-            <span className="panel-subtitle">{selectedStage ? getStageLabel(selectedStage) : currentStageLabel}</span>
-            <Button variant="ghost" type="button" size="sm" className="preview-reset-button" onClick={() => { setFollowStage(true); setPreviewRelativePath(null); setSelectedStage((followedStage ?? selectedStage) as PipelineStageId | null); }}>{t("跟随当前阶段")}</Button>
-          </div>}
           {selectedStage && GAUSSIAN_STAGES.includes(selectedStage) && !gaussianSourceMissing ? previewMode ? <div className="preview-empty"><Cube size={40} /><strong>{t("高斯场景预览")}</strong><p>{t("当前为界面设计示例。请在桌面应用中打开项目查看真实模型与训练预览。")}</p></div> : <Suspense fallback={<div className="preview-empty">{t("正在启动高斯渲染器…")}</div>}><GaussianSplatPreview
             key={JSON.stringify([projectId, projectPath])}
             projectId={projectId}

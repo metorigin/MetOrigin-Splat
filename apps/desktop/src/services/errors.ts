@@ -9,6 +9,7 @@ interface ErrorFallback {
   code: string;
   category: UiErrorCategory;
   title: string;
+  message?: string;
   impact: string;
   suggestion: string;
   retryable: boolean;
@@ -16,6 +17,22 @@ interface ErrorFallback {
 }
 
 const FALLBACKS: Record<string, ErrorFallback> = {
+  preview_workspace_action: {
+    code: "UI-ACTION-PREVIEW-FAILED",
+    category: "filesystem",
+    get title() { return t("无法读取操作影响"); },
+    get impact() { return t("尚未执行任何操作，项目数据保持不变。"); },
+    get suggestion() { return t("确认项目位置仍可访问，然后重新读取操作影响。"); },
+    retryable: false,
+  },
+  execute_workspace_action: {
+    code: "UI-ACTION-EXECUTE",
+    category: "unknown",
+    get title() { return t("无法执行项目操作"); },
+    get impact() { return t("本次操作未能完成，请确认项目当前状态。"); },
+    get suggestion() { return t("查看项目状态或活动记录后再试。"); },
+    retryable: false,
+  },
   list_recent_projects: {
     code: "UI-RECENT-PROJECTS-LOAD",
     category: "filesystem",
@@ -112,6 +129,16 @@ const FALLBACKS: Record<string, ErrorFallback> = {
   },
 };
 
+const MISSING_PROJECT_FALLBACK: ErrorFallback = {
+  code: "UI-PROJECT-PATH-UNAVAILABLE",
+  category: "filesystem",
+  get title() { return t("项目位置不可用"); },
+  get message() { return t("找不到项目描述文件 project.json。请确认项目未被移动或删除，并重新定位项目目录。"); },
+  get impact() { return t("尚未执行任何操作，项目数据保持不变。"); },
+  get suggestion() { return t("重新定位包含 project.json 的项目目录。"); },
+  retryable: false,
+};
+
 const DEFAULT_FALLBACK: ErrorFallback = {
   code: "UI-UNKNOWN-COMMAND",
   category: "unknown",
@@ -174,8 +201,12 @@ function safeSuggestions(value: unknown, fallback: string): string[] {
 }
 
 export function normalizeCommandError(error: unknown, command: string): UiError {
-  const fallback = FALLBACKS[command] ?? DEFAULT_FALLBACK;
   const payload = parsePayload(error);
+  const rawMessage = payload?.user_message ?? payload?.message ?? error;
+  const missingProject = (command === "preview_workspace_action" || command === "execute_workspace_action")
+    && typeof rawMessage === "string"
+    && /^No project\.json found at '[\s\S]+'\. The directory may not be a valid project\.$/u.test(rawMessage);
+  const fallback = missingProject ? MISSING_PROJECT_FALLBACK : FALLBACKS[command] ?? DEFAULT_FALLBACK;
   const retryable = payload?.retryable === true || (!payload && fallback.retryable);
   const categoryValue = safeString(payload?.category) as UiErrorCategory | null;
   const category = categoryValue && CATEGORIES.has(categoryValue)
@@ -192,14 +223,14 @@ export function normalizeCommandError(error: unknown, command: string): UiError 
   return {
     code: safeString(payload?.code) ?? fallback.code,
     category,
-    title: safeString(payload?.title) ?? fallback.title,
-    message:
+    title: missingProject ? fallback.title : safeString(payload?.title) ?? fallback.title,
+    message: missingProject ? fallback.message! :
       safeString(payload?.user_message) ??
       safeString(payload?.message) ??
       legacyMessage ??
       fallback.title,
     impact: safeString(payload?.impact) ?? fallback.impact,
-    suggestions: safeSuggestions(payload?.suggestions, fallback.suggestion),
+    suggestions: missingProject ? [fallback.suggestion] : safeSuggestions(payload?.suggestions, fallback.suggestion),
     retryable,
     actions,
     technicalDetails: safeString(payload?.technical_message),

@@ -164,12 +164,6 @@ export function ActivityWorkbench({
         </label>
       </div>
       <AsyncStatus resource={activity.resource} label={t("活动记录")} empty={events.length === 0} onRetry={() => void load("refresh")} />
-      {activity.resource.error && activity.resource.data !== null ? (
-        <div className="activity-load-warning" role="status">
-          <Warning size={15} weight="fill" />
-          {t("活动记录更新失败，正在显示最后一次成功获取的数据。")}
-        </div>
-      ) : null}
       <TabsContent value={tab} className="activity-workbench-body m-0 min-h-0 flex-1">
         <div className="activity-content" ref={listRef} onScroll={(event) => {
           const target = event.currentTarget;

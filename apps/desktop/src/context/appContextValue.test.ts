@@ -37,6 +37,21 @@ function projectPage(id: string, path = `D:\\projects\\${id}`): Page {
   return { type: "project-detail", projectId: id, projectPath: path };
 }
 
+describe("global error events", () => {
+  it("identifies each non-null error event while clearing or ordinary updates preserve its revision", () => {
+    const first = reducer(initialState, { type: "SET_ERROR", error: "项目位置不可用" });
+    const repeated = reducer(first, { type: "SET_ERROR", error: "项目位置不可用" });
+    expect(first.errorRevision).toBe(1);
+    expect(repeated.errorRevision).toBe(2);
+    const refreshed = reducer(repeated, { type: "SET_ENGINES", engines: [] });
+    expect(refreshed.errorRevision).toBe(repeated.errorRevision);
+    const dismissed = reducer(refreshed, { type: "SET_ERROR", error: null });
+    expect(dismissed.error).toBeNull();
+    expect(dismissed.errorRevision).toBe(repeated.errorRevision);
+    expect(reducer(dismissed, { type: "SET_ERROR", error: "项目位置不可用" }).errorRevision).toBe(3);
+  });
+});
+
 describe("recent project visits", () => {
   it("promotes a successfully opened sixth project while ordinary status updates preserve visit order", () => {
     const projects = Array.from({ length: 6 }, (_, index) => project(`project-${index + 1}`, `D:\\projects\\${index + 1}`));

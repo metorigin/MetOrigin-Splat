@@ -16,7 +16,7 @@ The language control remains available if engine settings cannot be loaded. Proj
 2. For images, select any image in the desired folder. The app imports **the entire containing folder, including subfolders**, rather than only that image. At least three readable images are required.
 3. Review the metadata, sampled thumbnails, warnings and blocking issues. Select **Analyze media** to continue to preflight.
 4. Choose **Fast**, **Balanced** or **High Quality**. Each preset shows its frame count, resolution, iterations and estimated disk usage. Changing the preset runs preflight again. Fix blocking issues and select **Check again** before continuing.
-5. Confirm the project name and destination, then choose **Create project only** or **Create and start reconstruction**. The app copies media into a `.splat-project` folder; original files remain unchanged.
+5. Confirm the project name and destination, then choose **Create project only** or **Create and start reconstruction**. The app creates an ordinary folder using the project name and copies media into it; original files remain unchanged. Existing `.splat-project` folders can still be opened.
 
 During copying, cancelling waits for the copy task to stop and cleans up the incomplete destination. Exiting a modified wizard asks whether to keep editing or discard the draft.
 

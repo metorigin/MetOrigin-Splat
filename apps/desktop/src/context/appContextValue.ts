@@ -37,6 +37,7 @@ export interface AppState {
   pipelineUpdatedAt: number | null;
   loading: boolean;
   error: string | null;
+  errorRevision: number;
 }
 
 export type Action =
@@ -91,6 +92,7 @@ export const initialState: AppState = {
   pipelineUpdatedAt: null,
   loading: false,
   error: null,
+  errorRevision: 0,
 };
 
 function unknownAvailability(
@@ -412,7 +414,12 @@ export function reducer(state: AppState, action: Action): AppState {
     case "SET_LOADING":
       return { ...state, loading: action.loading };
     case "SET_ERROR":
-      return { ...state, error: action.error, loading: false };
+      return {
+        ...state,
+        error: action.error,
+        errorRevision: action.error === null ? state.errorRevision : state.errorRevision + 1,
+        loading: false,
+      };
   }
 }
 

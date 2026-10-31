@@ -81,7 +81,9 @@ describe("ActivityWorkbench", () => {
     expect(await screen.findByText("事件 1")).toBeInTheDocument();
 
     fireEvent.change(screen.getByRole("textbox", { name: "搜索活动记录" }), { target: { value: "失败" } });
-    expect(await screen.findByText(/正在显示最后一次成功获取的数据/)).toBeInTheDocument();
+    expect(await screen.findByText(/活动记录可能已过期/)).toBeInTheDocument();
+    expect(document.querySelectorAll('.feedback-notification[data-feedback-variant="warning"]')).toHaveLength(1);
+    expect(screen.queryByText(/活动记录更新失败，正在显示最后一次成功获取的数据/)).not.toBeInTheDocument();
     expect(screen.getByText("事件 1")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "重试刷新" }));

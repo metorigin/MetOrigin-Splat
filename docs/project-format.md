@@ -2,14 +2,15 @@
 
 Explicit checkpoint restoration records a schema-1 intent in `training/checkpoint-restore.json` before changing any checkpoint. The intent binds the selected file hash, iteration, original training fingerprint and archive ID. Later checkpoints move to `runtime/checkpoint-restores/<id>/`. The previous `training/result.json`, `training/validation.json`, `output/scene.ply` and `output/manifest.json` move into corresponding subdirectories of the same archive. Removing these active cache files is necessary: resetting stage status alone would let export reuse the old PLY after a successful warm start. The selected checkpoint and original media remain intact; old published results remain recoverable in the archive. Restoration revokes the completed-run proof while retaining the fingerprint, so compatible training resumes geometry with a fresh optimizer. Opening or starting a project finishes an interrupted intent under the project lock. Unsupported metadata versions, ambiguous same-iteration files, changed hashes, symbolic links and a selection at or after the recorded target fail without authorizing warm start. See the [schema](../schemas/checkpoint-restore.schema.json) and [accepted/rejected examples](../schemas/examples/checkpoint-restore/).
 
-A MetOrigin Splat project is a **directory** whose name ends in `.splat-project`, not a single archive. It stores the project description, copied source material, intermediate results and final output together.
+A MetOrigin Splat project is a **directory** containing `project.json`. New projects use the chosen project name as the folder name, without an added extension. Existing `.splat-project` folders remain supported at their current paths. The directory stores the project description, copied source material, intermediate results and final output together.
 
 The format is currently Alpha. [project.schema.json](../schemas/project.schema.json), [domain types](../crates/splat-domain/src/project.rs) and [project persistence](../crates/splat-project/src/) define the implemented format. Do not infer persisted field names from frontend labels or from the separate preset-file format.
 
 ## Directory layout
 
 ```text
-example.splat-project/
+example/
+├── .gitignore                # Keeps local project data out of surrounding Git repositories
 ├── project.json
 ├── source/                   # Copied source video or images
 ├── frames/
@@ -89,4 +90,4 @@ The final model is exported to `output/scene.ply`. The Gaussian viewer reads ful
 
 SuperSplat saves the visible edited model directly to `output/scene.ply`, replacing its previous contents. Saving validates and syncs a temporary `.scene-<UUID>.tmp.ply` in the same output directory before renaming it over the model. Failed validation or replacement leaves the current model intact. Each successful save updates the editing session revision so subsequent saves can replace the same file. No history versions are generated or listed. Existing legacy `output/edited/` files are left on disk and ignored. The project schema, training checkpoints and training quality reports are unchanged; the displayed Gaussian count is read from the current PLY. PLY stores Gaussian geometry and appearance; save an `.ssproj` through SuperSplat when camera animation or other editor settings are needed.
 
-Project directories, media, generated PLY files and raw logs are local data and should not be committed. The repository ignores `.splat-project` directories; schema fixtures and intentionally licensed small test inputs are maintained separately.
+Project directories, media, generated PLY files and raw logs are local data and should not be committed. New projects include a local `.gitignore` that ignores their contents; the repository also retains its legacy `.splat-project` ignore rules. Schema fixtures and intentionally licensed small test inputs are maintained separately.

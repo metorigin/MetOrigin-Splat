@@ -3,6 +3,7 @@ use splat_domain::error::{AppError, AppResult, ErrorCategory};
 use splat_domain::pipeline::{PipelineStageId, StageState, StageStatus};
 use splat_domain::progress::TaskProgress;
 use splat_engine_brush::ExportManager;
+use std::path::Path;
 use tokio::sync::broadcast;
 
 use crate::stage::{PipelineStage, StageContext};
@@ -24,6 +25,24 @@ impl PreviewGenerationStage {
     pub fn new() -> Self {
         Self
     }
+}
+
+fn project_display_name(project_dir: &Path) -> String {
+    let saved_name = std::fs::read(project_dir.join("project.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|project| project["name"].as_str().map(str::to_owned))
+        .filter(|name| !name.trim().is_empty());
+    saved_name.unwrap_or_else(|| {
+        let directory_name = project_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("project");
+        directory_name
+            .strip_suffix(".splat-project")
+            .unwrap_or(directory_name)
+            .to_owned()
+    })
 }
 
 #[async_trait::async_trait]
@@ -96,12 +115,7 @@ impl PipelineStage for PreviewGenerationStage {
                 .with_technical(error.to_string())
             })?,
         )?;
-        let project_name = ctx
-            .project_dir
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("project")
-            .trim_end_matches(".splat-project");
+        let project_name = project_display_name(&ctx.project_dir);
 
         let manifest = serde_json::json!({
             "schema_version": 1,
@@ -162,7 +176,6 @@ impl PipelineStage for PreviewGenerationStage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     #[tokio::test]
     async fn test_preview_no_ply() {
@@ -210,6 +223,63 @@ mod tests {
         assert_eq!(content["previews"][0]["path"], "scene.ply");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_preview_manifest_preserves_project_display_name() {
+        let root = tempfile::tempdir().unwrap();
+        let cases = [
+            (
+                "scene.v2",
+                Some(serde_json::json!({"name": "庭院原名.v4"})),
+                "庭院原名.v4",
+            ),
+            (
+                "scene.v2.splat-project",
+                Some(serde_json::json!({"name": "旧工程原名.v4"})),
+                "旧工程原名.v4",
+            ),
+            ("街景.v2", None, "街景.v2"),
+            ("街景.v2.splat-project", None, "街景.v2"),
+            (
+                "空名.v2",
+                Some(serde_json::json!({"name": "  "})),
+                "空名.v2",
+            ),
+        ];
+
+        for (directory_name, project, expected_name) in cases {
+            let directory = root.path().join(directory_name);
+            std::fs::create_dir_all(directory.join("output")).unwrap();
+            std::fs::create_dir_all(directory.join("training")).unwrap();
+            std::fs::write(
+                directory.join("output/scene.ply"),
+                include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../test-fixtures/gaussian/minimal-sh0-ascii.ply"
+                )),
+            )
+            .unwrap();
+            std::fs::write(directory.join("training/result.json"), b"{}").unwrap();
+            if let Some(project) = project {
+                std::fs::write(
+                    directory.join("project.json"),
+                    serde_json::to_vec(&project).unwrap(),
+                )
+                .unwrap();
+            }
+
+            let context = StageContext::new(PipelineStageId::PreviewGeneration, &directory, None);
+            PreviewGenerationStage::new()
+                .execute(&context, broadcast::channel(8).0)
+                .await
+                .unwrap();
+            let manifest: serde_json::Value = serde_json::from_slice(
+                &std::fs::read(directory.join("output/manifest.json")).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(manifest["project"], expected_name, "{directory_name}");
+        }
     }
 
     #[tokio::test]

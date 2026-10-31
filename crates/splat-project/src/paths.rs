@@ -1,6 +1,7 @@
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
-/// Standard subdirectory names within a `.splat-project` directory.
+/// Standard subdirectory names within a project directory.
 pub const DIR_SOURCE: &str = "source";
 pub const DIR_FRAMES: &str = "frames";
 pub const DIR_PROCESSED: &str = "processed";
@@ -12,6 +13,11 @@ pub const DIR_LOGS: &str = "logs";
 pub const FILE_PROJECT_JSON: &str = "project.json";
 pub const FILE_FRAMES_MANIFEST: &str = "frames.json";
 pub const FILE_OUTPUT_MANIFEST: &str = "manifest.json";
+
+/// New projects use the supplied folder name without an added extension.
+pub fn project_dir(root: &Path, name: &str) -> PathBuf {
+    root.join(name)
+}
 
 /// Return the `project.json` path for a project directory.
 pub fn project_json_path(project_dir: &Path) -> PathBuf {
@@ -81,6 +87,17 @@ pub fn create_project_directories(project_dir: &Path) -> std::io::Result<()> {
         logs_dir(project_dir),
     ] {
         std::fs::create_dir_all(dir)?;
+    }
+    // Ordinary folder names no longer match the repository's legacy suffix
+    // ignore rule. Keep newly created project data out of surrounding repos.
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(project_dir.join(".gitignore"))
+    {
+        Ok(mut file) => file.write_all(b"*\n")?,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error),
     }
     Ok(())
 }

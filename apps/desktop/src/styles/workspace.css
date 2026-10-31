@@ -1,11 +1,15 @@
 @layer components {
   /* The viewport and its sibling inspector keep stable hosts across panel changes. */
-  .project-workspace-grid { @apply flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-4 pt-3; }
+  .project-workspace-grid {
+    @apply flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-4 pt-3;
+    --workspace-phase-gap: calc(var(--spacing) * 4);
+    --workspace-phase-inset: calc(var(--spacing) * 1.5 + 1px);
+  }
   .project-resource-feedback { @apply grid shrink-0 gap-2; }
   .project-resource-feedback:empty { display: none; }
   .timeline-panel { @apply relative z-10 shrink-0; }
   .panel-heading-row { @apply sr-only; }
-  .pipeline-timeline { @apply grid grid-cols-4 items-start gap-4 rounded-lg border border-border/60 bg-card/50 p-1.5; }
+  .pipeline-timeline { @apply grid grid-cols-4 items-start rounded-lg border border-border/60 bg-card/50; gap: var(--workspace-phase-gap); padding: calc(var(--workspace-phase-inset) - 1px); }
   .timeline-phase { @apply relative min-w-0 rounded-lg border border-transparent bg-transparent; }
   .timeline-phase:not(:last-child)::after { @apply pointer-events-none absolute -right-3 top-1/2 h-px w-2 bg-border; content: ""; }
   .timeline-phase.is-preview-phase { @apply border-border/60 bg-accent/40; }
@@ -31,11 +35,11 @@
   .stage-dot.status-completed { background: var(--success); }
   .stage-dot.status-failed { @apply bg-destructive; }
   .stage-list-progress { @apply ml-auto text-xs font-normal text-muted-foreground tabular-nums; }
-  .stage-inline-error { @apply m-0 break-words px-2 pb-2 text-xs leading-relaxed text-destructive; }
-  .inspector-column { @apply flex min-h-0 flex-1; }
+  .inspector-column { @apply flex min-h-0 flex-1 gap-3; }
+  /* Match the fourth phase track, including its inset from the outer edge. */
+  .inspector-details-panel { flex: 0 0 calc((100% - var(--workspace-phase-inset) * 2 - var(--workspace-phase-gap) * 3) / 4); margin-inline-end: var(--workspace-phase-inset); }
   .preview-panel { @apply flex min-h-80 flex-col overflow-hidden bg-muted; }
   .panel-title { @apply flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-4 py-3 text-sm font-medium; }
-  .panel-subtitle { @apply text-xs font-normal text-muted-foreground; }
   .preview-empty { @apply flex min-h-72 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground; }
   .preview-empty strong { @apply font-medium text-foreground; }
   .preview-empty p, .preview-empty > span:not(.empty-scene-icon) { @apply max-w-sm text-xs leading-relaxed; }
@@ -43,8 +47,10 @@
   .frame-contact-sheet { @apply grid grid-cols-4 content-start gap-2 overflow-auto p-3; }
   .frame-contact-sheet img { @apply w-full rounded-sm object-contain; }
   .frame-contact-sheet > span { @apply col-span-full py-2 text-xs text-muted-foreground; }
-  .workspace-inspector-stack { @apply flex h-full min-h-0 flex-col gap-3 overflow-y-auto rounded-lg bg-card p-3; }
+  .workspace-inspector-stack { @apply flex h-full min-h-0 flex-col gap-3 overflow-y-auto rounded-lg bg-card pb-3; }
   .workspace-inspector-stack > * { @apply shrink-0; }
+  .workspace-inspector-card { @apply rounded-xl bg-muted/50; }
+  .quality-panel > .panel-title { @apply flex-wrap; background-color: transparent; }
   .task-status-heading { @apply flex items-start justify-between gap-2; }
   .task-status-heading h2, .task-status-heading h3 { @apply m-0 text-sm font-semibold; }
   .task-status-heading p { @apply mb-0 mt-1 text-xs text-muted-foreground; }
@@ -52,10 +58,6 @@
   .task-progress-card > strong { @apply text-xs font-medium; }
   .task-progress-card > b { @apply text-sm font-semibold text-primary tabular-nums; }
   .task-progress-card p { @apply col-span-full m-0 text-xs leading-relaxed text-muted-foreground; }
-  .task-error-card { @apply mt-4; }
-  .task-error-message { @apply rounded-md bg-destructive/10 p-3 text-xs leading-relaxed text-destructive; overflow-wrap: anywhere; }
-  .task-error-message p { @apply my-2 text-foreground; }
-  .task-error-actions { @apply mt-3 grid gap-2; }
   .quality-metric-grid { @apply grid px-4 py-2; }
   .quality-metric-grid > div { @apply flex flex-row-reverse items-center justify-between gap-2 border-b border-border py-3 last:border-0; }
   .quality-metric-grid strong { @apply text-sm font-medium tabular-nums; }
@@ -70,15 +72,10 @@
   .colmap-attempts ol { @apply m-0 list-decimal pl-4; }
   .colmap-attempts li { @apply grid gap-1 py-2; }
   .resource-meter { @apply mt-3 grid gap-2 text-xs text-muted-foreground tabular-nums; }
-  .recent-checkpoint-card { @apply grid gap-1 px-1 text-xs text-muted-foreground; }
-  .recent-checkpoint-card strong { @apply text-sm font-medium text-foreground tabular-nums; }
-  .recent-checkpoint-card small { @apply text-xs; }
   .workspace-background-note { @apply grid gap-2 px-1; }
-  .workspace-background-note p { @apply m-0 text-xs leading-relaxed text-muted-foreground; }
   .mobile-workspace-actions, .mobile-inspector-heading { display: none; }
   .workspace-loading, .workspace-empty-state { @apply flex min-h-72 flex-col items-center justify-center gap-3 p-6 text-sm text-muted-foreground; }
   .workspace-empty-state h2 { @apply text-lg font-semibold text-foreground; }
-  .pipeline-stale-warning { @apply mb-3 flex items-start gap-2 rounded-md border border-border bg-muted p-3 text-xs; }
 
   /* The independent 3D surface intentionally stays dark in both app themes. */
   .point-cloud-viewer { @apply flex min-h-64 flex-1 flex-col; background: var(--viewport-background); color: var(--viewport-foreground); }
@@ -97,12 +94,11 @@
   .gaussian-canvas-wrapper > .point-cloud-canvas { @apply absolute inset-0; }
   .gaussian-empty { @apply pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 p-8 text-center; }
   .gaussian-empty span { @apply max-w-md text-sm; color: var(--viewport-muted); }
-  .gaussian-error { @apply absolute left-3 right-3 top-3 flex items-center justify-between gap-3 rounded-md border p-3 text-sm; border-color: var(--warning); background: var(--warning-soft); color: var(--warning); }
-  .gaussian-error [data-slot="button"] { @apply shrink-0; }
+  .gaussian-error { @apply absolute left-3 right-3 top-3; }
   .gaussian-updating, .gaussian-updated { @apply pointer-events-none absolute bottom-3 rounded-sm px-2 py-1 text-xs; background: var(--card); color: var(--foreground); }
   .gaussian-updating { @apply left-3 flex items-center gap-2; }
   .gaussian-updated { @apply right-3; }
-  .gaussian-preview-notice { @apply pointer-events-none absolute left-3 right-3 top-3 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-xs text-warning; }
+  .gaussian-preview-notice { @apply pointer-events-none absolute left-3 right-3 top-3; }
 
   .checkpoint-drawer { @apply grid w-[560px] max-w-[calc(100vw-32px)] grid-rows-[auto_minmax(0,1fr)] p-0; height: min(640px, calc(100dvh - 48px)); }
   .checkpoint-drawer > header, .workspace-activity-drawer > header { @apply flex shrink-0 items-center justify-between gap-4 border-b border-border px-6 py-4; }
@@ -132,7 +128,6 @@
   .activity-event-row.severity-error > span:nth-child(2) { @apply text-destructive; }
   .activity-event-row.severity-warning > span:nth-child(2) { color: var(--warning); }
   .activity-empty-row { @apply flex flex-wrap items-center gap-2 p-6 text-xs text-muted-foreground; }
-  .activity-load-warning { @apply flex flex-wrap items-center gap-2 border-b border-border p-3 text-xs; }
   .event-detail { @apply min-w-0 overflow-auto border-l border-border p-4 text-sm; }
   .event-detail > strong { @apply block break-words font-medium; }
   .event-detail > span { @apply mt-2 block text-xs text-muted-foreground; }
@@ -156,13 +151,11 @@
   .impact-columns { @apply grid grid-cols-3 gap-4; }
   .impact-columns h3 { @apply mb-2 text-sm font-medium; }
   .impact-columns ul { @apply m-0 list-disc space-y-1 pl-4 text-xs text-muted-foreground; overflow-wrap: anywhere; }
-  .impact-warnings { @apply list-disc space-y-1 rounded-md bg-muted p-4 pl-8 text-xs; }
-  .impact-irreversible, .impact-refresh-message { @apply rounded-md bg-destructive/10 p-3 text-sm text-destructive; }
 
   @media (max-width: 1120px) {
     .project-workspace-grid { @apply px-4 pb-4; }
-    .inspector-details-panel, .workspace-resize-handle { display: none; }
-    .workspace-inspector-stack { display: none; }
+    .inspector-details-panel { display: none; }
+    .workspace-inspector-stack { @apply px-3; display: none; }
     .workspace-inspector-stack.is-mobile-open { @apply flex overflow-y-auto; }
     .mobile-workspace-actions { @apply flex flex-wrap gap-2; }
     .mobile-inspector-heading { @apply flex items-center justify-between gap-2 pb-2; }

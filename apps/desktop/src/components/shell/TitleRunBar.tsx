@@ -14,6 +14,7 @@ import { useId, useState } from "react";
 import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
+import { Notification } from "../feedback";
 import { Progress } from "@/components/ui/progress";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { DesktopMenu } from "./DesktopMenu";
@@ -161,8 +162,10 @@ export function TitleRunBar({
 
       {!compact ? progressDetails : null}
       {pipelineConflict && !isComplete && (
-        <p id={conflictDescriptionId} className={conflictAssertive && !compact ? "rounded-md bg-warning/10 p-3 text-xs text-warning" : "sr-only"} role={conflictAssertive ? "alert" : undefined}>
-          {t("当前有重建任务尚未结束，请先暂停或结束任务后再开始新的重建。")}</p>
+        conflictAssertive && !compact
+          ? <Notification id={conflictDescriptionId} variant="warning" role="alert" message={t("当前有重建任务尚未结束，请先暂停或结束任务后再开始新的重建。")} />
+          : <p id={conflictDescriptionId} className="sr-only" role={conflictAssertive ? "alert" : undefined}>
+            {t("当前有重建任务尚未结束，请先暂停或结束任务后再开始新的重建。")}</p>
       )}
     </header>
   );

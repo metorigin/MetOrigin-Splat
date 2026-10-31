@@ -9,7 +9,7 @@ import type {
 } from "../types";
 
 type AsyncResourceAction<T> =
-  | { type: "request"; requestKey: string; requestedAt: number }
+  | { type: "request"; requestKey: string; requestedAt: number; background?: boolean }
   | {
       type: "success";
       requestKey: string;
@@ -49,10 +49,12 @@ export function asyncResourceReducer<T>(
     case "request":
       return {
         ...state,
-        status: state.data === null ? "loading" : "refreshing",
+        // Background polling retains the current presentation, including any
+        // stale/partial warning, until it has a new result to publish.
+        status: state.data === null ? "loading" : action.background ? state.status : "refreshing",
         requestedAt: action.requestedAt,
         requestKey: action.requestKey,
-        error: null,
+        error: action.background && state.data !== null ? state.error : null,
       };
     case "success":
       if (state.requestKey !== action.requestKey) return state;
@@ -103,8 +105,9 @@ export function useAsyncResource<T>(initialData: T | null = null) {
       requestKey: string,
       loader: () => Promise<T | AsyncLoadResult<T>>,
       normalizeError: (error: unknown) => UiError,
+      options: { background?: boolean } = {},
     ): Promise<T> => {
-      dispatch({ type: "request", requestKey, requestedAt: Date.now() });
+      dispatch({ type: "request", requestKey, requestedAt: Date.now(), background: options.background });
       try {
         const raw = await loader();
         const result: AsyncLoadResult<T> = isLoadResult(raw)

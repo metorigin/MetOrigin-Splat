@@ -499,20 +499,24 @@ describe("ProjectDetailPage async workspace resources", () => {
     expect(screen.getByRole("dialog", { name: "质量评估结果" })).toBeVisible();
   });
 
-  it("keeps checkpoint loading visible and removes the successful empty placeholder without removing task monitoring", async () => {
+  it("keeps checkpoint feedback and project actions available without duplicate monitoring or preview headers", async () => {
     vi.mocked(desktopApi.getProjectArtifacts).mockResolvedValue(artifact());
     let finishCheckpoints!: (value: CheckpointSummary[]) => void;
     vi.mocked(desktopApi.listCheckpoints).mockReturnValue(new Promise((resolve) => { finishCheckpoints = resolve; }));
     renderProject();
 
     expect(await screen.findByText("正在加载恢复点…")).toBeVisible();
-    expect(screen.getByRole("region", { name: "任务监控" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "任务监控" })).not.toBeInTheDocument();
+    expect(document.querySelector(".preview-panel > .panel-title")).toBeNull();
+    expect(screen.queryByRole("button", { name: "跟随当前阶段" })).not.toBeInTheDocument();
     await act(async () => finishCheckpoints([]));
     expect(screen.queryByText("正在加载恢复点…")).not.toBeInTheDocument();
     expect(screen.queryByText("暂无恢复点")).not.toBeInTheDocument();
     expect(screen.queryByText("恢复点加载失败")).not.toBeInTheDocument();
     expect(document.querySelector(".project-resource-feedback")).toBeEmptyDOMElement();
-    expect(screen.getByRole("region", { name: "任务监控" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "任务监控" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看日志与活动" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开输出目录" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "恢复点（0）" })).toHaveLength(2);
   });
 
@@ -745,7 +749,8 @@ describe("ProjectDetailPage async workspace resources", () => {
     await act(async () => { (refresh as () => void)(); });
     await waitFor(() => expect(desktopApi.getSparsePreviewPack).toHaveBeenCalledTimes(2));
     const preview = within(document.querySelector(".preview-panel")!);
-    expect(preview.getByText("COLMAP 特征匹配")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /相机重建/ }));
+    expect(document.getElementById("stage-button-ColmapMatching")).toHaveAttribute("aria-pressed", "true");
     expect(preview.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -780,9 +785,9 @@ describe("ProjectDetailPage async workspace resources", () => {
     await waitFor(() => expect(desktopApi.getSparsePreviewPack).toHaveBeenCalledWith(firstPath));
     view.rerender(createElement(AppProvider, null,
       createElement(ProjectDetailPage, { key: nextProject.id, projectId: nextProject.id, projectPath: nextPath })));
-    await waitFor(() => expect(document.querySelector(".preview-panel")).toHaveTextContent("COLMAP 特征匹配"));
+    await waitFor(() => expect(desktopApi.getProjectArtifacts).toHaveBeenCalledWith(nextPath));
     const preview = within(document.querySelector(".preview-panel")!);
-    expect(desktopApi.getProjectArtifacts).toHaveBeenCalledWith(nextPath);
+    expect(await preview.findByText("预览尚未生成")).toBeInTheDocument();
     await act(async () => rejectPrevious(new Error("previous project's delayed error")));
     expect(desktopApi.getSparsePreviewPack).toHaveBeenCalledTimes(1);
     expect(preview.getByText("预览尚未生成")).toBeInTheDocument();
@@ -845,7 +850,17 @@ describe("ProjectDetailPage async workspace resources", () => {
   });
 
   it("preserves a manually selected training preview when the pipeline completes", async () => {
-    invokeMock.mockResolvedValue(runningTrainingProject);
+    invokeMock.mockResolvedValue({
+      ...runningTrainingProject,
+      current_stage: "ModelValidation",
+      pipeline_state: {
+        current_stage: "ModelValidation", overall_progress: 0.9,
+        stages: {
+          BrushTraining: stage("BrushTraining", "completed", 1),
+          ModelValidation: stage("ModelValidation", "running", 0.3),
+        },
+      },
+    });
     vi.mocked(desktopApi.getProjectArtifacts).mockResolvedValue(artifact());
     vi.mocked(desktopApi.listCheckpoints).mockResolvedValue([checkpoint(1500)]);
     renderTrainingTransition();
@@ -854,6 +869,7 @@ describe("ProjectDetailPage async workspace resources", () => {
     fireEvent.click(screen.getByRole("button", { name: /模型训练/ }));
     const training = screen.getByRole("button", { name: /Brush 训练/ });
     fireEvent.click(training);
+    await waitFor(() => expect(preview).toHaveAttribute("data-live", "true"));
     fireEvent.click(screen.getByRole("button", { name: "模拟训练结束快照" }));
     await waitFor(() => expect(training).toHaveAttribute("aria-pressed", "true"));
     expect(preview).toHaveAttribute("data-path", "checkpoints/1500.ply");
@@ -891,6 +907,66 @@ describe("ProjectDetailPage async workspace resources", () => {
     expect(screen.getByLabelText("模拟预览导航")).toHaveValue("training orbit");
     expect(previewLifecycle.mounted).toHaveBeenCalledTimes(1);
     expect(previewLifecycle.unmounted).not.toHaveBeenCalled();
+  });
+
+  it("keeps workspace layout nodes and preview navigation stable during the ten-second background refresh", async () => {
+    invokeMock.mockResolvedValue(runningTrainingProject);
+    let finishArtifacts!: (value: ArtifactSummary) => void;
+    let finishCheckpoints!: (value: CheckpointSummary[]) => void;
+    const pendingArtifacts = new Promise<ArtifactSummary>((resolve) => { finishArtifacts = resolve; });
+    const pendingCheckpoints = new Promise<CheckpointSummary[]>((resolve) => { finishCheckpoints = resolve; });
+    vi.mocked(desktopApi.getProjectArtifacts)
+      .mockResolvedValueOnce(reconstructionArtifacts(true))
+      .mockReturnValue(pendingArtifacts);
+    vi.mocked(desktopApi.listCheckpoints)
+      .mockResolvedValueOnce([checkpoint(500)])
+      .mockReturnValue(pendingCheckpoints);
+    const intervals = vi.spyOn(window, "setInterval");
+    const view = renderProject();
+    const preview = await screen.findByTestId("gaussian-preview");
+    await waitFor(() => expect(preview).toHaveAttribute("data-path", "checkpoints/500.ply"));
+    await screen.findByText("2,400");
+    const refresh = intervals.mock.calls.find(([, delay]) => delay === 10_000)?.[0];
+    intervals.mockRestore();
+    expect(typeof refresh).toBe("function");
+
+    const workspace = document.querySelector(".project-workspace-grid");
+    const timeline = document.querySelector(".timeline-panel");
+    const viewport = document.querySelector(".preview-panel");
+    const feedback = document.querySelector(".project-resource-feedback");
+    const navigation = screen.getByLabelText("模拟预览导航");
+    fireEvent.change(navigation, { target: { value: "inspecting training orbit" } });
+    const expectStableWorkspace = () => {
+      expect(document.querySelector(".project-workspace-grid")).toBe(workspace);
+      expect(document.querySelector(".timeline-panel")).toBe(timeline);
+      expect(document.querySelector(".preview-panel")).toBe(viewport);
+      expect(document.querySelector(".project-resource-feedback")).toBe(feedback);
+      expect(feedback).toBeEmptyDOMElement();
+      expect(screen.queryByText(/正在刷新项目产物|正在刷新恢复点/)).not.toBeInTheDocument();
+      expect(screen.getByTestId("gaussian-preview")).toBe(preview);
+      expect(screen.getByLabelText("模拟预览导航")).toBe(navigation);
+      expect(navigation).toHaveValue("inspecting training orbit");
+      expect(previewLifecycle.mounted).toHaveBeenCalledTimes(1);
+      expect(previewLifecycle.unmounted).not.toHaveBeenCalled();
+    };
+
+    await act(async () => { (refresh as () => void)(); });
+    expect(desktopApi.getProjectArtifacts).toHaveBeenCalledTimes(2);
+    expect(desktopApi.listCheckpoints).toHaveBeenCalledTimes(2);
+    expectStableWorkspace();
+
+    const updatedArtifacts = reconstructionArtifacts(true);
+    updatedArtifacts.sparse_points = 4800;
+    await act(async () => finishArtifacts(updatedArtifacts));
+    expect(screen.getByText("4,800")).toBeInTheDocument();
+    expectStableWorkspace();
+
+    await act(async () => finishCheckpoints([checkpoint(500), checkpoint(1000, true)]));
+    await waitFor(() => expect(preview).toHaveAttribute("data-path", "checkpoints/1000.ply"));
+    expect(screen.getAllByRole("button", { name: "恢复点（2）" })).toHaveLength(2);
+    expectStableWorkspace();
+    view.unmount();
+    expect(previewLifecycle.unmounted).toHaveBeenCalledOnce();
   });
 
   it("honors an authoritative null current stage instead of reviving the reopened project's legacy stage", async () => {
@@ -992,7 +1068,8 @@ describe("ProjectDetailPage async workspace resources", () => {
       const plyButton = screen.getByRole("button", { name: "打开 PLY" });
       expect(plyButton).toHaveTextContent("PLY 文件");
       expect(plyButton).toHaveAttribute("aria-disabled", "true");
-      fireEvent.click(screen.getByRole("button", { name: "跟随当前阶段" }));
+      fireEvent.click(screen.getByRole("button", { name: /训练重建/ }));
+      fireEvent.click(document.getElementById("stage-button-BrushTraining")!);
       await waitFor(() => expect(screen.getByTestId("gaussian-preview")).toHaveAttribute("data-path", "checkpoints/2500.ply"));
       expect(screen.getByTestId("gaussian-preview")).toHaveAttribute("data-live", "true");
       expect(document.querySelector('[aria-current="step"]')).not.toBeInTheDocument();
@@ -1043,6 +1120,28 @@ describe("ProjectDetailPage async workspace resources", () => {
     expect(desktopApi.executeWorkspaceAction).not.toHaveBeenCalled();
     expect(desktopApi.retryStage).not.toHaveBeenCalled();
     expect(desktopApi.startPipeline).not.toHaveBeenCalled();
+  });
+
+  it("resumes automatic preview following when the current stage is selected again", async () => {
+    invokeMock.mockResolvedValue(runningTrainingProject);
+    vi.mocked(desktopApi.getProjectArtifacts).mockResolvedValue(artifact());
+    vi.mocked(desktopApi.listCheckpoints).mockResolvedValue([checkpoint(500)]);
+    render(createElement(AppProvider, null,
+      createElement(ProjectDetailPage, { projectId: project.id, projectPath: "D:\\projects\\one" }),
+      createElement(ExportTransition)));
+    expect(await screen.findByTestId("gaussian-preview")).toHaveAttribute("data-live", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: /素材准备/ }));
+    fireEvent.click(document.getElementById("stage-button-MediaValidation")!);
+    await waitFor(() => expect(screen.queryByTestId("gaussian-preview")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /模型训练/ }));
+    fireEvent.click(document.getElementById("stage-button-BrushTraining")!);
+    expect(await screen.findByTestId("gaussian-preview")).toHaveAttribute("data-live", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "模拟导出开始快照" }));
+    await waitFor(() => expect(screen.getByTestId("gaussian-preview")).toHaveAttribute("data-path", "output/scene.ply"));
+    expect(screen.getByTestId("gaussian-preview")).toHaveAttribute("data-live", "false");
+    expect(screen.queryByRole("button", { name: "跟随当前阶段" })).not.toBeInTheDocument();
   });
 
   it("links phase disclosures and exposes semantic roving stage controls", async () => {
