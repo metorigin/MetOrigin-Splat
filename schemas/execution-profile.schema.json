@@ -539,7 +539,10 @@
           "brush": {
             "properties": {
               "cli_profile": {
-                "const": "legacy_0_3"
+                "enum": [
+                  "legacy_0_3",
+                  "metorigin_1"
+                ]
               },
               "backend": {
                 "type": "string",
@@ -555,13 +558,6 @@
             "properties": {
               "kind": {
                 "const": "dedicated"
-              }
-            }
-          },
-          "effective_training": {
-            "properties": {
-              "lod_levels": {
-                "type": "null"
               }
             }
           }
@@ -783,6 +779,146 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 18446744073709551615
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "platform": {
+            "const": "windows"
+          },
+          "brush": {
+            "properties": {
+              "cli_profile": {
+                "const": "metorigin_1"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "architecture": {
+            "const": "x86_64"
+          },
+          "colmap": {
+            "properties": {
+              "feature_backend": {
+                "const": "cuda"
+              },
+              "matching_backend": {
+                "const": "cuda"
+              },
+              "global_positioning_backend": {
+                "const": "cpu"
+              }
+            }
+          },
+          "brush": {
+            "properties": {
+              "cli_profile": {
+                "const": "metorigin_1"
+              },
+              "backend": {
+                "enum": [
+                  "dx12",
+                  "vulkan"
+                ]
+              },
+              "probe_result": {
+                "properties": {
+                  "kind": {
+                    "const": "compute_smoke"
+                  }
+                }
+              }
+            }
+          },
+          "memory": {
+            "required": [
+              "training_budget_bytes"
+            ],
+            "properties": {
+              "kind": {
+                "const": "dedicated"
+              },
+              "training_budget_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18446744073709551615
+              }
+            }
+          },
+          "effective_training": {
+            "required": [
+              "resolution",
+              "image_cache_budget_bytes",
+              "max_splats",
+              "lod_levels"
+            ],
+            "properties": {
+              "resolution": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295
+              },
+              "image_cache_budget_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18446744073709551615
+              },
+              "max_splats": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4294967295
+              },
+              "lod_levels": {
+                "const": 0
+              }
+            }
+          },
+          "engines": {
+            "properties": {
+              "brush": {
+                "required": [
+                  "source_commit"
+                ],
+                "properties": {
+                  "version": {
+                    "const": "1.0.0+metorigin-windows.1"
+                  },
+                  "source_commit": {
+                    "const": "1388f74c6fe0236f68ee4915564bf00e9d2e3747"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "brush": {
+            "properties": {
+              "cli_profile": {
+                "const": "legacy_0_3"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effective_training": {
+            "properties": {
+              "lod_levels": {
+                "type": "null"
               }
             }
           }

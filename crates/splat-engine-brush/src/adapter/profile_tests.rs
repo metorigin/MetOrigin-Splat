@@ -342,3 +342,44 @@ fn mac_live_requires_matching_protocol_feature_and_verified_profile() {
         "capable engines may run without live enabled"
     );
 }
+
+#[test]
+fn windows1_command_binds_the_exact_probe_backend_device_and_main_cli() {
+    let mut fixture = Fixture::new();
+    fixture.profile = ExecutionProfile::from_json(include_bytes!(
+        "../../../../schemas/examples/execution-profile/windows1-dx12.valid.json"
+    ))
+    .unwrap();
+    fixture.runtime.capabilities.target = "x86_64-pc-windows-msvc".into();
+    fixture.runtime.capabilities.identity.engine_version = "1.0.0+metorigin-windows.1".into();
+    fixture.runtime.capabilities.identity.build_id = "metorigin-windows.1".into();
+    fixture
+        .runtime
+        .capabilities
+        .supported_features
+        .push("backend_device_selection".into());
+    fixture
+        .runtime
+        .capabilities
+        .supported_features
+        .push("live_preview".into());
+    fixture.runtime.capabilities.live_protocol = LiveProtocol::PlyRequestAckV1;
+    fixture.runtime.probe.identity = fixture.runtime.capabilities.identity.clone();
+    fixture.runtime.probe.backend = Some(splat_domain::runtime::BrushBackend::Dx12);
+    fixture.runtime.probe.device_type = Some("DiscreteGpu".into());
+    fixture.runtime.probe.device_id = Some("dx12:000010de:00001234:46697874757265".into());
+    fixture.profile.brush.probe_result = fixture.runtime.probe.training_probe();
+    fixture.profile.engines.brush.binary_sha256 = fixture.runtime.binary_sha256.clone();
+    fixture.adapter.brush_version = "brush-cli 1.0.0+metorigin-windows.1".into();
+    let command = fixture.command(0).unwrap();
+    assert_eq!(argument(&command, "--graphics-backend"), "dx12");
+    assert_eq!(
+        argument(&command, "--graphics-device"),
+        "dx12:000010de:00001234:46697874757265"
+    );
+    assert!(command.args.iter().any(|arg| arg == "--total-train-iters"));
+    assert!(!command.args.iter().any(|arg| arg == "--total-steps"));
+    assert_eq!(command.program, fixture.adapter.brush_path());
+    fixture.runtime.capabilities.target = "aarch64-apple-darwin".into();
+    assert!(fixture.command(0).is_err());
+}

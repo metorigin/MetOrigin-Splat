@@ -1,0 +1,339 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "69a699044b498ef0f3748807571ed13b7fdbd042",
+  "scope": "Frozen macOS recipes, engine inputs and configuration. Shared Rust behavior is protected by tests, not these file hashes. Native Mac acceptance is separate.",
+  "files": [
+    {
+      "path": "apps/desktop/src-tauri/tauri.macos.conf.json",
+      "sha256": "72353719959d2225fbd57faa1e29742707fc4ae851382c5e7467d23fe59a6156"
+    },
+    {
+      "path": "integrations/brush-macos/LPIPS-AUDIT.md",
+      "sha256": "d284cb7624ff771ebec0c2bdb32baa6d6755c1e38278bfd2150b0843a1246d2c"
+    },
+    {
+      "path": "integrations/brush-macos/README.md",
+      "sha256": "6743cf61c7e8fe8c5c510359cfcd865bbb89f1695b694abb9a2c0fb247f030c8"
+    },
+    {
+      "path": "integrations/brush-macos/patches/0001-report-initialized-adapter.patch",
+      "sha256": "00f507d8d14290232f2ddc02d5cffed88f127044a0bb3bd9e19ea9055929aadb"
+    },
+    {
+      "path": "integrations/brush-macos/patches/metorigin-macos.2.patch",
+      "sha256": "0bd728c9f1048372791eb28923a7af5dd10d3ad1dd9b5cbf62ae5de57182cfc7"
+    },
+    {
+      "path": "integrations/brush-macos/patches/metorigin-macos.3.patch",
+      "sha256": "f2e0853ba495e492fa5ebb890ed8d2a7886ce54752740daacbc67aff3c228cc8"
+    },
+    {
+      "path": "integrations/brush-macos/patches/metorigin-macos.4.patch",
+      "sha256": "95e56aaa6b253fa21174d8ef002e95eba4a79f684d3b75a3b565f10141ccf631"
+    },
+    {
+      "path": "integrations/brush-macos/patches/metorigin-macos.5.patch",
+      "sha256": "1034676b02f2c42624368bb7183a315dc787037d8605cdbb7fde16c6e0b13249"
+    },
+    {
+      "path": "integrations/brush-macos/patches/metorigin-macos.6.patch",
+      "sha256": "1e342de3d80fc9ae3ac38873814b17b9bc6d8ce067159ad3eae02ef3148353d2"
+    },
+    {
+      "path": "packaging/macos-arm64/README.md",
+      "sha256": "53b117bbbcd3f6e16ee1658835f05fd9230cc28028c160c78ee5d400817a24b1"
+    },
+    {
+      "path": "packaging/macos-arm64/alpha-source-index.json",
+      "sha256": "6b6e36ceffd2303376461c4f83fae2fc50431df5d24e5bf397550eac31766b62"
+    },
+    {
+      "path": "packaging/macos-arm64/fixtures/README.md",
+      "sha256": "168860043121f28fde3dfce7f5d8a8fad65cecf787caafd165490d816eed4db7"
+    },
+    {
+      "path": "packaging/macos-arm64/fixtures/james-sample-40.json",
+      "sha256": "c7e12c77a27573a2ff769f977d6e8f7454feca6dd85fddcfbc75223460238b25"
+    },
+    {
+      "path": "packaging/macos-arm64/fixtures/mipnerf360-room-311.json",
+      "sha256": "36aace9c15841c019ebeab78d089641069086228a6dd30b5d0ec4208c19be298"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/README.md",
+      "sha256": "7ea359cb9dc62c5a01e5b3e341f1c7dc4253f04087b75305d9f77c0cfee059e3"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/dropbox__rust-alloc-no-stdlib/ae42d22078b98549e987d2f03d12df7b984fde47/LICENSE",
+      "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/mozilla__bedrock/9fa617356a7473a9bd48155c044f4f6efc0c6383/MPL-2.0.txt",
+      "sha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/open-i18n__data-unicode-ucd/2a2044479b3c4915ef4213adf1dfd6236dba24c8/data/ReadMe.txt",
+      "sha256": "7e9ff2ef4828f9119eea17ada0b35697106ed2885521bfa854b126cea910802e"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/AUTHORS",
+      "sha256": "2748c1a1fba7616917c61d455e8d715ab952671ead63f2026ad0124410596b09"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/open-i18n__rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/open-i18n__rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/AUTHORS",
+      "sha256": "2748c1a1fba7616917c61d455e8d715ab952671ead63f2026ad0124410596b09"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/open-i18n__rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/open-i18n__rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-MIT",
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/playcanvas__splat-transform/0cb47cd81023cca117c20ce59a55ba584ee89177/LICENSE",
+      "sha256": "42fa51ddd556be151a29f381fb97ee975825dcc454e805ea3ea9c079cca04d34"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/playcanvas__splat-transform/0cb47cd81023cca117c20ce59a55ba584ee89177/lib/BUILD.md",
+      "sha256": "e14142cc9eb47a05a427fc22e5fa8b8730946548428946b4dc7a2f9265da5586"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/playcanvas__splat-transform/0cb47cd81023cca117c20ce59a55ba584ee89177/lib/webp.c",
+      "sha256": "32c66c6de02eb30223d629987dfbe885e9f2039a663fe3f9eebd666c0b4d62f9"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/tauri-apps__tauri/6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a/LICENSE.spdx",
+      "sha256": "5e834fe9788c524210deda859c46a550ffa5aa0cba9ea0572f0d81120e97c008"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/tauri-apps__tauri/6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a/LICENSE_APACHE-2.0",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/tauri-apps__tauri/6f6ab1207bb3923c2721fbc67d2fdb1c8deb0c7a/LICENSE_MIT",
+      "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-originals/unicode-org__cldr/5dfac9269ed58eeaeddd6ca887bdc7eb43a481fd/unicode-license.txt",
+      "sha256": "6a6976a5da6ac21a6a001c685c057f4a6e619be11f5465371088ecd80c7fbe06"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-upstream-notices.json",
+      "sha256": "2dd8a3e163091c67e2f31d8e119a4c8c82c7c7db00dda9332632cc2dd0ce3d02"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/app-vendored-evidence.json",
+      "sha256": "8813908f94bcfd91aa693ffb7f4bfe856ef97b603920cbd75d48fc8d0cd42d49"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/m0-source-index.json",
+      "sha256": "2bfd206abe7e033cea85adc6d2ccf970659ac3e179077e21d0931eecce5e7a93"
+    },
+    {
+      "path": "packaging/macos-arm64/licenses/missing-notice-evidence.json",
+      "sha256": "2aa9b2c108e867cfe0aab9aadcb4dfce0db51bee2762d25ec501f839fe236481"
+    },
+    {
+      "path": "packaging/macos-arm64/release-status.schema.json",
+      "sha256": "2969b050fb9250606633d02858acf90d6f6e744ca2081a759cfb786c3f701fa7"
+    },
+    {
+      "path": "packaging/macos-arm64/runtime-prefix-fields.json",
+      "sha256": "070cc491770902f129fd8ed3aceceacda0b173ef0ace61e9bd1a19afc3304ecd"
+    },
+    {
+      "path": "packaging/macos-arm64/source-mirrors.json",
+      "sha256": "d571b708df93048f66453dbf7514a710fb0c49c260b7896e262b8c0184411c47"
+    },
+    {
+      "path": "scripts/macos/BRUSH-M0.md",
+      "sha256": "0e4d706cf682a7aa06aa40afc022b7e4c58c50979289f77b96db36b397d64469"
+    },
+    {
+      "path": "scripts/macos/COLMAP-M0.md",
+      "sha256": "1dd9d2fa31ebd02a61dfd5aa7ebbb643c2f44a6303bb9a9842755814e9397abc"
+    },
+    {
+      "path": "scripts/macos/README.md",
+      "sha256": "fa7f9f508a2ab26b95da52b0c48612439bdba64a4c9e88432f40248600f9b6c5"
+    },
+    {
+      "path": "scripts/macos/build-brush.sh",
+      "sha256": "0cd7704ca77bd5e1db084051492224c05854083bf7da876ac98089b188dbee53"
+    },
+    {
+      "path": "scripts/macos/build-colmap.sh",
+      "sha256": "83735ac0887fdb1053dbc461aa41d4fc77c416472e2e9231c2e129c963a772a3"
+    },
+    {
+      "path": "scripts/macos/build-ffmpeg.sh",
+      "sha256": "19653cf7f3a26a1117c0a095b112083fa1473c4f64243dc923c3f7eb3c9aaf99"
+    },
+    {
+      "path": "scripts/macos/build-macos-app.sh",
+      "sha256": "f2a9dd18b4baddf2f98ccfa4568ba53c16a44cfbb9540c60fdff343bdf417067"
+    },
+    {
+      "path": "scripts/macos/check-brush-contract.py",
+      "sha256": "3acc518ee85ab2b8621d2e5d7e3402becd020b4f622c284e8202f7c2acfdca9c"
+    },
+    {
+      "path": "scripts/macos/check-brush-distribution.py",
+      "sha256": "0fdc78d52dc8cb37f668179b52974919100d145fa74d7867c4b82b70e2cc319a"
+    },
+    {
+      "path": "scripts/macos/check-brush-live.py",
+      "sha256": "6a0b83d8e9b38fb35d3c481c102979347b262942751adc11269851806d2f60c6"
+    },
+    {
+      "path": "scripts/macos/collect-app-licenses.mjs",
+      "sha256": "153ad40a864e90d76a4f0cdc808cd07d54f7a3f13e02565ff72900287b1fa734"
+    },
+    {
+      "path": "scripts/macos/collect-environment.py",
+      "sha256": "30feba27a5047b81d9e32f1eb63e60b8d5ddaef8bcabb7acfdb778cc37a6040f"
+    },
+    {
+      "path": "scripts/macos/colmap-m0-deps.explicit.txt",
+      "sha256": "ff7beb2ea02deaeaea4a2f750f4ba658ac0209a1bcdf72d844725643b6890c68"
+    },
+    {
+      "path": "scripts/macos/pack-brush-notices.py",
+      "sha256": "5dbed00dcfef66c9749cf3b70fd78ff394347abdfae844d060fce4d9bd6ae02a"
+    },
+    {
+      "path": "scripts/macos/pack-engines.py",
+      "sha256": "45f7c24cca33ec340a3782459a7bf49320030702146a563bf5bb53d194326d44"
+    },
+    {
+      "path": "scripts/macos/pack_brush_licenses.py",
+      "sha256": "161e347d7237abefe49c8af402e9b14facc5d27a1979ea072e887cf085d2e542"
+    },
+    {
+      "path": "scripts/macos/pack_licenses.py",
+      "sha256": "609b78ea3272c4ee99a8ab5a864c1e9af94f5bc4a6007a47e9bfcde7bf089df2"
+    },
+    {
+      "path": "scripts/macos/pack_macos.py",
+      "sha256": "ff2b20c2acc2f46b8f4d688e79175d18d9f4735a2754502c3451afa9c1a1bf2a"
+    },
+    {
+      "path": "scripts/macos/pack_sources.py",
+      "sha256": "ca77b84c13dca4a9fcff21ac3bb20d8dcb3858b0d7110c9705e8bdab5f8d71ea"
+    },
+    {
+      "path": "scripts/macos/pack_spdx.py",
+      "sha256": "f8dcb8bd31271336e53e7aa6ffecf2e6782b91fa689e3e45527274b212690abb"
+    },
+    {
+      "path": "scripts/macos/prepare-brush-source.py",
+      "sha256": "c5b25fffdb7725cc149e58001ee635cc9765f2fca6f5523bf4ed3e3a7af97e00"
+    },
+    {
+      "path": "scripts/macos/prepare-smoke-fixture.py",
+      "sha256": "f18bdaf96129c0dfaed102e0b6c760cda87579f5c666b4805b9a46794478da40"
+    },
+    {
+      "path": "scripts/macos/sample-native-resources.py",
+      "sha256": "5c44e202b3dfe00189e82f76e4236890baeb31b679fc9b72d4c2a2d390c975e2"
+    },
+    {
+      "path": "scripts/macos/smoke-engines.py",
+      "sha256": "c73acf18f19d09d957e0b5931fd8451718135d6f8b88e581bc68f1a93ec41fef"
+    },
+    {
+      "path": "scripts/macos/smoke-ffmpeg.py",
+      "sha256": "6a1d06ce7ce52a9d435b324ca6ce565eeb1c90fa2c64a87eaa9452fc855bf943"
+    },
+    {
+      "path": "scripts/macos/test_brush_distribution.py",
+      "sha256": "ce946610613b7883e8bad0f7d3df36c18c04cd189f906d7039c039e54626496d"
+    },
+    {
+      "path": "scripts/macos/test_build_brush.py",
+      "sha256": "0983b584a24b3efe4dc4215bed215e12653a41562e154644896ecdf3d9d7cdf4"
+    },
+    {
+      "path": "scripts/macos/test_build_colmap.py",
+      "sha256": "eceed98aa92afadca91f138f00878cdeb62529f9f4c5a3c028cb9b7d5b363c75"
+    },
+    {
+      "path": "scripts/macos/test_build_ffmpeg.py",
+      "sha256": "dcffe1ace82ae472b2213597d5a5a3abe8cdfd0a67b8abbbda70508e67f83beb"
+    },
+    {
+      "path": "scripts/macos/test_environment.py",
+      "sha256": "e733faf879f686f928f9eb1df54729c95e8d1f421a67da8ece2239ee51109185"
+    },
+    {
+      "path": "scripts/macos/test_pack.py",
+      "sha256": "7e9c9d43765a4e71e8bd40697bd774576bac20df964a0a5ab22fcd8ba5f2993c"
+    },
+    {
+      "path": "scripts/macos/test_prepare_brush_source.py",
+      "sha256": "5e307f3641e4a949419f25fc50bdbf3c3b99ffec4684abd94fe851ff4f0ce32d"
+    },
+    {
+      "path": "scripts/macos/test_verify_app.py",
+      "sha256": "c60af775d90d3a3bef5ec2799ca6c9f2ff3027101227e85bc725fe5b4038d96d"
+    },
+    {
+      "path": "scripts/macos/test_webp_evidence.py",
+      "sha256": "dd408eee9165bc8f87b1db35663e05f6fc3755d62acdf19c2eb3515457e475b9"
+    },
+    {
+      "path": "scripts/macos/test_webp_evidence_3102.py",
+      "sha256": "5e8d98cfc87e2f71f082d344ba70436c893c2caf9681c37cf092c80db3a41db8"
+    },
+    {
+      "path": "scripts/macos/tests/__init__.py",
+      "sha256": "e8b4fe681be10154e59e8cc2e9e0beb7e07a7d45959832820e106d5af7e77e55"
+    },
+    {
+      "path": "scripts/macos/tests/test_smoke_engines.py",
+      "sha256": "b92d98bec08911fd01929141fb90ea58767b6d5dbf497493aaf93cae67f0a4ba"
+    },
+    {
+      "path": "scripts/macos/tests/test_smoke_fixture.py",
+      "sha256": "bbf48bcd9f54fcaa3ef38b4e4531beef5ba3599f268aede44724fa62b2568eea"
+    },
+    {
+      "path": "scripts/macos/verify-app.py",
+      "sha256": "a59902e29db848ff6677f9af084a1e23c88364f450a839f3fb3ebd6f41227b00"
+    },
+    {
+      "path": "scripts/macos/verify-pack.py",
+      "sha256": "3b43ce0eea35144fd8bd3b4c61636dedb1065be36306c24d08083a72d92c2d2a"
+    },
+    {
+      "path": "scripts/macos/verify-supersplat-inputs.mjs",
+      "sha256": "b2cccc3e735ec6f14aea04bcf0dd495d3d83ac5a09365c7720ecf60b31e908ba"
+    },
+    {
+      "path": "scripts/macos/verify_colmap_help.py",
+      "sha256": "5cd90692c2f7834be062e8f3b8488bfd2d2b1405b6d7e77558be7101051698d5"
+    },
+    {
+      "path": "scripts/macos/verify_ffmpeg_build.py",
+      "sha256": "7da0d9dd695760eea8d9898816e46170ff04173abd36b9d3cf1f2be27bf19443"
+    },
+    {
+      "path": "scripts/macos/webp_evidence.py",
+      "sha256": "31ca7482e28ca489cd56812ac22c8c10522fa44be9e5f0b145a0cc7521de960d"
+    },
+    {
+      "path": "scripts/macos/webp_evidence_3102.py",
+      "sha256": "c5d3a2a355eac2a668d9e659ca91aea39ce9d1b8b8e0cd131ae875654d20e1ec"
+    }
+  ]
+}

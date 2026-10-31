@@ -187,10 +187,18 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
     let currentResourceAction: PreviewResourcePolicy["action"] = "allow";
     let resourceEpoch = 0;
     let needsReload = false;
+    let healthyResourceSamples = 0;
     const acceptPolicy = (policy: PreviewResourcePolicy | undefined, allowRecovery: boolean) => {
       if (!policy) return;
+      if (policy.action !== "allow") healthyResourceSamples = 0;
       const severity = { allow: 0, pause: 1, release: 2 };
       if (!allowRecovery && severity[policy.action] < severity[currentResourceAction]) return;
+      if (currentResourceAction !== "allow" && policy.action === "allow") {
+        const requiredSamples = Math.max(1, policy.recovery_samples ?? 1);
+        healthyResourceSamples += 1;
+        if (healthyResourceSamples < requiredSamples) return;
+      }
+      if (policy.action === "allow") healthyResourceSamples = 0;
       currentResourceAction = policy.action;
       resourceInterval = policy.poll_interval_ms;
       setResourceAction(policy.action); setResourceReason(policy.reason);
@@ -209,16 +217,17 @@ export function GaussianSplatPreview({ projectId, projectPath, relativePath, liv
       try {
         const policy = await desktopApi.getPreviewResourcePolicy();
         if (disposed) return;
-        const recovered = currentResourceAction !== "allow" && policy.action === "allow";
+        const previousAction = currentResourceAction;
         acceptPolicy(policy, true);
-        if ((recovered || (!live && policy.action !== "allow")) && !busy) {
+        const recovered = previousAction !== "allow" && currentResourceAction === "allow";
+        if ((recovered || (!live && currentResourceAction !== "allow")) && !busy) {
           if (timer) clearTimeout(timer);
           void tick();
         }
-        if (policy.action !== "allow" && live) {
+        if (currentResourceAction !== "allow" && live) {
           await desktopApi.pollLivePreview(projectId, projectPath, "off", revision, sessionId);
         }
-      } catch { /* Unknown observations retain the last safe policy. */ }
+      } catch { healthyResourceSamples = 0; /* Unknown observations retain the last safe policy. */ }
       finally { if (!disposed) pressureTimer = setTimeout(() => void watchPressure(), 1000); }
     };
 

@@ -6,10 +6,22 @@ param(
     [string]$CargoTargetDirectory = "target/windows-release-build",
     [string]$VCRedistPath,
     [switch]$OfflineEngines,
-    [switch]$SkipAcquire
+    [switch]$SkipAcquire,
+    [switch]$AlignmentCandidate,
+    [switch]$CheckOnly
 )
 
 . (Join-Path $PSScriptRoot "Packaging.Common.ps1")
+
+if ($AlignmentCandidate) {
+    $candidateArgs = @{ CacheDirectory=$CacheDirectory; OfflineEngines=$OfflineEngines; SkipAcquire=$SkipAcquire; CheckOnly=$CheckOnly }
+    if ($PSBoundParameters.ContainsKey('OutputRoot')) { $candidateArgs.OutputRoot=$OutputRoot }
+    if ($PSBoundParameters.ContainsKey('CargoTargetDirectory')) { $candidateArgs.CargoTargetDirectory=$CargoTargetDirectory }
+    if ($PSBoundParameters.ContainsKey('LockFile') -or $PSBoundParameters.ContainsKey('VCRedistPath')) { throw 'AlignmentCandidate uses its separate frozen lock and verified archive cache.' }
+    & (Join-Path $PSScriptRoot 'Build-AlignmentCandidate.ps1') @candidateArgs
+    return
+}
+if ($CheckOnly) { throw 'CheckOnly is supported with AlignmentCandidate.' }
 
 $repositoryRoot = Get-MetOriginRepositoryRoot
 $previousCargoTargetDirectory = $env:CARGO_TARGET_DIR

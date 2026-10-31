@@ -1,4 +1,4 @@
-//! Machine-readable training capability checks. Metal support is established
+//! Machine-readable training capability checks. Backend support is established
 //! only by the engine's real Gaussian forward/backward test, never OS branding.
 
 use std::io::Read;
@@ -47,13 +47,24 @@ impl BrushCapabilities {
             serde_json::from_slice(bytes).map_err(|_| probe_error("invalid capabilities JSON"))?;
         validate_identity(&capabilities.identity)?;
         if capabilities.cli_profile != BrushCliProfile::Metorigin1
-            || capabilities.target != "aarch64-apple-darwin"
+            || !matches!(
+                capabilities.target.as_str(),
+                "aarch64-apple-darwin" | "x86_64-pc-windows-msvc"
+            )
             || !capabilities.supports("compute_probe")
             || !capabilities.supports("capabilities_json")
             || !capabilities.supports("ply_checkpoint")
         {
             return Err(probe_error(
                 "unsupported target, CLI profile or capability set",
+            ));
+        }
+        if capabilities.target == "x86_64-pc-windows-msvc"
+            && (capabilities.identity.build_id != "metorigin-windows.1"
+                || !capabilities.supports("backend_device_selection"))
+        {
+            return Err(probe_error(
+                "Windows requires the pinned build and explicit backend/device selection",
             ));
         }
         Ok(capabilities)
@@ -80,6 +91,8 @@ pub struct BrushComputeProbe {
     pub backend: Option<BrushBackend>,
     pub device_name: Option<String>,
     pub device_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_id: Option<String>,
     pub compute: Option<BrushComputeEvidence>,
 }
 
@@ -102,10 +115,23 @@ impl BrushComputeProbe {
         let valid_device = probe.device_name.as_deref().is_some_and(|name| {
             !name.trim().is_empty() && name.len() <= 256 && !name.chars().any(char::is_control)
         });
+        let windows = capabilities.target == "x86_64-pc-windows-msvc";
+        let backend_matches = if windows {
+            matches!(
+                probe.backend,
+                Some(BrushBackend::Dx12 | BrushBackend::Vulkan)
+            ) && probe.device_type.as_deref() == Some("DiscreteGpu")
+                && probe
+                    .device_id
+                    .as_deref()
+                    .is_some_and(|id| valid_device_id(id, probe.backend))
+        } else {
+            probe.backend == Some(BrushBackend::Metal)
+        };
         if probe.identity != capabilities.identity
             || probe.probe_kind != ProbeKind::ComputeSmoke
             || probe.status != CapabilityStatus::Supported
-            || probe.backend != Some(BrushBackend::Metal)
+            || !backend_matches
             || !valid_device
             || !valid_compute
         {
@@ -122,7 +148,7 @@ impl BrushComputeProbe {
             status: self.status,
             backend: self.backend,
             device_name: self.device_name.clone(),
-            device_id: None,
+            device_id: self.device_id.clone(),
         }
     }
 }
@@ -138,12 +164,18 @@ pub struct VerifiedBrushRuntime {
 pub enum TrainingRuntimeEvidence {
     LegacyNvidia(crate::NvidiaSmiInfo),
     Metal(Box<VerifiedBrushRuntime>),
+    WindowsWgpu(Box<VerifiedBrushRuntime>),
 }
 
 impl TrainingRuntimeEvidence {
     pub fn summary(&self) -> String {
         match self {
             Self::LegacyNvidia(info) => info.summary(),
+            Self::WindowsWgpu(runtime) => format!(
+                "{} · {:?} · Gaussian 渲染与反向传播检查通过",
+                runtime.probe.device_name.as_deref().unwrap_or("GPU"),
+                runtime.probe.backend.unwrap_or(BrushBackend::LegacyDefault)
+            ),
             Self::Metal(runtime) => format!(
                 "{} · Metal · Gaussian 渲染与反向传播检查通过",
                 runtime.probe.device_name.as_deref().unwrap_or("GPU")
@@ -160,7 +192,7 @@ impl TrainingRuntimeEvidence {
                 device_name: Some(info.gpu_name.clone()),
                 device_id: None,
             },
-            Self::Metal(runtime) => runtime.probe.training_probe(),
+            Self::Metal(runtime) | Self::WindowsWgpu(runtime) => runtime.probe.training_probe(),
         }
     }
 }
@@ -173,50 +205,249 @@ pub fn current_runtime_platform() -> AppResult<RuntimePlatform> {
     }
 }
 
-/// Shared preflight for project creation, pipeline startup and training. The
-/// Windows path retains driver evidence and makes no claim of a compute test.
+/// Selection recorded by the Windows probe and passed unchanged to training.
+/// The initial probe may omit device_id; training and repeat probes may not.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BrushDeviceSelection {
+    pub backend: BrushBackend,
+    pub device_id: Option<String>,
+}
+
+impl BrushDeviceSelection {
+    pub fn for_profile(profile: &splat_domain::ExecutionProfile) -> AppResult<Option<Self>> {
+        if profile.platform != RuntimePlatform::Windows
+            || profile.brush.cli_profile != BrushCliProfile::Metorigin1
+        {
+            return Ok(None);
+        }
+        profile.validate_for_execution()?;
+        Ok(Some(Self {
+            backend: profile.brush.backend,
+            device_id: profile.brush.probe_result.device_id.clone(),
+        }))
+    }
+
+    pub(crate) fn arguments(&self) -> AppResult<Vec<String>> {
+        let backend = match self.backend {
+            BrushBackend::Dx12 => "dx12",
+            BrushBackend::Vulkan => "vulkan",
+            _ => return Err(probe_error("unsupported Windows graphics backend")),
+        };
+        let mut args = vec!["--graphics-backend".into(), backend.into()];
+        if let Some(id) = &self.device_id {
+            if !valid_device_id(id, Some(self.backend)) {
+                return Err(probe_error("invalid Windows adapter identity"));
+            }
+            args.extend(["--graphics-device".into(), id.clone()]);
+        }
+        Ok(args)
+    }
+}
+
+fn windows_selection(
+    backend: Result<String, std::env::VarError>,
+    device_id: Result<String, std::env::VarError>,
+) -> AppResult<BrushDeviceSelection> {
+    let backend = match backend.as_deref() {
+        Ok("dx12") | Err(std::env::VarError::NotPresent) => BrushBackend::Dx12,
+        Ok("vulkan") => BrushBackend::Vulkan,
+        Ok(_) => return Err(selection_error("unsupported Windows graphics backend")),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err(selection_error(
+                "Windows graphics backend must be valid Unicode",
+            ))
+        }
+    };
+    let device_id = match device_id {
+        Ok(id) => Some(id),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err(selection_error(
+                "Windows adapter identity must be valid Unicode",
+            ))
+        }
+    };
+    let selection = BrushDeviceSelection { backend, device_id };
+    selection
+        .arguments()
+        .map_err(|_| selection_error("invalid Windows adapter identity"))?;
+    Ok(selection)
+}
+
+fn selection_error(detail: &str) -> AppError {
+    AppError::new(
+        "E-5005",
+        ErrorCategory::Environment,
+        "训练后端配置无效",
+        "应用的高级训练配置无效。请移除自定义启动配置后重新检查。",
+    )
+    .with_technical(detail)
+    .retryable(true)
+}
+
+fn valid_device_id(id: &str, backend: Option<BrushBackend>) -> bool {
+    let expected = match backend {
+        Some(BrushBackend::Dx12) => "dx12",
+        Some(BrushBackend::Vulkan) => "vulkan",
+        _ => return false,
+    };
+    let parts: Vec<_> = id.split(':').collect();
+    parts.len() == 4
+        && parts[0] == expected
+        && parts[1].len() == 8
+        && parts[2].len() == 8
+        && !parts[3].is_empty()
+        && parts[3].len() <= 512
+        && parts[3].len().is_multiple_of(2)
+        && parts[1..]
+            .iter()
+            .all(|part| part.bytes().all(|byte| byte.is_ascii_hexdigit()))
+}
+
+/// Shared preflight. Windows 0.3 retains its driver-only compatibility evidence;
+/// Windows 1 uses DX12 by default and verifies it with the machine protocol.
+/// Optional advanced overrides never cause a silent backend switch.
 pub async fn probe_training_runtime(
     platform: RuntimePlatform,
     brush: &Path,
     log_dir: &Path,
     cancellation: CancellationToken,
 ) -> AppResult<TrainingRuntimeEvidence> {
-    if platform == RuntimePlatform::Windows {
-        let info = tokio::task::spawn_blocking(crate::require_nvidia_smi)
-            .await
-            .map_err(|_| probe_error("NVIDIA driver check task failed"))??;
-        return Ok(TrainingRuntimeEvidence::LegacyNvidia(info));
-    }
+    probe_training_runtime_with_selection(platform, brush, log_dir, cancellation, None).await
+}
+
+pub async fn probe_training_runtime_with_selection(
+    platform: RuntimePlatform,
+    brush: &Path,
+    log_dir: &Path,
+    cancellation: CancellationToken,
+    selection: Option<&BrushDeviceSelection>,
+) -> AppResult<TrainingRuntimeEvidence> {
     std::fs::create_dir_all(log_dir)
         .map_err(|_| probe_error("could not create probe log directory"))?;
     let before = hash_binary(brush)?;
-    let capabilities_json =
-        machine_command(brush, "--capabilities-json", log_dir, cancellation.clone()).await?;
+    let mut reported_version = None;
+    if platform == RuntimePlatform::Windows {
+        // A broken 1.x machine command must never fall back to driver evidence.
+        let version =
+            machine_command(brush, "--version", &[], log_dir, cancellation.clone()).await?;
+        let version = std::str::from_utf8(&version)
+            .map_err(|_| probe_error("invalid Brush version output"))?;
+        reported_version = version
+            .split_whitespace()
+            .find(|token| {
+                token
+                    .trim_start_matches('v')
+                    .starts_with(|c: char| c.is_ascii_digit())
+            })
+            .map(|token| token.trim_start_matches('v').to_string());
+        match crate::adapter::cli_profile_from_version(version)? {
+            BrushCliProfile::Legacy03 => {
+                if selection.is_some() {
+                    return Err(probe_error(
+                        "A frozen Windows Brush 1 selection cannot use a legacy engine",
+                    ));
+                }
+                let info = tokio::task::spawn_blocking(crate::require_nvidia_smi)
+                    .await
+                    .map_err(|_| probe_error("NVIDIA driver check task failed"))??;
+                if before != hash_binary(brush)? {
+                    return Err(probe_error("Brush executable changed during preflight"));
+                }
+                return Ok(TrainingRuntimeEvidence::LegacyNvidia(info));
+            }
+            BrushCliProfile::Metorigin1 => {}
+        }
+    }
+    let capabilities_json = machine_command(
+        brush,
+        "--capabilities-json",
+        &[],
+        log_dir,
+        cancellation.clone(),
+    )
+    .await?;
     let capabilities = BrushCapabilities::from_json(&capabilities_json)?;
-    let probe_json = machine_command(brush, "--probe-json", log_dir, cancellation).await?;
+    if platform == RuntimePlatform::Windows
+        && reported_version.as_deref() != Some(capabilities.identity.engine_version.as_str())
+    {
+        return Err(probe_error(
+            "Brush version and machine capability identities disagree",
+        ));
+    }
+    let expected_target = match platform {
+        RuntimePlatform::Macos => "aarch64-apple-darwin",
+        RuntimePlatform::Windows => "x86_64-pc-windows-msvc",
+    };
+    if capabilities.target != expected_target {
+        return Err(probe_error(
+            "Brush target does not match the training platform",
+        ));
+    }
+    let candidate;
+    let selection = if platform == RuntimePlatform::Windows {
+        if let Some(selection) = selection {
+            Some(selection)
+        } else {
+            // The packaged Windows1 application must work from its normal
+            // shortcut. Choosing its tested API is separate from promoting the
+            // candidate engine pack to the formal release default. A successful
+            // compute probe is still required before any training can start.
+            candidate = windows_selection(
+                std::env::var("METORIGIN_BRUSH_BACKEND"),
+                std::env::var("METORIGIN_BRUSH_DEVICE_ID"),
+            )?;
+            Some(&candidate)
+        }
+    } else {
+        None
+    };
+    let arguments = selection
+        .map(BrushDeviceSelection::arguments)
+        .transpose()?
+        .unwrap_or_default();
+    let probe_json =
+        machine_command(brush, "--probe-json", &arguments, log_dir, cancellation).await?;
     let probe = BrushComputeProbe::from_json(&probe_json, &capabilities)?;
+    if let Some(selection) = selection {
+        if probe.backend != Some(selection.backend)
+            || selection
+                .device_id
+                .as_ref()
+                .is_some_and(|id| Some(id) != probe.device_id.as_ref())
+        {
+            return Err(probe_error(
+                "Probe did not use the requested Windows backend/device",
+            ));
+        }
+    }
     let after = hash_binary(brush)?;
     if before != after {
         return Err(probe_error("Brush executable changed during preflight"));
     }
-    Ok(TrainingRuntimeEvidence::Metal(Box::new(
-        VerifiedBrushRuntime {
-            capabilities,
-            probe,
-            binary_sha256: after,
-        },
-    )))
+    let runtime = Box::new(VerifiedBrushRuntime {
+        capabilities,
+        probe,
+        binary_sha256: after,
+    });
+    Ok(match platform {
+        RuntimePlatform::Macos => TrainingRuntimeEvidence::Metal(runtime),
+        RuntimePlatform::Windows => TrainingRuntimeEvidence::WindowsWgpu(runtime),
+    })
 }
 
 async fn machine_command(
     brush: &Path,
     argument: &str,
+    extra_args: &[String],
     log_dir: &Path,
     cancellation: CancellationToken,
 ) -> AppResult<Vec<u8>> {
+    let mut args = vec![argument.to_string()];
+    args.extend_from_slice(extra_args);
     let spec = CommandSpec::new(
         brush,
-        vec![argument],
+        args,
         log_dir.join(format!(
             "{}-{}.log",
             argument.trim_start_matches('-'),
@@ -316,6 +547,196 @@ mod tests {
         let caps = BrushCapabilities::from_json(&serde_json::to_vec(&capabilities_json()).unwrap())
             .unwrap();
         BrushComputeProbe::from_json(&serde_json::to_vec(value).unwrap(), &caps)
+    }
+
+    fn windows_capabilities() -> Value {
+        let mut caps = capabilities_json();
+        caps["engine_version"] = json!("1.0.0+metorigin-windows.1");
+        caps["build_id"] = json!("metorigin-windows.1");
+        caps["target"] = json!("x86_64-pc-windows-msvc");
+        caps["supported_features"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!("backend_device_selection"));
+        caps
+    }
+
+    fn windows_probe() -> Value {
+        let mut probe = probe_json();
+        probe["engine_version"] = json!("1.0.0+metorigin-windows.1");
+        probe["build_id"] = json!("metorigin-windows.1");
+        probe["backend"] = json!("dx12");
+        probe["device_type"] = json!("DiscreteGpu");
+        probe["device_id"] = json!("dx12:000010de:00001234:46697874757265");
+        probe
+    }
+
+    #[test]
+    fn windows_normal_launch_selects_dx12_without_environment_configuration() {
+        let selection = windows_selection(
+            Err(std::env::VarError::NotPresent),
+            Err(std::env::VarError::NotPresent),
+        )
+        .unwrap();
+        assert_eq!(selection.backend, BrushBackend::Dx12);
+        assert_eq!(selection.device_id, None);
+        assert_eq!(
+            selection.arguments().unwrap(),
+            ["--graphics-backend", "dx12"]
+        );
+    }
+
+    #[test]
+    fn windows_advanced_backend_and_device_remain_explicit() {
+        let id = "vulkan:000010de:00001234:46697874757265";
+        let selection = windows_selection(Ok("vulkan".into()), Ok(id.into())).unwrap();
+        assert_eq!(selection.backend, BrushBackend::Vulkan);
+        assert_eq!(
+            selection.arguments().unwrap(),
+            ["--graphics-backend", "vulkan", "--graphics-device", id]
+        );
+        assert_eq!(
+            windows_selection(Ok("dx12".into()), Err(std::env::VarError::NotPresent))
+                .unwrap()
+                .backend,
+            BrushBackend::Dx12
+        );
+    }
+
+    #[test]
+    fn invalid_advanced_configuration_fails_without_silent_fallback_or_value_disclosure() {
+        let missing = || Err(std::env::VarError::NotPresent);
+        for (backend, device) in [
+            (Ok("private-invalid-backend".into()), missing()),
+            (Ok(String::new()), missing()),
+            (
+                Err(std::env::VarError::NotUnicode("private-value".into())),
+                missing(),
+            ),
+            (
+                missing(),
+                Err(std::env::VarError::NotUnicode("private-value".into())),
+            ),
+            (missing(), Ok(String::new())),
+            (
+                missing(),
+                Ok("vulkan:000010de:00001234:46697874757265".into()),
+            ),
+        ] {
+            let error = windows_selection(backend, device).unwrap_err();
+            assert_eq!(error.code, "E-5005");
+            assert!(!error.user_message_zh().contains("private"));
+            assert!(!error
+                .technical_message
+                .as_deref()
+                .unwrap()
+                .contains("private"));
+        }
+    }
+
+    #[test]
+    fn windows_compute_requires_pinned_target_backend_and_reproducible_device() {
+        let caps =
+            BrushCapabilities::from_json(&serde_json::to_vec(&windows_capabilities()).unwrap())
+                .unwrap();
+        let probe =
+            BrushComputeProbe::from_json(&serde_json::to_vec(&windows_probe()).unwrap(), &caps)
+                .unwrap();
+        assert_eq!(
+            probe.training_probe().device_id,
+            Some("dx12:000010de:00001234:46697874757265".into())
+        );
+        for (key, value) in [
+            ("device_type", json!("Cpu")),
+            ("device_type", json!("IntegratedGpu")),
+            ("device_id", json!("dx12:0")),
+            ("device_id", Value::Null),
+            (
+                "device_id",
+                json!("vulkan:000010de:00001234:46697874757265"),
+            ),
+            ("backend", json!("metal")),
+            ("backend", json!("legacy_default")),
+        ] {
+            let mut modified = windows_probe();
+            modified[key] = value;
+            assert!(
+                BrushComputeProbe::from_json(&serde_json::to_vec(&modified).unwrap(), &caps)
+                    .is_err()
+            );
+        }
+        for (key, value) in [
+            ("target", json!("aarch64-pc-windows-msvc")),
+            ("build_id", json!("stock")),
+        ] {
+            let mut modified = windows_capabilities();
+            modified[key] = value;
+            assert!(BrushCapabilities::from_json(&serde_json::to_vec(&modified).unwrap()).is_err());
+        }
+        let mut caps = windows_capabilities();
+        caps["supported_features"] =
+            json!(["capabilities_json", "compute_probe", "ply_checkpoint"]);
+        assert!(BrushCapabilities::from_json(&serde_json::to_vec(&caps).unwrap()).is_err());
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn windows_probe_passes_explicit_selection_and_rejects_engine_switch() {
+        let root = tempfile::Builder::new()
+            .prefix("probe 中文 空格 ")
+            .tempdir()
+            .unwrap();
+        let binary = root.path().join("brush-cli.cmd");
+        std::fs::write(&binary, format!(
+            "@echo off\r\necho %*>>\"%~dp0calls.txt\"\r\nif \"%1\"==\"--version\" goto version\r\nif \"%1\"==\"--capabilities-json\" goto caps\r\necho {}\r\nexit /b 0\r\n:version\r\necho brush-cli 1.0.0+metorigin-windows.1\r\nexit /b 0\r\n:caps\r\necho {}\r\nexit /b 0\r\n",
+            windows_probe(), windows_capabilities()
+        )).unwrap();
+        let selection = BrushDeviceSelection {
+            backend: BrushBackend::Dx12,
+            device_id: Some("dx12:000010de:00001234:46697874757265".into()),
+        };
+        let runtime = probe_training_runtime_with_selection(
+            RuntimePlatform::Windows,
+            &binary,
+            &root.path().join("logs"),
+            CancellationToken::new(),
+            Some(&selection),
+        )
+        .await
+        .unwrap();
+        assert!(matches!(runtime, TrainingRuntimeEvidence::WindowsWgpu(_)));
+        let calls = std::fs::read_to_string(root.path().join("calls.txt")).unwrap();
+        assert!(calls.contains("--probe-json --graphics-backend dx12 --graphics-device dx12:000010de:00001234:46697874757265"));
+        let other = BrushDeviceSelection {
+            backend: BrushBackend::Vulkan,
+            device_id: None,
+        };
+        assert!(probe_training_runtime_with_selection(
+            RuntimePlatform::Windows,
+            &binary,
+            &root.path().join("logs"),
+            CancellationToken::new(),
+            Some(&other)
+        )
+        .await
+        .is_err());
+        let script = std::fs::read_to_string(&binary).unwrap().replace(
+            "echo brush-cli 1.0.0+metorigin-windows.1",
+            "echo brush-cli 1.0.0+stock",
+        );
+        std::fs::write(&binary, script).unwrap();
+        assert!(
+            probe_training_runtime_with_selection(
+                RuntimePlatform::Windows,
+                &binary,
+                &root.path().join("logs"),
+                CancellationToken::new(),
+                Some(&selection),
+            )
+            .await
+            .is_err(),
+            "version stdout and machine identity must match"
+        );
     }
 
     #[test]

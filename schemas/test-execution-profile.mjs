@@ -7,13 +7,18 @@ import { spawnSync } from 'node:child_process';
 
 const schemas = dirname(fileURLToPath(import.meta.url));
 const fixtures = join(schemas, 'examples', 'execution-profile');
+// A direct JS entry point also works on Windows, where spawnSync cannot execute
+// the npm .cmd shim without a shell. Keep every validator argument structured.
 const ajv = process.argv[2] ?? 'ajv';
+const jsValidator = /\.[cm]?js$/i.test(ajv);
+const executable = jsValidator ? process.execPath : ajv;
+const validatorPrefix = jsValidator ? [resolve(ajv)] : [];
 const files = readdirSync(fixtures).filter(name => /\.(valid|invalid)\.json$/.test(name));
 if (!files.some(name => name.endsWith('.valid.json')) || !files.some(name => name.endsWith('.invalid.json'))) {
   throw new Error('Both accepted and rejected execution-profile fixtures are required.');
 }
 for (const name of files.sort()) {
-  const result = spawnSync(ajv, ['validate', '--spec=draft2020', '--strict=false',
+  const result = spawnSync(executable, [...validatorPrefix, 'validate', '--spec=draft2020', '--strict=false',
     '-s', join(schemas, 'execution-profile.schema.json'), '-d', resolve(fixtures, name)],
   { encoding: 'utf8' });
   if (result.error || result.signal || (result.status !== 0 && result.status !== 1)) {

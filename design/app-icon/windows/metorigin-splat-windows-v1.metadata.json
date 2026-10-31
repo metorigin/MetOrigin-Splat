@@ -1,0 +1,22 @@
+{
+  "file": "metorigin-splat-windows-v1.png",
+  "source_reference": "../metorigin-splat-icon-v4.png",
+  "tool": "built-in image_gen.imagegen",
+  "use": "Windows native application/taskbar icon",
+  "size": [
+    1254,
+    1254
+  ],
+  "mode": "RGBA",
+  "transparent_background": true,
+  "solid_bbox_alpha_128": [
+    38,
+    48,
+    1216,
+    1204
+  ],
+  "solid_width_fraction": 0.9393939393939394,
+  "solid_height_fraction": 0.9218500797448166,
+  "sha256": "a072f4a77103ce71cf158d789f203070ae73c7a18630034d699bffe10a96c0f5",
+  "note": "Windows-only optical-size variant; measured output, not nominal prompt target. Mac native resources use their independent source."
+}

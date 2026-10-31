@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "run_id": "01900000-0000-7000-8000-000000000001",
+  "platform": "windows",
+  "architecture": "x86_64",
+  "os_version": "10.0.26100",
+  "engine_pack_id": "windows-x64-metorigin1-candidate",
+  "engines": {
+    "ffmpeg": {
+      "version": "8.1.2",
+      "binary_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "ffprobe": {
+      "version": "8.1.2",
+      "binary_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "colmap": {
+      "version": "4.1.0",
+      "binary_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    "brush": {
+      "version": "1.0.0+metorigin-windows.1",
+      "binary_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "source_commit": "1388f74c6fe0236f68ee4915564bf00e9d2e3747"
+    }
+  },
+  "colmap": {
+    "cli_profile": "colmap_4_1",
+    "database_schema_profile": "colmap_4_1",
+    "feature_backend": "cuda",
+    "matching_backend": "cuda",
+    "ba_backend": "ceres_cpu",
+    "global_positioning_backend": "cpu"
+  },
+  "brush": {
+    "cli_profile": "metorigin_1",
+    "backend": "dx12",
+    "probe_result": {
+      "kind": "compute_smoke",
+      "status": "supported",
+      "backend": "dx12",
+      "device_name": "Fixture discrete adapter",
+      "device_id": "dx12:000010de:00001234:46697874757265"
+    },
+    "live_preview": "assumed_supported",
+    "ply_warm_start": "supported"
+  },
+  "memory": {
+    "kind": "dedicated",
+    "physical_memory_bytes": 17179869184,
+    "training_budget_bytes": 4294967296,
+    "available_working_set_bytes": 8589934592
+  },
+  "effective_training": {
+    "iterations": 7000,
+    "sh_degree": 1,
+    "threads": 4,
+    "resolution": 960,
+    "image_cache_budget_bytes": 268435456,
+    "max_splats": 300000,
+    "lod_levels": 0
+  },
+  "live_protocol": "ply_request_ack_v1",
+  "resume_mode": "ply_warm_start_optimizer_reset"
+}

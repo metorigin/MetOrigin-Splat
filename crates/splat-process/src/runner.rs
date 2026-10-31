@@ -30,7 +30,7 @@ pub struct CapturedProcessResult {
 /// - Real-time stdout/stderr streaming via broadcast channel
 /// - Simultaneous log file writing with timestamps
 /// - Exit code handling and crash detection
-/// - Cancellation with process tree termination (Windows: `taskkill /T`)
+/// - Cancellation with process tree termination (Windows: an owned job object)
 /// - Timeout enforcement
 /// - CJK path and encoding compatibility
 /// - Extensible progress parsing
@@ -109,6 +109,19 @@ impl ProcessRunner {
             cmd.env(key, value);
         }
 
+        #[cfg(windows)]
+        let windows_job = {
+            use std::os::windows::process::CommandExt;
+            cmd.as_std_mut()
+                .creation_flags(crate::windows_job::OWNED_CREATION_FLAGS);
+            cmd.kill_on_drop(true);
+            Arc::new(crate::windows_job::WindowsJob::new().map_err(|error| {
+                process_cleanup_error(format!(
+                    "Cannot create an owned Windows engine job: {error}"
+                ))
+            })?)
+        };
+
         // Spawn the process
         let child = cmd.spawn().map_err(|e| {
             AppError::new(
@@ -125,8 +138,28 @@ impl ProcessRunner {
             .retryable(true)
         })?;
 
+        #[cfg(windows)]
+        let mut child = child;
+        #[cfg(windows)]
+        if let Err(error) = windows_job.assign_and_resume(&child) {
+            // The child has not run outside its job. Dropping either object also
+            // kills it, including if this bounded reaping await is cancelled.
+            let _ = child.start_kill();
+            let reaped =
+                tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await;
+            return Err(process_cleanup_error(format!(
+                "Windows engine ownership could not be established: {error}; reap={reaped:?}"
+            )));
+        }
+
         // Create handle and event receiver
-        let handle = ProcessHandle::new(child, started_at, self.event_sender.subscribe());
+        let handle = ProcessHandle::new(
+            child,
+            started_at,
+            self.event_sender.subscribe(),
+            #[cfg(windows)]
+            windows_job,
+        );
         let child_arc = handle.child.clone();
 
         // Send Started event
@@ -142,6 +175,8 @@ impl ProcessRunner {
         let process_group = handle.process_group.clone();
         #[cfg(unix)]
         let group_guard = process_group.lifecycle_guard();
+        #[cfg(windows)]
+        let windows_job = handle.windows_job.clone();
 
         let unscoped_guard = crate::scope::UnscopedCleanupGuard::new(&handle);
         let lifecycle = tokio::spawn(async move {
@@ -159,6 +194,8 @@ impl ProcessRunner {
                 process_id,
                 #[cfg(unix)]
                 process_group,
+                #[cfg(windows)]
+                windows_job,
             )
             .await;
             // A normal return transfers cleanup failure to the scope receipt.
@@ -419,7 +456,7 @@ impl ProcessRunner {
 
     /// Cancel a running process.
     ///
-    /// On Windows, uses `taskkill /T /F` to terminate the entire process tree.
+    /// On Windows, terminates only the owned job and waits for its descendants.
     /// On Unix, sends SIGTERM then SIGKILL to the owned process group.
     pub async fn cancel(&self, handle: &mut ProcessHandle) -> AppResult<()> {
         let pid = handle.process_id;
@@ -431,7 +468,9 @@ impl ProcessRunner {
         // Kill the process using platform-specific strategy
         #[cfg(unix)]
         let kill_result = handle.process_group.terminate(&child).await;
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        let kill_result = handle.windows_job.terminate().await;
+        #[cfg(not(any(unix, windows)))]
         let kill_result = kill_process_tree(pid).await;
 
         if let Err(ref e) = kill_result {
@@ -447,16 +486,16 @@ impl ProcessRunner {
         // Wait for the process to actually exit
         {
             let mut guard = child.lock().await;
-            #[cfg(unix)]
+            #[cfg(any(unix, windows))]
             tokio::time::timeout(std::time::Duration::from_secs(2), guard.wait())
                 .await
                 .map_err(|error| process_cleanup_error(error.to_string()))?
                 .map_err(|error| process_cleanup_error(error.to_string()))?;
-            #[cfg(not(unix))]
+            #[cfg(not(any(unix, windows)))]
             let _ = guard.wait().await;
         }
 
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         kill_result.map_err(process_cleanup_error)?;
 
         tracing::info!("Process cancelled: pid={}", pid);
@@ -513,6 +552,7 @@ async fn run_process(
     timeout: Option<std::time::Duration>,
     process_id: u32,
     #[cfg(unix)] process_group: Arc<crate::unix_group::ProcessGroup>,
+    #[cfg(windows)] windows_job: Arc<crate::windows_job::WindowsJob>,
 ) -> Result<(), String> {
     let start = std::time::Instant::now();
 
@@ -589,10 +629,21 @@ async fn run_process(
     } else {
         false
     };
+    #[cfg(windows)]
+    let mut cleanup_failed = if let Err(error) = windows_job.terminate().await {
+        tracing::warn!(process_id, %error, "Owned Windows job cleanup failed");
+        let mut guard = child.lock().await;
+        if let Err(error) = guard.start_kill() {
+            tracing::warn!(process_id, %error, "Direct Windows child cleanup also failed");
+        }
+        true
+    } else {
+        false
+    };
 
     // A timed-out process must be terminated before waiting for EOF from its pipes.
     if wait_result.is_none() {
-        #[cfg(not(unix))]
+        #[cfg(not(any(unix, windows)))]
         if let Err(error) = kill_process_tree(process_id).await {
             tracing::warn!(
                 "Timed-out process tree kill failed (pid={}): {}",
@@ -604,7 +655,7 @@ async fn run_process(
         }
 
         let mut guard = child.lock().await;
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         match tokio::time::timeout(std::time::Duration::from_secs(2), guard.wait()).await {
             Ok(Ok(_)) => {}
             result => {
@@ -612,12 +663,12 @@ async fn run_process(
                 tracing::warn!(process_id, ?result, "Timed-out engine could not be reaped");
             }
         }
-        #[cfg(not(unix))]
+        #[cfg(not(any(unix, windows)))]
         let _ = guard.wait().await;
     }
 
     // Wait for stream readers to finish after the child has exited.
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     if tokio::time::timeout(std::time::Duration::from_secs(2), async {
         let _ = tokio::join!(&mut stdout_task, &mut stderr_task);
     })
@@ -635,7 +686,7 @@ async fn run_process(
             "Engine output pipes did not close after group cleanup"
         );
     }
-    #[cfg(not(unix))]
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = (&mut stdout_task).await;
         let _ = (&mut stderr_task).await;
@@ -647,7 +698,7 @@ async fn run_process(
     match wait_result {
         Some(Ok(status)) => {
             let code = status.code().unwrap_or(-1);
-            #[cfg(unix)]
+            #[cfg(any(unix, windows))]
             let code = if cleanup_failed { -1 } else { code };
             // Write separator to log
             {
@@ -687,7 +738,7 @@ async fn run_process(
             );
         }
     }
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     if cleanup_failed {
         return Err("Engine process group or output cleanup did not finish; ownership is retained for retry".into());
     }
@@ -770,7 +821,7 @@ async fn read_stream<R>(
 // ─── Platform-specific process termination ───────────────────────────────
 
 /// Terminate a process tree by PID.
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 async fn kill_process_tree(pid: u32) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -1211,7 +1262,10 @@ exit 17
     async fn test_timeout_terminates_process() {
         let runner = ProcessRunner::new();
         let (cmd, args) = if cfg!(target_os = "windows") {
-            ("ping.exe", vec!["-n", "10", "127.0.0.1"])
+            (
+                "powershell.exe",
+                vec!["-NoProfile", "-Command", "Start-Sleep -Seconds 10"],
+            )
         } else {
             ("sleep", vec!["10"])
         };
@@ -1315,7 +1369,10 @@ exit 17
     async fn test_capture_reports_timeout_and_terminates_process() {
         let runner = ProcessRunner::new();
         let (cmd, args) = if cfg!(target_os = "windows") {
-            ("ping.exe", vec!["-n", "10", "127.0.0.1"])
+            (
+                "powershell.exe",
+                vec!["-NoProfile", "-Command", "Start-Sleep -Seconds 10"],
+            )
         } else {
             ("sleep", vec!["10"])
         };

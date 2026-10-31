@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "source": {
+    "master": {
+      "path": "design/app-icon/metorigin-splat-icon-v4.png",
+      "sha256": "09344e658af8b37ccf986187f1b82c1e6bf5929b661420263dbf3befff20d9ea",
+      "width": 1254,
+      "height": 1254,
+      "alpha_threshold_inclusive": 128,
+      "solid_bbox": [
+        75,
+        82,
+        1179,
+        1164
+      ],
+      "solid_width_fraction": 0.8803827751196173,
+      "solid_height_fraction": 0.8628389154704944,
+      "solid_area_fraction": 0.7245579695214548
+    },
+    "mac_manifest_input_matches": true,
+    "windows_source": {
+      "path": "design/app-icon/windows/metorigin-splat-shared-v4.png",
+      "sha256": "ec51943db7e70ba4d299e6bed8666fdbbb8020ebcdfb435c84f05a2963b7d292",
+      "width": 1150,
+      "height": 1150,
+      "alpha_threshold_inclusive": 128,
+      "solid_bbox": [
+        23,
+        34,
+        1127,
+        1116
+      ],
+      "solid_width_fraction": 0.96,
+      "solid_height_fraction": 0.9408695652173913,
+      "solid_area_fraction": 0.8615342155009452
+    },
+    "normalization_report": {
+      "path": "design/app-icon/windows/metorigin-splat-shared-v4.metadata.json",
+      "sha256": "9d84500dab27a320fd6f773f86b2e773467a4e97bc26c62b7a8b9f78f612b74f",
+      "schema_version": 1,
+      "method": "exact_rgba_crop",
+      "source": {
+        "sha256": "09344e658af8b37ccf986187f1b82c1e6bf5929b661420263dbf3befff20d9ea",
+        "size": [
+          1254,
+          1254
+        ]
+      },
+      "crop": {
+        "box": [
+          52,
+          48,
+          1202,
+          1198
+        ],
+        "size": [
+          1150,
+          1150
+        ],
+        "alpha_threshold_inclusive": 128,
+        "padding_fraction": 0.02,
+        "padding_pixels": 23,
+        "max_discarded_alpha": 1,
+        "rgba_sha256": "5663519659dedaa4b2cedc944da5d1b98717c7bd98ae2bbe545fd9a436decfa7"
+      },
+      "resampled": false,
+      "rgba_pixels_preserved": true,
+      "output": {
+        "sha256": "ec51943db7e70ba4d299e6bed8666fdbbb8020ebcdfb435c84f05a2963b7d292",
+        "size": [
+          1150,
+          1150
+        ]
+      },
+      "pillow_version": "12.3.0"
+    }
+  },
+  "generator": {
+    "node": "26.0.0",
+    "tauri_cli": "2.11.4"
+  },
+  "outputs": {
+    "128x128.png": "239553e0b9246c617131081211b2849ad3fbc2b643db5d2ec88ffdc298910852",
+    "128x128@2x.png": "b9e1973bb372019e8e7a81de1dcdaeabbeafcf7eaf9327137d8e98cf68caf6ef",
+    "32x32.png": "b7b93d1c7fd62c35cb98a43c33a37237c21be00b542e8f5da1e7330a08bfb00d",
+    "64x64.png": "25afd4814bb32ea2259d93e4f2f7e80009f437eed2628b581617c03254c91746",
+    "icon.png": "28ff1f7961dc61a8bf7e025adfdd246a89b6899c59d1ba2f5f612e7f3a472b90",
+    "Square107x107Logo.png": "8576cbd30e774d73db04aa04f40318ec3929d4c180df3fd53cd5fec375856fa0",
+    "Square142x142Logo.png": "0bfea6446a95e870f101e86539b797662c31b14c8d0a1a89e5cbc90bf0d6dd85",
+    "Square150x150Logo.png": "bd32d75542e88466d763e808f0e188315b6f22fd3fe1c7dc7c2b236fa80bd265",
+    "Square284x284Logo.png": "aa117239d6663a3565eb8a2c9ae27d65933b58a0c7eee65a13d69a16a66b1b4b",
+    "Square30x30Logo.png": "9f077cd3f6b4179a3097e2c0b251a17286e1fcca04d2b38b815118d54229b960",
+    "Square310x310Logo.png": "c266d953346b584c43e9313d657e0e1b5c08a86dbe1e4cfbb5b9d2346e5e6429",
+    "Square44x44Logo.png": "5e5b304df0b70577827ce9207c434e9e770492d4ba60a6b8415787550601781e",
+    "Square71x71Logo.png": "d47f5c863721630780593a5af760c15ec2ddf62e83f66b0c561271a9f4cd3024",
+    "Square89x89Logo.png": "cd3b60ff3d462f0ae701ab2478a5bbb119144ecb1f4fd0c7ee1abc79e20ee9b5",
+    "StoreLogo.png": "8c3943a89741ec7549ce969a5548ee6782c7a5997448636a3c2b81f50342b7ed",
+    "icon.ico": "795d4a856462991bac93df1a02d0d6e8154e0facfefa30f76fc25d7a1e33859b"
+  }
+}

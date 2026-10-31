@@ -21,6 +21,8 @@ pub struct ProcessHandle {
     pub(crate) lifecycle: Arc<Mutex<LifecycleReceipt>>,
     #[cfg(unix)]
     pub(crate) process_group: Arc<crate::unix_group::ProcessGroup>,
+    #[cfg(windows)]
+    pub(crate) windows_job: Arc<crate::windows_job::WindowsJob>,
     /// Receiver for process events (stdout, stderr, exit, etc.)
     pub events: broadcast::Receiver<ProcessEvent>,
 }
@@ -38,9 +40,12 @@ impl ProcessHandle {
         child: Child,
         started_at: DateTime<Utc>,
         events: broadcast::Receiver<ProcessEvent>,
+        #[cfg(windows)] windows_job: Arc<crate::windows_job::WindowsJob>,
     ) -> Self {
         Self {
             process_id: child.id().unwrap_or(0),
+            #[cfg(windows)]
+            windows_job,
             #[cfg(unix)]
             process_group: Arc::new(crate::unix_group::ProcessGroup::new(
                 child.id().unwrap_or(0),
@@ -62,6 +67,8 @@ impl Clone for ProcessHandle {
             lifecycle: self.lifecycle.clone(),
             #[cfg(unix)]
             process_group: self.process_group.clone(),
+            #[cfg(windows)]
+            windows_job: self.windows_job.clone(),
             started_at: self.started_at,
             events: self.events.resubscribe(),
         }

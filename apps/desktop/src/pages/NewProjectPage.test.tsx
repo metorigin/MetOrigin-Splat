@@ -114,6 +114,7 @@ describe("NewProjectPage", () => {
       estimated_disk_bytes: 7_000_000_000,
       available_disk_bytes: 50_000_000_000,
       recommended_preset: "fast",
+      preset: "fast",
       warnings: [],
       blockers: [],
     });
@@ -182,6 +183,7 @@ describe("NewProjectPage", () => {
       estimated_disk_bytes: 7_000_000_000,
       available_disk_bytes: 50_000_000_000,
       recommended_preset: "fast",
+      preset: "fast",
       warnings: [],
       blockers: ["NVIDIA GPU / 驱动不可用"],
     });
@@ -230,6 +232,7 @@ describe("NewProjectPage", () => {
       estimated_disk_bytes: 7_000_000_000,
       available_disk_bytes: 80_000_000_000,
       recommended_preset: "fast",
+      preset: "fast",
       warnings: [],
       blockers: [],
     }));
@@ -258,6 +261,7 @@ describe("NewProjectPage", () => {
       estimated_disk_bytes: 7_000_000_000,
       available_disk_bytes: 2_000_000_000,
       recommended_preset: "fast",
+      preset: "fast",
       warnings: [],
       blockers: ["目标磁盘空间不足"],
     });
@@ -424,7 +428,7 @@ describe("NewProjectPage", () => {
       expect(desktopApi.preflightProject).toHaveBeenLastCalledWith({ sourcePath: base.source_path, projectRoot: null, preset: id });
       expect(screen.getByRole("button", { name: /下一步/ })).toBeDisabled();
       expect(screen.getByText(/正在按当前预设检查/)).toBeVisible();
-      await act(async () => pending.resolve(allowed));
+      await act(async () => pending.resolve({ ...allowed, preset: id }));
       expect(screen.getByRole("button", { name: /下一步/ })).toBeEnabled();
     }
     fireEvent.click(screen.getByRole("button", { name: /下一步/ }));
@@ -449,7 +453,7 @@ describe("NewProjectPage", () => {
     vi.mocked(desktopApi.preflightProject).mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
     fireEvent.click(screen.getByRole("button", { name: /^高质量/ }));
     fireEvent.click(screen.getByRole("button", { name: /^均衡/ }));
-    await act(async () => latest.resolve({ ...allowed, can_continue: latestAllowed, blockers: latestAllowed ? [] : ["当前预设磁盘空间不足"] }));
+    await act(async () => latest.resolve({ ...allowed, preset: "balanced", can_continue: latestAllowed, blockers: latestAllowed ? [] : ["当前预设磁盘空间不足"] }));
     await act(async () => { if (latestAllowed) old.reject(new Error("过时请求失败")); else old.resolve(allowed); });
     const next = screen.getByRole("button", { name: /下一步/ });
     if (latestAllowed) expect(next).toBeEnabled();
@@ -459,6 +463,23 @@ describe("NewProjectPage", () => {
     }
     expect(screen.queryByText(/过时请求失败/)).not.toBeInTheDocument();
     expect(screen.queryByText(/正在按当前预设检查/)).not.toBeInTheDocument();
+  });
+
+  it.each([undefined, "quality"])("rejects a preflight response not bound to the requested preset: %s", async (preset) => {
+    const allowed = await desktopApi.preflightProject({ sourcePath: "D:\\dataset\\bike.mp4", projectRoot: null, preset: "fast" });
+    render(<AppProvider><NewProjectPage /></AppProvider>);
+    fireEvent.click(screen.getByRole("button", { name: /选择视频/ }));
+    await screen.findByText("3840 × 2160");
+    fireEvent.click(screen.getByRole("button", { name: /下一步/ }));
+    await screen.findByRole("heading", { name: "预检结果" });
+    expect(screen.getByRole("button", { name: /下一步/ })).toBeEnabled();
+    vi.mocked(desktopApi.preflightProject).mockResolvedValue({ ...allowed, preset });
+    fireEvent.click(screen.getByRole("button", { name: "重新检查" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("预检结果与当前预设不匹配，请重新检查。");
+    expect(screen.getByRole("button", { name: /下一步/ })).toBeDisabled();
+    fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
+    expect(screen.queryByRole("heading", { name: "确认创建" })).not.toBeInTheDocument();
+    expect(desktopApi.createProject).not.toHaveBeenCalled();
   });
 
   it("keeps the draft until the app dialog confirms discarding, with safe focus and Escape", async () => {

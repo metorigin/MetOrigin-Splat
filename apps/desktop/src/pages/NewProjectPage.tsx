@@ -19,7 +19,7 @@ import type {
 
 
 import { ConfirmStep, ImportStep, PreflightStep } from "@/components/new-project/WizardSteps";
-import { formatBytes } from "@/components/new-project/wizardPresentation";
+import { currentPresetPreflight, formatBytes } from "@/components/new-project/wizardPresentation";
 import { useNewProjectWizard } from "@/hooks/useNewProjectWizard";
 
 export function NewProjectPage({ settings = null, onOpenSettings }: { settings?: AppSettings | null; onOpenSettings?: () => void }) {
@@ -63,6 +63,8 @@ export function NewProjectPage({ settings = null, onOpenSettings }: { settings?:
     closeWizard,
     confirmExit,
   } = useNewProjectWizard(settings);
+  const checkedPreflight = currentPresetPreflight(preflight, selectedPreset, checking);
+  const canProceed = Boolean(checkedPreflight?.can_continue);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
@@ -170,7 +172,7 @@ export function NewProjectPage({ settings = null, onOpenSettings }: { settings?:
             <Button variant="ghost" size="sm" type="button" onClick={() => void closeWizard()} disabled={canceling} aria-label={t("关闭新建项目")}>{t("退出创建")}</Button>
             {step > 0 && <Button variant="outline" type="button" disabled={creating || checking} onClick={() => setStep((current) => current - 1)}><ArrowLeft size={16} />{t("上一步")}</Button>}
             {step === 0 && !analysis?.valid && <span>{t("第 1 / 3 步 · 尚未选择素材")}</span>}
-            {step === 1 && preflight && !preflight.can_continue && <span>{t("解决阻断项后才能继续")}</span>}
+            {step === 1 && checkedPreflight && !checkedPreflight.can_continue && <span>{t("解决阻断项后才能继续")}</span>}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {creating ? (
@@ -178,13 +180,13 @@ export function NewProjectPage({ settings = null, onOpenSettings }: { settings?:
                 {canceling || cancellationRequested.current ? t("正在安全取消…") : t("取消复制")}
               </Button>
             ) : step < 2 ? (
-              <Button type="button" onClick={() => void goNext()} disabled={step === 0 ? !analysis?.valid || analyzing : !preflight?.can_continue || checking}>
+              <Button type="button" onClick={() => void goNext()} disabled={step === 0 ? !analysis?.valid || analyzing : !canProceed}>
                 <span className="sr-only">{t("下一步：")}</span>{checking ? t("正在检查…") : step === 0 ? t("分析素材") : t("继续")}<ArrowRight size={16} />
               </Button>
             ) : (
               <>
-                <Button variant={settings?.create_and_start === false ? "default" : "outline"} type="button" onClick={() => void createProject(false)} disabled={!projectName.trim() || checking || !preflight?.can_continue}>{t("仅创建项目")}</Button>
-                <Button variant={settings?.create_and_start === false ? "outline" : "default"} type="button" onClick={() => void createProject(true)} disabled={!projectName.trim() || checking || !preflight?.can_continue}>{t("创建并开始重建")}</Button>
+                <Button variant={settings?.create_and_start === false ? "default" : "outline"} type="button" onClick={() => void createProject(false)} disabled={!projectName.trim() || !canProceed}>{t("仅创建项目")}</Button>
+                <Button variant={settings?.create_and_start === false ? "outline" : "default"} type="button" onClick={() => void createProject(true)} disabled={!projectName.trim() || !canProceed}>{t("创建并开始重建")}</Button>
               </>
             )}
           </div>

@@ -177,6 +177,8 @@ export interface EngineCheck {
 }
 
 export interface ProjectPreflight {
+  /** Identifies the requested preset this check actually evaluated. */
+  preset?: string;
   can_continue: boolean;
   engine_checks: EngineCheck[];
   estimated_frames: number;
@@ -185,6 +187,7 @@ export interface ProjectPreflight {
   recommended_preset: string;
   warnings: string[];
   blockers: string[];
+  effective_training?: import("./system").RuntimeResourceSummary["effective_training"] | null;
 }
 
 export interface CreateProjectRequest {

@@ -1,10 +1,23 @@
 [CmdletBinding()]
 param(
     [string]$ArtifactDirectory = "artifacts/windows/app",
-    [string]$CargoTargetDirectory = "target/windows-release-build"
+    [string]$CargoTargetDirectory = "target/windows-release-build",
+    [switch]$AlignmentCandidate,
+    [switch]$OfflineEngines,
+    [switch]$SkipAcquire,
+    [switch]$CheckOnly
 )
 
 . (Join-Path $PSScriptRoot "Packaging.Common.ps1")
+
+if ($AlignmentCandidate) {
+    if ($PSBoundParameters.ContainsKey('ArtifactDirectory')) { throw 'AlignmentCandidate writes a unique isolated artifact directory.' }
+    $candidateArgs = @{ NoBundle=$true; OfflineEngines=$OfflineEngines; SkipAcquire=$SkipAcquire; CheckOnly=$CheckOnly }
+    if ($PSBoundParameters.ContainsKey('CargoTargetDirectory')) { $candidateArgs.CargoTargetDirectory=$CargoTargetDirectory }
+    & (Join-Path $PSScriptRoot 'Build-AlignmentCandidate.ps1') @candidateArgs
+    return
+}
+if ($OfflineEngines -or $SkipAcquire -or $CheckOnly) { throw 'Engine/check options require AlignmentCandidate.' }
 
 $repositoryRoot = Get-MetOriginRepositoryRoot
 if ($env:OS -ne "Windows_NT" -or -not [Environment]::Is64BitOperatingSystem) {

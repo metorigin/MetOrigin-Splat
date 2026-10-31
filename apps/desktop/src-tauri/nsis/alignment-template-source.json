@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "tauri_cli_version": "2.11.4",
+  "repository": "https://github.com/tauri-apps/tauri",
+  "tag": "tauri-cli-v2.11.4",
+  "commit": "8909f221d1515955fc843808032bdc5d62209c96",
+  "source_url": "https://raw.githubusercontent.com/tauri-apps/tauri/8909f221d1515955fc843808032bdc5d62209c96/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi",
+  "license": "MIT",
+  "license_file": "LICENSE.tauri-mit.txt",
+  "license_source_url": "https://raw.githubusercontent.com/tauri-apps/tauri/8909f221d1515955fc843808032bdc5d62209c96/LICENSE_MIT",
+  "modified_template": "alignment-installer.nsi",
+  "changes": [
+    {
+      "before": "!define UNINSTKEY \"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${PRODUCTNAME}\"",
+      "after": "!define UNINSTKEY \"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MetOrigin Splat Alignment Candidate\"",
+      "count": 1
+    },
+    {
+      "before": "!define MANUPRODUCTKEY \"${MANUKEY}\\${PRODUCTNAME}\"",
+      "after": "!define MANUPRODUCTKEY \"${MANUKEY}\\MetOrigin Splat Alignment Candidate\"",
+      "count": 1
+    },
+    {
+      "before": "!define PLACEHOLDER_INSTALL_DIR \"placeholder\\${PRODUCTNAME}\"",
+      "after": "!define PLACEHOLDER_INSTALL_DIR \"placeholder\\MetOrigin Splat Alignment Candidate\"",
+      "count": 1
+    },
+    {
+      "before": "!define MULTIUSER_INSTALLMODE_INSTDIR \"${PRODUCTNAME}\"",
+      "after": "!define MULTIUSER_INSTALLMODE_INSTDIR \"MetOrigin Splat Alignment Candidate\"",
+      "count": 1
+    },
+    {
+      "before": "StrCpy $INSTDIR \"$PROGRAMFILES64\\${PRODUCTNAME}\"",
+      "after": "StrCpy $INSTDIR \"$PROGRAMFILES64\\MetOrigin Splat Alignment Candidate\"",
+      "count": 2
+    },
+    {
+      "before": "StrCpy $INSTDIR \"$PROGRAMFILES\\${PRODUCTNAME}\"",
+      "after": "StrCpy $INSTDIR \"$PROGRAMFILES\\MetOrigin Splat Alignment Candidate\"",
+      "count": 2
+    },
+    {
+      "before": "StrCpy $INSTDIR \"$LOCALAPPDATA\\${PRODUCTNAME}\"",
+      "after": "StrCpy $INSTDIR \"$LOCALAPPDATA\\MetOrigin Splat Alignment Candidate\"",
+      "count": 1
+    },
+    {
+      "before": "StrCmp \"$R0$R1\" \"${PRODUCTNAME}${MANUFACTURER}\" 0 wix_loop",
+      "after": "StrCmp \"$R0$R1\" \"MetOrigin Splat Alignment Candidate${MANUFACTURER}\" 0 wix_loop",
+      "count": 1
+    }
+  ],
+  "scope": "Keep legacy candidate NSIS registry keys, default installation directory and WiX maintenance lookup isolated while product display name, executable and shortcut labels follow the configured MetOrigin Splat name. All other upstream template bytes are unchanged.",
+  "upstream_sha256": "20f4ecc730defb71f1342eaeaec4021df13be3d843abba0effe88ea5835fa079",
+  "modified_sha256": "e42db89b18d646e255497cb49e753bb9afca4adf974b8073e46f65b094f93c3d",
+  "license_sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d"
+}

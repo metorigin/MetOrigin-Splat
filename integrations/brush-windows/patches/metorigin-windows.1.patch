@@ -1,0 +1,560 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 43fe619..013eb76 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1127,6 +1127,7 @@ dependencies = [
+  "brush-train",
+  "brush-vfs",
+  "burn",
++ "burn-cubecl",
+  "burn-wgpu",
+  "clap",
+  "getrandom 0.4.3",
+diff --git a/apps/brush-cli/src/lib.rs b/apps/brush-cli/src/lib.rs
+index 8e74588..e662bb8 100644
+--- a/apps/brush-cli/src/lib.rs
++++ b/apps/brush-cli/src/lib.rs
+@@ -37,9 +37,18 @@ pub struct Cli {
+     pub capabilities_json: bool,
+ 
+     /// Initialize the actual adapter and run Gaussian rendering and backward.
+-    #[arg(long, exclusive = true)]
++    #[arg(long, conflicts_with_all = ["capabilities_json", "source", "with_viewer"])]
+     pub probe_json: bool,
+ 
++    /// Explicit Windows WGPU API. No implicit backend fallback is allowed.
++    #[cfg(windows)]
++    #[arg(long, requires = "graphics_backend")]
++    pub graphics_device: Option<String>,
++
++    #[cfg(windows)]
++    #[arg(long, value_enum)]
++    pub graphics_backend: Option<brush_process::windows_device::GraphicsBackend>,
++
+     /// Source to load from (path or URL).
+     #[arg(value_name = "PATH_OR_URL")]
+     pub source: Option<DataSource>,
+@@ -83,6 +92,16 @@ impl Cli {
+ 
+     pub fn validate(self) -> Result<Self, Error> {
+         if self.capabilities_json || self.probe_json {
++            if self.probe_json
++                && self.explicit_args.iter().any(|arg| {
++                    !["probe-json", "graphics-backend", "graphics-device"].contains(&arg.as_str())
++                })
++            {
++                return Err(Error::raw(
++                    ErrorKind::ArgumentConflict,
++                    "Compute probe accepts only graphics selectors",
++                ));
++            }
+             return Ok(self);
+         }
+         self.train_stream
+@@ -120,7 +139,18 @@ pub fn handle_machine_mode(args: &Cli) -> anyhow::Result<bool> {
+             let runtime = tokio::runtime::Builder::new_multi_thread()
+                 .enable_all()
+                 .build()?;
+-            runtime.block_on(brush_process::machine::probe())
++            #[cfg(windows)]
++            {
++                runtime.block_on(brush_process::machine::probe_selected(
++                    args.graphics_backend
++                        .ok_or_else(|| anyhow::anyhow!("--graphics-backend is required"))?,
++                    args.graphics_device.as_deref(),
++                ))
++            }
++            #[cfg(not(windows))]
++            {
++                runtime.block_on(brush_process::machine::probe())
++            }
+         }))
+         .unwrap_or_else(|_| Err(anyhow::anyhow!("Compute probe panicked")));
+         let (report, success) = brush_process::machine::probe_outcome(outcome);
+@@ -146,6 +176,37 @@ pub fn build_process(args: &Cli) -> Option<RunningProcess> {
+     }))
+ }
+ 
++/// Initialize exactly the verified Windows adapter before constructing tensors.
++#[cfg(windows)]
++pub async fn run_windows_headless(args: Cli) -> anyhow::Result<()> {
++    let backend = args
++        .graphics_backend
++        .ok_or_else(|| anyhow::anyhow!("--graphics-backend is required for Windows training"))?;
++    let id = args.graphics_device.as_deref().ok_or_else(|| {
++        anyhow::anyhow!(
++            "--graphics-device from a successful probe is required for Windows training"
++        )
++    })?;
++    let (device, info) = brush_process::windows_device::initialize(backend, Some(id)).await?;
++    let source = args
++        .source
++        .ok_or_else(|| anyhow::anyhow!("A training source is required"))?;
++    let config = args.train_stream.clone();
++    let process = brush_process::create_process_with_device(source, device, async move |init| {
++        Some(brush_process::args_file::merge_configs(
++            &init,
++            &config,
++            &args.explicit_args,
++        ))
++    });
++    run_cli_ui_with_adapter_info(
++        process,
++        args.train_stream,
++        Some(format!("{info:?}; device_id={id}")),
++    )
++    .await
++}
++
+ /// Initialize the backend, then drive `process` to completion on the CLI UI.
+ pub async fn run_headless(
+     process: RunningProcess,
+@@ -438,6 +499,47 @@ mod tests {
+         assert!(Cli::try_parse_from(["brush-cli", "--capabilities-json", "--probe-json"]).is_err());
+     }
+ 
++    #[cfg(windows)]
++    #[test]
++    fn windows_probe_and_training_share_explicit_selectors() {
++        for tokens in [
++            vec!["brush-cli", "--probe-json"],
++            vec!["brush-cli", "dataset"],
++        ] {
++            let mut tokens = tokens;
++            tokens.extend([
++                "--graphics-backend",
++                "dx12",
++                "--graphics-device",
++                "dx12:000010de:00002c58:475055",
++            ]);
++            let cli = Cli::try_parse_from(tokens).unwrap();
++            assert_eq!(
++                cli.graphics_backend,
++                Some(brush_process::windows_device::GraphicsBackend::Dx12)
++            );
++            assert_eq!(
++                cli.graphics_device.as_deref(),
++                Some("dx12:000010de:00002c58:475055")
++            );
++        }
++        assert!(
++            Cli::try_parse_from(["brush-cli", "--probe-json", "--graphics-backend", "gl"]).is_err()
++        );
++        assert!(
++            Cli::try_parse_from([
++                "brush-cli",
++                "--capabilities-json",
++                "--graphics-backend",
++                "dx12"
++            ])
++            .is_err()
++        );
++        assert!(
++            Cli::try_parse_from(["brush-cli", "--probe-json", "--graphics-device", "id"]).is_err()
++        );
++    }
++
+     #[test]
+     fn parses_source_and_overrides() {
+         let cli = Cli::try_parse_from([
+diff --git a/apps/brush-cli/src/main.rs b/apps/brush-cli/src/main.rs
+index 063e2fc..942e51d 100644
+--- a/apps/brush-cli/src/main.rs
++++ b/apps/brush-cli/src/main.rs
+@@ -4,7 +4,9 @@
+ // this is a lean build of just the training path for quick CLI iteration.
+ #[cfg(not(target_family = "wasm"))]
+ fn main() -> anyhow::Result<()> {
+-    use brush_cli::{Cli, build_process, run_headless};
++    use brush_cli::Cli;
++    #[cfg(not(windows))]
++    use brush_cli::{build_process, run_headless};
+     let args = Cli::parse().validate()?;
+     if brush_cli::handle_machine_mode(&args)? {
+         return Ok(());
+@@ -22,10 +24,16 @@ fn main() -> anyhow::Result<()> {
+         .build()
+         .expect("Failed to initialize tokio runtime");
+ 
+-    // `validate` guarantees a source is present when the viewer is off.
+-    let process = build_process(&args).expect("source must be present");
+-
+-    runtime.block_on(run_headless(process, args.train_stream))
++    #[cfg(windows)]
++    {
++        runtime.block_on(brush_cli::run_windows_headless(args))
++    }
++    #[cfg(not(windows))]
++    {
++        // `validate` guarantees a source is present when the viewer is off.
++        let process = build_process(&args).expect("source must be present");
++        runtime.block_on(run_headless(process, args.train_stream))
++    }
+ }
+ 
+ #[cfg(target_family = "wasm")]
+diff --git a/crates/brush-process/Cargo.toml b/crates/brush-process/Cargo.toml
+index b929b10..d64f697 100644
+--- a/crates/brush-process/Cargo.toml
++++ b/crates/brush-process/Cargo.toml
+@@ -18,6 +18,7 @@ brush-serde.path = "../brush-serde"
+ 
+ burn.workspace = true
+ burn-wgpu.workspace = true
++burn-cubecl.workspace = true
+ 
+ alphanumeric-sort.workspace = true
+ anyhow.workspace = true
+diff --git a/crates/brush-process/src/checkpoint.rs b/crates/brush-process/src/checkpoint.rs
+index 9b72c42..6a6abd3 100644
+--- a/crates/brush-process/src/checkpoint.rs
++++ b/crates/brush-process/src/checkpoint.rs
+@@ -202,4 +202,39 @@ mod tests {
+         assert_eq!(std::fs::read(&path).unwrap(), new);
+         std::fs::remove_dir_all(directory).unwrap();
+     }
++    #[cfg(windows)]
++    #[test]
++    fn windows_reader_sharing_and_exclusive_target_preserve_valid_checkpoints() {
++        use std::os::windows::fs::OpenOptionsExt;
++        let directory = test_directory();
++        let path = directory.join("checkpoint.ply");
++        let old = payload(0.25);
++        let new = payload(0.75);
++        write_checkpoint_sync(&path, &old).unwrap();
++        // Rust readers share delete; replacement must work while the old reader
++        // keeps its own handle, and the new pathname must be a complete model.
++        let mut reader = File::open(&path).unwrap();
++        write_checkpoint_sync(&path, &new).unwrap();
++        let mut observed = Vec::new();
++        std::io::Read::read_to_end(&mut reader, &mut observed).unwrap();
++        assert_eq!(observed, old);
++        assert_eq!(std::fs::read(&path).unwrap(), new);
++        drop(reader);
++        let locked = OpenOptions::new()
++            .read(true)
++            .share_mode(0)
++            .open(&path)
++            .unwrap();
++        assert!(write_checkpoint_sync(&path, &old).is_err());
++        drop(locked);
++        assert_eq!(std::fs::read(&path).unwrap(), new);
++        assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 1);
++        write_checkpoint_sync(&path, &old).unwrap();
++        assert_eq!(std::fs::read(&path).unwrap(), old);
++        // A stale unpublished temporary file is never treated as a checkpoint.
++        std::fs::write(directory.join(".brush-checkpoint-stale.part"), b"partial").unwrap();
++        write_checkpoint_sync(&path, &new).unwrap();
++        assert_eq!(std::fs::read(&path).unwrap(), new);
++        std::fs::remove_dir_all(directory).unwrap();
++    }
+ }
+diff --git a/crates/brush-process/src/lib.rs b/crates/brush-process/src/lib.rs
+index 69f1a5d..904dda4 100644
+--- a/crates/brush-process/src/lib.rs
++++ b/crates/brush-process/src/lib.rs
+@@ -9,6 +9,8 @@ pub mod message;
+ pub mod slot;
+ pub mod snapshot;
+ pub mod train_stream;
++#[cfg(windows)]
++pub mod windows_device;
+ 
+ pub use brush_vfs::DataSource;
+ pub type ProcessDevice = burn::tensor::Device;
+diff --git a/crates/brush-process/src/live_preview.rs b/crates/brush-process/src/live_preview.rs
+index cf8b893..445cb49 100644
+--- a/crates/brush-process/src/live_preview.rs
++++ b/crates/brush-process/src/live_preview.rs
+@@ -1,7 +1,10 @@
+ //! Demand-driven protocol-1 PLY bridge, independent of the training stream.
+ 
++#[cfg(unix)]
++use std::fs::File;
++
+ use std::{
+-    fs::{File, OpenOptions},
++    fs::OpenOptions,
+     future::Future,
+     io::Write,
+     path::{Path, PathBuf},
+@@ -522,7 +525,23 @@ mod tests {
+         use clap::Parser;
+         use tokio_stream::StreamExt;
+         let fixture_path = std::env::var("METORIGIN_BRUSH_TEST_DATASET").expect("fixture path");
+-        let (_, adapter) = crate::burn_init_setup_with_info().await;
++        #[cfg(windows)]
++        let (device, _) = {
++            let backend = match std::env::var("METORIGIN_BRUSH_TEST_BACKEND")
++                .expect("explicit test backend")
++                .as_str()
++            {
++                "dx12" => crate::windows_device::GraphicsBackend::Dx12,
++                "vulkan" => crate::windows_device::GraphicsBackend::Vulkan,
++                _ => panic!("unsupported test backend"),
++            };
++            crate::windows_device::initialize(backend, None)
++                .await
++                .expect("real selected Windows GPU")
++        };
++        #[cfg(not(windows))]
++        let (device, adapter) = crate::burn_init_setup_with_info().await;
++        #[cfg(not(windows))]
+         assert_eq!(adapter.backend, wgpu::Backend::Metal);
+         let mut fixture = Fixture::new();
+         let export_dir = fixture.root.join("checkpoints");
+@@ -536,10 +555,11 @@ mod tests {
+         config.load_config.units_per_meter = 1000.0;
+         config.process_config.export_path = export_dir.to_str().unwrap().into();
+         config.process_config.export_name = "checkpoint_{iter}.ply".into();
+-        let mut process =
+-            crate::create_process(crate::DataSource::Path(fixture_path), async move |_| {
+-                Some(config)
+-            });
++        let mut process = crate::create_process_with_device(
++            crate::DataSource::Path(fixture_path),
++            device,
++            async move |_| Some(config),
++        );
+         while let Some(message) = process.stream.next().await {
+             message.unwrap();
+         }
+diff --git a/crates/brush-process/src/machine.rs b/crates/brush-process/src/machine.rs
+index e921002..05ffb92 100644
+--- a/crates/brush-process/src/machine.rs
++++ b/crates/brush-process/src/machine.rs
+@@ -6,9 +6,9 @@ use brush_render::{Splats, bwd, camera::Camera, gaussian_splats::SplatRenderMode
+ use burn::{module::Module, tensor::Tensor};
+ use serde_json::{Value, json};
+ 
+-pub const ENGINE_VERSION: &str = "1.0.0+metorigin-macos.6";
++pub const ENGINE_VERSION: &str = "1.0.0+metorigin-windows.1";
+ pub const SOURCE_COMMIT: &str = "1388f74c6fe0236f68ee4915564bf00e9d2e3747";
+-pub const BUILD_ID: &str = "metorigin-macos.6";
++pub const BUILD_ID: &str = "metorigin-windows.1";
+ const GAUSSIANS: usize = 8;
+ const SIZE: u32 = 32;
+ 
+@@ -27,6 +27,8 @@ pub fn capabilities() -> Value {
+     report["cli_profile"] = json!("metorigin_1");
+     report["target"] = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+         json!("aarch64-apple-darwin")
++    } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
++        json!("x86_64-pc-windows-msvc")
+     } else {
+         json!(format!(
+             "{}-{}",
+@@ -44,6 +46,11 @@ pub fn capabilities() -> Value {
+         "explicit_cli_overrides",
+         "live_preview"
+     ]);
++    #[cfg(windows)]
++    report["supported_features"]
++        .as_array_mut()
++        .expect("feature array")
++        .push(json!("backend_device_selection"));
+     report["lpips"] = json!({
+         "embedded_weights": cfg!(all(not(target_family = "wasm"), feature = "embedded-lpips")),
+         "loss_available": cfg!(all(not(target_family = "wasm"), feature = "embedded-lpips")),
+@@ -114,9 +121,30 @@ fn validate_compute(pixels: &[f32], gradients: &[f32], loss: f32) -> Result<f64>
+ /// The fixed eight visible splats keep this independent of user datasets.
+ pub async fn probe() -> Result<Value> {
+     let (device, adapter) = crate::burn_init_setup_with_info().await;
++    compute_probe(device, adapter, None).await
++}
++
++#[cfg(windows)]
++pub async fn probe_selected(
++    backend: crate::windows_device::GraphicsBackend,
++    device_id: Option<&str>,
++) -> Result<Value> {
++    let (device, adapter) = crate::windows_device::initialize(backend, device_id).await?;
++    let id = crate::windows_device::adapter_id(&adapter)?;
++    compute_probe(device, adapter, Some(id)).await
++}
++
++async fn compute_probe(
++    device: crate::ProcessDevice,
++    adapter: wgpu::AdapterInfo,
++    device_id: Option<String>,
++) -> Result<Value> {
+     ensure!(
+-        adapter.backend == wgpu::Backend::Metal,
+-        "Expected a Metal compute adapter"
++        matches!(
++            adapter.backend,
++            wgpu::Backend::Metal | wgpu::Backend::Dx12 | wgpu::Backend::Vulkan
++        ),
++        "Expected a supported compute adapter"
+     );
+     let mut positions = Vec::with_capacity(GAUSSIANS * 3);
+     for index in 0..GAUSSIANS {
+@@ -184,7 +212,15 @@ pub async fn probe() -> Result<Value> {
+     let mut report = identity();
+     report["probe_kind"] = json!("compute_smoke");
+     report["status"] = json!("supported");
+-    report["backend"] = json!("metal");
++    report["backend"] = json!(match adapter.backend {
++        wgpu::Backend::Metal => "metal",
++        wgpu::Backend::Dx12 => "dx12",
++        wgpu::Backend::Vulkan => "vulkan",
++        _ => unreachable!("checked compute backend"),
++    });
++    if let Some(id) = device_id {
++        report["device_id"] = json!(id);
++    }
+     report["device_name"] = json!(adapter.name);
+     report["device_type"] = json!(format!("{:?}", adapter.device_type));
+     report["compute"] = json!({
+diff --git a/crates/brush-process/src/windows_device.rs b/crates/brush-process/src/windows_device.rs
+new file mode 100644
+index 0000000..43a7a13
+--- /dev/null
++++ b/crates/brush-process/src/windows_device.rs
+@@ -0,0 +1,146 @@
++//! Windows-only adapter selection shared by compute probes and CLI training.
++//!
++//! IDs identify the API, PCI vendor/device and exact UTF-8 adapter name. If two
++//! physical adapters have identical identity, selection is rejected as ambiguous.
++//! This deliberately never equates an NVIDIA enumeration index with a WGPU one.
++use anyhow::{Context, Result, ensure};
++use burn_cubecl::cubecl::wgpu::{WgpuBackend, WgpuDeviceKind};
++use burn_wgpu::{WgpuDevice, graphics::AutoGraphicsApi};
++
++#[derive(clap::ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]
++pub enum GraphicsBackend {
++    Dx12,
++    Vulkan,
++}
++
++impl GraphicsBackend {
++    fn api(self) -> wgpu::Backend {
++        match self {
++            Self::Dx12 => wgpu::Backend::Dx12,
++            Self::Vulkan => wgpu::Backend::Vulkan,
++        }
++    }
++    fn pinned(self) -> WgpuBackend {
++        match self {
++            Self::Dx12 => WgpuBackend::Dx12,
++            Self::Vulkan => WgpuBackend::Vulkan,
++        }
++    }
++}
++
++pub fn adapter_id(info: &wgpu::AdapterInfo) -> Result<String> {
++    let backend = match info.backend {
++        wgpu::Backend::Dx12 => "dx12",
++        wgpu::Backend::Vulkan => "vulkan",
++        _ => anyhow::bail!("Unsupported Windows compute backend"),
++    };
++    let name = info
++        .name
++        .as_bytes()
++        .iter()
++        .map(|byte| format!("{byte:02x}"))
++        .collect::<String>();
++    Ok(format!(
++        "{backend}:{:08x}:{:08x}:{name}",
++        info.vendor, info.device
++    ))
++}
++
++fn select(infos: &[wgpu::AdapterInfo], requested: Option<&str>) -> Result<usize> {
++    let ids = infos.iter().map(adapter_id).collect::<Result<Vec<_>>>()?;
++    let selected = if let Some(requested) = requested {
++        ids.iter()
++            .position(|id| id == requested)
++            .context("Verified GPU is no longer available on the selected backend")?
++    } else {
++        infos
++            .iter()
++            .position(|info| info.device_type == wgpu::DeviceType::DiscreteGpu)
++            .context("No discrete GPU is available on the selected Windows backend")?
++    };
++    ensure!(
++        infos[selected].device_type == wgpu::DeviceType::DiscreteGpu,
++        "This Windows profile requires a discrete GPU"
++    );
++    ensure!(
++        ids.iter().filter(|id| **id == ids[selected]).count() == 1,
++        "GPU identity is ambiguous; refusing an unbound adapter"
++    );
++    Ok(selected)
++}
++
++pub async fn initialize(
++    backend: GraphicsBackend,
++    requested: Option<&str>,
++) -> Result<(crate::ProcessDevice, wgpu::AdapterInfo)> {
++    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
++        backends: backend.api().into(),
++        ..wgpu::InstanceDescriptor::new_without_display_handle()
++    });
++    let adapters = instance.enumerate_adapters(backend.api().into()).await;
++    let infos = adapters
++        .iter()
++        .map(wgpu::Adapter::get_info)
++        .collect::<Vec<_>>();
++    let selected = select(&infos, requested)?;
++    let expected = &infos[selected];
++    ensure!(
++        adapters[selected]
++            .features()
++            .contains(wgpu::Features::SUBGROUP),
++        "Selected GPU lacks subgroup compute support. DX12 requires the packaged DXC compiler; FXC fallback cannot train Brush."
++    );
++    // CubeCL indexes adapters separately by DeviceType; resolve that index from
++    // WGPU on this same API, then verify the adapter returned by actual setup.
++    let index = infos[..selected]
++        .iter()
++        .filter(|info| info.device_type == expected.device_type)
++        .count();
++    let device = WgpuDevice::new(WgpuDeviceKind::DiscreteGpu(index)).on(backend.pinned());
++    let setup =
++        burn_wgpu::init_setup_async::<AutoGraphicsApi>(&device, crate::burn_options()).await;
++    let actual = setup.adapter.get_info();
++    ensure!(
++        actual.backend == backend.api() && adapter_id(&actual)? == adapter_id(expected)?,
++        "GPU selection changed during initialization"
++    );
++    Ok((device.into(), actual))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    fn info(name: &str, backend: wgpu::Backend) -> wgpu::AdapterInfo {
++        wgpu::AdapterInfo {
++            name: name.into(),
++            vendor: 0x10de,
++            device: 0x2c58,
++            device_type: wgpu::DeviceType::DiscreteGpu,
++            backend,
++            ..wgpu::AdapterInfo::new(wgpu::DeviceType::DiscreteGpu, backend)
++        }
++    }
++    #[test]
++    fn id_is_backend_bound_and_preserves_utf8_without_delimiter_ambiguity() {
++        let dx = info("GPU 中文:0", wgpu::Backend::Dx12);
++        assert_eq!(
++            adapter_id(&dx).unwrap(),
++            "dx12:000010de:00002c58:47505520e4b8ade696873a30"
++        );
++        assert_ne!(
++            adapter_id(&dx).unwrap(),
++            adapter_id(&info("GPU 中文:0", wgpu::Backend::Vulkan)).unwrap()
++        );
++    }
++    #[test]
++    fn identity_survives_reordering_and_rejects_missing_or_ambiguous_adapter() {
++        let a = info("first", wgpu::Backend::Dx12);
++        let b = info("second", wgpu::Backend::Dx12);
++        let id = adapter_id(&b).unwrap();
++        assert_eq!(select(&[a.clone(), b.clone()], Some(&id)).unwrap(), 1);
++        assert_eq!(select(&[b.clone(), a], Some(&id)).unwrap(), 0);
++        assert!(select(&[b.clone(), b], Some(&id)).is_err());
++        assert!(select(&[], Some(&id)).is_err());
++        assert!(select(&[info("first", wgpu::Backend::Vulkan)], Some(&id)).is_err());
++    }
++}

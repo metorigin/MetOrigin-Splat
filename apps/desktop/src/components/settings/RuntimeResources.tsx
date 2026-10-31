@@ -7,7 +7,7 @@ function bytes(value: number | null | undefined) {
 function pressure(value: ResourceMetrics["memory"]) {
   return value?.pressure === "normal" ? t("正常") : value?.pressure === "warning" ? t("偏高") : value?.pressure === "critical" ? t("严重") : t("尚未测量");
 }
-const roleLabel = (role: string) => role === "application" ? t("应用") : role === "brush" ? "Brush" : role === "colmap" ? "COLMAP" : "WebKit";
+const roleLabel = (role: string) => role === "application" ? t("应用") : role === "brush" ? "Brush" : role === "colmap" ? "COLMAP" : role === "webview2" ? "WebView2" : "WebKit";
 
 export function RuntimeResources({ metrics }: { metrics: ResourceMetrics | null }) {
   const runtime = metrics?.runtime;
@@ -36,9 +36,13 @@ export function RuntimeResources({ metrics }: { metrics: ResourceMetrics | null 
         <div><dt>Swap</dt><dd>{bytes(metrics.memory.swap_used_bytes)} / {bytes(metrics.memory.swap_total_bytes)}</dd></div>
         <div><dt>{t("Metal 建议工作集")}</dt><dd>{bytes(runtime?.recommended_working_set_bytes)}</dd></div>
       </>}
+      {metrics?.memory?.kind === "system" && <>
+        <div><dt>{t("系统可用内存")}</dt><dd>{bytes(metrics.memory.available_bytes)}</dd></div>
+        <div><dt>{t("训练设备可用预算")}</dt><dd>{bytes(runtime?.recommended_working_set_bytes)}</dd></div>
+      </>}
     </dl>
     {metrics?.memory?.available_is_estimate && <p className="text-xs leading-relaxed text-muted-foreground">{t("估算来自系统空闲与非活跃内存，不重复扣减压缩内存。它不是可保证的分配额度，预览仍优先遵循系统内存压力。")}</p>}
-    <p className="text-xs leading-relaxed text-muted-foreground">{t("资源预算是训练策略，不是进程内存硬上限；统一内存由系统、训练和预览共享。")}</p>
+    <p className="text-xs leading-relaxed text-muted-foreground">{metrics?.memory?.kind === "system" ? t("资源预算是训练策略，不是分配保证；系统内存和训练设备显存分别观测，缺失指标保持未知。") : t("资源预算是训练策略，不是进程内存硬上限；统一内存由系统、训练和预览共享。")}</p>
     {metrics?.processes?.length ? <>
       <h2>{t("进程驻留内存")}</h2>
       <dl>{metrics.processes.map((process) => <div key={process.pid}><dt>{roleLabel(process.role)}</dt><dd>{bytes(process.resident_bytes)}</dd></div>)}</dl>

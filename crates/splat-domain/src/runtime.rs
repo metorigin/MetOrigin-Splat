@@ -384,18 +384,48 @@ impl ExecutionProfile {
                     "Windows requires x86_64",
                 )?;
                 ensure(
-                    self.brush.cli_profile == BrushCliProfile::Legacy03
-                        && self.brush.backend != BrushBackend::Metal,
-                    "Windows requires the legacy Brush CLI with a Windows backend",
-                )?;
-                ensure(
                     self.memory.kind == MemoryKind::Dedicated,
                     "Windows requires dedicated memory accounting",
                 )?;
-                ensure(
-                    self.effective_training.lod_levels.is_none(),
-                    "legacy Brush has no LOD parameter",
-                )?;
+                if self.brush.cli_profile == BrushCliProfile::Metorigin1 {
+                    ensure(
+                        matches!(
+                            self.brush.backend,
+                            BrushBackend::Dx12 | BrushBackend::Vulkan
+                        ),
+                        "Windows Brush 1 requires an explicitly selected DX12 or Vulkan backend",
+                    )?;
+                    ensure(
+                        self.engines.brush.version == "1.0.0+metorigin-windows.1"
+                            && self.engines.brush.source_commit.as_deref()
+                                == Some("1388f74c6fe0236f68ee4915564bf00e9d2e3747"),
+                        "Windows Brush 1 requires the pinned MetOrigin build identity",
+                    )?;
+                    ensure(
+                        probe.kind == ProbeKind::ComputeSmoke,
+                        "Windows Brush 1 requires compute-smoke evidence",
+                    )?;
+                    ensure(
+                        self.colmap.feature_backend == ColmapBackend::Cuda
+                            && self.colmap.matching_backend == ColmapBackend::Cuda
+                            && self.colmap.global_positioning_backend == ColmapBackend::Cpu,
+                        "Windows Brush 1 requires CUDA SIFT and explicit CPU global positioning",
+                    )?;
+                    ensure(
+                        self.memory.training_budget_bytes.is_some()
+                            && self.effective_training.resolution.is_some()
+                            && self.effective_training.image_cache_budget_bytes.is_some()
+                            && self.effective_training.max_splats.is_some()
+                            && self.effective_training.lod_levels == Some(0),
+                        "Windows Brush 1 requires explicit resource limits and lod_levels=0",
+                    )?;
+                } else {
+                    ensure(
+                        self.brush.backend != BrushBackend::Metal
+                            && self.effective_training.lod_levels.is_none(),
+                        "legacy Windows Brush requires a Windows backend and has no LOD parameter",
+                    )?;
+                }
                 if self.brush.backend == BrushBackend::LegacyDefault {
                     ensure(probe.kind == ProbeKind::LegacyNvidiaDriver && probe.backend.is_none(),
                            "legacy-default backend uses driver evidence without an inferred WGPU backend")?;
@@ -420,6 +450,14 @@ impl ExecutionProfile {
         if probe.status != CapabilityStatus::Supported || !compute_verified {
             return Err(not_ready(
                 "training device has no successful compatible probe evidence",
+            ));
+        }
+        if self.platform == RuntimePlatform::Windows
+            && self.brush.cli_profile == BrushCliProfile::Metorigin1
+            && probe.device_id.is_none()
+        {
+            return Err(not_ready(
+                "Windows Brush 1 requires a reproducible device selection identity",
             ));
         }
         if self.live_protocol == LiveProtocol::PlyRequestAckV1
@@ -615,7 +653,15 @@ mod tests {
 
     #[test]
     fn accepted_json_fixtures_round_trip_without_changing_project_schema() {
-        for fixture in [MAC, UNKNOWN, WINDOWS, MAC_PATCHED] {
+        for fixture in [
+            MAC,
+            UNKNOWN,
+            WINDOWS,
+            MAC_PATCHED,
+            include_str!("../../../schemas/examples/execution-profile/windows1-dx12.valid.json"),
+            include_str!("../../../schemas/examples/execution-profile/windows1-vulkan.valid.json"),
+            include_str!("../../../schemas/examples/execution-profile/windows1-unknown.valid.json"),
+        ] {
             let profile: ExecutionProfile = serde_json::from_str(fixture).unwrap();
             profile.validate().unwrap();
             let serialized = serde_json::to_vec(&profile).unwrap();
@@ -631,6 +677,17 @@ mod tests {
     #[test]
     fn schema_rejected_fixtures_are_also_rejected_by_rust_loading() {
         let fixtures = [
+            include_str!("../../../schemas/examples/execution-profile/windows1-metal.invalid.json"),
+            include_str!("../../../schemas/examples/execution-profile/windows1-wrong-architecture.invalid.json"),
+            include_str!("../../../schemas/examples/execution-profile/windows1-stock.invalid.json"),
+            include_str!("../../../schemas/examples/execution-profile/windows1-wrong-source.invalid.json"),
+            include_str!("../../../schemas/examples/execution-profile/windows1-driver-evidence.invalid.json"),
+            include_str!("../../../schemas/examples/execution-profile/windows1-mismatched-backend.invalid.json"),
+            include_str!("../../../schemas/examples/execution-profile/windows1-missing-resource.invalid.json"),
+            include_str!("../../../schemas/examples/execution-profile/windows1-lod.invalid.json"),
+            include_str!("../../../schemas/examples/execution-profile/windows1-unknown-capability.invalid.json"),
+            include_str!("../../../schemas/examples/execution-profile/windows1-cpu-colmap.invalid.json"),
+            include_str!("../../../schemas/examples/execution-profile/windows1-gpu-positioning.invalid.json"),
             include_str!("../../../schemas/examples/execution-profile/future-version.invalid.json"),
             include_str!("../../../schemas/examples/execution-profile/macos-cuda.invalid.json"),
             include_str!("../../../schemas/examples/execution-profile/macos-gpu-positioning.invalid.json"),
@@ -810,5 +867,32 @@ mod tests {
             profile.engines.brush.version = version.into();
             assert!(profile.validate().is_err(), "{version}");
         }
+    }
+}
+
+#[cfg(test)]
+mod windows1_tests {
+    use super::*;
+    #[test]
+    fn windows1_requires_successful_compute_and_device_identity() {
+        for bytes in [
+            include_bytes!("../../../schemas/examples/execution-profile/windows1-dx12.valid.json")
+                .as_slice(),
+            include_bytes!(
+                "../../../schemas/examples/execution-profile/windows1-vulkan.valid.json"
+            )
+            .as_slice(),
+        ] {
+            let mut profile = ExecutionProfile::from_json(bytes).unwrap();
+            profile.validate_for_execution().unwrap();
+            profile.brush.probe_result.device_id = None;
+            profile.validate().unwrap();
+            assert!(profile.validate_for_execution().is_err());
+        }
+        let profile = ExecutionProfile::from_json(include_bytes!(
+            "../../../schemas/examples/execution-profile/windows1-unknown.valid.json"
+        ))
+        .unwrap();
+        assert!(profile.validate_for_execution().is_err());
     }
 }

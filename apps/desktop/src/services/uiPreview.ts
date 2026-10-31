@@ -327,6 +327,7 @@ const previewAnalysis: MediaAnalysis = {
 };
 
 const previewPreflight: ProjectPreflight = {
+  preset: "balanced",
   can_continue: true,
   engine_checks: previewEngines.map((engine) => ({
     name: engine.name,
@@ -380,7 +381,8 @@ function previewPreflightForRequest(value: unknown): ProjectPreflight {
   const request = value as { sourcePath?: unknown; preset?: string } | undefined;
   const analysis = previewAnalysisForPath(request?.sourcePath);
   const preset = analysis.preset_estimates.find((item) => item.id === request?.preset) ?? analysis.preset_estimates[1];
-  return { ...previewPreflight, estimated_frames: preset.estimated_frames, estimated_disk_bytes: preset.estimated_disk_bytes };
+  return { ...previewPreflight, preset: preset.id, estimated_frames: preset.estimated_frames, estimated_disk_bytes: preset.estimated_disk_bytes,
+    effective_training: { iterations: preset.iterations, sh_degree: preset.sh_degree, resolution: preset.target_long_edge, threads: 2 } };
 }
 
 const previewPly: PlyPreview = {

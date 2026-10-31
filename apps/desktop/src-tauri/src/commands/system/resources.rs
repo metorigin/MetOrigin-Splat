@@ -56,6 +56,10 @@ pub(crate) struct PreviewResourcePolicy {
     pub memory_pressure: Option<MemoryPressure>,
     pub poll_interval_ms: u64,
     pub max_snapshot_bytes: u64,
+    /// Windows recovery needs consecutive healthy observations. Omitted on Mac
+    /// to preserve its existing wire response and recovery behavior.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_samples: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -183,18 +187,47 @@ fn native_availability(total: u64) -> Option<AppleMemoryAvailability> {
 }
 
 pub(crate) fn current_preview_policy() -> PreviewResourcePolicy {
-    if !cfg!(target_os = "macos") {
+    if !cfg!(any(target_os = "macos", target_os = "windows")) {
         return preview_policy(false, 0, None, None);
     }
     let mut system = System::new();
     system.refresh_memory();
     let observation = observe_memory(&system);
+    #[cfg(target_os = "windows")]
+    return windows_preview_policy(system.total_memory(), observation.available_bytes);
+    #[cfg(not(target_os = "windows"))]
     preview_policy(
         true,
         system.total_memory(),
         observation.available_bytes,
         observation.pressure,
     )
+}
+
+/// System RAM backpressure protects image loading and viewer model replacement.
+/// This does not measure the training adapter's VRAM budget. Unknown GPU memory
+/// stays unknown; checkpoint frequency and running training limits never change.
+#[cfg(any(target_os = "windows", test))]
+pub(crate) fn windows_preview_policy(total: u64, available: Option<u64>) -> PreviewResourcePolicy {
+    let (action, reason) = match available {
+        Some(bytes) if bytes <= GIB / 2 => (PreviewAction::Release, Some("low_available_memory")),
+        Some(bytes) if bytes < (total / 10).max(GIB) => {
+            (PreviewAction::Pause, Some("low_available_memory"))
+        }
+        None => (PreviewAction::Pause, Some("memory_observation_unavailable")),
+        _ => (PreviewAction::Allow, None),
+    };
+    PreviewResourcePolicy {
+        action,
+        reason,
+        memory_pressure: None,
+        poll_interval_ms: 5_000,
+        recovery_samples: Some(3),
+        max_snapshot_bytes: available
+            .map(|bytes| bytes.saturating_sub(GIB / 2) / 6)
+            .unwrap_or(0)
+            .min(256 * 1024 * 1024),
+    }
 }
 
 pub(crate) fn preview_policy(
@@ -209,6 +242,7 @@ pub(crate) fn preview_policy(
             reason: None,
             memory_pressure: None,
             poll_interval_ms: 500,
+            recovery_samples: None,
             max_snapshot_bytes: GIB,
         };
     }
@@ -246,6 +280,7 @@ pub(crate) fn preview_policy(
             interval
         },
         max_snapshot_bytes: cap,
+        recovery_samples: None,
     }
 }
 
@@ -266,7 +301,16 @@ pub(crate) fn runtime_summary(
         colmap_backend: if profile.platform == RuntimePlatform::Macos {
             "CPU".into()
         } else {
-            format!("{:?}", profile.colmap.feature_backend)
+            let name = |backend| match backend {
+                splat_domain::runtime::ColmapBackend::Cpu => "CPU",
+                splat_domain::runtime::ColmapBackend::Cuda => "CUDA",
+            };
+            format!(
+                "SIFT {} · Match {} · GP {} · BA CPU",
+                name(profile.colmap.feature_backend),
+                name(profile.colmap.matching_backend),
+                name(profile.colmap.global_positioning_backend)
+            )
         },
         brush_backend: format!("{:?}", profile.brush.backend),
         device_name: profile.brush.probe_result.device_name,
@@ -311,6 +355,8 @@ pub(crate) fn process_memory(system: &System, root: u32) -> Vec<ProcessMemory> {
                     Some("colmap")
                 } else if name.contains("webkit") {
                     Some("webkit")
+                } else if cfg!(target_os = "windows") && name == "msedgewebview2.exe" {
+                    Some("webview2")
                 } else {
                     None
                 };
@@ -373,6 +419,35 @@ fn native_pressure() -> Option<MemoryPressure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn windows_preview_uses_observed_system_headroom_without_inventing_vram() {
+        assert_eq!(
+            windows_preview_policy(32 * GIB, None).action,
+            PreviewAction::Pause
+        );
+        assert_eq!(
+            windows_preview_policy(32 * GIB, Some(GIB / 2)).action,
+            PreviewAction::Release
+        );
+        assert_eq!(
+            windows_preview_policy(32 * GIB, Some(2 * GIB)).action,
+            PreviewAction::Pause
+        );
+        let recovered = windows_preview_policy(32 * GIB, Some(8 * GIB));
+        assert_eq!(recovered.action, PreviewAction::Allow);
+        assert!(recovered.max_snapshot_bytes <= 256 * 1024 * 1024);
+        assert!(recovered.memory_pressure.is_none());
+        assert_eq!(recovered.recovery_samples, Some(3));
+        assert_eq!(
+            serde_json::to_value(recovered).unwrap()["recovery_samples"],
+            3
+        );
+        let mac = preview_policy(true, 32 * GIB, Some(8 * GIB), Some(MemoryPressure::Normal));
+        assert!(serde_json::to_value(mac)
+            .unwrap()
+            .get("recovery_samples")
+            .is_none());
+    }
     #[test]
     fn compressed_pages_do_not_erase_reclaimable_headroom() {
         // Real 2026-10-27 04:23:16 UTC sample. The former sysinfo formula
@@ -559,6 +634,17 @@ mod tests {
         assert_eq!(summary.effective_training.iterations, 300);
         assert_eq!(summary.colmap_backend, "CPU");
         assert_eq!(summary.brush_backend, "Metal");
+        let windows = splat_domain::ExecutionProfile::from_json(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../schemas/examples/execution-profile/windows1-dx12.valid.json"
+        )))
+        .unwrap();
+        splat_project::save_execution_profile(&root, &windows).unwrap();
+        let summary = runtime_summary(Some(&root)).unwrap().unwrap();
+        assert_eq!(
+            summary.colmap_backend,
+            "SIFT CUDA · Match CUDA · GP CPU · BA CPU"
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 }

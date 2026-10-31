@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "method": "exact_rgba_crop",
+  "source": {
+    "sha256": "09344e658af8b37ccf986187f1b82c1e6bf5929b661420263dbf3befff20d9ea",
+    "size": [
+      1254,
+      1254
+    ]
+  },
+  "crop": {
+    "box": [
+      52,
+      48,
+      1202,
+      1198
+    ],
+    "size": [
+      1150,
+      1150
+    ],
+    "alpha_threshold_inclusive": 128,
+    "padding_fraction": 0.02,
+    "padding_pixels": 23,
+    "max_discarded_alpha": 1,
+    "rgba_sha256": "5663519659dedaa4b2cedc944da5d1b98717c7bd98ae2bbe545fd9a436decfa7"
+  },
+  "resampled": false,
+  "rgba_pixels_preserved": true,
+  "output": {
+    "sha256": "ec51943db7e70ba4d299e6bed8666fdbbb8020ebcdfb435c84f05a2963b7d292",
+    "size": [
+      1150,
+      1150
+    ]
+  },
+  "pillow_version": "12.3.0"
+}

@@ -98,12 +98,12 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|_app, _event| {
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             lifecycle::handle_event(_app, _event);
         });
 }
 
-#[cfg(debug_assertions)]
+#[cfg(all(debug_assertions, not(target_os = "windows")))]
 fn configure_debug_engine_dir() {
     if std::env::var_os("METORIGIN_ENGINE_DIR").is_some() {
         return;
@@ -114,5 +114,5 @@ fn configure_debug_engine_dir() {
     }
 }
 
-#[cfg(not(debug_assertions))]
+#[cfg(any(not(debug_assertions), target_os = "windows"))]
 fn configure_debug_engine_dir() {}

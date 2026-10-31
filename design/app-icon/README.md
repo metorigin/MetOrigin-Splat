@@ -12,7 +12,9 @@
 
 Windows、Linux 和 favicon 的资源位于 `apps/desktop/src-tauri/icons/`，由 Tauri CLI 生成。**macOS 单独使用 `icons/macos/` 中 Apple 编译的 `Assets.car`、兼容 ICNS 与 PNG**，由自动合并的 `tauri.macos.conf.json` 引用。Android/iOS 历史资源保留原状。
 
-重新生成 Windows、Linux 和 favicon 资源时，在仓库根目录使用 Node 26 执行以下命令，并将输出目录顶层的 PNG、ICNS、ICO 同步到桌面资源目录；不要覆盖 `icons/macos/`：
+2026-10-31 起，Windows 通过独立的 `icons/windows/` 导出图标，并优先以 256px ICO 图像提供窗口图标。按用户要求，当前 Windows 与 Mac 共用这份 v4 原始母版；Windows 仅确定性裁除多余透明留白后等比缩放，保留原图造型与比例。此前 Windows v1/v2 重绘稿已停用。Mac 原生构图与已编译资源保持不变，详见 [Windows 调整说明](windows/README.md)。
+
+重新生成通用、Linux 和 favicon 资源时，在仓库根目录使用 Node 26 执行以下命令，并将输出目录顶层的 PNG、ICNS、ICO 同步到桌面资源目录；不要覆盖 `icons/macos/` 或 `icons/windows/`。Windows 专用资源使用下方链接中的独立生成命令。
 
 ```bash
 node apps/desktop/node_modules/@tauri-apps/cli/tauri.js icon \
