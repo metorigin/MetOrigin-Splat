@@ -98,6 +98,18 @@ test('engine layout controls bundled engines and status and rejects missing mana
   await assert.rejects(resolveMacosResourceConfig({ repositoryRoot: f.root }));
 });
 
+test('explicit signed pack overrides both engine roles without changing shared paths or license selection', async t => {
+  const f = fixture(t);
+  const sharedBefore = readFileSync(join(f.root, 'packaging/shared/engine-paths.json'));
+  const signed = join(f.root, 'signed engines', 'candidate');
+  const resources = resourcesByTarget(await resolveMacosResourceConfig({ repositoryRoot: f.root, enginePackRoot: signed }));
+  assert.equal(resolve(resources.get('resources/engines')), join(signed, 'engines'));
+  assert.equal(resources.get('resources/release-status.json'), join(signed, 'release-status.json'));
+  assert.equal(resolve(resources.get('resources/app-licenses')), join(f.root, 'artifacts/licenses/macos-arm64/current'));
+  assert.deepEqual(readFileSync(join(f.root, 'packaging/shared/engine-paths.json')), sharedBefore);
+  assert.equal(existsSync(signed), false);
+});
+
 test('CLI uses its checkout configuration from an unrelated working directory', t => {
   const f = fixture(t);
   for (const [source, relative] of [

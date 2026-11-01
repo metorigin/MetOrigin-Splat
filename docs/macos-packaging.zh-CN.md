@@ -41,7 +41,7 @@ xcode-select -p
 
 目录整理分阶段进行：DMG、验证报告和应用许可证据的位置由 [`packaging/shared/artifact-paths.json`](../packaging/shared/artifact-paths.json) 定义，并由 [`scripts/shared/artifact-paths.mjs`](../scripts/shared/artifact-paths.mjs) 解析。当前许可证据使用 `current/`，历史备份使用 `artifacts/licenses/macos-arm64/archive/`。SuperSplat 源码检出目录为 `.cache/metorigin/sources/supersplat/upstream/`，npm 缓存为 `.cache/metorigin/downloads/npm/supersplat/`，统一配置见 [`cache-paths.json`](../packaging/shared/cache-paths.json)。引擎及其许可证仍作为整包管理，独立于应用许可证据。
 
-引擎路径统一见 [`engine-paths.json`](../packaging/shared/engine-paths.json)。当前完整包继续使用原 Alpha `.6` 的 2,999 个文件，清单 SHA-256 为 `590102d2290251ceced86320d1edef00b1667b139249326f9511ff1b75b6bc40`；目录整理不重建或改写这份引擎身份。开发引擎另位于 `.engines/macos-arm64/development/`，其 Brush 保留 `metorigin-macos.5`，不会因打包自动换成 `.6`。
+引擎路径统一见 [`engine-paths.json`](../packaging/shared/engine-paths.json)。当前冻结的待签名源包继续使用原 Alpha `.6` 的 2,999 个文件，清单 SHA-256 为 `590102d2290251ceced86320d1edef00b1667b139249326f9511ff1b75b6bc40`；目录整理不重建或改写这份源包身份。正式签名流程会派生新包，生成新的文件清单和哈希，验证时应使用本轮报告中的派生身份。开发引擎另位于 `.engines/macos-arm64/development/`，其 Brush 保留 `metorigin-macos.5`，不会因打包自动换成 `.6`。
 
 Mac 引擎直接读取 `.engines/macos-arm64/` 下的 canonical 路径，不保留 `target/` 兼容链接；开发和构建准备不再创建 `target/macos-m0` 或 `target/distribution/macos-arm64`。设置中若显式保存了旧路径，应重新选择对应的 canonical 引擎目录。`cargo clean` 只影响 Cargo 输出，不删除稳定引擎、源码缓存和正式报告。
 
@@ -64,6 +64,82 @@ bash scripts/macos/build-macos-app.sh --internal-alpha
 脚本会先检查 node、pnpm、cargo、python3 是否可执行，以及 Node 26.x / pnpm 11.12.0 是否匹配；工具缺失或版本不符时，在引擎预检和编译之前退出。
 
 如果提示输入、资源或许可证清单不匹配，先执行下一节，不要跳过校验。构建期间不要同时改动源码、依赖、资源或清单。
+
+### Developer ID 签名与 Apple 公证
+
+在本机“登录”钥匙串中准备带有私钥的 **Developer ID Application** 身份，并用
+`security find-identity -v -p codesigning` 获取该证书的 SHA-1 指纹。使用 Apple 的
+App 专用密码配置本机凭据；省略 `--password`，在安全提示中输入密码：
+
+```bash
+xcrun notarytool store-credentials metorigin-notary \
+  --apple-id '你的开发者账户邮箱' --team-id '你的十位 Team ID'
+xcrun notarytool history --keychain-profile metorigin-notary
+```
+
+将下方证书指纹和 Team ID 占位符换成自己的值，再执行完整流程：
+
+```bash
+bash scripts/macos/build-macos-app.sh --internal-alpha \
+  --signing-identity 'Developer ID Application 证书的40位SHA1' \
+  --team-id '你的十位TeamID' \
+  --notary-profile metorigin-notary
+```
+
+`--internal-alpha` 保留当前许可证据中尚未完成的事项；它与正式签名可以同时使用。
+签名或公证成功不会自动清除许可问题、干净机验收或公开发布门槛。签名要求 release
+构建，不能与 `--debug` 同用。省略 `--notary-profile` 时只正式签名，不提交公证。
+
+日常本机开发和不带正式签名参数的内部打包不会自动提交公证。准备分发新构建时，
+再显式提供签名身份、Team ID 和 `--notary-profile`。公证绑定上传的具体构建，后续
+重新打包的分发产物需要重新提交。
+
+脚本先验证默认冻结引擎包，在本轮报告目录的 `signed-engine-pack/` 中派生新包：
+逐个签署 dylib 和引擎可执行文件，使用可信时间戳，并为可执行文件启用 Hardened
+Runtime；随后重建清单及派生审计，再执行重定位与实际应用预检。原始引擎包保持不变。
+`--engine-pack-root DIRECTORY` 可显式选择另一套待派生输入，资源映射和预检使用同一路径。
+Tauri 构建时会清除自动签名/公证环境变量，避免再次改写已经固定的引擎文件。
+
+应用签名并验证后，脚本用该完整应用生成 DMG，签署并只读挂载核对，再将最终 DMG
+提交公证。Apple 返回 `Accepted` 后才为 DMG 附加并验证票据，执行 Gatekeeper 与
+完整挂载比对。对于这种 Finder 拖放安装方式，Apple 支持只提交最外层的分发容器，
+无需先等待一轮独立应用 ZIP 公证，见 Apple 的
+[打包分发说明](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution)
+及[自定义公证流程](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)。
+
+DMG 流程采用显式的 `--require-notarized-container` 验证策略：要求 DMG 的票据和
+Gatekeeper 评估通过，并核验内含应用及全部原生引擎的签名、资源清单与来源应用完全
+一致。报告区分容器公证与应用自身的附票据状态，不声称应用自身已附票据。
+`--require-notarized` 仍严格要求应用自身的票据；`--app-only` 公证流程继续通过
+ZIP 提交应用并为应用附票据。
+
+提交 ID、Apple 原始日志、上传及附票据后的 SHA-256 保存在本轮 `notary-dmg/`
+目录（仅应用模式为 `notary-app/`）；全部步骤通过后才产生最终报告并更新成功指针。
+
+如只需完成上传、稍后等待 Apple 处理，可在完整命令后加 `--notary-submit-only`。
+此选项只适用于 DMG，生成明确标为待处理的提交回执后退出，不执行附票据，不更新
+`latest.json` 或成功产物登记。退出码为零只表示上传成功，不能据此认定公证已通过。
+随后使用同一 DMG 和报告目录恢复处理，例如：
+
+```bash
+python3 scripts/macos/notarize-artifact.py \
+  --submit-file '/完整路径/新安装包.dmg' \
+  --staple-target '/完整路径/新安装包.dmg' \
+  --keychain-profile metorigin-notary \
+  --report-dir '/本轮报告目录/notary-dmg'
+```
+
+该命令恢复原提交，等待通过后附加并验证票据。然后还需运行 `verify-app.py`，使用
+本轮的固定输入哈希、`--expected-app-report`、`--dmg`、Team ID/证书指纹和
+`--require-notarized-container` 完成最终挂载验证；单独恢复公证不会自动更新构建成功指针。
+
+需要保留的已登记旧包，应在构建前通过 `artifact-retention.mjs pin` 固定；默认保留策略
+仍只保留最近的未固定成功产物，详见[开发指南](development.md)。
+
+网络中断或公证等待超时后，`notarize-artifact.py` 可以使用相同的提交文件、目标、
+凭据名称及报告目录恢复已保存的提交 ID，不会重复上传。不要先重新构建或改写原目标。
+如果提交被拒绝，查看该目录的 `apple-log.json`；拒绝、缺少票据或 Gatekeeper 检查失败
+不会被记录成公证成功，也不会替换上一份成功报告。
 
 ### Node 26 与 pnpm 命令入口
 
@@ -198,7 +274,11 @@ DMG 名称格式为 `MetOrigin-Splat-release-<引擎清单哈希前12位>-build.
 open artifacts/packages/macos-arm64
 ```
 
-DMG 使用唯一名称，默认只保留最新一份及对应报告；受保护的发布基线可能额外保留。选择与本轮 `final.json` 一致的文件。`latest.json` 仅在本轮全部选定步骤成功后更新；失败时它可能仍是旧成功记录，不能用来证明失败的本轮已经完成。`--app-only` 成功也会更新该文件，但报告没有 `dmg` 字段。
+DMG 使用唯一名称，默认只保留最新一份及对应报告；受保护的发布基线可能额外保留。选择与本轮 `final.json` 一致的文件。`latest.json` 在本轮选定验证和产物登记成功后原子更新；验证或登记失败时保留旧成功记录，不能用它证明失败的本轮已经完成。`--app-only` 成功也会更新该文件，但报告没有 `dmg` 字段。
+
+登记时旧的 `latest.json` 会保护上一轮成功包。新成功指针发布后，脚本再清理不需要
+保留的旧产物；若此清理失败，会给出提示并保留多余文件，新的已验证、已登记产物
+仍有效。可通过下方清理命令预览和重试。
 
 安装包按平台仅保留最近一次已登记构建，以及它引用的全部验证、许可证据；发布基线、显式固定和未解决失败不按普通历史轮换删除。需要清理时先预览，确认候选后再加 `--apply`：
 
@@ -215,7 +295,16 @@ node scripts/shared/artifact-retention.mjs apply --platform macos-arm64 --apply
 2. 双击本轮 DMG，将 **MetOrigin Splat.app** 拖入 **Applications（应用程序）**。
 3. 从“应用程序”启动，再推出已挂载的磁盘映像。
 
-打包完成不等于已经安装或完成安装后的运行验收。当前内部包使用 ad-hoc 签名进行完整性校验；`application_signatures_verified: true` 不等于 Developer ID 或 Apple 公证。`notarization_verified: false`、`application_public_release_ready: false` 表示相应发布工作尚未完成。
+打包完成后还需进行安装和运行验收。未指定正式签名身份的内部打包使用 ad-hoc
+完整性签名；指定身份后使用 Developer ID。报告中的签名与公证字段分别表示：
+
+| 字段 | 验证范围 |
+| --- | --- |
+| `dmg.application_signatures_verified` | 包内应用的签名与资源完整性，单独此字段不能确认 Developer ID 或公证 |
+| `developer_id_verification` | Developer ID 证书链、Team ID、时间戳及要求的 Hardened Runtime |
+| 顶层 `notarization_verified` | 应用自身附加票据及 Gatekeeper 评估；DMG 容器模式下可为 `false` |
+| `distribution_notarization_verified`、`dmg.notarization_verified` | DMG 自身的公证票据与 Gatekeeper 评估；正式 DMG 公证流程应核对这两个字段为 `true` |
+| `application_public_release_ready` | 此验证器始终保留 `false`；公开发布还需独立完成许可、原生运行和干净机验收 |
 
 ## 7. 常见输出与处理
 

@@ -86,7 +86,9 @@ def relocation_smoke(pack: Path, report_dir: Path) -> dict:
     if probe["streams"][0]["width"] != 512 or probe["streams"][0]["height"] != 512:
         raise ValueError("unexpected relocated decoded image dimensions")
     database = moved / "CPU 特征.db"
-    execute("colmap-cpu-feature", [colmap, "feature_extractor", "--database_path", database,
+    # COLMAP 4.1's CLI controls logging independently of inherited glog defaults.
+    # Capture stderr as evidence without creating persistent log-file symlinks.
+    execute("colmap-cpu-feature", [colmap, "feature_extractor", "--log_target", "stderr", "--database_path", database,
                                    "--image_path", images, "--ImageReader.camera_model", "SIMPLE_PINHOLE",
                                    "--ImageReader.single_camera", "1", "--FeatureExtraction.use_gpu", "0",
                                    "--FeatureExtraction.num_threads", "2", "--SiftExtraction.max_num_features", "1024"])

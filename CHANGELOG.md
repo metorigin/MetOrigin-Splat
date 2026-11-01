@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in Developer ID signing and resumable Apple notarization for macOS applications and DMGs, including derived signed engine packs, ticket validation and Gatekeeper checks.
+
+### Fixed
+
+- Preserve the previous successful macOS package report when verification or artifact registration fails, and keep cleanup failures recoverable after a new package is registered.
+
 ## [0.1.0-alpha.3] - 2026-09-10
 
 ### Added

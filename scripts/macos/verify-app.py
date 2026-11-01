@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Verify final app signatures, frozen engine hashes and the exact app in a DMG.
 
-This is structural/signature evidence, not Gatekeeper notarization or a clean-machine run.
+Developer ID and stapled notarization checks are explicit options. Neither is
+application acceptance, license clearance or a clean-machine run.
 """
 import argparse
 import hashlib
@@ -11,13 +12,17 @@ from pathlib import Path
 import plistlib
 import re
 import stat
+import subprocess
 import tempfile
 
-from pack_macos import SYSTEM_PREFIXES, inspect_macho, run, safe_pack_path, sha256, verify_pack, version_tuple, write_json
+import pack_macos
+from pack_macos import MACHO_MAGICS, SYSTEM_PREFIXES, inspect_macho, run, safe_pack_path, sha256, verify_pack, version_tuple, write_json
 from webp_evidence import verify_webp_evidence
 
 
 ENGINES = {"ffmpeg", "colmap", "brush"}
+NOTARIZATION_CONTAINER = "stapled-dmg-with-developer-id-application"
+NOTARIZATION_STRICT = "stapled-application-and-dmg"
 
 
 def verify_release_status(status: dict, manifest_sha256: str, internal_alpha: bool) -> None:
@@ -107,6 +112,168 @@ def verify_app_report_matches(report: dict, expected: dict) -> None:
             raise ValueError("application differs from initial verification: " + field)
     if report.get("frontend_input_evidence") != expected.get("frontend_input_evidence"):
         raise ValueError("frontend input evidence differs from initial verification")
+    if report.get("developer_id_verification") != expected.get("developer_id_verification"):
+        raise ValueError("Developer ID evidence differs from initial verification")
+    if expected.get("notarization_verified") and not report.get("notarization_verified"):
+        raise ValueError("notarization evidence cannot be omitted from subsequent verification")
+
+
+def verify_code_report_matches(report: dict, expected: dict) -> None:
+    """Bind pre/post-staple code identity after a fresh, complete verification.
+
+    This is not a replacement for bundle verification and does not permit any
+    resource changes. Each app still passes the complete seal, manifest, license
+    and inventory checks before its report can reach this comparison. A fresh
+    final inventory accounts for the legitimately added notarization ticket.
+    """
+    fields = ("application_sha256", "engine_manifest_sha256", "release_status_sha256",
+              "application_license_evidence", "frontend_input_evidence", "developer_id_verification")
+    def digest(value):
+        return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+    def text(value):
+        return isinstance(value, str) and bool(value.strip())
+    for label, candidate in (("current", report), ("expected", expected)):
+        def invalid(field):
+            raise ValueError("invalid " + label + " code continuity report: " + field)
+        if not isinstance(candidate, dict) or type(candidate.get("schema_version")) is not int or candidate["schema_version"] != 1:
+            invalid("schema_version")
+        for field in fields[:3]:
+            if not digest(candidate.get(field)):
+                invalid(field)
+        license_evidence = candidate.get("application_license_evidence")
+        if (not isinstance(license_evidence, dict) or not digest(license_evidence.get("manifest_sha256"))
+                or type(license_evidence.get("file_count")) is not int or license_evidence["file_count"] < 1
+                or type(license_evidence.get("release_ready")) is not bool
+                or not isinstance(license_evidence.get("issues"), list)
+                or license_evidence["release_ready"] == bool(license_evidence["issues"])
+                or any(not isinstance(issue, dict) or not text(issue.get("id")) or not text(issue.get("detail"))
+                       for issue in license_evidence["issues"])):
+            invalid("application_license_evidence")
+        frontend = candidate.get("frontend_input_evidence")
+        if (not isinstance(frontend, dict) or not digest(frontend.get("report_sha256"))
+                or frontend.get("dist_verified") is not True or not text(frontend.get("scope"))
+                or not isinstance(frontend.get("input_identity"), dict)):
+            invalid("frontend_input_evidence")
+        identity = frontend["input_identity"]
+        overlay = identity.get("webp_overlay")
+        if (not digest(identity.get("signature")) or not digest(identity.get("build_json_sha256"))
+                or not isinstance(identity.get("assets"), list) or not identity["assets"]
+                or not isinstance(overlay, dict) or not text(overlay.get("id"))
+                or not digest(overlay.get("manifest_sha256")) or not digest(overlay.get("build_evidence_sha256"))):
+            invalid("frontend_input_evidence.input_identity")
+        signed = candidate.get("developer_id_verification")
+        if (not isinstance(signed, dict) or not isinstance(signed.get("team_id"), str)
+                or not re.fullmatch(r"[A-Z0-9]{10}", signed["team_id"])
+                or "expected_identity_sha1" not in signed or not text(signed.get("scope"))):
+            invalid("developer_id_verification")
+        fingerprint = signed["expected_identity_sha1"]
+        if fingerprint is not None and (not isinstance(fingerprint, str) or not re.fullmatch(r"[0-9A-F]{40}", fingerprint)):
+            invalid("developer_id_verification.expected_identity_sha1")
+        def valid_signature(evidence, require_runtime=False):
+            return (isinstance(evidence, dict) and evidence.get("team_id") == signed["team_id"]
+                    and evidence.get("requirement_verified") is True
+                    and text(evidence.get("timestamp")) and evidence["timestamp"].strip().lower() not in {"none", "not set"}
+                    and type(evidence.get("hardened_runtime")) is bool
+                    and (not require_runtime or evidence["hardened_runtime"])
+                    and "identity_sha1" in evidence and evidence["identity_sha1"] == fingerprint
+                    and isinstance(evidence.get("authorities"), list) and bool(evidence["authorities"])
+                    and all(text(authority) for authority in evidence["authorities"])
+                    and evidence["authorities"][0].startswith("Developer ID Application: "))
+        nested = signed.get("nested_code")
+        if (not valid_signature(signed.get("application"), True)
+                or not isinstance(nested, list) or not nested
+                or type(signed.get("nested_code_count")) is not int or signed["nested_code_count"] != len(nested)):
+            invalid("developer_id_verification.code_signatures")
+        paths = set()
+        for entry in nested:
+            if not valid_signature(entry) or not text(entry.get("path")):
+                invalid("developer_id_verification.nested_code")
+            path = entry["path"]
+            if (not path.startswith("Contents/") or "\\" in path or ".." in Path(path).parts
+                    or Path(path).as_posix() != path or path in paths):
+                invalid("developer_id_verification.nested_code.path")
+            paths.add(path)
+    for field in fields:
+        if report[field] != expected[field]:
+            raise ValueError("code/signature identity differs from pre-notarization verification: " + field)
+
+
+def validate_signing_options(team_id: str = None, identity: str = None,
+                             require_notarized: bool = False) -> None:
+    if team_id is not None and not re.fullmatch(r"[A-Z0-9]{10}", team_id):
+        raise ValueError("expected Team ID must contain ten uppercase letters or digits")
+    if identity is not None and not re.fullmatch(r"[0-9a-fA-F]{40}", identity):
+        raise ValueError("expected signing identity must be a certificate SHA-1 fingerprint")
+    if not team_id and (identity is not None or require_notarized):
+        raise ValueError("Developer ID identity and notarization checks require --expected-team-id")
+
+
+def verify_bundle_developer_id(app: Path, executable: Path, engines: Path,
+                               inventory: dict, team_id: str, identity: str = None) -> dict:
+    """Verify every physical code file, in addition to the outer resource seal.
+
+    Manifest executable entries are included explicitly; scanning every regular
+    bundle file also finds dylibs, frameworks and code outside the engine pack.
+    This only reads signed bytes and never re-signs or rewrites a manifest.
+    """
+    manifest = json.loads((engines / "engine-manifest.json").read_text())
+    executable_paths = {executable}
+    for engine in manifest["engines"].values():
+        executable_paths.update(safe_pack_path(engines, relative)
+                                for relative in engine["executables"].values())
+    code_paths = set(executable_paths)
+    for relative, entry in inventory.items():
+        if entry["type"] != "file":
+            continue
+        path = app / relative
+        with path.open("rb") as file:
+            is_macho = file.read(4) in MACHO_MAGICS
+        if is_macho or path.suffix.lower() == ".dylib":
+            code_paths.add(path)
+    application = pack_macos.verify_developer_id_signature(
+        app, team_id, require_runtime=True, expected_identity=identity)
+    nested = []
+    for path in sorted(code_paths - {executable}):
+        evidence = pack_macos.verify_developer_id_signature(
+            path, team_id, require_runtime=path in executable_paths, expected_identity=identity)
+        nested.append({"path": path.relative_to(app).as_posix(), **evidence})
+    return {"team_id": team_id, "expected_identity_sha1": identity.upper() if identity else None,
+            "application": application, "nested_code": nested,
+            "nested_code_count": len(nested),
+            "scope": "Apple Developer ID Application chain, Team ID and secure timestamps; app and engine executable Hardened Runtime. No signing mutation."}
+
+
+def run_assessment(args: list) -> dict:
+    """Capture stderr as evidence; stapler/spctl commonly report there."""
+    command = [str(value) for value in args]
+    try:
+        result = subprocess.run(command, text=True, capture_output=True, timeout=120)
+    except subprocess.TimeoutExpired as error:
+        raise ValueError("notarization assessment timed out: " + command[0]) from error
+    evidence = {"command": command, "exit_code": result.returncode,
+                "stdout": result.stdout.strip(), "stderr": result.stderr.strip()}
+    if result.returncode:
+        raise ValueError("notarization assessment failed: " + json.dumps(evidence, ensure_ascii=False))
+    return evidence
+
+
+def verify_notarization(path: Path, kind: str) -> dict:
+    if kind not in {"app", "dmg"}:
+        raise ValueError("unsupported notarization artifact kind")
+    stapler = run_assessment(["/usr/bin/xcrun", "stapler", "validate", "-v", path])
+    assessment = ["/usr/sbin/spctl", "--assess", "--type", "execute" if kind == "app" else "open"]
+    if kind == "dmg":
+        assessment += ["--context", "context:primary-signature"]
+    gatekeeper = run_assessment(assessment + ["--verbose=4", path])
+    output = gatekeeper["stdout"] + "\n" + gatekeeper["stderr"]
+    # A successful process exit alone is insufficient when assessment policies
+    # are disabled or a local rule accepts an otherwise unnotarized artifact.
+    if (not re.search(r"^source=Notarized Developer ID\s*$", output, re.M)
+            or not re.search(r": accepted\s*$", output, re.M)):
+        raise ValueError("Gatekeeper did not identify an accepted Notarized Developer ID artifact")
+    return {"stapled_ticket_validated": True, "gatekeeper_accepted": True,
+            "stapler": stapler, "gatekeeper": gatekeeper,
+            "scope": "Stapled ticket and current-host Gatekeeper assessment; not clean-host or public-release acceptance."}
 
 
 
@@ -198,7 +365,10 @@ def verify_frontend_input_report(licenses: Path, report_path: Path = None, requi
 
 def verify_app(app: Path, internal_alpha: bool = False,
                expected_manifest_sha256: str = None, expected_status_sha256: str = None,
-               expected_license_manifest_sha256: str = None, frontend_input_report: Path = None) -> dict:
+               expected_license_manifest_sha256: str = None, frontend_input_report: Path = None,
+               expected_team_id: str = None, require_notarized: bool = False,
+               expected_signing_identity: str = None) -> dict:
+    validate_signing_options(expected_team_id, expected_signing_identity, require_notarized)
     before_inventory = bundle_inventory(app)
     app = app.resolve(strict=True)
     with critical_path(app, "Contents/Info.plist").open("rb") as file:
@@ -245,6 +415,10 @@ def verify_app(app: Path, internal_alpha: bool = False,
     # Run after all signing. Re-signing embedded binaries after hashing fails above;
     # trusted engine hashes must never be silently regenerated by the app builder.
     run(["/usr/bin/codesign", "--verify", "--deep", "--strict", app])
+    developer_id = (verify_bundle_developer_id(app, executable, engines, before_inventory,
+                                              expected_team_id, expected_signing_identity)
+                    if expected_team_id else None)
+    notarization = verify_notarization(app, "app") if require_notarized else None
     after_inventory = bundle_inventory(app)
     if before_inventory != after_inventory:
         raise ValueError("application changed during verification")
@@ -252,7 +426,7 @@ def verify_app(app: Path, internal_alpha: bool = False,
         raise ValueError("frontend input report changed during verification")
     return {
         "schema_version": 1,
-        "validation_scope": "bundle structure, final signatures and engine hashes; not clean-machine or notarization acceptance",
+        "validation_scope": "Bundle structure, final signatures and engine hashes; optional Developer ID/stapled notarization checks are recorded separately. Not clean-machine acceptance.",
         "app": str(app),
         "application_sha256": sha256(executable),
         "bundle_inventory_sha256": inventory_sha256(after_inventory),
@@ -262,23 +436,51 @@ def verify_app(app: Path, internal_alpha: bool = False,
         "release_status_sha256": status_sha256,
         "application_license_evidence": license_report,
         **({"frontend_input_evidence": frontend_report} if frontend_report is not None else {}),
+        **({"developer_id_verification": developer_id} if developer_id is not None else {}),
+        **({"notarization_evidence": notarization} if notarization is not None else {}),
         "engine_file_count": pack["file_count"],
         "engine_distribution_requirements_met": status["distributable"],
         "application_public_release_ready": False,
-        "application_release_scope": "Engine evidence is separate from app dependency notices, Developer ID, notarization and clean-host acceptance.",
+        "application_release_scope": "Signing and notarization checks do not clear application license issues, native acceptance or clean-host acceptance. Public-release readiness is not granted by this verifier.",
         "internal_alpha_requested": internal_alpha,
-        "notarization_verified": False,
+        "notarization_verified": notarization is not None,
+        "application_notarization": {
+            "stapled_ticket_required": require_notarized,
+            "stapled_ticket_validated": notarization is not None,
+            "gatekeeper_assessment_performed": notarization is not None,
+            "scope": "Application's own stapled ticket and assessment only; a separately notarized DMG has separate evidence.",
+        },
     }
 
 
 def verify_dmg(dmg: Path, app: Path, report: dict, internal_alpha: bool = False,
-               frontend_input_report: Path = None) -> dict:
+               frontend_input_report: Path = None, expected_team_id: str = None,
+               require_notarized: bool = False, expected_signing_identity: str = None,
+               require_notarized_container: bool = False) -> dict:
+    if require_notarized_container and (require_notarized or report.get("notarization_verified")
+                                       or report.get("application_notarization", {}).get("stapled_ticket_required")):
+        raise ValueError("container notarization cannot replace an explicit stapled-application requirement")
+    signed_policy = report.get("developer_id_verification")
+    if signed_policy:
+        if expected_team_id and expected_team_id != signed_policy["team_id"]:
+            raise ValueError("DMG Team ID differs from the verified application")
+        expected_team_id = signed_policy["team_id"]
+        selected_identity = signed_policy.get("expected_identity_sha1")
+        if expected_signing_identity and selected_identity and expected_signing_identity.upper() != selected_identity:
+            raise ValueError("DMG signing identity differs from the verified application")
+        expected_signing_identity = expected_signing_identity or selected_identity
+    require_notarized = require_notarized or bool(report.get("notarization_verified"))
+    validate_signing_options(expected_team_id, expected_signing_identity,
+                             require_notarized or require_notarized_container)
     dmg = dmg.resolve(strict=True)
     expected_inventory = bundle_inventory(app)
     if inventory_sha256(expected_inventory) != report["bundle_inventory_sha256"]:
         raise ValueError("source application changed after verification")
     before_hash = sha256(dmg)
     run(["/usr/bin/hdiutil", "verify", dmg])
+    developer_id = (pack_macos.verify_developer_id_signature(
+        dmg, expected_team_id, expected_identity=expected_signing_identity) if expected_team_id else None)
+    notarization = verify_notarization(dmg, "dmg") if require_notarized or require_notarized_container else None
     with tempfile.TemporaryDirectory(prefix="metorigin-dmg-") as temporary:
         mount = Path(temporary) / "mount"
         mount.mkdir()
@@ -293,11 +495,22 @@ def verify_dmg(dmg: Path, app: Path, report: dict, internal_alpha: bool = False,
                 raise ValueError("DMG application differs from the verified source bundle")
             embedded_report = verify_app(embedded, internal_alpha,
                                          report["engine_manifest_sha256"], report["release_status_sha256"],
-                                         report["application_license_evidence"]["manifest_sha256"], frontend_input_report)
+                                         report["application_license_evidence"]["manifest_sha256"], frontend_input_report,
+                                         expected_team_id, require_notarized, expected_signing_identity)
             if embedded_report["bundle_inventory_sha256"] != report["bundle_inventory_sha256"]:
                 raise ValueError("DMG application changed during verification")
             if embedded_report.get("frontend_input_evidence") != report.get("frontend_input_evidence"):
                 raise ValueError("DMG frontend input evidence differs from the verified source")
+            if signed_policy and embedded_report.get("developer_id_verification") != signed_policy:
+                raise ValueError("DMG Developer ID evidence differs from the verified source")
+            embedded_notarization = {
+                "developer_id_verified": "developer_id_verification" in embedded_report,
+                "stapled_ticket_required": require_notarized,
+                "stapled_ticket_validated": embedded_report["notarization_verified"],
+                "gatekeeper_assessment_performed": embedded_report["notarization_verified"],
+                **({"evidence": embedded_report["notarization_evidence"]} if require_notarized else {}),
+                "scope": "Embedded application evidence is separate from the DMG's own notarization. No app ticket is claimed unless explicitly validated.",
+            }
         finally:
             if attached:
                 run(["/usr/bin/hdiutil", "detach", mount])
@@ -306,7 +519,13 @@ def verify_dmg(dmg: Path, app: Path, report: dict, internal_alpha: bool = False,
     if bundle_inventory(app) != expected_inventory:
         raise ValueError("source application changed during DMG verification")
     return {"path": str(dmg), "sha256": before_hash, "mounted_read_only": True,
-            "application_matches_verified_bundle": True, "application_signatures_verified": True}
+            "application_matches_verified_bundle": True, "application_signatures_verified": True,
+            **({"developer_id_verification": developer_id} if developer_id is not None else {}),
+            **({"notarization_evidence": notarization} if notarization is not None else {}),
+            "notarization_policy": (NOTARIZATION_STRICT if require_notarized else
+                                    NOTARIZATION_CONTAINER if require_notarized_container else "not-required"),
+            "embedded_application_notarization": embedded_notarization,
+            "notarization_verified": notarization is not None}
 
 
 def main():
@@ -317,28 +536,48 @@ def main():
     parser.add_argument("--expected-manifest-sha256")
     parser.add_argument("--expected-release-status-sha256")
     parser.add_argument("--expected-app-license-manifest-sha256")
+    parser.add_argument("--expected-team-id", help="Require Apple Developer ID Application signatures from this Team ID")
+    parser.add_argument("--expected-signing-identity", help="Also require this signing certificate SHA-1 fingerprint")
+    notarization_options = parser.add_mutually_exclusive_group()
+    notarization_options.add_argument("--require-notarized", action="store_true",
+                                      help="Require the app's own valid stapled ticket and Gatekeeper assessment, plus the DMG's when supplied (requires Team ID)")
+    notarization_options.add_argument("--require-notarized-container", action="store_true",
+                                      help="Require a signed, stapled and Gatekeeper-accepted DMG with the exact Developer ID-signed app; no app-owned ticket is required (requires --dmg and Team ID)")
     parser.add_argument("--frontend-input-report", type=Path,
                         help="Builder receipt verifying exact prepared public and Vite dist inputs")
     parser.add_argument("--expected-app-report", type=Path,
                         help="Require the exact signed application from this earlier verification report")
+    parser.add_argument("--expected-code-report", type=Path,
+                        help="Require pre/post-staple code, signature and input identity continuity after full bundle verification")
     parser.add_argument("--dmg", type=Path, help="Mount this newly created DMG read-only and verify its exact app")
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
     if bool(args.app) == bool(args.check_app_license_evidence):
         parser.error("supply an app bundle or --check-app-license-evidence, exclusively")
+    if args.require_notarized_container and (not args.dmg or not args.expected_team_id):
+        parser.error("--require-notarized-container requires --dmg and --expected-team-id")
     if args.check_app_license_evidence:
-        if args.dmg or args.expected_app_report or args.frontend_input_report:
-            parser.error("--dmg, --expected-app-report and --frontend-input-report require an app bundle")
+        if (args.dmg or args.expected_app_report or args.expected_code_report or args.frontend_input_report
+                or args.expected_team_id or args.expected_signing_identity or args.require_notarized
+                or args.require_notarized_container):
+            parser.error("DMG, frontend, signing and notarization options require an app bundle")
         report = verify_app_license_evidence(args.check_app_license_evidence, args.internal_alpha,
                                             args.expected_app_license_manifest_sha256)
     else:
         report = verify_app(args.app, args.internal_alpha, args.expected_manifest_sha256,
                             args.expected_release_status_sha256, args.expected_app_license_manifest_sha256,
-                            args.frontend_input_report)
+                            args.frontend_input_report, args.expected_team_id, args.require_notarized,
+                            args.expected_signing_identity)
+        if args.expected_code_report:
+            verify_code_report_matches(report, json.loads(args.expected_code_report.read_text()))
         if args.expected_app_report:
             verify_app_report_matches(report, json.loads(args.expected_app_report.read_text()))
     if args.dmg:
-        report["dmg"] = verify_dmg(args.dmg, args.app, report, args.internal_alpha, args.frontend_input_report)
+        report["dmg"] = verify_dmg(args.dmg, args.app, report, args.internal_alpha, args.frontend_input_report,
+                                   args.expected_team_id, args.require_notarized, args.expected_signing_identity,
+                                   args.require_notarized_container)
+        report["distribution_notarization_policy"] = report["dmg"]["notarization_policy"]
+        report["distribution_notarization_verified"] = report["dmg"]["notarization_verified"]
     if args.report:
         write_json(args.report, report)
     print(json.dumps(report, indent=2))
