@@ -201,7 +201,7 @@
     },
     {
       "path": "scripts/macos/build-macos-app.sh",
-      "sha256": "8272b85fba49e9bb87020bc6b688e6f34051badbad79cfebfdb231d1e7164150"
+      "sha256": "14a53315b8fb099a29ba8e3bb6e85020548563cdba301fa1fda1279aa2996019"
     },
     {
       "path": "scripts/macos/check-brush-contract.py",
@@ -228,6 +228,10 @@
       "sha256": "ff7beb2ea02deaeaea4a2f750f4ba658ac0209a1bcdf72d844725643b6890c68"
     },
     {
+      "path": "scripts/macos/notarize-artifact.py",
+      "sha256": "69c586f30a845264156c4bd258446a1bb748b6d5ebbeb244a2ce993b8df7cb3d"
+    },
+    {
       "path": "scripts/macos/pack-brush-notices.py",
       "sha256": "5dbed00dcfef66c9749cf3b70fd78ff394347abdfae844d060fce4d9bd6ae02a"
     },
@@ -245,7 +249,7 @@
     },
     {
       "path": "scripts/macos/pack_macos.py",
-      "sha256": "ff2b20c2acc2f46b8f4d688e79175d18d9f4735a2754502c3451afa9c1a1bf2a"
+      "sha256": "90c5cbc740a71907782bb3d790e735564f8c5bc12d1cfddfc13fa0f3c32af790"
     },
     {
       "path": "scripts/macos/pack_sources.py",
@@ -273,15 +277,19 @@
     },
     {
       "path": "scripts/macos/resource-config.mjs",
-      "sha256": "6a57defe4260c31a6779b142816c87504646bbff7aad30ed301dec1c810bb7b8"
+      "sha256": "31492a13226ee82fb17299f2be826012ed7c0f20a7fbb7f26bfea296bf5c5e92"
     },
     {
       "path": "scripts/macos/resource-config.test.mjs",
-      "sha256": "7b72561ebec507672c3b181f5d45d5d6102070fa91285987e52d82ba628fb2d3"
+      "sha256": "f6bebea688d8683bd350836f979901c4069a30a326f711a93d52149098942aea"
     },
     {
       "path": "scripts/macos/sample-native-resources.py",
       "sha256": "5c44e202b3dfe00189e82f76e4236890baeb31b679fc9b72d4c2a2d390c975e2"
+    },
+    {
+      "path": "scripts/macos/sign-engine-pack.py",
+      "sha256": "a2112c730f0b4779529eb27595669ae8bbf27968d17413430b06d323ec92d0b2"
     },
     {
       "path": "scripts/macos/smoke-engines.py",
@@ -309,7 +317,7 @@
     },
     {
       "path": "scripts/macos/test_build_macos_app.py",
-      "sha256": "4f345cb0aa3c6a849ffd3ea02d82c3c56acc707ebdc2bb5928162aa52db15439"
+      "sha256": "89c36303262656732f369042a5a9d25e81d2e1b606fede57c864f749b1bde22d"
     },
     {
       "path": "scripts/macos/test_engine_paths.py",
@@ -318,6 +326,10 @@
     {
       "path": "scripts/macos/test_environment.py",
       "sha256": "e733faf879f686f928f9eb1df54729c95e8d1f421a67da8ece2239ee51109185"
+    },
+    {
+      "path": "scripts/macos/test_notarize_artifact.py",
+      "sha256": "18cc2db33ea2dc4997df5feaa8cd521e33316513d6228ac1255b229bd75042f4"
     },
     {
       "path": "scripts/macos/test_pack.py",
@@ -332,8 +344,12 @@
       "sha256": "1fd369942d6f2c81947426f7b1fa0cd4ae4557daf8d4f7de76c22b462c07134d"
     },
     {
+      "path": "scripts/macos/test_sign_engine_pack.py",
+      "sha256": "228d68db39e8f7453f635470137556c25ea6db98b3a4fb1be3800f20210e4289"
+    },
+    {
       "path": "scripts/macos/test_verify_app.py",
-      "sha256": "c60af775d90d3a3bef5ec2799ca6c9f2ff3027101227e85bc725fe5b4038d96d"
+      "sha256": "43b319510db53ec9fed74e1216dbce60fa634f0bfe8470c4a2a42adcffa928cd"
     },
     {
       "path": "scripts/macos/test_webp_evidence.py",
@@ -357,11 +373,11 @@
     },
     {
       "path": "scripts/macos/verify-app.py",
-      "sha256": "a59902e29db848ff6677f9af084a1e23c88364f450a839f3fb3ebd6f41227b00"
+      "sha256": "056503cb80d6760c1ee224a54b6382dd312129d8f1bad6e7e123a7094467f68f"
     },
     {
       "path": "scripts/macos/verify-pack.py",
-      "sha256": "3b43ce0eea35144fd8bd3b4c61636dedb1065be36306c24d08083a72d92c2d2a"
+      "sha256": "c0577e98056b70878df98d25117befb1cc5999c0df2bb6db1180577acd6bbc92"
     },
     {
       "path": "scripts/macos/verify-supersplat-inputs.mjs",
@@ -940,6 +956,71 @@
         }
       ],
       "added_files": []
+    },
+    {
+      "date": "2026-11-01",
+      "phase": "macos-developer-id-notarization",
+      "reason": "Add opt-in Developer ID Application signing and resumable Apple notarization for macOS distribution. Signed engine packs are derived in new directories with explicit source and final-byte evidence; the original frozen alpha.6 engine input is unchanged. Preserve pending and rejected submission receipts without publishing success, and publish latest only after complete verification and successful retention registration; subsequent artifact cleanup is conservative and best-effort. Native signing, notarization, Gatekeeper and COLMAP validation are same-host evidence and remain separate from clean-machine, hardware and public-release acceptance.",
+      "changed_files": [
+        {
+          "path": "scripts/macos/build-macos-app.sh",
+          "previous_sha256": "8272b85fba49e9bb87020bc6b688e6f34051badbad79cfebfdb231d1e7164150",
+          "sha256": "14a53315b8fb099a29ba8e3bb6e85020548563cdba301fa1fda1279aa2996019"
+        },
+        {
+          "path": "scripts/macos/pack_macos.py",
+          "previous_sha256": "ff2b20c2acc2f46b8f4d688e79175d18d9f4735a2754502c3451afa9c1a1bf2a",
+          "sha256": "90c5cbc740a71907782bb3d790e735564f8c5bc12d1cfddfc13fa0f3c32af790"
+        },
+        {
+          "path": "scripts/macos/resource-config.mjs",
+          "previous_sha256": "6a57defe4260c31a6779b142816c87504646bbff7aad30ed301dec1c810bb7b8",
+          "sha256": "31492a13226ee82fb17299f2be826012ed7c0f20a7fbb7f26bfea296bf5c5e92"
+        },
+        {
+          "path": "scripts/macos/resource-config.test.mjs",
+          "previous_sha256": "7b72561ebec507672c3b181f5d45d5d6102070fa91285987e52d82ba628fb2d3",
+          "sha256": "f6bebea688d8683bd350836f979901c4069a30a326f711a93d52149098942aea"
+        },
+        {
+          "path": "scripts/macos/test_build_macos_app.py",
+          "previous_sha256": "4f345cb0aa3c6a849ffd3ea02d82c3c56acc707ebdc2bb5928162aa52db15439",
+          "sha256": "89c36303262656732f369042a5a9d25e81d2e1b606fede57c864f749b1bde22d"
+        },
+        {
+          "path": "scripts/macos/test_verify_app.py",
+          "previous_sha256": "c60af775d90d3a3bef5ec2799ca6c9f2ff3027101227e85bc725fe5b4038d96d",
+          "sha256": "43b319510db53ec9fed74e1216dbce60fa634f0bfe8470c4a2a42adcffa928cd"
+        },
+        {
+          "path": "scripts/macos/verify-app.py",
+          "previous_sha256": "a59902e29db848ff6677f9af084a1e23c88364f450a839f3fb3ebd6f41227b00",
+          "sha256": "056503cb80d6760c1ee224a54b6382dd312129d8f1bad6e7e123a7094467f68f"
+        },
+        {
+          "path": "scripts/macos/verify-pack.py",
+          "previous_sha256": "3b43ce0eea35144fd8bd3b4c61636dedb1065be36306c24d08083a72d92c2d2a",
+          "sha256": "c0577e98056b70878df98d25117befb1cc5999c0df2bb6db1180577acd6bbc92"
+        }
+      ],
+      "added_files": [
+        {
+          "path": "scripts/macos/notarize-artifact.py",
+          "sha256": "69c586f30a845264156c4bd258446a1bb748b6d5ebbeb244a2ce993b8df7cb3d"
+        },
+        {
+          "path": "scripts/macos/sign-engine-pack.py",
+          "sha256": "a2112c730f0b4779529eb27595669ae8bbf27968d17413430b06d323ec92d0b2"
+        },
+        {
+          "path": "scripts/macos/test_notarize_artifact.py",
+          "sha256": "18cc2db33ea2dc4997df5feaa8cd521e33316513d6228ac1255b229bd75042f4"
+        },
+        {
+          "path": "scripts/macos/test_sign_engine_pack.py",
+          "sha256": "228d68db39e8f7453f635470137556c25ea6db98b3a4fb1be3800f20210e4289"
+        }
+      ]
     }
   ]
 }
