@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { lstat, mkdir, readFile, readdir, realpath, rm } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
+import { resolveCachePaths } from '../../scripts/shared/cache-paths.mjs';
 
 const execute = promisify(execFile);
 const repositoryEnvironment = new Set(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE',
@@ -43,12 +44,16 @@ async function physicalMetadata(path) {
 const samePath = (left, right) => process.platform === 'win32'
   ? resolve(left).toLowerCase() === resolve(right).toLowerCase() : resolve(left) === resolve(right);
 
-/** Own only target/supersplat-source/upstream/.git, never a discovered parent repository. */
+/** Own only the configured generated checkout's .git, never a discovered parent repository. */
 export async function ensureSourceRepository({ root, upstream, environment = process.env, log = () => undefined }) {
   assert(/^[a-f0-9]{40}$/.test(upstream.commit) && typeof upstream.repository === 'string' && upstream.repository,
     'Missing fixed SuperSplat repository identity.');
   let directory = await realpath(root);
-  for (const name of ['target', 'supersplat-source', 'upstream']) directory = await physicalDirectory(join(directory, name));
+  const checkout = resolveCachePaths({ repositoryRoot: directory }).supersplatSource;
+  const relativeCheckout = relative(directory, checkout);
+  assert(relativeCheckout && !isAbsolute(relativeCheckout) && !relativeCheckout.split(sep).includes('..'),
+    'Generated SuperSplat source must remain inside its repository.');
+  for (const name of relativeCheckout.split(sep)) directory = await physicalDirectory(join(directory, name));
   const source = directory;
   const gitDirectory = join(source, '.git');
   const disabledHooks = join(gitDirectory, 'metorigin-disabled-hooks');

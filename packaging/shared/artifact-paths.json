@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "root": "artifacts",
+  "directories": {
+    "packages": "packages",
+    "verification": "verification",
+    "licenses": "licenses"
+  },
+  "retention": {
+    "packages": 1,
+    "successful_test_runs": 1,
+    "failed_test_runs": 1
+  }
+}

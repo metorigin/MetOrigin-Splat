@@ -21,6 +21,9 @@ export async function preparationSignature(integration, upstream, bridge, overla
   for (const name of ['prepare.mjs', 'source-checkout.mjs', 'prepared-assets.mjs', 'webp-overlay.mjs', 'webp-evidence.mjs']) {
     hash.update('\0' + name + '\0').update(await readFile(join(integration, name)));
   }
+  for (const name of ['scripts/shared/cache-paths.mjs', 'packaging/shared/cache-paths.json']) {
+    hash.update('\0' + name + '\0').update(await readFile(join(integration, '../..', name)));
+  }
   if (overlay.manifest.base?.version === '3.10.2') {
     for (const name of ['overlay.mjs', 'verify-evidence.mjs', 'profile.mjs']) {
       const path = `webp-overlay-3.10.2/${name}`;

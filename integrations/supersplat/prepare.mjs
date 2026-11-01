@@ -8,11 +8,13 @@ import { inventoryPreparedAssets, overlayIdentity, preparationSignature, verifyP
 import { verifyWebpBuildEvidence } from './webp-evidence.mjs';
 import { applyThemeSources, finishThemeAssets } from './ui-theme/apply.mjs';
 import { ensureSourceRepository } from './source-checkout.mjs';
+import { resolveCachePaths } from '../../scripts/shared/cache-paths.mjs';
 
 const integration = dirname(fileURLToPath(import.meta.url));
 const root = resolve(integration, '../..');
 const upstream = JSON.parse(await readFile(join(integration, 'upstream.json'), 'utf8'));
-const source = join(root, 'target/supersplat-source/upstream');
+const cache = resolveCachePaths({ repositoryRoot: root });
+const source = cache.supersplatSource;
 const destination = join(root, 'apps/desktop/public/supersplat');
 const bridge = await readFile(join(integration, 'metorigin-bridge.ts'), 'utf8');
 const overlayRoot = join(integration, 'webp-overlay-3.10.2');
@@ -64,7 +66,7 @@ if (!await exists(installStamp) || (await readFile(installStamp, 'utf8')) !== in
   let npmPath;
   for (const candidate of candidates) if (await exists(candidate)) { npmPath = candidate; break; }
   if (!npmPath) throw new Error('npm CLI not found. Set METORIGIN_NPM_CLI to npm-cli.js.');
-  await run(process.execPath, [npmPath, 'ci', '--ignore-scripts', '--legacy-peer-deps', '--no-audit', '--no-fund', '--prefer-offline', '--cache', join(root, 'target/supersplat-npm-cache'), '--fetch-retries=1', '--fetch-timeout=30000'], source);
+  await run(process.execPath, [npmPath, 'ci', '--ignore-scripts', '--legacy-peer-deps', '--no-audit', '--no-fund', '--prefer-offline', '--cache', cache.supersplatNpm, '--fetch-retries=1', '--fetch-timeout=30000'], source);
   await writeFile(installStamp, installIdentity);
 }
 // These are explicitly derived bytes, applied after every npm install. All

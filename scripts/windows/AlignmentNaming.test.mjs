@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
@@ -33,7 +34,8 @@ test('naming template differs from pinned official Tauri only in the documented 
 test('native in-place uninstall excludes only its own PID and retains the installation process guard', { skip: process.platform !== 'win32' }, async (context) => {
   const compiler = path.join(root, 'target/windows-alignment-release-build/.tauri/NSIS/Bin/makensis.exe');
   try { await fs.access(compiler); } catch { context.skip('pinned local NSIS compiler is unavailable'); return; }
-  const base = await fs.mkdtemp(path.join(root, 'target/windows-process-guard-fixture-'));
+  const base = await fs.mkdtemp(path.join(tmpdir(), 'metorigin-windows-process-guard-fixture-'));
+  context.after(() => fs.rm(base, { recursive: true, force: true }));
   const bootstrap = path.join(base, 'guard-bootstrap.exe');
   const quote = (value) => value.replaceAll('$', '$$').replaceAll('"', '$\\"');
   const fixture = `Unicode true
@@ -180,7 +182,8 @@ test('display naming keeps the candidate identifier, maintenance keys and direct
 test('native owned shortcut migration preserves other installations and honors existing-link maintenance', { skip: process.platform !== 'win32' }, async (context) => {
   const compiler = path.join(root, 'target/windows-alignment-release-build/.tauri/NSIS/Bin/makensis.exe');
   try { await fs.access(compiler); } catch { context.skip('pinned local NSIS compiler is unavailable'); return; }
-  const base = await fs.mkdtemp(path.join(root, 'target/windows-naming-fixture-'));
+  const base = await fs.mkdtemp(path.join(tmpdir(), 'metorigin-windows-naming-fixture-'));
+  context.after(() => fs.rm(base, { recursive: true, force: true }));
   const executable = path.join(base, 'shortcut-fixture.exe');
   const quote = (value) => value.replaceAll('$', '$$').replaceAll('"', '$\\"');
   const fixture = `Unicode true

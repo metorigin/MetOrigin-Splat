@@ -1,13 +1,15 @@
 [CmdletBinding()]
 param(
     [string]$LockFile = "packaging/windows-x64/engine-lock.json",
-    [string]$CacheDirectory = ".engines/downloads",
+    [string]$CacheDirectory,
     [string]$VCRedistPath,
     [switch]$Offline,
     [switch]$Force
 )
 
 . (Join-Path $PSScriptRoot "Packaging.Common.ps1")
+if (-not $CacheDirectory) { $CacheDirectory = Get-MetOriginWindowsDefaultPath -Key 'engineDownloads' }
+
 
 $lock = Read-MetOriginEngineLock -Path $LockFile
 $cache = Resolve-MetOriginPath -Path $CacheDirectory

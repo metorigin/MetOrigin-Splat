@@ -13,9 +13,16 @@ scripts/windows/Build-BrushRuntime.ps1 -SourceRepository ../brush -Offline
 scripts/windows/Build-BrushRuntime.ps1 -Verify
 ```
 
-The builder makes a detached clone under `target/windows-brush/<cache-key>/source`;
+The default source repository is
+`.cache/metorigin/sources/engines/windows-x64/brush/upstream/`; an explicit
+`-SourceRepository` retains priority. When the default source is absent, an
+online invocation obtains it from the pinned source repository; offline mode
+requires it to be present. The builder makes a detached
+patched clone under
+`.cache/metorigin/sources/engines/windows-x64/brush/patched/` and uses
+`.cache/metorigin/build/engines/windows-x64/brush-runtime/` for build caches;
 the supplied repository and its branches are read-only inputs. The default
-artifact is `target/windows-brush/runtime`, with `bin/brush-cli.exe`, shader
+artifact is `.engines/windows-x64/development/brush-runtime/`, with `bin/brush-cli.exe`, shader
 compiler DLLs, original DXC notices, machine/version/help output, target
 dependency graph, lockfile, Brush license and `BUILD-INFO.json`. Cache reuse
 checks every listed file, the inventory, compiler/source inputs and actual
@@ -23,7 +30,11 @@ machine identity. A partial staging directory is never a usable artifact. The
 OS releases the build lock after interruption; existing outputs are never
 silently overwritten. A damaged cache fails explicitly. Offline mode requires
 both local locked Cargo dependencies and the checksum-pinned DXC archive in
-`target/windows-brush/downloads/`.
+`.cache/metorigin/downloads/dxc/windows-x64/`.
+
+Retained reports use `artifacts/verification/windows-x64/`. These path defaults
+do not change the pinned source, patches or native acceptance status. See
+[directory roles and retention](../../docs/development.md#generated-files-and-cleanup).
 
 ## Machine and adapter contract
 
@@ -75,8 +86,8 @@ the test/development shell does not need a system PATH modification.
 ```powershell
 python -X utf8 scripts/windows/test_build_brush_runtime.py
 python -X utf8 scripts/windows/check_brush_runtime.py `
-  --brush target/windows-brush/runtime/bin/brush-cli.exe `
-  --build-info target/windows-brush/runtime/BUILD-INFO.json `
+  --brush .engines/windows-x64/development/brush-runtime/bin/brush-cli.exe `
+  --build-info .engines/windows-x64/development/brush-runtime/BUILD-INFO.json `
   --backend dx12 --dataset NORMALIZED_FIXTURE --output FRESH_EVIDENCE
 ```
 

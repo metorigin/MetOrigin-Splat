@@ -5,9 +5,9 @@ set -euo pipefail
 readonly expected_commit=38b88335f99e76ed89ff3c93f877fdefce736c13
 readonly deployment_target=15.0
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-source_dir="$repo_root/target/macos-m0/ffmpeg"
-build_dir="$repo_root/target/macos-m0/ffmpeg-build"
-install_dir="$repo_root/target/macos-m0/ffmpeg-install"
+source_dir=""
+build_dir=""
+install_dir=""
 jobs=4
 configure_only=false
 fail() { printf 'FFmpeg build: %s\n' "$*" >&2; exit 1; }
@@ -39,6 +39,10 @@ while (($#)); do
         *) fail "unknown option: $1" ;;
     esac
 done
+engine_path() { python3 "$repo_root/scripts/shared/engine_paths.py" --repo-root "$repo_root" --key "$1"; }
+[[ -n "$source_dir" ]] || source_dir=$(engine_path ffmpegSource)
+[[ -n "$build_dir" ]] || build_dir=$(engine_path ffmpegBuild)
+[[ -n "$install_dir" ]] || install_dir=$(engine_path ffmpegBuildInstall)
 [[ "$jobs" =~ ^[1-9][0-9]*$ ]] || fail '--jobs must be a positive integer'
 for path in "$source_dir" "$build_dir" "$install_dir"; do
     [[ "$path" == /* ]] || fail 'all directories must be absolute'

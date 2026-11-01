@@ -2,6 +2,7 @@ import ts from "typescript";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import bridgeSource from "../../../../integrations/supersplat/metorigin-bridge.ts?raw";
 import upstreamPin from "../../../../integrations/supersplat/upstream.json";
+import cachePaths from "../../../../packaging/shared/cache-paths.json";
 import { createEditorBridge, EDITOR_CHANNEL } from "./editorBridge";
 
 const compiled = ts.transpileModule(bridgeSource, {
@@ -373,7 +374,9 @@ describe("native image render guard lifecycle", () => {
 // Resolve at runtime: Vite's static new URL(..., import.meta.url) asset rewrite
 // would turn this filesystem fixture into an /@fs browser URL.
 const testModuleUrl = import.meta.url;
-const upstreamRoot = decodeURIComponent(new URL("../../../../target/supersplat-source/upstream", testModuleUrl).pathname).replace(/^\/([A-Za-z]:\/)/, "$1");
+const upstreamRelative = `${cachePaths.root}/${cachePaths.directories.supersplatSource}/upstream`
+  .split("/").map(encodeURIComponent).join("/");
+const upstreamRoot = decodeURIComponent(new URL(`../../../../${upstreamRelative}`, testModuleUrl).pathname).replace(/^\/([A-Za-z]:\/)/, "$1");
 const pinnedSources = {
   "scene.ts": "23aa7be6f2832a9ae00f689ce1aa72115ac05f5b4ea36ff31486668218fe54fb",
   "render.ts": "cee4891738a5feee0ce0d82a38ebab0ab97b5cd03f7eef6edb56dfc63e91818f",

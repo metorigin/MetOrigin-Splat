@@ -1,0 +1,553 @@
+{
+  "schema_version": 1,
+  "engines_root": ".engines",
+  "platforms": {
+    "macos-arm64": {
+      "paths": {
+        "developmentRoot": {
+          "base": "engines",
+          "path": "macos-arm64/development"
+        },
+        "distributionRoot": {
+          "base": "engines",
+          "path": "macos-arm64/distribution"
+        },
+        "ffmpegSource": {
+          "base": "cache",
+          "path": "sources/engines/macos-arm64/ffmpeg-8.1.2"
+        },
+        "ffmpegBuildEvidence": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/ffmpeg"
+        },
+        "ffmpegInstall": {
+          "base": "engines",
+          "path": "macos-arm64/development/ffmpeg"
+        },
+        "colmapSource": {
+          "base": "cache",
+          "path": "sources/engines/macos-arm64/colmap-4.1.0"
+        },
+        "colmapDevelopmentBuildEvidence": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/colmap-development"
+        },
+        "colmapAlphaBuildEvidence": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/colmap-alpha"
+        },
+        "colmapAlphaInstallEvidence": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/colmap-alpha-install"
+        },
+        "colmapInstall": {
+          "base": "engines",
+          "path": "macos-arm64/development/colmap"
+        },
+        "colmapDependencyPrefix": {
+          "base": "engines",
+          "path": "macos-arm64/development/colmap-deps"
+        },
+        "colmapAlphaDependencyEvidence": {
+          "base": "engines",
+          "path": "macos-arm64/archive/colmap/dependencies-original"
+        },
+        "colmapOriginalDevelopmentEvidence": {
+          "base": "engines",
+          "path": "macos-arm64/archive/colmap/development-original"
+        },
+        "condaPackageCache": {
+          "base": "cache",
+          "path": "downloads/conda/macos-arm64"
+        },
+        "cargoHome": {
+          "base": "cache",
+          "path": "downloads/cargo/macos-arm64"
+        },
+        "correspondingSourceCache": {
+          "base": "cache",
+          "path": "downloads/engine-sources/macos-arm64"
+        },
+        "ffmpegBuild": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/native/ffmpeg/build"
+        },
+        "ffmpegBuildInstall": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/native/ffmpeg/install"
+        },
+        "colmapBuild": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/native/colmap-development/build"
+        },
+        "colmapBuildInstall": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/native/colmap-development/install"
+        },
+        "colmapAlphaBuild": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/native/colmap-alpha/build"
+        },
+        "colmapAlphaBuildInstall": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/native/colmap-alpha/install"
+        },
+        "brushDevelopmentRoot": {
+          "base": "engines",
+          "path": "macos-arm64/development/brush"
+        },
+        "brushSource.1": {
+          "base": "cache",
+          "path": "sources/engines/macos-arm64/brush/metorigin-macos.1"
+        },
+        "brushBuild.1": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/native/brush/metorigin-macos.1"
+        },
+        "brushSource.2": {
+          "base": "cache",
+          "path": "sources/engines/macos-arm64/brush/metorigin-macos.2"
+        },
+        "brushBuild.2": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/native/brush/metorigin-macos.2"
+        },
+        "brushSource.3": {
+          "base": "cache",
+          "path": "sources/engines/macos-arm64/brush/metorigin-macos.3"
+        },
+        "brushBuild.3": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/native/brush/metorigin-macos.3"
+        },
+        "brushSource.4": {
+          "base": "cache",
+          "path": "sources/engines/macos-arm64/brush/metorigin-macos.4"
+        },
+        "brushBuild.4": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/native/brush/metorigin-macos.4"
+        },
+        "brushSource.5": {
+          "base": "cache",
+          "path": "sources/engines/macos-arm64/brush/metorigin-macos.5"
+        },
+        "brushBuild.5": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/native/brush/metorigin-macos.5"
+        },
+        "brushSource.6": {
+          "base": "cache",
+          "path": "sources/engines/macos-arm64/brush/metorigin-macos.6"
+        },
+        "brushBuild.6": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/native/brush/metorigin-macos.6"
+        },
+        "brushBuild.stock": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/native/brush/stock"
+        },
+        "legacy.m0.brush-artifacts": {
+          "base": "engines",
+          "path": "macos-arm64/archive/brush/macos-m0/brush-artifacts"
+        },
+        "legacy.m0.brush-build": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/macos-m0/brush-build"
+        },
+        "legacy.m0.brush-build-final": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/macos-m0/brush-build-final"
+        },
+        "legacy.m0.brush-build-patched": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/macos-m0/brush-build-patched"
+        },
+        "legacy.m0.brush-evidence": {
+          "base": "verification",
+          "path": "engines/brush/macos-m0/brush-evidence"
+        },
+        "legacy.m0.brush-target": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/macos-m0/brush-target"
+        },
+        "legacy.m1.brush-artifacts": {
+          "base": "engines",
+          "path": "macos-arm64/archive/brush/macos-m1/brush-artifacts"
+        },
+        "legacy.m1.brush-build": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/macos-m1/brush-build"
+        },
+        "legacy.m1.brush-evidence": {
+          "base": "verification",
+          "path": "engines/brush/macos-m1/brush-evidence"
+        },
+        "legacy.m1.brush-target": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/macos-m1/brush-target"
+        },
+        "legacy.m2.brush-artifacts": {
+          "base": "engines",
+          "path": "macos-arm64/archive/brush/macos-m2/brush-artifacts"
+        },
+        "legacy.m2.brush-artifacts-final": {
+          "base": "engines",
+          "path": "macos-arm64/archive/brush/macos-m2/brush-artifacts-final"
+        },
+        "legacy.m2.brush-build": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/macos-m2/brush-build"
+        },
+        "legacy.m2.brush-build-final": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/macos-m2/brush-build-final"
+        },
+        "legacy.m2.brush-evidence": {
+          "base": "verification",
+          "path": "engines/brush/macos-m2/brush-evidence"
+        },
+        "legacy.m2.brush-target": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/macos-m2/brush-target"
+        },
+        "legacy.m3.brush-artifacts": {
+          "base": "engines",
+          "path": "macos-arm64/archive/brush/macos-m3/brush-artifacts"
+        },
+        "legacy.m3.brush-build-final": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/macos-m3/brush-build-final"
+        },
+        "legacy.m3.brush-evidence": {
+          "base": "verification",
+          "path": "engines/brush/macos-m3/brush-evidence"
+        },
+        "legacy.m3.brush-target": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/macos-m3/brush-target"
+        },
+        "legacy.m4.brush-artifacts": {
+          "base": "engines",
+          "path": "macos-arm64/archive/brush/macos-m4/brush-artifacts"
+        },
+        "legacy.m4.brush-build-final": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/macos-m4/brush-build-final"
+        },
+        "legacy.m4.brush-evidence": {
+          "base": "verification",
+          "path": "engines/brush/macos-m4/brush-evidence"
+        },
+        "legacy.m4.brush-license-audit": {
+          "base": "verification",
+          "path": "engines/brush/macos-m4/brush-license-audit"
+        },
+        "legacy.m4.brush-target": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/macos-m4/brush-target"
+        },
+        "legacy.m4.brush-v6-build": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/macos-m4/brush-v6-build"
+        },
+        "legacy.m4.brush-v6-evidence": {
+          "base": "verification",
+          "path": "engines/brush/macos-m4/brush-v6-evidence"
+        },
+        "legacy.m4.brush-v6-license-audit": {
+          "base": "verification",
+          "path": "engines/brush/macos-m4/brush-v6-license-audit"
+        },
+        "legacy.m4.brush-v6-license-audit-corrected": {
+          "base": "verification",
+          "path": "engines/brush/macos-m4/brush-v6-license-audit-corrected"
+        },
+        "legacy.m4.brush-v6-target": {
+          "base": "cache",
+          "path": "build/engines/macos-arm64/imported/macos-m4/brush-v6-target"
+        },
+        "archive.macos-arm64-v6": {
+          "base": "engines",
+          "path": "macos-arm64/archive/distribution/macos-arm64-v6"
+        },
+        "archive.macos-arm64-archive-macos5-1a257513a680-20261027T045148Z": {
+          "base": "engines",
+          "path": "macos-arm64/archive/distribution/macos-arm64-archive-macos5-1a257513a680-20261027T045148Z"
+        },
+        "brushArtifact.5": {
+          "base": "engines",
+          "path": "macos-arm64/archive/brush/macos-m4/brush-artifacts/0b0578720e6e131cb64f2436012f014cab64d01b20fc1c59d7ad082fd295df86"
+        },
+        "brushArtifact.6": {
+          "base": "engines",
+          "path": "macos-arm64/archive/brush/macos-m4/brush-artifacts/45cf5e4a1226646d355183605f08c1469fa33fb465f1301bc30e0475185f37cb"
+        },
+        "brushStockArtifact": {
+          "base": "engines",
+          "path": "macos-arm64/archive/brush/stock"
+        },
+        "brushPrototypeArtifact": {
+          "base": "engines",
+          "path": "macos-arm64/archive/brush/prototype"
+        }
+      },
+      "legacy_mappings": {
+        "target/distribution/macos-arm64": {
+          "key": "distributionRoot",
+          "compatibility_link": false
+        },
+        "target/macos-m0/ffmpeg": {
+          "key": "ffmpegSource"
+        },
+        "target/macos-m0/ffmpeg-build": {
+          "key": "ffmpegBuildEvidence"
+        },
+        "target/macos-m0/ffmpeg-install": {
+          "key": "ffmpegInstall"
+        },
+        "target/macos-m0/colmap": {
+          "key": "colmapSource"
+        },
+        "target/macos-m0/colmap-build": {
+          "key": "colmapDevelopmentBuildEvidence"
+        },
+        "target/macos-m4/colmap-build": {
+          "key": "colmapAlphaBuildEvidence"
+        },
+        "target/macos-m4/colmap-install": {
+          "key": "colmapAlphaInstallEvidence"
+        },
+        "target/macos-m0/colmap-install": {
+          "key": "colmapOriginalDevelopmentEvidence"
+        },
+        "target/macos-m0/colmap-deps": {
+          "key": "colmapAlphaDependencyEvidence",
+          "compatibility_link": false
+        },
+        "target/macos-m0/conda-pkgs": {
+          "key": "condaPackageCache"
+        },
+        "target/macos-m0/cargo-home": {
+          "key": "cargoHome"
+        },
+        "target/macos-m4/source-cache": {
+          "key": "correspondingSourceCache"
+        },
+        "target/macos-m0/brush": {
+          "key": "brushSource.1"
+        },
+        "target/macos-m1/brush": {
+          "key": "brushSource.2"
+        },
+        "target/macos-m2/brush": {
+          "key": "brushSource.3"
+        },
+        "target/macos-m3/brush": {
+          "key": "brushSource.4"
+        },
+        "target/macos-m4/brush": {
+          "key": "brushSource.5"
+        },
+        "target/macos-m4/brush-v6": {
+          "key": "brushSource.6"
+        },
+        "target/macos-m0/brush-stock": {
+          "key": "brushStockArtifact"
+        },
+        "target/macos-m3/brush-prototype": {
+          "key": "brushPrototypeArtifact"
+        },
+        "target/macos-m0/brush-artifacts": {
+          "key": "legacy.m0.brush-artifacts"
+        },
+        "target/macos-m0/brush-build": {
+          "key": "legacy.m0.brush-build"
+        },
+        "target/macos-m0/brush-build-final": {
+          "key": "legacy.m0.brush-build-final"
+        },
+        "target/macos-m0/brush-build-patched": {
+          "key": "legacy.m0.brush-build-patched"
+        },
+        "target/macos-m0/brush-evidence": {
+          "key": "legacy.m0.brush-evidence"
+        },
+        "target/macos-m0/brush-target": {
+          "key": "legacy.m0.brush-target"
+        },
+        "target/macos-m1/brush-artifacts": {
+          "key": "legacy.m1.brush-artifacts"
+        },
+        "target/macos-m1/brush-build": {
+          "key": "legacy.m1.brush-build"
+        },
+        "target/macos-m1/brush-evidence": {
+          "key": "legacy.m1.brush-evidence"
+        },
+        "target/macos-m1/brush-target": {
+          "key": "legacy.m1.brush-target"
+        },
+        "target/macos-m2/brush-artifacts": {
+          "key": "legacy.m2.brush-artifacts"
+        },
+        "target/macos-m2/brush-artifacts-final": {
+          "key": "legacy.m2.brush-artifacts-final"
+        },
+        "target/macos-m2/brush-build": {
+          "key": "legacy.m2.brush-build"
+        },
+        "target/macos-m2/brush-build-final": {
+          "key": "legacy.m2.brush-build-final"
+        },
+        "target/macos-m2/brush-evidence": {
+          "key": "legacy.m2.brush-evidence"
+        },
+        "target/macos-m2/brush-target": {
+          "key": "legacy.m2.brush-target"
+        },
+        "target/macos-m3/brush-artifacts": {
+          "key": "legacy.m3.brush-artifacts"
+        },
+        "target/macos-m3/brush-build-final": {
+          "key": "legacy.m3.brush-build-final"
+        },
+        "target/macos-m3/brush-evidence": {
+          "key": "legacy.m3.brush-evidence"
+        },
+        "target/macos-m3/brush-target": {
+          "key": "legacy.m3.brush-target"
+        },
+        "target/macos-m4/brush-artifacts": {
+          "key": "legacy.m4.brush-artifacts"
+        },
+        "target/macos-m4/brush-build-final": {
+          "key": "legacy.m4.brush-build-final"
+        },
+        "target/macos-m4/brush-evidence": {
+          "key": "legacy.m4.brush-evidence"
+        },
+        "target/macos-m4/brush-license-audit": {
+          "key": "legacy.m4.brush-license-audit"
+        },
+        "target/macos-m4/brush-target": {
+          "key": "legacy.m4.brush-target"
+        },
+        "target/macos-m4/brush-v6-build": {
+          "key": "legacy.m4.brush-v6-build"
+        },
+        "target/macos-m4/brush-v6-evidence": {
+          "key": "legacy.m4.brush-v6-evidence"
+        },
+        "target/macos-m4/brush-v6-license-audit": {
+          "key": "legacy.m4.brush-v6-license-audit"
+        },
+        "target/macos-m4/brush-v6-license-audit-corrected": {
+          "key": "legacy.m4.brush-v6-license-audit-corrected"
+        },
+        "target/macos-m4/brush-v6-target": {
+          "key": "legacy.m4.brush-v6-target"
+        },
+        "target/distribution/macos-arm64-v6": {
+          "key": "archive.macos-arm64-v6"
+        },
+        "target/distribution/macos-arm64-archive-macos5-1a257513a680-20261027T045148Z": {
+          "key": "archive.macos-arm64-archive-macos5-1a257513a680-20261027T045148Z"
+        }
+      },
+      "flat_compatibility": {
+        "ffmpeg": "ffmpegInstall",
+        "colmap": "colmapInstall",
+        "brush": "brushDevelopmentRoot"
+      }
+    },
+    "windows-x64": {
+      "paths": {
+        "developmentRoot": {
+          "base": "engines",
+          "path": "windows-x64/development"
+        },
+        "distributionRoot": {
+          "base": "engines",
+          "path": "windows-x64/distribution"
+        },
+        "alignmentRoot": {
+          "base": "engines",
+          "path": "windows-x64/alignment"
+        },
+        "engineDownloads": {
+          "base": "cache",
+          "path": "downloads/engines/windows-x64"
+        },
+        "brushLiveSource": {
+          "base": "cache",
+          "path": "sources/engines/windows-x64/brush-live"
+        },
+        "brushLiveBuild": {
+          "base": "cache",
+          "path": "build/engines/windows-x64/brush-live"
+        },
+        "brushLiveInstall": {
+          "base": "engines",
+          "path": "windows-x64/development/brush-v0.3.0"
+        },
+        "brushSource": {
+          "base": "cache",
+          "path": "sources/engines/windows-x64/brush/upstream"
+        },
+        "brushRuntimeSources": {
+          "base": "cache",
+          "path": "sources/engines/windows-x64/brush/patched"
+        },
+        "brushRuntimeBuild": {
+          "base": "cache",
+          "path": "build/engines/windows-x64/brush-runtime"
+        },
+        "brushRuntime": {
+          "base": "engines",
+          "path": "windows-x64/development/brush-runtime"
+        },
+        "brushDxcDownloads": {
+          "base": "cache",
+          "path": "downloads/dxc/windows-x64"
+        },
+        "windowsIconBuild": {
+          "base": "cache",
+          "path": "build/icons/windows"
+        },
+        "packWork": {
+          "base": "cache",
+          "path": "build/engines/windows-x64/pack"
+        }
+      },
+      "legacy_mappings": {
+        "target/distribution/windows-x64": {
+          "key": "distributionRoot"
+        },
+        "target/distribution/windows-x64-alignment": {
+          "key": "alignmentRoot"
+        },
+        ".engines/downloads": {
+          "key": "engineDownloads"
+        },
+        ".engines/brush-v0.3.0-windows-x64": {
+          "key": "brushLiveInstall"
+        },
+        "target/brush-live-source": {
+          "key": "brushLiveSource"
+        },
+        "target/brush-live-build": {
+          "key": "brushLiveBuild"
+        },
+        "target/windows-brush/runtime": {
+          "key": "brushRuntime"
+        },
+        "target/windows-brush/downloads": {
+          "key": "brushDxcDownloads"
+        }
+      },
+      "flat_compatibility": {}
+    }
+  }
+}

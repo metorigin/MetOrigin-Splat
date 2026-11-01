@@ -6,7 +6,34 @@ The application runs FFmpeg, COLMAP and Brush as local child processes. Engine a
 
 [engine-lock.json](../packaging/windows-x64/engine-lock.json) is the authority for packaged archives, versions, download locations and SHA-256 values. The current set is FFmpeg/FFprobe **8.1.2**, COLMAP **4.1.0 CUDA** and Brush **0.3.0**, with the locked Microsoft VC++ runtime prerequisite. A different executable passing a version command does not establish full pipeline compatibility.
 
-The macOS development path uses native arm64 FFmpeg/FFprobe **8.1.2**, COLMAP **4.1.0 CPU**, and the pinned Brush **1.0.0** source plus tracked MetOrigin patches. Recipes and actual engine evidence are in [macOS build scripts](../scripts/macos/README.md) and [M0 validation](validation/macos-m0.md). These development artifacts have not passed self-contained app/dmg acceptance. Windows retains its existing release engine lock and legacy CLI contract. The separate opt-in [Windows Brush 1 candidate](validation/windows-alignment.md) adds a paired CLI and frozen measured device selection; it is not an accepted release default.
+The macOS development path uses native arm64 FFmpeg/FFprobe **8.1.2**, COLMAP **4.1.0 CPU**, and Brush **1.0.0 + metorigin-macos.5**. Recipes and actual engine evidence are in [macOS build scripts](../scripts/macos/README.md) and [M0 validation](validation/macos-m0.md). These development artifacts have not passed self-contained app/dmg acceptance. Windows retains its existing release engine lock and legacy CLI contract. The separate opt-in [Windows Brush 1 candidate](validation/windows-alignment.md) adds a paired CLI and frozen measured device selection; it is not an accepted release default.
+
+### macOS runtime and source layout (2026-11-01)
+
+[`engine-paths.json`](../packaging/shared/engine-paths.json) defines the Mac paths. Node callers use [`engine-paths.mjs`](../scripts/shared/engine-paths.mjs); native build recipes use the standard-library-only [`engine_paths.py`](../scripts/shared/engine_paths.py), without adding a Node requirement.
+
+| Role | Default location |
+| --- | --- |
+| Development FFmpeg, COLMAP and Brush `.5` | `.engines/macos-arm64/development/` |
+| Development COLMAP dependency prefix | `.engines/macos-arm64/development/colmap-deps/` |
+| Frozen Alpha `.6` distribution pack | `.engines/macos-arm64/distribution/` |
+| Older packs and immutable Brush artifacts | `.engines/macos-arm64/archive/` |
+| Original COLMAP dependency and development-install evidence | `.engines/macos-arm64/archive/colmap/{dependencies-original,development-original}/` |
+| Native source checkouts | `.cache/metorigin/sources/engines/macos-arm64/` |
+| Imported build records | `.cache/metorigin/build/engines/macos-arm64/imported/` |
+| Fresh native build outputs | `.cache/metorigin/build/engines/macos-arm64/native/` |
+
+macOS debug startup defaults to the development directory. An explicit `METORIGIN_ENGINE_DIR` still takes priority in development; mapping a saved path to the same verified pack preserves its engine identity. Release applications continue to use their verified bundled resources. The distribution pack remains the existing Alpha `.6` bytes: 2,999 files, manifest SHA-256 `590102d2290251ceced86320d1edef00b1667b139249326f9511ff1b75b6bc40`. Moving it does not establish new engine or application acceptance.
+
+Mac runtime engines are selected directly from the canonical `.engines/macos-arm64/` paths. Both old target compatibility paths are retired, and preparation does not recreate them. If saved settings explicitly reference an old target path, select the corresponding canonical engine directory. Existing flat `.engines/ffmpeg`, `.engines/colmap` and `.engines/brush` entries forward to the development layout for existing explicit paths.
+
+The development Conda environment is installed at its canonical prefix using the exact 171-package lock and Conda's native prefix handling. COLMAP 4.1.0 must then be rebuilt in the fresh native cache and installed at `colmapInstall`, retaining the original development profile: CGAL, LSD, MVS and downloads enabled. This is a new development binary identity, not an update to the frozen Alpha pack. The original environment and install are retained as historical audit inputs under `archive/colmap/`; the packer's `colmapAlphaDependencyEvidence` default selects the archived environment rather than the new development prefix. This does not establish relocation or clean-host acceptance for the development environment.
+
+`cargo clean` can remove Cargo outputs independently of stable runtime engines, native source caches and retained reports. A direct Cargo invocation does not need a target-directory compatibility link.
+
+Old CMake, FFmpeg and Cargo outputs under `imported/` remain path-bound historical evidence, not an incrementally reusable build tree. New native builds use `native/`; `CARGO_HOME` and `CARGO_TARGET_DIR` overrides retain priority. See the [native entry points](../scripts/macos/README.md) and the local [migration map](../.engines/macos-arm64/migration-map.json). Historical recipes, the original migration map and stage-4 receipts retain their recorded paths and identities; prefix retirement and rebuilding require a separate successor record with their actual checks.
+
+Do not rewrite existing projects' recorded engine hashes during this migration. On the next explicit pipeline start or resume, runtime preflight identifies the selected executable. A changed COLMAP identity invalidates feature extraction and downstream stages; unchanged FFmpeg identity leaves frame extraction reusable. The orchestrator archives the previous COLMAP output before rebuilding. Opening or viewing a project does not migrate its execution profile, and replacing a binary during a frozen run is rejected with E-3008 until preflight runs again.
 
 The rebuilt Windows1 candidate application selects DX12 for ordinary installed
 startup when no backend override is supplied. Users can double-click the
@@ -26,7 +53,7 @@ pnpm prepare:windows:engines
 pnpm verify:windows:engines
 ```
 
-The engine directory is `target/distribution/windows-x64/engines`. Select it in Settings & Engines for development. Downloads are cached under `.engines/downloads`; generated files stay out of Git. See [Windows packaging](../packaging/windows-x64/README.md) for offline preparation and distribution requirements.
+The engine directory is `.engines/windows-x64/distribution/engines`. Select it in Settings & Engines for development. Downloads are cached under `.cache/metorigin/downloads/engines/windows-x64/`; generated files stay out of Git. See [Windows packaging](../packaging/windows-x64/README.md) for offline preparation and distribution requirements.
 
 ## Resolution and integrity
 
@@ -67,7 +94,7 @@ pnpm build:brush:live -Offline
 pnpm build:brush:live -OutputDirectory 'D:/Engines/Brush'
 ```
 
-The default companion output directory is `.engines/brush-v0.3.0-windows-x64`. The script verifies the source archive and builds in isolated directories under `target/`; the generated upstream copy and executable are not repository source. Pack preparation includes the companion and its license.
+The default companion output directory is `.engines/windows-x64/development/brush-v0.3.0/`. The script verifies the source archive, keeps its checkout under `.cache/metorigin/sources/engines/windows-x64/brush-live/`, and builds under `.cache/metorigin/build/engines/windows-x64/brush-live/`; the generated upstream copy and executable are not repository source. Pack preparation includes the companion and its license.
 
 When the companion is beside the configured `brush_app.exe`, new training sessions select it automatically. An already running stock process is not replaced. Preview snapshots are demand-driven, acknowledged and session-scoped; they do not change recovery checkpoint intervals. See [Gaussian live preview](gaussian-live-preview.zh-CN.md) for the rendering protocol and limitations.
 

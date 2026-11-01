@@ -3,17 +3,18 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { basename, dirname, resolve } from "node:path";
 import process from "node:process";
+import { createTestingOutput, parseTestingOutputArguments } from "../shared/testing-output.mjs";
 
 const videoPath = process.env.METORIGIN_TEST_VIDEO;
 const projectRoot = process.env.METORIGIN_TEST_PROJECT_ROOT;
-const reportDirectory = process.env.METORIGIN_NATIVE_REPORT_DIR ?? projectRoot;
+const outputArguments = parseTestingOutputArguments();
 const expectedSourceHash = process.env.METORIGIN_EXPECTED_SOURCE_SHA256?.toUpperCase() ?? null;
 const debugPort = Number(process.env.METORIGIN_TAURI_DEBUG_PORT ?? "9231");
 const pollIntervalMs = 1_000;
 const pipelineTimeoutMs = Number(process.env.METORIGIN_PIPELINE_TIMEOUT_MS ?? String(45 * 60 * 1_000));
 
-if (!videoPath || !projectRoot || !reportDirectory) {
-  throw new Error("METORIGIN_TEST_VIDEO, METORIGIN_TEST_PROJECT_ROOT, and report directory are required.");
+if (!videoPath || !projectRoot) {
+  throw new Error("METORIGIN_TEST_VIDEO and METORIGIN_TEST_PROJECT_ROOT are required.");
 }
 if (!existsSync(videoPath)) throw new Error("The configured test video does not exist.");
 if (!Number.isInteger(debugPort) || debugPort < 1 || debugPort > 65535) throw new Error("Invalid debug port.");
@@ -331,9 +332,17 @@ async function main() {
   }
 }
 
+const testingOutput = await createTestingOutput({ tool: "native-tauri-fast", platform: "windows-x64", ...outputArguments,
+  reportRoot: outputArguments.reportRoot ?? process.env.METORIGIN_NATIVE_REPORT_DIR });
+const reportDirectory = testingOutput.reportDirectory;
+let successful = false;
 try {
   await main();
+  successful = true;
 } catch (error) {
   process.stderr.write(`Native validation failed: ${String(error?.message ?? error)}\n`);
   process.exitCode = 1;
+} finally {
+  const published = testingOutput.finish({ success: successful });
+  process.stdout.write(`Report: ${published.reportDirectory}\n`);
 }

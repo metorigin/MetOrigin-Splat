@@ -1,14 +1,16 @@
 [CmdletBinding()]
 param(
-    [string]$BrushPath = 'target/distribution/windows-x64-alignment/engines/brush/bin/brush-cli.exe',
-    [string]$OutputRoot = 'target/windows-default-runtime-validation',
+    [string]$BrushPath,
+    [string]$OutputRoot,
     [string]$CargoTargetDirectory = 'target'
 )
 . (Join-Path $PSScriptRoot 'Packaging.Common.ps1')
+if (-not $BrushPath) { $BrushPath = Join-Path (Get-MetOriginWindowsPath -Key 'alignmentEngines') 'brush/bin/brush-cli.exe' }
+if (-not $OutputRoot) { $OutputRoot = Join-Path (Get-MetOriginWindowsPath -Key 'verification') 'default-runtime' }
 if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitOperatingSystem) { throw 'This acceptance entry requires native Windows x64.' }
 $root = Get-MetOriginRepositoryRoot
 $brush = Resolve-MetOriginPath -Path $BrushPath
-$outputParent = Assert-MetOriginChildPath -Path $OutputRoot -Parent (Join-Path $root 'target')
+$outputParent = Resolve-MetOriginPath -Path $OutputRoot
 $target = Assert-MetOriginChildPath -Path $CargoTargetDirectory -Parent $root
 if (-not (Test-Path -LiteralPath $brush -PathType Leaf)) { throw 'The selected paired Windows1 Brush executable is missing.' }
 $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8)

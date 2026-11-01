@@ -10,7 +10,7 @@ import { CURRENT_OVERLAY_DIRECTORY } from '../shared/supersplat-evidence.mjs';
 
 const extensions = new Set(['.rs', '.toml', '.json', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.css', '.scss', '.html', '.wasm', '.glsl', '.wgsl', '.patch', '.svg', '.png', '.ico', '.icns', '.woff', '.woff2', '.txt', '.sh', '.ps1', '.py', '.nsh', '.nsi', '.yml', '.yaml']);
 const rootFiles = ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.node-version', '.nvmrc', 'LICENSE-MIT', 'LICENSE-APACHE'];
-const scriptFiles = ['Build-AlignmentCandidate.ps1', 'Build-FullInstaller.ps1', 'Build-WindowsRelease.ps1', 'AlignmentPack.mjs', 'BuildSourceInventory.mjs', 'BundleIdentity.mjs', 'BuildBundlerReceipt.mjs', 'Packaging.Common.ps1', 'Prepare-AlignmentEnginePack.ps1', 'Test-AlignmentEnginePack.ps1', 'Test-AlignmentDefaultRuntime.ps1', 'Start-Development.ps1', 'Expand-AlignmentArchive.ps1', 'Build-BrushRuntime.ps1', 'build_brush_runtime.py'];
+const scriptFiles = ['Build-AlignmentCandidate.ps1', 'Build-FullInstaller.ps1', 'Build-WindowsRelease.ps1', 'AlignmentPack.mjs', 'BuildSourceInventory.mjs', 'BundleIdentity.mjs', 'BuildBundlerReceipt.mjs', 'Packaging.Common.ps1', 'Prepare-AlignmentEnginePack.ps1', 'Test-AlignmentEnginePack.ps1', 'Test-AlignmentDefaultRuntime.ps1', 'Start-Development.ps1', 'Expand-AlignmentArchive.ps1', 'Build-BrushRuntime.ps1', 'build_brush_runtime.py', 'WindowsPaths.mjs', 'ResourceConfig.mjs', 'MigrateLocalLayout.mjs'];
 const skipDirectories = new Set(['node_modules', 'target', 'dist', '.git', '.cache', '__pycache__']);
 const normalize = (value) => value.split(path.sep).join('/');
 const present = async (file) => fs.lstat(file).then(() => true, (error) => {
@@ -56,6 +56,11 @@ export async function captureInputs({ root = repository, pack, configuration }) 
   for (const file of rootFiles) await addFile(file);
   // These are actual prebuild dependencies selected by their owning modules,
   // not a general exception for private node_modules or runtime log trees.
+  await addFile('packaging/shared/cache-paths.json');
+  await addFile('packaging/shared/artifact-paths.json');
+  await addFile('scripts/macos/prepare-engine-links.mjs');
+  // Runtime discovery and build scripts both consume the shared engine layout.
+  await addFile('packaging/shared/engine-paths.json');
   for (const file of await entries(path.join(root, 'patches'), () => true, false)) selected.add(file);
   const uiSources = path.join(root, 'apps/desktop/ui-sources.json');
   if (await present(uiSources)) {

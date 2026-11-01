@@ -1,11 +1,13 @@
 [CmdletBinding()]
 param(
-    [string]$SourceRepository = '../brush',
-    [string]$OutputDirectory = 'target/windows-brush/runtime',
+    [string]$SourceRepository,
+    [string]$OutputDirectory,
     [switch]$Offline,
     [switch]$Verify
 )
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Packaging.Common.ps1')
+if (-not $SourceRepository) { $SourceRepository = Get-MetOriginWindowsDefaultPath -Key 'brushSource' }
+if (-not $OutputDirectory) { $OutputDirectory = Get-MetOriginWindowsDefaultPath -Key 'brushRuntime' }
 $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $taskArguments = @('-X', 'utf8', (Join-Path $PSScriptRoot 'build_brush_runtime.py'),
     '--source-repository', $SourceRepository, '--output', $OutputDirectory)

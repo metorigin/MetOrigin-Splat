@@ -16,3 +16,4 @@ pub use manifest::{
     version_matches, EnginePackEngine, EnginePackError, EnginePackFile, EnginePackManifest,
     EnginePackSource, EnginePackStatus, IntegrityStatus,
 };
+pub mod engine_layout;

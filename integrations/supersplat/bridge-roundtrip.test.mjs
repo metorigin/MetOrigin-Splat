@@ -5,10 +5,11 @@ import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { resolveCachePaths } from '../../scripts/shared/cache-paths.mjs';
 
 const integration = dirname(fileURLToPath(import.meta.url));
 const root = resolve(integration, '../..');
-const upstream = join(root, 'target/supersplat-source/upstream');
+const upstream = resolveCachePaths({ repositoryRoot: root }).supersplatSource;
 const desktopRequire = createRequire(join(root, 'apps/desktop/package.json'));
 const ts = desktopRequire('typescript');
 const pin = JSON.parse(await readFile(join(integration, 'upstream.json'), 'utf8'));

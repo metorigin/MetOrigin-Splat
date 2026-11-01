@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$OutputRoot = 'target/distribution/windows-x64-alignment',
-    [string]$CacheDirectory = '.engines/downloads',
+    [string]$OutputRoot,
+    [string]$CacheDirectory,
     [string]$CargoTargetDirectory = 'target/windows-alignment-release-build',
     [switch]$OfflineEngines,
     [switch]$SkipAcquire,
@@ -9,6 +9,9 @@ param(
     [switch]$CheckOnly
 )
 . (Join-Path $PSScriptRoot 'Packaging.Common.ps1')
+if (-not $CacheDirectory) { $CacheDirectory = Get-MetOriginWindowsDefaultPath -Key 'engineDownloads' }
+if (-not $OutputRoot) { $OutputRoot = Get-MetOriginWindowsDefaultPath -Key 'alignmentRoot' }
+
 if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitOperatingSystem) { throw 'Alignment candidates require native Windows x64.' }
 $root = Get-MetOriginRepositoryRoot
 $previousTarget = $env:CARGO_TARGET_DIR
@@ -30,7 +33,9 @@ try {
     # Every entry point verifies the complete current candidate before bundling.
     & (Join-Path $PSScriptRoot 'Test-AlignmentEnginePack.ps1') -OutputRoot $OutputRoot
     $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8)
-    $generatedConfig = Join-Path $root "target/alignment-bundle/$stamp/tauri.conf.json"
+    $verificationRoot = Get-MetOriginWindowsPath -Key 'verification'
+    $reportDirectory = Join-Path $verificationRoot "build.$stamp"
+    $generatedConfig = Join-Path $reportDirectory 'tauri.conf.json'
     & $node (Join-Path $PSScriptRoot 'AlignmentPack.mjs') bundle-config --output $OutputRoot --config $generatedConfig
     if ($LASTEXITCODE -ne 0) { throw 'Candidate resource configuration failed verification.' }
     $configuration = Get-Content -LiteralPath $generatedConfig -Raw | ConvertFrom-Json
@@ -94,7 +99,7 @@ try {
     $identityProof = Get-Content -LiteralPath $bundleIdentity -Raw | ConvertFrom-Json
     $pack = Resolve-MetOriginPath -Path $OutputRoot
     $manifest = Get-Content -LiteralPath (Join-Path $pack 'engines/engine-manifest.json') -Raw | ConvertFrom-Json
-    $artifactParent = Join-Path $root "artifacts/windows/alignment-candidate/$($manifest.pack_version)"
+    $artifactParent = Join-Path (Get-MetOriginWindowsPath -Key 'packages') "alignment-candidate/$($manifest.pack_version)"
     $artifact = Join-Path $artifactParent ".staging-$stamp"
     $finalArtifact = Join-Path $artifactParent $stamp
     New-Item -ItemType Directory -Path $artifact | Out-Null
@@ -109,12 +114,13 @@ try {
     }
     # Recheck that build hooks did not alter the frozen engine inputs.
     & (Join-Path $PSScriptRoot 'Test-AlignmentEnginePack.ps1') -OutputRoot $OutputRoot
-    $metadata = Join-Path $artifact 'metadata'
+    $metadata = Join-Path $reportDirectory 'metadata'
     New-Item -ItemType Directory -Path $metadata | Out-Null
     Copy-Item -LiteralPath (Join-Path $pack 'engines/engine-manifest.json') -Destination $metadata
     Copy-Item -LiteralPath (Join-Path $pack 'engines/BUILD-INFO.json') -Destination $metadata
     Copy-Item -LiteralPath (Join-Path $pack 'engines/brush/BUILD-INFO.json') -Destination (Join-Path $metadata 'brush-build-info.json')
     Copy-Item -LiteralPath (Join-Path $pack 'checksums.json') -Destination (Join-Path $metadata 'pack-checksums.json')
+    Copy-Item -LiteralPath (Join-Path $pack 'licenses') -Destination (Join-Path $metadata 'licenses') -Recurse
     Copy-Item -LiteralPath $generatedConfig -Destination (Join-Path $metadata 'tauri.conf.json')
     Copy-Item -LiteralPath $sourceInventory -Destination (Join-Path $metadata 'source-inventory.json')
     Copy-Item -LiteralPath $outputInventory -Destination (Join-Path $metadata 'build-outputs.json')
@@ -145,6 +151,17 @@ try {
     $safeFinal = Assert-MetOriginChildPath -Path $finalArtifact -Parent $artifactParent
     if (Test-Path -LiteralPath $safeFinal) { throw 'A candidate artifact with this identity already exists.' }
     Move-Item -LiteralPath $safeArtifact -Destination $safeFinal
+    $publishedPackage = if ($NoBundle) { Join-Path $safeFinal "$binaryName.exe" } else { Join-Path $safeFinal 'MetOrigin-Splat-Setup.exe' }
+    $finalReport = Join-Path $reportDirectory 'final.json'
+    $finalRecord = [ordered]@{ schema_version=1; status='passed'; platform='windows-x64'; kind='alignment-candidate';
+        package=$publishedPackage; metadata_directory='metadata'; pack_version=$manifest.pack_version;
+        created_utc=[DateTime]::UtcNow.ToString('o'); public_release_approved=$false }
+    Write-MetOriginUtf8File -Path $finalReport -Content (($finalRecord | ConvertTo-Json -Depth 6)+"`n")
+    & $node (Join-Path $root 'scripts/shared/artifact-retention.mjs') record --platform windows-x64 --report $finalReport --package $safeFinal
+    if ($LASTEXITCODE -ne 0) { throw 'Candidate retention registration failed.' }
+    $latest = ([ordered]@{ final_report=$finalReport; package=$publishedPackage } | ConvertTo-Json)+"`n"
+    Write-MetOriginUtf8File -Path (Join-Path $verificationRoot 'latest-alignment-candidate.json') -Content $latest
+    Write-MetOriginUtf8File -Path (Join-Path $verificationRoot 'latest.json') -Content $latest
     Write-Host "Internal unaccepted alignment candidate: $safeFinal"
 } finally {
     if ($null -ne $buildLockStream) { $buildLockStream.Dispose(); Remove-Item -LiteralPath $buildLockPath -Force }

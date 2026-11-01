@@ -53,7 +53,7 @@ pnpm prepare:windows:engines
 pnpm verify:windows:engines
 ```
 
-生成的引擎目录为 `target/distribution/windows-x64/engines`，本地使用时在“设置与引擎”中选择此目录。引擎包包括 FFmpeg/FFprobe、COLMAP 和 Brush。具体版本与校验值以 [engine-lock.json](packaging/windows-x64/engine-lock.json) 为准。首次构建配套实时预览引擎可能需要较长时间。
+生成的引擎目录为 `.engines/windows-x64/distribution/engines`，本地使用时在“设置与引擎”中选择此目录。引擎包包括 FFmpeg/FFprobe、COLMAP 和 Brush。具体版本与校验值以 [engine-lock.json](packaging/windows-x64/engine-lock.json) 为准。首次构建配套实时预览引擎可能需要较长时间。
 
 已有 Brush 安装时，也可以单独构建实时预览引擎：
 
@@ -61,7 +61,7 @@ pnpm verify:windows:engines
 pnpm build:brush:live
 ```
 
-默认输出为 `.engines/brush-v0.3.0-windows-x64/brush_live.exe`，应与已配置的 `brush_app.exe` 放在同一目录。新启动的训练会自动使用它。普通 Brush 可以提供已保存的 checkpoint；查看尚未保存的训练模型更新，需要配套实时预览引擎。详见[引擎接入](docs/engine-integration.md)和[高斯渲染与实时预览](docs/gaussian-live-preview.zh-CN.md)。
+默认输出为 `.engines/windows-x64/development/brush-v0.3.0/brush_live.exe`，应与已配置的 `brush_app.exe` 放在同一目录。新启动的训练会自动使用它。普通 Brush 可以提供已保存的 checkpoint；查看尚未保存的训练模型更新，需要配套实时预览引擎。详见[引擎接入](docs/engine-integration.md)和[高斯渲染与实时预览](docs/gaussian-live-preview.zh-CN.md)。
 
 ### 仅预览前端界面
 
@@ -106,6 +106,8 @@ cargo test --workspace --all-targets
 | `scripts/`、`packaging/` | 验证、Windows 构建、引擎版本锁定和第三方声明 |
 | `docs/` | 当前使用、实现与发布文档 |
 | `specs/` | 历史设计契约与验收协议 |
+
+生成文件统一分四类：`target/` 放 Cargo 构建输出，`.cache/metorigin/` 放可复用的下载、源码检出与工具链，`.engines/` 放已准备的运行引擎，`artifacts/` 放安装包和需保留的正式报告。普通测试工作目录放系统临时目录并自动清理，详见[目录职责与清理规则](docs/development.md#generated-files-and-cleanup)。
 
 可从[文档索引](docs/README.md)、[使用指南](docs/user-operation-flow.zh-CN.md)、[架构说明](docs/architecture.md)或[故障排查](docs/troubleshooting.md)开始阅读。贡献流程与漏洞反馈方式分别见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [SECURITY.md](SECURITY.md)。
 

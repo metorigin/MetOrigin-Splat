@@ -39,9 +39,9 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../../../target/distribution/windows-x64/engines/": "resources/engines/",
-      "../../../target/distribution/windows-x64/licenses/": "resources/licenses/",
-      "../../../target/distribution/windows-x64/installer/": "resources/installer/"
+      "../../../.engines/windows-x64/distribution/engines/": "resources/engines/",
+      "../../../.engines/windows-x64/distribution/licenses/": "resources/licenses/",
+      "../../../.engines/windows-x64/distribution/installer/": "resources/installer/"
     },
     "windows": {
       "allowDowngrades": false,

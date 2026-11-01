@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -10,13 +10,21 @@ import { themeInputs } from './ui-theme/apply.mjs';
 import { ensureSourceRepository, sourceGitEnvironment } from './source-checkout.mjs';
 import { dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { resolveCachePaths } from '../../scripts/shared/cache-paths.mjs';
 
 const integration = dirname(fileURLToPath(import.meta.url));
 
+async function sourceCache(root) {
+  const config = join(root, 'packaging/shared/cache-paths.json');
+  await mkdir(dirname(config), { recursive: true });
+  await cp(join(integration, '../../packaging/shared/cache-paths.json'), config);
+  return resolveCachePaths({ repositoryRoot: root }).supersplatSource;
+}
+
 test('fixed source preparation repairs a CRLF cache without deleting installed dependencies', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'supersplat-git-bytes-'));
+  const root = await mkdtemp(join(tmpdir(), 'supersplat-git-bytes-中文 空格-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const source = join(root, 'target/supersplat-source/upstream');
+  const source = await sourceCache(root);
   await mkdir(source, { recursive: true });
   const globalConfig = join(source, 'fixture-global.gitconfig');
   await writeFile(globalConfig, '');
@@ -58,14 +66,15 @@ test('fixed source preparation repairs a CRLF cache without deleting installed d
   for (const [name, bytes] of files) assert((await readFile(join(source, name))).equals(Buffer.from(bytes)), `Changed upstream bytes: ${name}`);
   assert.equal(await readFile(join(source, 'node_modules/installed-marker'), 'utf8'), 'keep dependencies');
   assert.equal(await readFile(join(source, 'src/generated-bridge.ts'), 'utf8'), 'keep generated input');
+  await assert.rejects(lstat(join(root, 'target')), { code: 'ENOENT' });
 });
 
 async function sourceFixture(t) {
   const temporary = await mkdtemp(join(tmpdir(), 'supersplat-independent-git-'));
   t.after(() => rm(temporary, { recursive: true, force: true }));
-  const root = join(temporary, 'host');
+  const root = join(temporary, 'host 中文 空格');
   const remote = join(temporary, 'upstream');
-  const source = join(root, 'target/supersplat-source/upstream');
+  const source = await sourceCache(root);
   const globalConfig = join(temporary, 'global.gitconfig');
   await writeFile(globalConfig, '');
   const environment = sourceGitEnvironment({ ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: globalConfig, GIT_TERMINAL_PROMPT: '0' });
@@ -83,7 +92,7 @@ async function sourceFixture(t) {
       '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'Fixture');
     return (await git(directory, 'rev-parse', 'HEAD')).stdout.trim();
   };
-  await create(root, { 'host.txt': 'host repository must not change\n', '.gitignore': 'target/\n' });
+  await create(root, { 'host.txt': 'host repository must not change\n', '.gitignore': '.cache/\n' });
   const files = { 'src/main.ts': 'fixed upstream source\n', 'package-lock.json': '{"lockfileVersion":3}\n' };
   const upstream = { repository: pathToFileURL(remote).href, commit: await create(remote, files) };
   const host = new Map(await Promise.all(['HEAD', 'config', 'index'].map(async name => [name, await readFile(join(root, '.git', name))])));
@@ -139,6 +148,7 @@ test('invalid generated Git caches are repaired without using the host repositor
       for (const [name, bytes] of Object.entries(fixture.files)) assert.equal(await readFile(join(source, name), 'utf8'), bytes);
       assert.equal(await readFile(join(source, 'node_modules/installed-marker'), 'utf8'), 'keep dependencies');
       assert.equal(await readFile(join(source, 'generated-marker'), 'utf8'), 'keep generated cache');
+      await assert.rejects(lstat(join(root, 'target')), { code: 'ENOENT' });
       await hostUnchanged();
     });
   }
@@ -146,6 +156,9 @@ test('invalid generated Git caches are repaired without using the host repositor
 
 test('valid fixed source caches need no network and retain prepared source changes', async t => {
   const fixture = await sourceFixture(t);
+  const legacy = join(fixture.root, 'target/supersplat-source/upstream/legacy-marker');
+  await mkdir(dirname(legacy), { recursive: true });
+  await writeFile(legacy, 'leave the old cache untouched');
   await fixture.ensure();
   await writeFile(join(fixture.source, 'src/main.ts'), 'already prepared source\n');
   await rename(fixture.remote, `${fixture.remote}-offline`);
@@ -154,13 +167,14 @@ test('valid fixed source caches need no network and retain prepared source chang
   assert.equal(repository.changed, false);
   assert.deepEqual(messages, []);
   assert.equal(await readFile(join(fixture.source, 'src/main.ts'), 'utf8'), 'already prepared source\n');
+  assert.equal(await readFile(legacy, 'utf8'), 'leave the old cache untouched');
   await fixture.hostUnchanged();
 });
 
 test('source and cache ancestors cannot redirect repair through directory links', async t => {
-  for (const ancestor of ['target', 'source']) await t.test(ancestor, async t => {
+  for (const ancestor of ['.cache', '.cache/metorigin', '.cache/metorigin/sources', '.cache/metorigin/sources/supersplat', 'source']) await t.test(ancestor, async t => {
     const fixture = await sourceFixture(t);
-    const path = ancestor === 'target' ? join(fixture.root, 'target') : fixture.source;
+    const path = ancestor === 'source' ? fixture.source : join(fixture.root, ancestor);
     await mkdir(dirname(path), { recursive: true });
     await symlink(fixture.root, path, process.platform === 'win32' ? 'junction' : 'dir');
     await assert.rejects(fixture.ensure(), /physical directories/);

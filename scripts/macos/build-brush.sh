@@ -11,8 +11,8 @@ usage() {
 Usage: build-brush.sh [--diagnostics-patch|--machine-probe-patch|--training-contract-patch|--live-preview-patch|--distribution-patch|--lpips-policy-patch|--stock] SOURCE_CHECKOUT [OUTPUT_DIRECTORY]
 
 SOURCE_CHECKOUT must be a clean, isolated checkout of the pinned Brush commit.
-OUTPUT_DIRECTORY defaults to target/macos-m4/brush-v6-build for the distribution profile
-and target/macos-m0/brush-build for historical research profiles.
+OUTPUT_DIRECTORY defaults to the profile's fresh native-build cache in
+packaging/shared/engine-paths.json; imported evidence directories are not reused.
 Put the Rust 1.95.0 toolchain's bin directory on PATH before invoking this script.
 Only the default WGPU features are built; no native MSL optimization is enabled.
 Default: metorigin-macos.6; excludes LPIPS weights and unaudited optional dependencies.
@@ -78,10 +78,13 @@ done
 [[ -f "$source_dir/Cargo.lock" ]] || fail 'Pinned source is missing Cargo.lock.'
 
 app_root=$(cd "$(dirname "$0")/../.." && pwd -P)
-default_output="$app_root/target/macos-m0/brush-build"
-if [[ $patch_id == metorigin-macos.6 ]]; then default_output="$app_root/target/macos-m4/brush-v6-build"; fi
-if [[ $patch_id == metorigin-macos.5 ]]; then default_output="$app_root/target/macos-m4/brush-build"; fi
-output_dir=${2:-"$default_output"}
+if [[ $# -eq 2 ]]; then
+  output_dir=$2
+else
+  profile_key=${patch_id##*.}
+  [[ $patch_id != stock ]] || profile_key=stock
+  output_dir=$(python3 "$app_root/scripts/shared/engine_paths.py" --repo-root "$app_root" --key "brushBuild.$profile_key")
+fi
 resolve_output_path() {
   python3 - "$source_dir" "$1" <<'PY'
 from pathlib import Path
@@ -94,7 +97,7 @@ PY
 }
 output_dir=$(resolve_output_path "$output_dir")
 export CARGO_HOME
-CARGO_HOME=$(resolve_output_path "${CARGO_HOME:-"$output_dir/cargo-home"}")
+CARGO_HOME=$(resolve_output_path "${CARGO_HOME:-"$(python3 "$app_root/scripts/shared/engine_paths.py" --repo-root "$app_root" --key cargoHome)"}")
 export CARGO_TARGET_DIR
 CARGO_TARGET_DIR=$(resolve_output_path "${CARGO_TARGET_DIR:-"$output_dir/target"}")
 [[ ! -L "$output_dir/evidence" ]] || fail 'Evidence directory must not be a symlink.'

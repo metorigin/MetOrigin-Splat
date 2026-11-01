@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Build the pinned COLMAP CPU CLI for the macOS M0 experiment.
+# Build the pinned COLMAP CPU CLI using local source and fresh native caches.
 set -euo pipefail
 
 readonly expected_commit=fa8e3b3ff591552855f8ad2806723c80f963f69c
 readonly deployment_target=15.0
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-source_dir="$repo_root/target/macos-m0/colmap"
-build_dir="$repo_root/target/macos-m0/colmap-build"
-install_dir="$repo_root/target/macos-m0/colmap-install"
+source_dir=""
+build_dir=""
+install_dir=""
 deps_prefix=""
 jobs=4
 configure_only=false
@@ -52,6 +52,15 @@ while (($#)); do
         *) fail "unknown option: $1" ;;
     esac
 done
+engine_path() { python3 "$repo_root/scripts/shared/engine_paths.py" --repo-root "$repo_root" --key "$1"; }
+[[ -n "$source_dir" ]] || source_dir=$(engine_path colmapSource)
+if $alpha_profile; then
+    [[ -n "$build_dir" ]] || build_dir=$(engine_path colmapAlphaBuild)
+    [[ -n "$install_dir" ]] || install_dir=$(engine_path colmapAlphaBuildInstall)
+else
+    [[ -n "$build_dir" ]] || build_dir=$(engine_path colmapBuild)
+    [[ -n "$install_dir" ]] || install_dir=$(engine_path colmapBuildInstall)
+fi
 [[ "$jobs" =~ ^[1-9][0-9]*$ ]] || fail '--jobs must be a positive integer'
 for path in "$source_dir" "$build_dir" "$install_dir"; do
     [[ "$path" == /* ]] || fail 'source, build and install paths must be absolute'
@@ -70,9 +79,11 @@ canonical_path() { python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1
 build_dir=$(canonical_path "$build_dir")
 install_dir=$(canonical_path "$install_dir")
 if $alpha_profile; then
-    [[ "$build_dir" != "$repo_root/target/macos-m0/colmap-build" &&
-       "$install_dir" != "$repo_root/target/macos-m0/colmap-install" ]] ||
-        fail '--alpha-profile requires separate build/install directories to preserve M0 evidence'
+    for key in colmapBuild colmapBuildInstall colmapDevelopmentBuildEvidence colmapInstall; do
+        protected_dir=$(canonical_path "$(engine_path "$key")")
+        [[ "$build_dir" != "$protected_dir" && "$install_dir" != "$protected_dir" ]] ||
+            fail '--alpha-profile requires separate build/install directories to preserve development evidence'
+    done
 fi
 for path in "$build_dir" "$install_dir"; do
     case "$path/" in "$source_dir/"*) fail 'build/install directories must be outside the source checkout' ;; esac

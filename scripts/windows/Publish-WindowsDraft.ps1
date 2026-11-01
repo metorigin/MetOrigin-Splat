@@ -9,8 +9,13 @@ param(
 
 . (Join-Path $PSScriptRoot 'Packaging.Common.ps1')
 $root = Get-MetOriginRepositoryRoot
-$installerDirectory = Join-Path $root 'artifacts/windows/installer'
-$metadata = Get-Content -LiteralPath (Join-Path $installerDirectory 'metadata/internal-build.json') -Raw | ConvertFrom-Json
+$verificationRoot = Get-MetOriginWindowsPath -Key 'verification'
+$latest = Get-Content -LiteralPath (Join-Path $verificationRoot 'latest-full-installer.json') -Raw | ConvertFrom-Json
+$finalReport = Assert-MetOriginChildPath -Path $latest.final_report -Parent $verificationRoot
+$installer = Assert-MetOriginChildPath -Path $latest.package -Parent (Get-MetOriginWindowsPath -Key 'packages')
+$installerDirectory = Split-Path -Parent $installer
+$metadataDirectory = Join-Path (Split-Path -Parent $finalReport) 'metadata'
+$metadata = Get-Content -LiteralPath (Join-Path $metadataDirectory 'internal-build.json') -Raw | ConvertFrom-Json
 # A publisher-only fix may be newer than the build. Always archive and target the
 # exact clean revision recorded by the installer, never substitute the latest HEAD.
 if ($metadata.source_revision -notmatch '^[0-9a-f]{40}$') { throw 'Installer has no valid recorded source revision; rebuild it.' }
@@ -27,14 +32,14 @@ if ((Get-MetOriginSha256 -Path $installer) -ne $metadata.installer_sha256) { thr
 $signature = [string](Get-AuthenticodeSignature -LiteralPath $installer).Status
 if ($signature -ne 'NotSigned') { throw "Expected the explicitly selected unsigned Alpha candidate, got '$signature'." }
 
-$licenseRoot = Join-Path $installerDirectory 'metadata/licenses'
+$licenseRoot = Join-Path $metadataDirectory 'licenses'
 $readiness = Get-Content -LiteralPath (Join-Path $licenseRoot 'release-readiness.json') -Raw | ConvertFrom-Json
 $bom = Get-Content -LiteralPath (Join-Path $licenseRoot 'SBOM.cdx.json') -Raw | ConvertFrom-Json
 if ($readiness.source_revision -ne $revision) { throw 'Release evidence is not from this build revision.' }
 if ($bom.bomFormat -ne 'CycloneDX' -or $bom.specVersion -ne '1.6') { throw 'Missing CycloneDX review SBOM.' }
 
 # Preserve reviewed candidates; never delete or overwrite an existing one.
-$reviewRoot = Join-Path $root 'artifacts/windows/release-review'
+$reviewRoot = Join-Path (Get-MetOriginWindowsPath -Key 'packages') 'release-review'
 New-Item -ItemType Directory -Path $reviewRoot -Force | Out-Null
 $output = Assert-MetOriginChildPath -Path (Join-Path $reviewRoot $Tag) -Parent $reviewRoot
 if (Test-Path -LiteralPath $output) { throw "Review directory already exists: $output. Preserve it and select a new Alpha number." }
@@ -44,8 +49,8 @@ Copy-Item -LiteralPath $installer -Destination (Join-Path $output $candidateName
 foreach ($name in @('SBOM.cdx.json', 'release-readiness.json', 'native-payload-inventory.json', 'dependency-license-index.json', 'THIRD_PARTY_NOTICES.md')) {
     Copy-Item -LiteralPath (Join-Path $licenseRoot $name) -Destination (Join-Path $output $name)
 }
-Copy-Item -LiteralPath (Join-Path $installerDirectory 'metadata/internal-build.json') -Destination (Join-Path $output 'build-info.json')
-Copy-Item -LiteralPath (Join-Path $installerDirectory 'metadata/engine-manifest.json') -Destination (Join-Path $output 'engine-manifest.json')
+Copy-Item -LiteralPath (Join-Path $metadataDirectory 'internal-build.json') -Destination (Join-Path $output 'build-info.json')
+Copy-Item -LiteralPath (Join-Path $metadataDirectory 'engine-manifest.json') -Destination (Join-Path $output 'engine-manifest.json')
 # Unlike Compress-Archive on Windows PowerShell 5.1, ZipFile clamps source dates
 # outside ZIP's 1980-2107 range (some upstream package license dates are in 1970).
 Add-Type -AssemblyName System.IO.Compression.FileSystem

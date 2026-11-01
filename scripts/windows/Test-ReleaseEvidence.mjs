@@ -1,3 +1,4 @@
+import { resolveWindowsPaths } from './WindowsPaths.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -7,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { verifyCollectedSupersplatEvidence } from '../shared/supersplat-evidence.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const staging = resolve(root, process.argv[2] ?? 'target/distribution/windows-x64');
+const windowsPaths = await resolveWindowsPaths();
+const staging = resolve(root, process.argv[2] ?? windowsPaths.distributionRoot);
 const licenses = join(staging, 'licenses');
 const readJson = path => JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/, ''));
 const sha256 = path => createHash('sha256').update(readFileSync(path)).digest('hex');

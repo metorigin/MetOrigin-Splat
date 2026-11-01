@@ -1,24 +1,34 @@
 [CmdletBinding()]
 param(
     [string]$LockFile = "packaging/windows-x64/engine-lock.json",
-    [string]$CacheDirectory = ".engines/downloads",
-    [string]$OutputRoot = "target/distribution/windows-x64",
+    [string]$CacheDirectory,
+    [string]$OutputRoot,
     [string]$VCRedistPath,
     [switch]$Offline,
     [switch]$SkipAcquire
 )
 
 . (Join-Path $PSScriptRoot "Packaging.Common.ps1")
+if (-not $CacheDirectory) { $CacheDirectory = Get-MetOriginWindowsDefaultPath -Key 'engineDownloads' }
+if (-not $OutputRoot) { $OutputRoot = Get-MetOriginWindowsDefaultPath -Key 'distributionRoot' }
+
 
 $repositoryRoot = Get-MetOriginRepositoryRoot
-$distributionRoot = Resolve-MetOriginPath -Path "target/distribution"
-$output = Reset-MetOriginDirectory `
-    -Path (Resolve-MetOriginPath -Path $OutputRoot) `
-    -AllowedParent $distributionRoot
+$requestedOutput = Resolve-MetOriginPath -Path $OutputRoot
+# Preserve any complete existing pack until the replacement has passed every
+# integrity/evidence check. Never reset the final runtime directory in place.
+if (Test-Path -LiteralPath $requestedOutput) {
+    & (Join-Path $PSScriptRoot 'Test-EnginePack.ps1') -LockFile $LockFile -OutputRoot $requestedOutput -SkipRuntimeChecks
+}
+$output = "$requestedOutput.staging-$([Guid]::NewGuid().ToString('N'))"
+if (Test-Path -LiteralPath $output) { throw 'Engine staging output already exists.' }
+New-Item -ItemType Directory -Path $output -Force | Out-Null
+try {
 $engineRoot = Join-Path $output "engines"
 $licenseRoot = Join-Path $output "licenses"
 $installerRoot = Join-Path $output "installer"
-$workRoot = Join-Path $output ".work"
+$workParent = Get-MetOriginWindowsPath -Key 'packWork'
+$workRoot = Join-Path $workParent ([Guid]::NewGuid().ToString('N'))
 
 New-Item -ItemType Directory -Path $engineRoot, $licenseRoot, $installerRoot, $workRoot -Force | Out-Null
 
@@ -191,7 +201,7 @@ try {
     $liveArguments = @{}
     if ($Offline) { $liveArguments.Offline = $true }
     & (Join-Path $PSScriptRoot "Build-BrushLive.ps1") @liveArguments
-    $liveRoot = Join-Path $repositoryRoot ".engines/brush-v0.3.0-windows-x64"
+    $liveRoot = Get-MetOriginWindowsPath -Key 'brushLiveInstall'
     Copy-RequiredFile -Source (Join-Path $liveRoot "brush_live.exe") -Destination (Join-Path $brushDestination "brush_live.exe")
     Copy-RequiredFile -Source (Join-Path $liveRoot "BRUSH-LIVE-LICENSE") -Destination (Join-Path $brushDestination "BRUSH-LIVE-LICENSE")
 
@@ -289,7 +299,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Release dependency evidence verification failed.' }
 }
 finally {
-    $safeWorkRoot = Assert-MetOriginChildPath -Path $workRoot -Parent $output
+    $safeWorkRoot = Assert-MetOriginChildPath -Path $workRoot -Parent $workParent
     if (Test-Path -LiteralPath $safeWorkRoot) {
         Remove-Item -LiteralPath $safeWorkRoot -Recurse -Force
     }
@@ -309,7 +319,21 @@ Write-MetOriginSha256Sums `
 
 & (Join-Path $PSScriptRoot "Test-EnginePack.ps1") `
     -LockFile $LockFile `
-    -OutputRoot $OutputRoot `
+    -OutputRoot $output `
     -SkipRuntimeChecks
 
-Write-Host "Prepared Windows x64 engine pack: $engineRoot"
+$previousOutput = "$requestedOutput.previous-$([Guid]::NewGuid().ToString('N'))"
+try {
+    if (Test-Path -LiteralPath $requestedOutput) { Move-Item -LiteralPath $requestedOutput -Destination $previousOutput }
+    Move-Item -LiteralPath $output -Destination $requestedOutput
+} catch {
+    if (-not (Test-Path -LiteralPath $requestedOutput) -and (Test-Path -LiteralPath $previousOutput)) {
+        Move-Item -LiteralPath $previousOutput -Destination $requestedOutput
+    }
+    throw
+}
+if (Test-Path -LiteralPath $previousOutput) { Remove-Item -LiteralPath $previousOutput -Recurse -Force }
+Write-Host "Prepared Windows x64 engine pack: $(Join-Path $requestedOutput 'engines')"
+} finally {
+    if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output -Recurse -Force }
+}

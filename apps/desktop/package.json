@@ -7,8 +7,8 @@
     "node": ">=26.0.0 <27.0.0"
   },
   "scripts": {
-    "predev": "node ../../integrations/jan/verify-inputs.mjs && node ../../scripts/shared/verify-ui-sources.mjs && node ../../integrations/supersplat/prepare.mjs",
-    "prebuild": "node ../../integrations/jan/verify-inputs.mjs && node ../../scripts/shared/verify-ui-sources.mjs && node ../../integrations/supersplat/prepare.mjs",
+    "predev": "node ../../scripts/macos/prepare-engine-links.mjs && node ../../integrations/jan/verify-inputs.mjs && node ../../scripts/shared/verify-ui-sources.mjs && node ../../integrations/supersplat/prepare.mjs",
+    "prebuild": "node ../../scripts/macos/prepare-engine-links.mjs && node ../../integrations/jan/verify-inputs.mjs && node ../../scripts/shared/verify-ui-sources.mjs && node ../../integrations/supersplat/prepare.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",

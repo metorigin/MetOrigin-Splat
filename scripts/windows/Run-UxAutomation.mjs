@@ -1,13 +1,18 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { createTestingOutput, parseTestingOutputArguments } from "../shared/testing-output.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptDirectory, "..", "..");
-const artifactRoot = join(repositoryRoot, ".test-results", "ux-automation");
+const outputArguments = parseTestingOutputArguments();
+if (outputArguments.arguments.length) throw new Error("Usage: Run-UxAutomation.mjs [--keep] [--report DIR]");
+const testingOutput = await createTestingOutput({ tool: "ux-automation", ...outputArguments });
+const artifactRoot = testingOutput.reportDirectory;
+let publishedOutput;
 const previewPort = 4173;
 const appUrl = `http://127.0.0.1:${previewPort}`;
 // An explicit override enables an isolated Chromium run on other hosts;
@@ -573,7 +578,7 @@ async function run() {
     const response = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
     const path = join(artifactRoot, `${name}.png`);
     await writeFile(path, Buffer.from(response.data, "base64"));
-    report.screenshots.push(relative(repositoryRoot, path).replaceAll("\\", "/"));
+    report.screenshots.push(`${name}.png`);
   };
   const setViewport = async (width, height, deviceScaleFactor = 1) => {
     await cdp.send("Emulation.setDeviceMetricsOverride", {
@@ -625,7 +630,7 @@ async function run() {
       }
     });
 
-    edgeProfilePath = await mkdtemp(join(artifactRoot, "edge-profile-"));
+    edgeProfilePath = await mkdtemp(join(testingOutput.workDirectory, "edge-profile-"));
     edgeProcess = spawn(edgeExecutable, [
       "--headless=new",
       "--remote-debugging-pipe",
@@ -1446,12 +1451,7 @@ async function run() {
     };
     await stopProcess(edgeProcess);
     await stopProcess(previewProcess);
-    if (edgeProfilePath) {
-      const resolvedProfile = resolve(edgeProfilePath);
-      const profileIsOwned = dirname(resolvedProfile) === resolve(artifactRoot)
-        && basename(resolvedProfile).startsWith("edge-profile-");
-      if (profileIsOwned) await rm(resolvedProfile, { recursive: true, force: true }).catch(() => undefined);
-    }
+    publishedOutput = testingOutput.finish({ success: report.status === "PASS" });
   }
   return report;
 }
@@ -1463,11 +1463,12 @@ try {
     passed_checks: report.checks.filter((item) => item.status === "PASS").length,
     total_checks: report.checks.length,
     timings: Object.fromEntries(Object.entries(report.timings).map(([key, value]) => [key, { p95_ms: value.p95_ms, threshold_ms: value.threshold_ms, status: value.status }])),
-    report: ".test-results/ux-automation/ux-automation-report.json",
+    report: join(publishedOutput.reportDirectory, "ux-automation-report.json"),
   };
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 } catch (error) {
   process.stderr.write(`UX automation failed: ${String(error?.message ?? error)}\n`);
-  process.stderr.write("Sanitized report: .test-results/ux-automation/ux-automation-report.json\n");
+  publishedOutput ??= testingOutput.finish({ success: false });
+  process.stderr.write(`Sanitized report: ${join(publishedOutput.reportDirectory, "ux-automation-report.json")}\n`);
   process.exitCode = 1;
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify frozen Mac build inputs without running or relabelling native evidence."""
+"""Verify recorded Mac build inputs without running or relabelling native evidence."""
 import hashlib
 import json
 from pathlib import Path
@@ -25,7 +25,7 @@ def verify(root=ROOT, lock=LOCK):
 
 if __name__ == "__main__":
     try:
-        print(f"{verify()} frozen Mac build inputs unchanged; native regression remains separate")
+        print(f"{verify()} Mac build inputs match recorded hashes; native regression remains separate")
     except (OSError, ValueError, KeyError) as error:
         print(str(error), file=sys.stderr)
         sys.exit(1)

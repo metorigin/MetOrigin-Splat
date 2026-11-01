@@ -68,6 +68,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: 11.12.0
+      - run: node --test scripts/shared/artifact-paths.test.mjs scripts/shared/cache-paths.test.mjs scripts/shared/license-paths.test.mjs scripts/shared/engine-paths.test.mjs scripts/macos/resource-config.test.mjs scripts/macos/prepare-engine-links.test.mjs scripts/shared/artifact-retention.test.mjs scripts/shared/migrate-engine-settings.test.mjs scripts/shared/historical-paths.test.mjs scripts/shared/testing-output.test.mjs scripts/shared/verify-ui-sources.test.mjs
       - run: pnpm install --frozen-lockfile
       - run: python -m unittest discover -s scripts/windows -p 'test_*.py'
       - run: pnpm test:windows:alignment-pack
@@ -105,6 +106,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: 11.12.0
+      - run: node --test scripts/shared/artifact-paths.test.mjs scripts/shared/cache-paths.test.mjs scripts/shared/license-paths.test.mjs scripts/shared/engine-paths.test.mjs scripts/macos/resource-config.test.mjs scripts/macos/prepare-engine-links.test.mjs scripts/shared/artifact-retention.test.mjs scripts/shared/migrate-engine-settings.test.mjs scripts/shared/historical-paths.test.mjs scripts/shared/testing-output.test.mjs scripts/shared/verify-ui-sources.test.mjs
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck

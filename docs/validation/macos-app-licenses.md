@@ -1,5 +1,7 @@
 # macOS application dependency evidence
 
+**Directory routing update (2026-11-01):** Current application-license evidence now uses `artifacts/licenses/macos-arm64/current/`, and archived copies use `artifacts/licenses/macos-arm64/archive/`. Current commands are in the [macOS packaging guide](../macos-packaging.zh-CN.md); the local [migration map](../../artifacts/licenses/macos-arm64/migration-map.json) records relocated directories. The dated results and original paths below remain historical records, not current output defaults.
+
 Current status (2026-10-28): the complete `ee0f0bea` application and
 `build.Lotfbt` DMG bind the fixed-source WebP replacement and expanded Spark
 resource-ownership patch to a 726-listed-file license collection with no

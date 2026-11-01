@@ -1,9 +1,11 @@
 [CmdletBinding()]
 param(
-    [string]$OutputRoot = 'target/distribution/windows-x64-alignment',
+    [string]$OutputRoot,
     [switch]$SkipRuntimeChecks
 )
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Packaging.Common.ps1')
+if (-not $OutputRoot) { $OutputRoot = Get-MetOriginWindowsPath -Key 'alignmentRoot' }
+
 $arguments = @((Join-Path $PSScriptRoot 'AlignmentPack.mjs'), 'verify', '--output', $OutputRoot)
 if ($SkipRuntimeChecks) { $arguments += '--skip-runtime' }
 & node @arguments

@@ -1,3 +1,4 @@
+import { resolveWindowsPaths } from './WindowsPaths.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { collectCopiedUiEvidence } from '../shared/copied-ui-evidence.mjs';
 import { findVerifiedNpmNotices } from '../shared/npm-notice-evidence.mjs';
@@ -9,10 +10,11 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const staging = resolve(root, process.argv[2] ?? 'target/distribution/windows-x64');
-const stagingRelative = relative(resolve(root, 'target/distribution'), staging);
-if (!stagingRelative || stagingRelative.startsWith('..') || isAbsolute(stagingRelative)) {
-  throw new Error('Evidence output must be a child of target/distribution.');
+const windowsPaths = await resolveWindowsPaths();
+const staging = resolve(root, process.argv[2] ?? windowsPaths.distributionRoot);
+const repositoryRelative = relative(staging, root);
+if (!repositoryRelative || !isAbsolute(repositoryRelative) && repositoryRelative.split(/[\\/]/).every(part => part !== '..')) {
+  throw new Error('Evidence output must not contain the repository.');
 }
 const output = join(staging, 'licenses');
 const readJson = path => JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/, ''));
@@ -241,7 +243,7 @@ if (!existsSync(companion)) throw new Error('Build the current Brush companion b
 const companionRef = add({ type: 'application', 'bom-ref': 'engine:brush-live', name: 'MetOrigin Brush live preview', version: '0.3.0+metorigin-live.1',
   hashes: [{ alg: 'SHA-256', content: hash(companion) }], licenses: [{ license: { id: 'Apache-2.0' } }] });
 link(applicationRef, companionRef);
-collectCargo(join(root, 'target/brush-live-source/brush-0.3.0/Cargo.toml'), 'brush-cli', companionRef);
+collectCargo(join(windowsPaths.brushLiveSource, 'brush-0.3.0/Cargo.toml'), 'brush-cli', companionRef);
 
 const inventory = [];
 function visitPayload(folder) {
@@ -263,7 +265,7 @@ function visitPayload(folder) {
 visitPayload(join(staging, 'engines'));
 visitPayload(join(staging, 'installer'));
 
-const weights = join(root, 'target/brush-live-source/brush-0.3.0/crates/lpips/burn_mapped.bin');
+const weights = join(windowsPaths.brushLiveSource, 'brush-0.3.0/crates/lpips/burn_mapped.bin');
 if (!existsSync(weights)) throw new Error('Pinned Brush weight payload is missing.');
 const weightRef = add({ type: 'file', 'bom-ref': 'weights:brush-v0.3.0-lpips-vgg', name: 'Brush v0.3.0 LPIPS/VGG burn_mapped.bin',
   hashes: [{ alg: 'SHA-256', content: hash(weights) }],
@@ -300,8 +302,8 @@ const bom = { bomFormat: 'CycloneDX', specVersion: '1.6', serialNumber: `urn:uui
 for (const [name, path] of [
   ['application-Cargo.lock', join(root, 'Cargo.lock')],
   ['application-pnpm-lock.yaml', join(root, 'pnpm-lock.yaml')],
-  ['brush-live-Cargo.lock', join(root, 'target/brush-live-source/brush-0.3.0/Cargo.lock')],
-  ['brush-cli-Cargo.toml', join(root, 'target/brush-live-source/brush-0.3.0/crates/brush-cli/Cargo.toml')],
+  ['brush-live-Cargo.lock', join(windowsPaths.brushLiveSource, 'brush-0.3.0/Cargo.lock')],
+  ['brush-cli-Cargo.toml', join(windowsPaths.brushLiveSource, 'brush-0.3.0/crates/brush-cli/Cargo.toml')],
 ]) write(join(output, 'build-inputs', name), readFileSync(path));
 const knownRefs = new Set([applicationRef, ...components.keys()]);
 for (const { ref, dependsOn } of bom.dependencies) {

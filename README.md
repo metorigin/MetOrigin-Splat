@@ -53,7 +53,7 @@ pnpm prepare:windows:engines
 pnpm verify:windows:engines
 ```
 
-The generated engine directory is `target/distribution/windows-x64/engines`; select it in Settings & Engines for local use. The pack includes FFmpeg/FFprobe, COLMAP and Brush. Versions and checksums are defined in [engine-lock.json](packaging/windows-x64/engine-lock.json). Building the companion engine may take time on the first run.
+The generated engine directory is `.engines/windows-x64/distribution/engines`; select it in Settings & Engines for local use. The pack includes FFmpeg/FFprobe, COLMAP and Brush. Versions and checksums are defined in [engine-lock.json](packaging/windows-x64/engine-lock.json). Building the companion engine may take time on the first run.
 
 For an existing local Brush installation, the companion can also be built separately:
 
@@ -61,7 +61,7 @@ For an existing local Brush installation, the companion can also be built separa
 pnpm build:brush:live
 ```
 
-The default output is `.engines/brush-v0.3.0-windows-x64/brush_live.exe`. Place it beside the configured `brush_app.exe`; new training sessions use it automatically. Stock Brush can still provide saved checkpoints, but live updates of unsaved training models require this companion. See [engine setup](docs/engine-integration.md) and [live preview details (中文)](docs/gaussian-live-preview.zh-CN.md).
+The default output is `.engines/windows-x64/development/brush-v0.3.0/brush_live.exe`. Place it beside the configured `brush_app.exe`; new training sessions use it automatically. Stock Brush can still provide saved checkpoints, but live updates of unsaved training models require this companion. See [engine setup](docs/engine-integration.md) and [live preview details (中文)](docs/gaussian-live-preview.zh-CN.md).
 
 ### Preview only the interface
 
@@ -106,6 +106,8 @@ Real-engine tests require explicit opt-in, local media and suitable hardware. Se
 | `scripts/`, `packaging/` | Validation, Windows builds, pinned engines and third-party notices |
 | `docs/` | Current usage, implementation and release guides |
 | `specs/` | Historical design contracts and acceptance protocols |
+
+Generated files use four roots: `target/` for Cargo outputs, `.cache/metorigin/` for reusable downloads, source checkouts and tools, `.engines/` for prepared runtime engines, and `artifacts/` for packages and retained reports. Ordinary test workspaces use the system temporary directory and are cleaned automatically; see [directory roles and cleanup](docs/development.md#generated-files-and-cleanup).
 
 Start with the [documentation index](docs/README.md), [English user guide](docs/user-guide.md), [中文使用指南](docs/user-operation-flow.zh-CN.md), [architecture](docs/architecture.md), or [troubleshooting](docs/troubleshooting.md). Contribution and vulnerability reporting instructions are in [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 

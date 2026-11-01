@@ -1,14 +1,15 @@
 [CmdletBinding()]
 param(
-    [string]$RuntimeDirectory = 'target/windows-brush/runtime',
-    [string]$Dataset = 'target/windows-colmap/smoke-cuda-cpu-gp-02/dataset',
+    [string]$RuntimeDirectory,
+    [Parameter(Mandatory = $true)][string]$Dataset,
     [ValidateSet('dx12', 'vulkan')][string]$Backend = 'dx12',
     [ValidatePattern('^[a-fA-F0-9-]{36}$')][string]$RunId = ([guid]::NewGuid().ToString())
 )
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Packaging.Common.ps1')
+if (-not $RuntimeDirectory) { $RuntimeDirectory = Get-MetOriginWindowsPath -Key 'brushRuntime' }
 if (-not $IsWindows) { throw 'The directory DACL contract requires native Windows.' }
 $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$taskAllowed = [IO.Path]::GetFullPath((Join-Path $taskRoot 'target/windows-brush'))
+$taskAllowed = Join-Path (Get-MetOriginWindowsPath -Key 'verification') 'brush-acl'
 $taskOutput = [IO.Path]::GetFullPath((Join-Path $taskAllowed ('acl-' + $RunId)))
 if (-not $taskOutput.StartsWith($taskAllowed + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or
     (Split-Path -Leaf $taskOutput) -ne ('acl-' + $RunId)) { throw 'Unsafe ACL evidence directory.' }

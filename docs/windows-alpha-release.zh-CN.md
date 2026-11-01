@@ -58,6 +58,8 @@ Brush v0.3.0 代码为 Apache-2.0。它通过 `include_bytes!` 将 `crates/lpips
 
 提交经过验证的更改后再构建；草稿脚本拒绝工作区有改动、源码版本不一致或校验值不符的包。
 
+当前安装包交付目录为 `artifacts/packages/windows-x64/build.<stamp>/`，正式构建报告为 `artifacts/verification/windows-x64/build.<stamp>/final.json`，`latest.json` 选择最近成功的包。引擎包、下载/源码缓存和 Cargo 输出分别位于 `.engines/windows-x64/`、`.cache/metorigin/`、`target/`；详见 [Windows packaging](../packaging/windows-x64/README.md) 和[保留规则](development.md#generated-files-and-cleanup)。上传前固定该发布基线，保留其完整验证和许可证据，不把新的目录位置当作新的安装或训练验收。
+
 ```powershell
 pnpm package:windows:full
 powershell -NoProfile -File scripts/windows/Publish-WindowsDraft.ps1 -Tag v0.1.0-alpha.1

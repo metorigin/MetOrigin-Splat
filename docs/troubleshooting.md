@@ -20,7 +20,7 @@ pnpm prepare:windows:engines
 pnpm verify:windows:engines
 ```
 
-The prepared directory is `target/distribution/windows-x64/engines`. Select that directory in settings. A packaged integrity failure should be repaired by preparing/reinstalling the matching pack; replacing random executable files can leave its manifest inconsistent. `METORIGIN_ENGINE_DIR` is a development override and is ignored in release mode. See [engine integration](engine-integration.md).
+The prepared directory is `.engines/windows-x64/distribution/engines`. Select that directory in settings. A packaged integrity failure should be repaired by preparing/reinstalling the matching pack; replacing random executable files can leave its manifest inconsistent. `METORIGIN_ENGINE_DIR` is a development override and is ignored in release mode. See [engine integration](engine-integration.md).
 
 For the experimental Apple Silicon build, use the matching [macOS arm64 pack](../packaging/macos-arm64/README.md). It uses CPU COLMAP and Metal Brush; an absent NVIDIA driver is expected. The Metal preflight runs a real small forward/backward calculation. Architecture, checksum, missing-library or compute-probe failures must be resolved before reconstruction; a successful `--version` alone is insufficient.
 

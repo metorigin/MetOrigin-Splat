@@ -1,3 +1,4 @@
+import { resolveWindowsPaths } from './WindowsPaths.mjs';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +10,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const source = path.join(root, 'design/app-icon/metorigin-splat-icon-v4.png');
 const windowsSource = path.join(root, 'design/app-icon/windows/metorigin-splat-shared-v4.png');
 const cropReport = path.join(root, 'design/app-icon/windows/metorigin-splat-shared-v4.metadata.json');
-const generated = path.join(root, 'target/windows-icon-shared-v4');
+const generated = path.join((await resolveWindowsPaths()).windowsIconBuild, 'shared-v4');
 const destination = path.join(root, 'apps/desktop/src-tauri/icons/windows');
 const manifestPath = path.join(destination, 'manifest.json');
 const sizes = [16, 24, 32, 48, 64, 128, 256];

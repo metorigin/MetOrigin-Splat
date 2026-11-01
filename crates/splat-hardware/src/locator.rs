@@ -319,8 +319,7 @@ impl EngineLocator {
     fn managed_directory_required(root: &Path, options: &EngineLocatorOptions) -> bool {
         root.join("engine-manifest.json").exists()
             || root.join("BUILD-INFO.json").exists()
-            || root.ends_with("target/distribution/windows-x64/engines")
-            || root.ends_with("target/distribution/windows-x64-alignment/engines")
+            || crate::engine_layout::is_windows_managed_engine_dir(root)
             || (options.require_resource_manifest
                 && options.resource_dir.as_deref().is_some_and(|resource| {
                     root == resource
@@ -862,6 +861,37 @@ mod tests {
         );
         assert!(result.pack_error.is_some());
         assert!(!result.paths.is_complete());
+    }
+
+    #[test]
+    fn windows_shared_runtime_paths_require_a_manifest_without_a_resource_hint() {
+        let root = TestDirectory::new("shared-managed-manifest");
+        for suffix in [
+            ".engines/windows-x64/distribution/engines",
+            ".engines/windows-x64/alignment/engines",
+        ] {
+            let selected = root.path().join(suffix);
+            std::fs::create_dir_all(&selected).unwrap();
+            for name in LOGICAL_ENGINES {
+                std::fs::write(
+                    selected.join(EngineLocator::executable_name(name)),
+                    b"loose executable",
+                )
+                .unwrap();
+            }
+            let result = EngineLocator::resolve_detailed_inner(
+                EngineLocatorOptions {
+                    configured_dir: Some(selected),
+                    mode: EngineResolutionMode::Development,
+                    ..Default::default()
+                },
+                None,
+                None,
+                "windows-x64",
+            );
+            assert!(result.pack_error.is_some());
+            assert!(!result.paths.is_complete());
+        }
     }
 
     #[test]

@@ -4,10 +4,36 @@ This directory defines the reproducible, internal-only engine pack used by the
 fully offline Windows installer. It is not an authorization to publish the
 bundled third-party programs.
 
+## Current paths
+
+Windows commands resolve defaults through
+[`engine-paths.json`](../shared/engine-paths.json), using the same four directory
+roles as macOS. Existing explicit path parameters remain available.
+
+| Purpose | Default location |
+| --- | --- |
+| Legacy frozen engine pack | `.engines/windows-x64/distribution/` |
+| Brush 1 alignment candidate | `.engines/windows-x64/alignment/` |
+| Development engines | `.engines/windows-x64/development/` |
+| Engine archives | `.cache/metorigin/downloads/engines/windows-x64/` |
+| Brush source and build caches | `.cache/metorigin/{sources,build}/engines/windows-x64/` |
+| Application Cargo cache | `target/windows-release-build/` or `target/windows-alignment-release-build/` |
+| New legacy installer or portable application | `artifacts/packages/windows-x64/build.<stamp>/` |
+| New build report | `artifacts/verification/windows-x64/build.<stamp>/final.json` |
+| Latest successful package selector | `artifacts/verification/windows-x64/latest.json` |
+
+Packages use a new build stamp rather than overwriting a previous delivery.
+Retention keeps the latest registered package run and its referenced
+verification/license evidence; pins, release baselines and unresolved failures
+remain protected. Preview and cleanup commands are in
+[generated files and cleanup](../../docs/development.md#generated-files-and-cleanup).
+Changing default paths is not native Windows validation; historical results
+below remain bound to their original build identities.
+
 ## Brush 1 alignment candidate
 
 The separately named `alignment-lock.json` and commands below prepare an
-internal development candidate at `target/distribution/windows-x64-alignment`.
+internal development candidate at `.engines/windows-x64/alignment/`.
 The existing installer and legacy pack remain the release default until native
 Windows, native macOS and distribution dependency gates pass.
 
@@ -70,7 +96,7 @@ The displayed application name, window title, executable and shortcut name are
 retains its original installation registry keys and isolated default directory
 so a display-name change does not adopt the legacy release installation or lose
 the candidate's settings and project index. Builds use an isolated Cargo cache
-and a unique directory under `artifacts/windows/alignment-candidate/<pack-id>/`,
+and a unique directory under `artifacts/packages/windows-x64/alignment-candidate/<pack-version>/<stamp>/`,
 publishing `MetOrigin-Splat-Setup.exe`. Historical artifacts keep their recorded
 names and hashes. The generated
 configuration uses only the selected candidate's resource inputs, relative to
@@ -139,7 +165,7 @@ environment using `ProcessStartInfo.EnvironmentVariables.Remove`. The calling
 process and machine/user environment remain untouched and are checked afterward.
 It invokes the production Rust preflight and the real eight-Gaussian forward/
 backward probe, expects DX12 and a canonical device, and writes a fresh evidence
-directory under `target/windows-default-runtime-validation/`. It creates no
+directory under `artifacts/verification/windows-x64/default-runtime/`. It creates no
 project, runs no training and launches no application UI. A successful check and
 normal installed-application UI acceptance must be recorded against the rebuilt
 source/application identity; this command's existence is not a pass result.
@@ -158,12 +184,13 @@ and verifies the Brush live-preview companion, checks the stock engines,
 then builds the Tauri NSIS bundle and publishes it as:
 
 ```text
-artifacts/windows/installer/MetOrigin-Splat-Full-Setup-0.1.0-internal.exe
+artifacts/packages/windows-x64/build.<stamp>/MetOrigin-Splat-Full-Setup-0.1.0-internal.exe
 ```
 
-The installer checksum and review metadata are written next to the installer.
+The installer checksum is delivered with the installer; the formal final report
+is kept under `artifacts/verification/windows-x64/build.<stamp>/`.
 The isolated Cargo bundle directory is a build cache, not the delivery directory. The staging
-tree is generated at `target/distribution/windows-x64/` and is intentionally
+tree is generated at `.engines/windows-x64/distribution/` and is intentionally
 ignored by Git.
 
 For an engine-only refresh or verification:
@@ -174,7 +201,7 @@ pnpm verify:windows:engines
 ```
 
 `Acquire-EngineArchives.ps1 -Offline` can be used after all four files named in
-`engine-lock.json` have been placed in `.engines/downloads`. Offline companion
+`engine-lock.json` have been placed in `.cache/metorigin/downloads/engines/windows-x64/`. Offline companion
 builds additionally need the pinned Brush source archive and cached Cargo dependencies;
 see [engine integration](../../docs/engine-integration.md). An exact installed
 copy of the locked VC++ Runtime is also detected automatically.
