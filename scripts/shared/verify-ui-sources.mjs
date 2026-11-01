@@ -1,9 +1,9 @@
-import { dirname, resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { realpathSync, writeFileSync } from 'node:fs';
 import { collectCopiedUiEvidence } from './copied-ui-evidence.mjs';
 import { createTestingOutput, parseTestingOutputArguments } from './testing-output.mjs';
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const root = resolve(dirname(realpathSync.native(fileURLToPath(import.meta.url))), '../..');
 
 export async function verifyUiSources(options = {}) {
   const output = await createTestingOutput({ tool: 'ui-sources', ...options });
@@ -21,7 +21,9 @@ export async function verifyUiSources(options = {}) {
   return { evidence, ...published, temporaryDirectory: output.temporaryDirectory };
 }
 
-if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+let invokedPath;
+try { if (process.argv[1]) invokedPath = realpathSync.native(process.argv[1]); } catch { /* Not a file entry point. */ }
+if (invokedPath && relative(invokedPath, realpathSync.native(fileURLToPath(import.meta.url))) === '') {
   const options = parseTestingOutputArguments();
   if (options.arguments.length) throw new Error('Usage: verify-ui-sources.mjs [--keep] [--report DIR]');
   const result = await verifyUiSources(options);

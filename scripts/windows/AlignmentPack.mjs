@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 
-export const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+export const repository = path.resolve(path.dirname(await fs.realpath(fileURLToPath(import.meta.url))), '../..');
 const absolute = (value) => path.resolve(repository, value);
 const invariant = (condition, message) => { if (!condition) throw new Error(message); };
 const exists = async (file) => fs.lstat(file).then(() => true, (error) => {
@@ -394,6 +394,7 @@ async function main(args) {
   else if (command === 'bundle-config') console.log(JSON.stringify(await bundleConfiguration(absolute(options.output ?? (await resolveWindowsPaths()).alignmentRoot), options.config), null, 2));
   else throw new Error('Expected prepare, verify or bundle-config');
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+const invokedPath = process.argv[1] ? await fs.realpath(process.argv[1]).catch(() => undefined) : undefined;
+if (invokedPath && path.relative(invokedPath, await fs.realpath(fileURLToPath(import.meta.url))) === '') {
   main(process.argv.slice(2)).catch((error) => { console.error(error.message); process.exitCode = 1; });
 }

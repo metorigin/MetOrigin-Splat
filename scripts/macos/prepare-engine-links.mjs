@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveEngineLayout } from '../shared/engine-paths.mjs';
 import { migrateEngineSettings } from '../shared/migrate-engine-settings.mjs';
 
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const repositoryRoot = path.resolve(path.dirname(await realpath(fileURLToPath(import.meta.url))), '../..');
 
 async function info(file) {
   try { return await lstat(file); }
@@ -102,7 +102,7 @@ async function main(args) {
 }
 
 const invokedPath = process.argv[1] ? await realpath(process.argv[1]).catch(() => undefined) : undefined;
-if (invokedPath === fileURLToPath(import.meta.url)) {
+if (invokedPath && path.relative(invokedPath, await realpath(fileURLToPath(import.meta.url))) === '') {
   main(process.argv.slice(2)).catch(error => {
     console.error(`Engine compatibility: ${error.message}`);
     process.exitCode = 1;

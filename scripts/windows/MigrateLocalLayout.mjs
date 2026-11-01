@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveEngineLayout } from '../shared/engine-paths.mjs';
 import { resolveArtifactPaths } from '../shared/artifact-paths.mjs';
 
-const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const repository = path.resolve(path.dirname(await fs.realpath(fileURLToPath(import.meta.url))), '../..');
 const present = file => fs.lstat(file).then(() => true, error => { if (error.code === 'ENOENT') return false; throw error; });
 const hash = async file => { const value = createHash('sha256'); for await (const chunk of createReadStream(file)) value.update(chunk); return value.digest('hex'); };
 
@@ -178,7 +178,8 @@ export async function migrateWindowsLayout(options = {}) {
   return results;
 }
 
-if (process.argv[1] && await fs.realpath(process.argv[1]).catch(() => undefined) === fileURLToPath(import.meta.url)) {
+const invokedPath = process.argv[1] ? await fs.realpath(process.argv[1]).catch(() => undefined) : undefined;
+if (invokedPath && path.relative(invokedPath, await fs.realpath(fileURLToPath(import.meta.url))) === '') {
   try {
     const args = process.argv.slice(2), keys = [];
     while (args.length) { if (args.shift() !== '--key' || !args.length) throw new Error('Usage: MigrateLocalLayout.mjs [--key KEY]...'); keys.push(args.shift()); }

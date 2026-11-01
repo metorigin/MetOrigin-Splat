@@ -13,7 +13,7 @@ export async function resolveWindowsPaths(options = {}) {
 }
 
 const invoked = process.argv[1] ? await realpath(process.argv[1]).catch(() => undefined) : undefined;
-if (invoked === fileURLToPath(import.meta.url)) {
+if (invoked && path.relative(invoked, await realpath(fileURLToPath(import.meta.url))) === '') {
   try {
     const args = process.argv.slice(2);
     if (args.length && (args.length !== 2 || args[0] !== '--key')) throw new Error('Usage: WindowsPaths.mjs [--key NAME]');

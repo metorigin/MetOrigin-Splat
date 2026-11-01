@@ -152,4 +152,5 @@ async function main(args) {
   } else throw new Error('Expected capture or verify');
   console.log(JSON.stringify({ source_inventory_digest: current.digest, files: current.files.length, status: operation === 'verify' ? 'unchanged' : 'captured' }));
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2)).catch((error) => { console.error(error.message); process.exitCode = 1; });
+const invokedPath = process.argv[1] ? await fs.realpath(process.argv[1]).catch(() => undefined) : undefined;
+if (invokedPath && path.relative(invokedPath, await fs.realpath(fileURLToPath(import.meta.url))) === '') main(process.argv.slice(2)).catch((error) => { console.error(error.message); process.exitCode = 1; });

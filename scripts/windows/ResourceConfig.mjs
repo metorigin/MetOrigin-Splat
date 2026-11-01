@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveWindowsPaths } from './WindowsPaths.mjs';
 
-const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const repository = path.resolve(path.dirname(await realpath(fileURLToPath(import.meta.url))), '../..');
 
 export async function fullBundleConfiguration(options = {}) {
   const repo = path.resolve(options.repositoryRoot ?? repository);
@@ -17,7 +17,7 @@ export async function fullBundleConfiguration(options = {}) {
 }
 
 const invoked = process.argv[1] ? await realpath(process.argv[1]).catch(() => undefined) : undefined;
-if (invoked === fileURLToPath(import.meta.url)) {
+if (invoked && path.relative(invoked, await realpath(fileURLToPath(import.meta.url))) === '') {
   try {
     const args = process.argv.slice(2), options = {};
     while (args.length) {

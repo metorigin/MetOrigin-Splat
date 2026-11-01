@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { resolveArtifactPaths } from './artifact-paths.mjs';
 
 function fixture(t) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'artifact paths 中文 ')));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'artifact paths 中文 ')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const configPath = join(root, 'packaging/shared/artifact-paths.json');
   mkdirSync(join(root, 'packaging/shared'), { recursive: true });
@@ -85,7 +85,8 @@ test('CLI resolves a linked checkout independently of cwd and reports invalid re
   writeFileSync(script, readFileSync(new URL('./artifact-paths.mjs', import.meta.url)));
   const linkedRoot = join(f.root, 'linked checkout');
   symlinkSync(f.root, linkedRoot, process.platform === 'win32' ? 'junction' : 'dir');
-  const invokedScript = join(linkedRoot, 'scripts/shared/artifact-paths.mjs');
+  for (const invokedScript of [join(linkedRoot, 'scripts/shared/artifact-paths.mjs'),
+    join(tmpdir(), basename(f.root), 'linked checkout/scripts/shared/artifact-paths.mjs')]) {
   const run = args => spawnSync(process.execPath, [invokedScript, ...args], { cwd: tmpdir(), encoding: 'utf8' });
   const single = run(['--platform', 'macos-arm64', '--kind', 'packages']);
   assert.equal(single.status, 0, single.stderr);
@@ -104,6 +105,7 @@ test('CLI resolves a linked checkout independently of cwd and reports invalid re
     assert.notEqual(result.status, 0);
     assert.equal(result.stdout, '');
     assert.ok(result.stderr.trim());
+  }
   }
   assert.equal(existsSync(join(f.root, 'artifacts')), false);
 });

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile, access } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile, access } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -50,4 +51,27 @@ test('full bundling honors an explicit pack while preserving prerequisite and ap
   assert.equal(result.bundle.windows.webviewInstallMode.type, 'offlineInstaller');
   assert.equal(result.bundle.windows.nsis.installerHooks, 'nsis/full-installer-hooks.nsh');
   await assert.rejects(access(selected), { code: 'ENOENT' });
+});
+
+test('Windows path and resource CLIs run through the original TEMP spelling', async t => {
+  const root = await fixture(t), canonical = await realpath(root);
+  for (const name of ['engine-paths.mjs', 'artifact-paths.mjs', 'cache-paths.mjs']) {
+    await mkdir(path.join(root, 'scripts/shared'), { recursive: true });
+    await cp(new URL(`../shared/${name}`, import.meta.url), path.join(root, 'scripts/shared', name));
+  }
+  await mkdir(path.join(root, 'scripts/windows'), { recursive: true });
+  for (const name of ['WindowsPaths.mjs', 'ResourceConfig.mjs']) await cp(new URL(name, import.meta.url), path.join(root, 'scripts/windows', name));
+  await mkdir(path.join(root, 'apps/desktop/src-tauri'), { recursive: true });
+  await cp(new URL('../../apps/desktop/src-tauri/tauri.full.conf.json', import.meta.url), path.join(root, 'apps/desktop/src-tauri/tauri.full.conf.json'));
+  const alias = path.join(tmpdir(), path.basename(root));
+  const invoke = (name, args = []) => spawnSync(process.execPath, [path.join(alias, 'scripts/windows', name), ...args], { cwd: tmpdir(), encoding: 'utf8' });
+  const paths = invoke('WindowsPaths.mjs');
+  assert.equal(paths.status, 0, paths.stderr);
+  const expected = await resolveWindowsPaths({ repositoryRoot: canonical });
+  assert.deepEqual(JSON.parse(paths.stdout), expected);
+  const configPath = path.join(expected.verification, 'fixture/tauri.conf.json');
+  const result = invoke('ResourceConfig.mjs', ['--config', configPath]);
+  assert.equal(result.status, 0, result.stderr);
+  const config = JSON.parse(await readFile(configPath, 'utf8'));
+  assert.equal(config.bundle.resources[`${expected.distributionEngines.split(path.sep).join('/')}/`], 'resources/engines/');
 });

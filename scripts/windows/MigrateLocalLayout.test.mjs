@@ -4,6 +4,7 @@ import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
 import { migrateWindowsLayout } from './MigrateLocalLayout.mjs';
 
 const sha = value => createHash('sha256').update(value).digest('hex');
@@ -114,4 +115,18 @@ test('all selected migrations preflight before moving any pack and explicit keys
   await fs.access(f.old);
   await migrateWindowsLayout({ repositoryRoot: f.root, keys: ['distributionRoot'] });
   assert.equal(await fs.readFile(path.join(cache, 'foreign.zip'), 'utf8'), 'not a locked package');
+});
+
+test('migration CLI runs through the original TEMP spelling and records the verified result', async t => {
+  const f = await fixture(t);
+  await fs.mkdir(path.join(f.root, 'scripts/shared'), { recursive: true });
+  for (const name of ['engine-paths.mjs', 'artifact-paths.mjs', 'cache-paths.mjs']) await fs.cp(new URL(`../shared/${name}`, import.meta.url), path.join(f.root, 'scripts/shared', name));
+  await fs.mkdir(path.join(f.root, 'scripts/windows'), { recursive: true });
+  await fs.cp(new URL('./MigrateLocalLayout.mjs', import.meta.url), path.join(f.root, 'scripts/windows/MigrateLocalLayout.mjs'));
+  const alias = path.join(tmpdir(), path.basename(f.root), 'scripts/windows/MigrateLocalLayout.mjs');
+  const result = spawnSync(process.execPath, [alias, '--key', 'distributionRoot'], { cwd: tmpdir(), encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).migrations[0].target, f.target);
+  assert.equal(await fs.readFile(path.join(f.target, 'licenses/notice.txt'), 'utf8'), 'exact notice');
+  await assert.rejects(fs.lstat(f.old), { code: 'ENOENT' });
 });

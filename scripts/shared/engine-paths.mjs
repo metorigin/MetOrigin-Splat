@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveArtifactPaths } from './artifact-paths.mjs';
 import { resolveCachePaths } from './cache-paths.mjs';
 
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const repositoryRoot = path.resolve(path.dirname(await realpath(fileURLToPath(import.meta.url))), '../..');
 
 function relativeDirectory(value, label) {
   if (typeof value !== 'string' || !value || value.trim() !== value
@@ -87,7 +87,7 @@ async function main(args) {
 }
 
 const invokedPath = process.argv[1] ? await realpath(process.argv[1]).catch(() => undefined) : undefined;
-if (invokedPath === fileURLToPath(import.meta.url)) {
+if (invokedPath && path.relative(invokedPath, await realpath(fileURLToPath(import.meta.url))) === '') {
   main(process.argv.slice(2)).catch(error => {
     console.error(`Engine paths: ${error.message}`);
     process.exitCode = 1;

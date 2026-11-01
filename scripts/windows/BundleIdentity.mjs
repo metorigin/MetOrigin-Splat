@@ -31,7 +31,8 @@ export async function describeBundleFile(application, kind) {
   return describeBundleBytes(await fs.readFile(application), kind);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+const invokedPath = process.argv[1] ? await fs.realpath(process.argv[1]).catch(() => undefined) : undefined;
+if (invokedPath && path.relative(invokedPath, await fs.realpath(fileURLToPath(import.meta.url))) === '') {
   const [application, kind, output] = process.argv.slice(2);
   const identity = await describeBundleFile(application, kind);
   await fs.writeFile(output, `${JSON.stringify(identity, null, 2)}\n`, { flag: 'wx' });

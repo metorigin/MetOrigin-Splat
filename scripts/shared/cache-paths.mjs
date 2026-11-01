@@ -2,7 +2,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const repositoryRoot = path.resolve(path.dirname(realpathSync.native(fileURLToPath(import.meta.url))), '../..');
 
 function relativeDirectory(value, label) {
   if (typeof value !== 'string' || !value || value.trim() !== value
@@ -49,8 +49,8 @@ function main(args) {
 }
 
 let invokedPath;
-try { if (process.argv[1]) invokedPath = realpathSync(process.argv[1]); } catch { /* Imported without a file entry point. */ }
-if (invokedPath === fileURLToPath(import.meta.url)) {
+try { if (process.argv[1]) invokedPath = realpathSync.native(process.argv[1]); } catch { /* Imported without a file entry point. */ }
+if (invokedPath && path.relative(invokedPath, realpathSync.native(fileURLToPath(import.meta.url))) === '') {
   try { main(process.argv.slice(2)); }
   catch (error) {
     console.error(`Cache paths: ${error.message}`);

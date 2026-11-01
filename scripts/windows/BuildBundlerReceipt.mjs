@@ -69,4 +69,5 @@ async function main(args) {
   }
   console.log(JSON.stringify({ bundler_inputs_digest: proof.digest, files: proof.files.length, status: operation }));
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2)).catch((error) => { console.error(error.message); process.exitCode = 1; });
+const invokedPath = process.argv[1] ? await fs.realpath(process.argv[1]).catch(() => undefined) : undefined;
+if (invokedPath && path.relative(invokedPath, await fs.realpath(fileURLToPath(import.meta.url))) === '') main(process.argv.slice(2)).catch((error) => { console.error(error.message); process.exitCode = 1; });

@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { resolveEngineLayout, resolveEnginePaths } from './engine-paths.mjs';
 
 function fixture(t) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'engine paths 中文 ')));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'engine paths 中文 ')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, 'packaging/shared'), { recursive: true });
   for (const name of ['artifact-paths.json', 'cache-paths.json', 'engine-paths.json']) {
@@ -104,5 +104,16 @@ test('CLI accepts an explicit checkout from an unrelated cwd and rejects unknown
   const invalid = run(['--key', 'missing']);
   assert.notEqual(invalid.status, 0);
   assert.equal(invalid.stdout, '');
+  assert.equal(existsSync(join(f.root, '.engines')), false);
+});
+
+test('CLI recognizes the native TEMP spelling and its OS alias as the same entry file', async t => {
+  const f = fixture(t);
+  mkdirSync(join(f.root, 'scripts/shared'), { recursive: true });
+  for (const name of ['engine-paths.mjs', 'artifact-paths.mjs', 'cache-paths.mjs']) cpSync(new URL(name, import.meta.url), join(f.root, 'scripts/shared', name));
+  const aliased = join(tmpdir(), basename(f.root), 'scripts/shared/engine-paths.mjs');
+  const result = spawnSync(process.execPath, [aliased, '--platform', 'windows-x64', '--key', 'distributionEngines'], { cwd: tmpdir(), encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), join(f.root, '.engines/windows-x64/distribution/engines'));
   assert.equal(existsSync(join(f.root, '.engines')), false);
 });

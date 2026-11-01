@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveEngineLayout } from './engine-paths.mjs';
 import { resolveArtifactPaths } from './artifact-paths.mjs';
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const repositoryRoot = path.resolve(path.dirname(await realpath(fileURLToPath(import.meta.url))), '../..');
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const inside = (root, file) => file === root || (!path.relative(root, file).startsWith(`..${path.sep}`) && path.relative(root, file) !== '..' && !path.isAbsolute(path.relative(root, file)));
 async function info(file) { try { return await lstat(file); } catch (e) { if (e.code === 'ENOENT') return null; throw e; } }
@@ -87,4 +87,5 @@ async function main(args) {
   }
   console.log(JSON.stringify(await migrateEngineSettings(options)));
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2)).catch(e => { console.error(`Engine settings migration: ${e.message}`); process.exitCode = 1; });
+const invokedPath = process.argv[1] ? await realpath(process.argv[1]).catch(() => undefined) : undefined;
+if (invokedPath && path.relative(invokedPath, await realpath(fileURLToPath(import.meta.url))) === '') main(process.argv.slice(2)).catch(e => { console.error(`Engine settings migration: ${e.message}`); process.exitCode = 1; });

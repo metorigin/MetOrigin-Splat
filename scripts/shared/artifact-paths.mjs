@@ -2,7 +2,7 @@ import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const repositoryRoot = path.resolve(path.dirname(await realpath(fileURLToPath(import.meta.url))), '../..');
 const platforms = new Set(['macos-arm64', 'windows-x64']);
 const kinds = ['packages', 'verification', 'licenses'];
 
@@ -64,7 +64,7 @@ async function main(args) {
 // Node resolves import.meta.url through symlinks, while argv can retain /var
 // instead of /private/var on macOS (or a symlinked checkout directory).
 const invokedPath = process.argv[1] ? await realpath(process.argv[1]).catch(() => undefined) : undefined;
-if (invokedPath === fileURLToPath(import.meta.url)) {
+if (invokedPath && path.relative(invokedPath, await realpath(fileURLToPath(import.meta.url))) === '') {
   main(process.argv.slice(2)).catch(error => {
     console.error(`Artifact paths: ${error.message}`);
     process.exitCode = 1;

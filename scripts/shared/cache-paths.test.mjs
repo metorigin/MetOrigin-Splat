@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { resolveCachePaths } from './cache-paths.mjs';
 
 function fixture(t) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'cache paths 中文 ')));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'cache paths 中文 ')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const configPath = join(root, 'packaging/shared/cache-paths.json');
   mkdirSync(join(root, 'packaging/shared'), { recursive: true });
@@ -74,7 +74,9 @@ test('CLI works from another cwd and linked checkout, and rejects unknown kinds'
   cpSync(new URL('./cache-paths.mjs', import.meta.url), script);
   const linked = join(f.root, 'linked checkout');
   symlinkSync(f.root, linked, process.platform === 'win32' ? 'junction' : 'dir');
-  const run = args => spawnSync(process.execPath, [join(linked, 'scripts/shared/cache-paths.mjs'), ...args], { cwd: tmpdir(), encoding: 'utf8' });
+  for (const scriptPath of [join(linked, 'scripts/shared/cache-paths.mjs'),
+    join(tmpdir(), basename(f.root), 'linked checkout/scripts/shared/cache-paths.mjs')]) {
+  const run = args => spawnSync(process.execPath, [scriptPath, ...args], { cwd: tmpdir(), encoding: 'utf8' });
   const source = run(['--kind', 'source']);
   assert.equal(source.status, 0, source.stderr);
   assert.equal(source.stdout.trim(), resolveCachePaths({ repositoryRoot: f.root }).supersplatSource);
@@ -85,6 +87,7 @@ test('CLI works from another cwd and linked checkout, and rejects unknown kinds'
     const result = run(args);
     assert.notEqual(result.status, 0);
     assert.equal(result.stdout, '');
+  }
   }
   assert.equal(existsSync(join(f.root, '.cache')), false);
 });

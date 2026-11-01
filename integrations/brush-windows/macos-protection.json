@@ -261,7 +261,7 @@
     },
     {
       "path": "scripts/macos/prepare-engine-links.mjs",
-      "sha256": "27b934df40cbce8af82087afa91a3714c5f661b41802192fb2be4f9627ac7fc7"
+      "sha256": "b8d8a284e48e2bff5f12656e174a78f731a0c0dd5f80bfa9906990774b738c6f"
     },
     {
       "path": "scripts/macos/prepare-engine-links.test.mjs",
@@ -273,11 +273,11 @@
     },
     {
       "path": "scripts/macos/resource-config.mjs",
-      "sha256": "9962f1004955e1493136361df4742533d2754ba9460d7975be95c007f4e31cc4"
+      "sha256": "6a57defe4260c31a6779b142816c87504646bbff7aad30ed301dec1c810bb7b8"
     },
     {
       "path": "scripts/macos/resource-config.test.mjs",
-      "sha256": "171edbe0cbab38df30bbc92cd978f82473732f5d90c6ae305a03fcd747fbe064"
+      "sha256": "7b72561ebec507672c3b181f5d45d5d6102070fa91285987e52d82ba628fb2d3"
     },
     {
       "path": "scripts/macos/sample-native-resources.py",
@@ -365,7 +365,7 @@
     },
     {
       "path": "scripts/macos/verify-supersplat-inputs.mjs",
-      "sha256": "b2cccc3e735ec6f14aea04bcf0dd495d3d83ac5a09365c7720ecf60b31e908ba"
+      "sha256": "b585d28277c4cfd7567e2505c3a09450d7a0f0e81436bbbb798887e72ee9a80b"
     },
     {
       "path": "scripts/macos/verify_colmap_help.py",
@@ -385,15 +385,15 @@
     },
     {
       "path": "scripts/shared/artifact-paths.mjs",
-      "sha256": "d138a6bf094362fd6ca7577047f094a9728759791597252d9f9bb8c659dcd6d2"
+      "sha256": "6016b8c1382d2840e648f652e4f1eeb646819b6257df239f8b46c83022f0c56c"
     },
     {
       "path": "scripts/shared/artifact-paths.test.mjs",
-      "sha256": "974131942f7677e57c383ba4a27bf6fba4e477a9ce0114f7086bdd7794731a6e"
+      "sha256": "65218eb8dfa5d9a15967232325ca920a4bfc12a8e9044811edb85ef91a9e19d7"
     },
     {
       "path": "scripts/shared/artifact-retention.mjs",
-      "sha256": "83f9b9cc85738ba1682ef9239e6a6b12591226fb0de13dbda31b0c79b3ee2952"
+      "sha256": "f645b0fede3293def76045a77cb1a79d554275abe357059fae97d558b5cb124b"
     },
     {
       "path": "scripts/shared/artifact-retention.test.mjs",
@@ -401,19 +401,19 @@
     },
     {
       "path": "scripts/shared/cache-paths.mjs",
-      "sha256": "b80fb919f8bc79ceb8460b4b2fb13a27d37823e8334ec638de6ac537610d2be5"
+      "sha256": "9bc6aaf590ebe072278d0f3d8041b8e9e59296dd672864015e6fc868bb055897"
     },
     {
       "path": "scripts/shared/cache-paths.test.mjs",
-      "sha256": "dcbc84522010a277e042e926e13d7d153bee4279f01121631f64ad74e6891da2"
+      "sha256": "8299c005e7383af15de8364cb91736ad1fe9e1ac67c58a9091ca25c515fe47b9"
     },
     {
       "path": "scripts/shared/engine-paths.mjs",
-      "sha256": "d322ddcc8c83736129433a5c37a5b7305725be12a440ba3c76093f6cba0ca823"
+      "sha256": "142ff8e24969f1cf1e101efbe0d060f8800012388995e26223d29b2a39b45b4c"
     },
     {
       "path": "scripts/shared/engine-paths.test.mjs",
-      "sha256": "f5a0f297153598efe47c84bb2fee80310e108f73449c9512e6fb8fe326e0f0f4"
+      "sha256": "f6ef179756e3a05945557c3008a1f33ce42c5482c8bf77bd3e1cad6b439b6ceb"
     },
     {
       "path": "scripts/shared/engine_paths.py",
@@ -421,23 +421,23 @@
     },
     {
       "path": "scripts/shared/historical-paths.mjs",
-      "sha256": "a266ffbf905df61d62d96418feb1ebfbaf13349a2e128a4030208511eb8b332c"
+      "sha256": "55f501dbdcace688189b448da1d9acb058b5587193e6cd0a364fbc7a2398c5d9"
     },
     {
       "path": "scripts/shared/historical-paths.test.mjs",
-      "sha256": "12cb282f4450112d8221c1e2b63bf73619109101a34bed180b9fe8ddaf8bdf50"
+      "sha256": "6ca97fb2c84a1aba57ac4c25f08424704018db71de068fc32da12acca4dc3d18"
     },
     {
       "path": "scripts/shared/license-paths.mjs",
-      "sha256": "0873badc071898e3efdc3355d1d75198d67ea65274922c6ed66c5a63c04c276b"
+      "sha256": "565bb7815e638253edd592822efda132910e31e9b417462d4ed6c10b21ed77c7"
     },
     {
       "path": "scripts/shared/license-paths.test.mjs",
-      "sha256": "cbefc8c082561e057049c54e84ae32045ac15b960cf169c6b8e8a6b5848149b3"
+      "sha256": "41a7fbdbee50e8766319a8c817ac45ee33604f24c3e96897199d9ef1b7780fe9"
     },
     {
       "path": "scripts/shared/migrate-engine-settings.mjs",
-      "sha256": "f524b9fcce4fd6e2e0920c17044ab16ce8e319667ddf09b69738e7698ca418e9"
+      "sha256": "65a15e951c95a42e14f3fb8a990b4ff98066e4c1aea2194fbd83cf5b58391dad"
     },
     {
       "path": "scripts/shared/migrate-engine-settings.test.mjs",
@@ -453,7 +453,7 @@
     },
     {
       "path": "scripts/shared/verify-ui-sources.mjs",
-      "sha256": "24ee61cfd28feff158de21284360e75a079b71e573c0dc722fd263dfeb876392"
+      "sha256": "b3b9158e6e26a4010ebcb1678533cec846a55d364d8ecf6b871b04436b168b6e"
     },
     {
       "path": "scripts/shared/verify-ui-sources.test.mjs",
@@ -844,6 +844,99 @@
           "path": "scripts/shared/migrate-engine-settings.test.mjs",
           "previous_sha256": "1949c4b6a0ca7cd4da42442dbbea96991dfed73a08a908b3e28cdc5d99d6de9b",
           "sha256": "a2cdd3f47654057d1d37140ce04fb864a6865d2b67f1310012085a84cb3382fe"
+        }
+      ],
+      "added_files": []
+    },
+    {
+      "date": "2026-11-01",
+      "phase": "windows-checkout-path-aliases",
+      "reason": "Normalize CLI entrypoint identity and default checkout roots across Windows short/long filesystem spellings. Rebase license output paths only through verified aliases of the same checkout while preserving physical-parent and immutable-evidence checks. Interpret recorded historical roots with their original POSIX or Windows path flavor instead of the host working drive. Add cross-platform alias, traversal and CLI regressions. Existing engine pack bytes and dependency pins are unchanged; cache preparation signatures continue to bind the exact current helper inputs.",
+      "changed_files": [
+        {
+          "path": "scripts/macos/prepare-engine-links.mjs",
+          "previous_sha256": "27b934df40cbce8af82087afa91a3714c5f661b41802192fb2be4f9627ac7fc7",
+          "sha256": "b8d8a284e48e2bff5f12656e174a78f731a0c0dd5f80bfa9906990774b738c6f"
+        },
+        {
+          "path": "scripts/macos/resource-config.mjs",
+          "previous_sha256": "9962f1004955e1493136361df4742533d2754ba9460d7975be95c007f4e31cc4",
+          "sha256": "6a57defe4260c31a6779b142816c87504646bbff7aad30ed301dec1c810bb7b8"
+        },
+        {
+          "path": "scripts/macos/resource-config.test.mjs",
+          "previous_sha256": "171edbe0cbab38df30bbc92cd978f82473732f5d90c6ae305a03fcd747fbe064",
+          "sha256": "7b72561ebec507672c3b181f5d45d5d6102070fa91285987e52d82ba628fb2d3"
+        },
+        {
+          "path": "scripts/macos/verify-supersplat-inputs.mjs",
+          "previous_sha256": "b2cccc3e735ec6f14aea04bcf0dd495d3d83ac5a09365c7720ecf60b31e908ba",
+          "sha256": "b585d28277c4cfd7567e2505c3a09450d7a0f0e81436bbbb798887e72ee9a80b"
+        },
+        {
+          "path": "scripts/shared/artifact-paths.mjs",
+          "previous_sha256": "d138a6bf094362fd6ca7577047f094a9728759791597252d9f9bb8c659dcd6d2",
+          "sha256": "6016b8c1382d2840e648f652e4f1eeb646819b6257df239f8b46c83022f0c56c"
+        },
+        {
+          "path": "scripts/shared/artifact-paths.test.mjs",
+          "previous_sha256": "974131942f7677e57c383ba4a27bf6fba4e477a9ce0114f7086bdd7794731a6e",
+          "sha256": "65218eb8dfa5d9a15967232325ca920a4bfc12a8e9044811edb85ef91a9e19d7"
+        },
+        {
+          "path": "scripts/shared/artifact-retention.mjs",
+          "previous_sha256": "83f9b9cc85738ba1682ef9239e6a6b12591226fb0de13dbda31b0c79b3ee2952",
+          "sha256": "f645b0fede3293def76045a77cb1a79d554275abe357059fae97d558b5cb124b"
+        },
+        {
+          "path": "scripts/shared/cache-paths.mjs",
+          "previous_sha256": "b80fb919f8bc79ceb8460b4b2fb13a27d37823e8334ec638de6ac537610d2be5",
+          "sha256": "9bc6aaf590ebe072278d0f3d8041b8e9e59296dd672864015e6fc868bb055897"
+        },
+        {
+          "path": "scripts/shared/cache-paths.test.mjs",
+          "previous_sha256": "dcbc84522010a277e042e926e13d7d153bee4279f01121631f64ad74e6891da2",
+          "sha256": "8299c005e7383af15de8364cb91736ad1fe9e1ac67c58a9091ca25c515fe47b9"
+        },
+        {
+          "path": "scripts/shared/engine-paths.mjs",
+          "previous_sha256": "d322ddcc8c83736129433a5c37a5b7305725be12a440ba3c76093f6cba0ca823",
+          "sha256": "142ff8e24969f1cf1e101efbe0d060f8800012388995e26223d29b2a39b45b4c"
+        },
+        {
+          "path": "scripts/shared/engine-paths.test.mjs",
+          "previous_sha256": "f5a0f297153598efe47c84bb2fee80310e108f73449c9512e6fb8fe326e0f0f4",
+          "sha256": "f6ef179756e3a05945557c3008a1f33ce42c5482c8bf77bd3e1cad6b439b6ceb"
+        },
+        {
+          "path": "scripts/shared/historical-paths.mjs",
+          "previous_sha256": "a266ffbf905df61d62d96418feb1ebfbaf13349a2e128a4030208511eb8b332c",
+          "sha256": "55f501dbdcace688189b448da1d9acb058b5587193e6cd0a364fbc7a2398c5d9"
+        },
+        {
+          "path": "scripts/shared/historical-paths.test.mjs",
+          "previous_sha256": "12cb282f4450112d8221c1e2b63bf73619109101a34bed180b9fe8ddaf8bdf50",
+          "sha256": "6ca97fb2c84a1aba57ac4c25f08424704018db71de068fc32da12acca4dc3d18"
+        },
+        {
+          "path": "scripts/shared/license-paths.mjs",
+          "previous_sha256": "0873badc071898e3efdc3355d1d75198d67ea65274922c6ed66c5a63c04c276b",
+          "sha256": "565bb7815e638253edd592822efda132910e31e9b417462d4ed6c10b21ed77c7"
+        },
+        {
+          "path": "scripts/shared/license-paths.test.mjs",
+          "previous_sha256": "cbefc8c082561e057049c54e84ae32045ac15b960cf169c6b8e8a6b5848149b3",
+          "sha256": "41a7fbdbee50e8766319a8c817ac45ee33604f24c3e96897199d9ef1b7780fe9"
+        },
+        {
+          "path": "scripts/shared/migrate-engine-settings.mjs",
+          "previous_sha256": "f524b9fcce4fd6e2e0920c17044ab16ce8e319667ddf09b69738e7698ca418e9",
+          "sha256": "65a15e951c95a42e14f3fb8a990b4ff98066e4c1aea2194fbd83cf5b58391dad"
+        },
+        {
+          "path": "scripts/shared/verify-ui-sources.mjs",
+          "previous_sha256": "24ee61cfd28feff158de21284360e75a079b71e573c0dc722fd263dfeb876392",
+          "sha256": "b3b9158e6e26a4010ebcb1678533cec846a55d364d8ecf6b871b04436b168b6e"
         }
       ],
       "added_files": []

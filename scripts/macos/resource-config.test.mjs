@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
+import { basename, isAbsolute, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { resolveMacosResourceConfig } from './resource-config.mjs';
 
 function fixture(t) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'macOS 资源配置 ')));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'macOS 资源配置 ')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const tauri = join(root, 'apps/desktop/src-tauri');
   const configPath = join(tauri, 'tauri.macos.full.conf.json');
@@ -110,8 +110,11 @@ test('CLI uses its checkout configuration from an unrelated working directory', 
     mkdirSync(join(destination, '..'), { recursive: true });
     cpSync(source, destination);
   }
-  const run = spawnSync(process.execPath, [join(f.root, 'scripts/macos/resource-config.mjs')], { cwd: tmpdir(), encoding: 'utf8' });
+  for (const scriptPath of [join(f.root, 'scripts/macos/resource-config.mjs'),
+    join(tmpdir(), basename(f.root), 'scripts/macos/resource-config.mjs')]) {
+  const run = spawnSync(process.execPath, [scriptPath], { cwd: tmpdir(), encoding: 'utf8' });
   assert.equal(run.status, 0, run.stderr);
   const resources = resourcesByTarget(JSON.parse(run.stdout));
   assert.equal(resolve(resources.get('resources/app-licenses')), join(f.root, 'artifacts/licenses/macos-arm64/current'));
+  }
 });

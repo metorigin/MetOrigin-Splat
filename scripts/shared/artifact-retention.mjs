@@ -1,11 +1,11 @@
 import { createReadStream } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, mkdir, readFile, readdir, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, readdir, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveArtifactPaths } from './artifact-paths.mjs';
 
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const repositoryRoot = path.resolve(path.dirname(await realpath(fileURLToPath(import.meta.url))), '../..');
 const marker = 'metorigin-package-retention-v1';
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 async function hashFile(file) { const hash = createHash('sha256'); for await (const chunk of createReadStream(file)) hash.update(chunk); return hash.digest('hex'); }
@@ -342,4 +342,5 @@ async function main(args) {
   else throw new Error('Usage: artifact-retention.mjs record|apply|pin|unpin [--platform PLATFORM] [--report FILE] [--package FILE] [--license-root DIR] [--apply]');
   console.log(JSON.stringify(result));
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2)).catch(e => { console.error(`Artifact retention: ${e.message}`); process.exitCode = 1; });
+const invokedPath = process.argv[1] ? await realpath(process.argv[1]).catch(() => undefined) : undefined;
+if (invokedPath && path.relative(invokedPath, await realpath(fileURLToPath(import.meta.url))) === '') main(process.argv.slice(2)).catch(e => { console.error(`Artifact retention: ${e.message}`); process.exitCode = 1; });
