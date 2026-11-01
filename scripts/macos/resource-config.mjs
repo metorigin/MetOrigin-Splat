@@ -18,10 +18,11 @@ export async function resolveMacosResourceConfig(options = {}) {
   }
   const { licenseCurrent } = await resolveArtifactPaths({ repositoryRoot: root, platform: 'macos-arm64' });
   const engines = await resolveEnginePaths({ repositoryRoot: root });
+  const selectedPack = options.enginePackRoot === undefined ? undefined : path.resolve(root, options.enginePackRoot);
   const managed = {
     [licenseTarget]: licenseCurrent,
-    'resources/engines': engines.distributionEngines,
-    'resources/release-status.json': engines.releaseStatus,
+    'resources/engines': selectedPack ? path.join(selectedPack, 'engines') : engines.distributionEngines,
+    'resources/release-status.json': selectedPack ? path.join(selectedPack, 'release-status.json') : engines.releaseStatus,
   };
   let licenseEntries = 0;
   const required = new Map(Object.keys(managed).map(target => [target, 0]));
@@ -47,8 +48,14 @@ export async function resolveMacosResourceConfig(options = {}) {
 }
 
 async function main(args) {
-  if (args.length) throw new Error('Usage: node scripts/macos/resource-config.mjs');
-  process.stdout.write(JSON.stringify(await resolveMacosResourceConfig()) + '\n');
+  const options = {};
+  if (args.length) {
+    if (args.length !== 2 || args[0] !== '--engine-pack-root' || !args[1] || args[1].startsWith('--')) {
+      throw new Error('Usage: node scripts/macos/resource-config.mjs [--engine-pack-root DIRECTORY]');
+    }
+    options.enginePackRoot = args[1];
+  }
+  process.stdout.write(JSON.stringify(await resolveMacosResourceConfig(options)) + '\n');
 }
 
 const invokedPath = process.argv[1] ? await realpath(process.argv[1]).catch(() => undefined) : undefined;

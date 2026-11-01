@@ -6,6 +6,7 @@ import plistlib
 import shutil
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -32,7 +33,9 @@ class BuildScriptTests(unittest.TestCase):
     def test_runtime_gates_pin_inputs_and_stop_packaging_on_either_failure(self):
         source = Path(__file__).with_name("build-macos-app.sh").read_text()
         start = source.index('METORIGIN_TEST_ENGINE_PACK="$pack_root/engines"')
-        gate = source[start:source.index("\npnpm --dir", start)]
+        # The build now clears Tauri's ambient Apple credentials explicitly;
+        # stop before that env invocation, while executing both real gates.
+        gate = source[start:source.index("\nenv -u APPLE_SIGNING_IDENTITY ", start)]
         self.assertLess(start, source.index("pnpm --dir apps/desktop tauri build"))
         for failure_package in ("", "splat-hardware", "splat-desktop"):
             with self.subTest(failure_package=failure_package):
@@ -118,6 +121,65 @@ class ReleaseStatusTests(unittest.TestCase):
         status["distributable"] = True
         with self.assertRaises(ValueError):
             module.verify_release_status(status, "a" * 64, False)
+
+
+class NotarizationTests(unittest.TestCase):
+    def test_container_cli_requires_dmg_and_team_and_cannot_override_strict_mode(self):
+        for options in [["--require-notarized-container"],
+                        ["--require-notarized-container", "--dmg", "/tmp/app.dmg"],
+                        ["--require-notarized-container", "--expected-team-id", "ABCDEFGHIJ"],
+                        ["--require-notarized-container", "--require-notarized", "--dmg", "/tmp/app.dmg",
+                         "--expected-team-id", "ABCDEFGHIJ"]]:
+            with self.subTest(options=options), patch("sys.argv", ["verify-app.py", "/tmp/app.app"] + options), \
+                    patch.object(module, "verify_app") as app_check, patch("sys.stderr"):
+                with self.assertRaises(SystemExit) as stopped:
+                    module.main()
+                self.assertEqual(stopped.exception.code, 2)
+                app_check.assert_not_called()
+
+    def test_checks_require_team_identity_and_reject_invalid_identifiers(self):
+        for options in [(None, None, True), (None, "a" * 40, False),
+                        ("invalid", None, False), ("ABCDEFGHIJ", "not-a-fingerprint", False)]:
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                module.validate_signing_options(*options)
+        module.validate_signing_options("ABCDEFGHIJ", "a" * 40, True)
+
+    def test_stapled_ticket_and_gatekeeper_notarized_source_are_both_required(self):
+        accepted = SimpleNamespace(returncode=0, stdout="", stderr="/tmp/test.app: accepted\nsource=Notarized Developer ID\n")
+        valid_ticket = SimpleNamespace(returncode=0, stdout="The validate action worked!", stderr="")
+        with patch.object(module.subprocess, "run", side_effect=[valid_ticket, accepted]) as command:
+            result = module.verify_notarization(Path("/tmp/test.app"), "app")
+        self.assertTrue(result["stapled_ticket_validated"])
+        self.assertTrue(result["gatekeeper_accepted"])
+        self.assertIn("--type", command.call_args.args[0])
+        self.assertIn("execute", command.call_args.args[0])
+        for output in ["assessments disabled", "/tmp/test.app: accepted\nsource=Developer ID",
+                       "/tmp/test.app: rejected\nsource=Notarized Developer ID"]:
+            weak = SimpleNamespace(returncode=0, stdout=output, stderr="")
+            with self.subTest(output=output), patch.object(module.subprocess, "run", side_effect=[valid_ticket, weak]):
+                with self.assertRaisesRegex(ValueError, "Gatekeeper did not identify"):
+                    module.verify_notarization(Path("/tmp/test.app"), "app")
+
+    def test_dmg_gatekeeper_assessment_uses_primary_signature_context(self):
+        def assessment(command):
+            return {"command": [str(part) for part in command], "exit_code": 0, "stdout": "",
+                    "stderr": "/tmp/test.dmg: accepted\nsource=Notarized Developer ID"}
+        with patch.object(module, "run_assessment", side_effect=assessment) as check:
+            module.verify_notarization(Path("/tmp/test.dmg"), "dmg")
+        gatekeeper = check.call_args.args[0]
+        self.assertEqual(gatekeeper[gatekeeper.index("--type") + 1], "open")
+        self.assertEqual(gatekeeper[gatekeeper.index("--context") + 1], "context:primary-signature")
+
+    def test_missing_ticket_or_gatekeeper_failure_never_reports_success(self):
+        for responses in [[SimpleNamespace(returncode=65, stdout="", stderr="ticket missing")],
+                          [SimpleNamespace(returncode=0, stdout="valid ticket", stderr=""),
+                           SimpleNamespace(returncode=3, stdout="", stderr="rejected")]]:
+            with self.subTest(responses=responses), patch.object(module.subprocess, "run", side_effect=responses):
+                with self.assertRaisesRegex(ValueError, "assessment failed"):
+                    module.verify_notarization(Path("/tmp/test.app"), "app")
+        with patch.object(module.subprocess, "run", side_effect=subprocess.TimeoutExpired("spctl", 120)):
+            with self.assertRaisesRegex(ValueError, "timed out"):
+                module.verify_notarization(Path("/tmp/test.app"), "app")
 
 
 class BundleVerificationTests(unittest.TestCase):
@@ -295,6 +357,74 @@ class BundleVerificationTests(unittest.TestCase):
         self.assertEqual(report["bundle_inventory_sha256"], module.inventory_sha256(module.bundle_inventory(self.app)))
         self.run.assert_called_once_with(["/usr/bin/codesign", "--verify", "--deep", "--strict", self.app])
 
+    @staticmethod
+    def signed_evidence(path, team_id, require_runtime=False, expected_identity=None):
+        return {"team_id": team_id, "authorities": ["Developer ID Application: Test (" + team_id + ")"],
+                "timestamp": "Nov 1, 2026 at 12:00:00", "hardened_runtime": require_runtime,
+                "requirement_verified": True, "identity_sha1": expected_identity.upper() if expected_identity else None}
+
+    def test_developer_id_checks_outer_runtime_and_every_embedded_code_file(self):
+        framework = self.app / "Contents/Frameworks/Example.framework/Versions/A/Example"
+        framework.parent.mkdir(parents=True)
+        framework.write_bytes(b"\xcf\xfa\xed\xfeadditional framework code")
+        before = module.bundle_inventory(self.app)
+        with patch.object(pack_macos, "verify_developer_id_signature", side_effect=self.signed_evidence) as verify:
+            report = module.verify_app(self.app, expected_team_id="ABCDEFGHIJ", expected_signing_identity="a" * 40)
+        self.assertEqual(module.bundle_inventory(self.app), before)
+        self.assertFalse(report["application_public_release_ready"])
+        self.assertFalse(report["notarization_verified"])
+        self.assertEqual(report["developer_id_verification"]["nested_code_count"], 5)
+        self.assertEqual(verify.call_args_list[0].args, (self.app, "ABCDEFGHIJ"))
+        self.assertTrue(verify.call_args_list[0].kwargs["require_runtime"])
+        verified_paths = {call.args[0] for call in verify.call_args_list}
+        self.assertIn(framework, verified_paths)
+        for path in ["ffmpeg/bin/ffmpeg", "ffmpeg/bin/ffprobe", "colmap/bin/colmap", "brush/bin/brush"]:
+            self.assertIn(self.engines / path, verified_paths)
+            call = next(call for call in verify.call_args_list if call.args[0] == self.engines / path)
+            self.assertTrue(call.kwargs["require_runtime"])
+        framework_call = next(call for call in verify.call_args_list if call.args[0] == framework)
+        self.assertFalse(framework_call.kwargs["require_runtime"])
+        self.assertTrue(all(call.kwargs["expected_identity"] == "a" * 40 for call in verify.call_args_list))
+
+    def test_developer_id_rejects_nested_signature_failure_before_notarization(self):
+        def verify(path, *args, **kwargs):
+            if path == self.engines / "brush/bin/brush":
+                raise ValueError("nested code signed by another team")
+            return self.signed_evidence(path, *args, **kwargs)
+        with patch.object(pack_macos, "verify_developer_id_signature", side_effect=verify), \
+                patch.object(module, "verify_notarization") as notarize:
+            with self.assertRaisesRegex(ValueError, "another team"):
+                module.verify_app(self.app, expected_team_id="ABCDEFGHIJ", require_notarized=True)
+        notarize.assert_not_called()
+
+    def test_formal_signature_never_bypasses_unresolved_application_licenses(self):
+        path = self.app_licenses / "release-readiness.json"
+        data = json.loads(path.read_text())
+        data.update(release_ready=False, issues=[{"id": "notice", "detail": "Original notice pending"}])
+        path.write_text(json.dumps(data))
+        self.refresh_license_manifest()
+        with patch.object(pack_macos, "verify_developer_id_signature", side_effect=self.signed_evidence):
+            with self.assertRaisesRegex(ValueError, "license evidence has unresolved"):
+                module.verify_app(self.app, expected_team_id="ABCDEFGHIJ", require_notarized=True)
+            report = module.verify_app(self.app, internal_alpha=True, expected_team_id="ABCDEFGHIJ")
+        self.assertFalse(report["application_license_evidence"]["release_ready"])
+        self.assertFalse(report["application_public_release_ready"])
+
+    def test_notarization_requires_explicit_checks_and_detects_mutation(self):
+        with patch.object(pack_macos, "verify_developer_id_signature", side_effect=self.signed_evidence), \
+                patch.object(module, "verify_notarization", return_value={"stapled_ticket_validated": True}) as check:
+            report = module.verify_app(self.app, expected_team_id="ABCDEFGHIJ", require_notarized=True)
+        check.assert_called_once_with(self.app, "app")
+        self.assertTrue(report["notarization_verified"])
+        self.assertFalse(report["application_public_release_ready"])
+        def mutate(path, kind):
+            (path / "Contents/mutated-during-assessment").write_text("changed")
+            return {"stapled_ticket_validated": True}
+        with patch.object(pack_macos, "verify_developer_id_signature", side_effect=self.signed_evidence), \
+                patch.object(module, "verify_notarization", side_effect=mutate):
+            with self.assertRaisesRegex(ValueError, "changed during verification"):
+                module.verify_app(self.app, expected_team_id="ABCDEFGHIJ", require_notarized=True)
+
     def test_post_signing_engine_mutation_cannot_rewrite_manifest(self):
         old_manifest = self.manifest.read_bytes()
         (self.engines / "brush/bin/brush").write_bytes(b"engine re-signed bytes")
@@ -374,6 +504,202 @@ class BundleVerificationTests(unittest.TestCase):
         commands = [call.args[0] for call in self.run.call_args_list]
         self.assertIn("-readonly", next(command for command in commands if command[1] == "attach"))
         self.assertEqual(commands[-1][1], "detach")
+
+    def test_final_stapled_app_and_dmg_remain_exact_without_inventory_exemptions(self):
+        with patch.object(pack_macos, "verify_developer_id_signature", side_effect=self.signed_evidence), \
+                patch.object(module, "verify_notarization", return_value={"stapled_ticket_validated": True}) as notarize:
+            before_staple = module.verify_app(self.app, expected_team_id="ABCDEFGHIJ")
+            # A final inventory is established after stapling. Existing report
+            # comparison still rejects every byte change, including a ticket.
+            (self.app / "Contents/CodeResources").write_bytes(b"test notarization ticket")
+            final = module.verify_app(self.app, expected_team_id="ABCDEFGHIJ", require_notarized=True)
+            with self.assertRaisesRegex(ValueError, "differs from initial verification"):
+                module.verify_app_report_matches(final, before_staple)
+            dmg = self.root / "notarized.dmg"
+            dmg.write_bytes(b"signed and stapled disk image")
+            self.run.side_effect = self.fake_mount
+            result = module.verify_dmg(dmg, self.app, final)
+        self.assertTrue(result["notarization_verified"])
+        self.assertEqual(result["notarization_policy"], module.NOTARIZATION_STRICT)
+        self.assertTrue(result["embedded_application_notarization"]["stapled_ticket_required"])
+        self.assertTrue(result["embedded_application_notarization"]["stapled_ticket_validated"])
+        self.assertTrue(result["application_matches_verified_bundle"])
+        self.assertEqual([call.args[1] for call in notarize.call_args_list], ["app", "dmg", "app"])
+
+    def test_notarized_container_keeps_exact_signed_app_without_app_ticket_requirement(self):
+        with patch.object(pack_macos, "verify_developer_id_signature", side_effect=self.signed_evidence) as signature:
+            report = module.verify_app(self.app, expected_team_id="ABCDEFGHIJ", expected_signing_identity="a" * 40)
+            before = module.bundle_inventory(self.app)
+            dmg = self.root / "outermost-notarized.dmg"
+            dmg.write_bytes(b"signed and stapled container")
+            self.run.side_effect = self.fake_mount
+            with patch.object(module, "verify_notarization", return_value={"stapled_ticket_validated": True,
+                                                                           "gatekeeper_accepted": True}) as notarize:
+                result = module.verify_dmg(dmg, self.app, report, require_notarized_container=True)
+        notarize.assert_called_once_with(dmg, "dmg")
+        self.assertFalse(report["notarization_verified"])
+        self.assertFalse(report["application_notarization"]["stapled_ticket_validated"])
+        self.assertEqual(result["notarization_policy"], module.NOTARIZATION_CONTAINER)
+        self.assertTrue(result["notarization_verified"])
+        embedded = result["embedded_application_notarization"]
+        self.assertTrue(embedded["developer_id_verified"])
+        self.assertFalse(embedded["stapled_ticket_required"])
+        self.assertFalse(embedded["stapled_ticket_validated"])
+        self.assertFalse(embedded["gatekeeper_assessment_performed"])
+        self.assertEqual(module.bundle_inventory(self.app), before)
+        self.assertFalse(report["application_public_release_ready"])
+        # Main bundle, signed container and all four mounted engine executable
+        # signatures are still explicitly checked under the expected identity.
+        self.assertIn(dmg, {call.args[0] for call in signature.call_args_list})
+        mounted_engines = [call for call in signature.call_args_list
+                           if call.args[0].name in {"ffmpeg", "ffprobe", "colmap", "brush"}
+                           and not call.args[0].is_relative_to(self.app)]
+        self.assertEqual(len(mounted_engines), 4)
+        self.assertTrue(all(call.kwargs["require_runtime"] for call in mounted_engines))
+
+    def test_container_notarization_still_requires_dmg_ticket_and_nested_signatures(self):
+        with patch.object(pack_macos, "verify_developer_id_signature", side_effect=self.signed_evidence):
+            report = module.verify_app(self.app, expected_team_id="ABCDEFGHIJ")
+            dmg = self.root / "outermost.dmg"
+            dmg.write_bytes(b"signed disk image")
+            self.run.side_effect = self.fake_mount
+            with patch.object(module, "verify_notarization", side_effect=ValueError("DMG ticket missing")):
+                with self.assertRaisesRegex(ValueError, "DMG ticket missing"):
+                    module.verify_dmg(dmg, self.app, report, require_notarized_container=True)
+            def signature(path, *args, **kwargs):
+                if path.name == "brush" and not path.is_relative_to(self.app):
+                    raise ValueError("embedded executable belongs to another team")
+                return self.signed_evidence(path, *args, **kwargs)
+            with patch.object(pack_macos, "verify_developer_id_signature", side_effect=signature), \
+                    patch.object(module, "verify_notarization", return_value={"stapled_ticket_validated": True}):
+                with self.assertRaisesRegex(ValueError, "another team"):
+                    module.verify_dmg(dmg, self.app, report, require_notarized_container=True)
+            self.assertEqual(self.run.call_args_list[-1].args[0][1], "detach")
+
+    def test_container_policy_does_not_weaken_strict_app_ticket_checks(self):
+        def container_only(path, kind):
+            if kind == "app":
+                raise ValueError("app own ticket missing")
+            return {"stapled_ticket_validated": True, "gatekeeper_accepted": True}
+        with patch.object(pack_macos, "verify_developer_id_signature", side_effect=self.signed_evidence):
+            report = module.verify_app(self.app, expected_team_id="ABCDEFGHIJ")
+            dmg = self.root / "container.dmg"
+            dmg.write_bytes(b"signed and stapled disk image")
+            self.run.side_effect = self.fake_mount
+            with patch.object(module, "verify_notarization", side_effect=container_only):
+                with self.assertRaisesRegex(ValueError, "app own ticket missing"):
+                    module.verify_dmg(dmg, self.app, report, require_notarized=True)
+                self.assertTrue(module.verify_dmg(dmg, self.app, report,
+                                                  require_notarized_container=True)["notarization_verified"])
+            with patch.object(module, "verify_notarization", return_value={"stapled_ticket_validated": True}):
+                strict = module.verify_app(self.app, expected_team_id="ABCDEFGHIJ", require_notarized=True)
+            with self.assertRaisesRegex(ValueError, "cannot replace an explicit stapled-application"):
+                module.verify_dmg(dmg, self.app, strict, require_notarized_container=True)
+
+    def test_container_cli_reports_distribution_and_app_ticket_evidence_separately(self):
+        dmg = self.root / "container-cli.dmg"
+        dmg.write_bytes(b"signed and stapled container")
+        self.run.side_effect = self.fake_mount
+        output = self.root / "container-report.json"
+        arguments = ["verify-app.py", str(self.app), "--expected-team-id", "ABCDEFGHIJ",
+                     "--dmg", str(dmg), "--require-notarized-container", "--report", str(output)]
+        with patch("sys.argv", arguments), patch("builtins.print"), \
+                patch.object(pack_macos, "verify_developer_id_signature", side_effect=self.signed_evidence), \
+                patch.object(module, "verify_notarization", return_value={"stapled_ticket_validated": True,
+                                                                          "gatekeeper_accepted": True}):
+            module.main()
+        report = json.loads(output.read_text())
+        self.assertEqual(report["distribution_notarization_policy"], module.NOTARIZATION_CONTAINER)
+        self.assertTrue(report["distribution_notarization_verified"])
+        self.assertFalse(report["notarization_verified"])
+        self.assertFalse(report["application_notarization"]["stapled_ticket_required"])
+        self.assertFalse(report["application_public_release_ready"])
+
+    def test_post_staple_code_identity_requires_valid_complete_formal_reports(self):
+        receipt = self.frontend_receipt()
+        with patch.object(module, "verify_webp_evidence", return_value={"status": "verified-derived-replacement"}), \
+                patch.object(pack_macos, "verify_developer_id_signature", side_effect=self.signed_evidence):
+            baseline = module.verify_app(self.app, expected_team_id="ABCDEFGHIJ", expected_signing_identity="a" * 40,
+                                         frontend_input_report=receipt)
+            (self.app / "Contents/CodeResources").write_bytes(b"test notarization ticket")
+            final = module.verify_app(self.app, expected_team_id="ABCDEFGHIJ", expected_signing_identity="a" * 40,
+                                      frontend_input_report=receipt)
+        self.assertNotEqual(final["bundle_inventory_sha256"], baseline["bundle_inventory_sha256"])
+        module.verify_code_report_matches(final, baseline)
+        for field in ("application_sha256", "engine_manifest_sha256", "release_status_sha256",
+                      "application_license_evidence", "frontend_input_evidence", "developer_id_verification"):
+            invalid = json.loads(json.dumps(baseline))
+            invalid[field] = None
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "invalid .* code continuity report"):
+                module.verify_code_report_matches(invalid, invalid)
+            with self.subTest(expected_field=field), self.assertRaisesRegex(ValueError, "invalid expected code continuity report"):
+                module.verify_code_report_matches(final, invalid)
+        for section, field, value in [("application_license_evidence", "manifest_sha256", "bad"),
+                                       ("frontend_input_evidence", "input_identity", {}),
+                                       ("developer_id_verification", "application", {}),
+                                       ("developer_id_verification", "nested_code", []),
+                                       ("developer_id_verification", "team_id", "bad")]:
+            invalid = json.loads(json.dumps(baseline))
+            invalid[section][field] = value
+            with self.subTest(section=section, field=field), self.assertRaisesRegex(ValueError, "invalid .* code continuity report"):
+                module.verify_code_report_matches(invalid, invalid)
+
+    def test_code_identity_continuity_rejects_replacement_code_and_changed_inputs(self):
+        receipt = self.frontend_receipt()
+        with patch.object(module, "verify_webp_evidence", return_value={"status": "verified-derived-replacement"}), \
+                patch.object(pack_macos, "verify_developer_id_signature", side_effect=self.signed_evidence):
+            baseline = module.verify_app(self.app, expected_team_id="ABCDEFGHIJ", frontend_input_report=receipt)
+            # Simulate another validly signed build replacing the same output
+            # directory while the initial artifact is in the notary queue.
+            (self.app / "Contents/MacOS/MetOrigin Splat").write_bytes(b"different validly signed application")
+            replacement = module.verify_app(self.app, expected_team_id="ABCDEFGHIJ", frontend_input_report=receipt)
+        with self.assertRaisesRegex(ValueError, "identity differs.*application_sha256"):
+            module.verify_code_report_matches(replacement, baseline)
+        for field in ("engine_manifest_sha256", "release_status_sha256", "application_license_evidence",
+                      "frontend_input_evidence", "developer_id_verification"):
+            changed = json.loads(json.dumps(baseline))
+            if field in {"engine_manifest_sha256", "release_status_sha256"}:
+                changed[field] = "0" * 64
+            elif field == "application_license_evidence":
+                changed[field]["manifest_sha256"] = "0" * 64
+            elif field == "frontend_input_evidence":
+                changed[field]["report_sha256"] = "0" * 64
+            else:
+                changed[field]["application"]["authorities"][0] = "Developer ID Application: Other certificate (ABCDEFGHIJ)"
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "identity differs.*" + field):
+                module.verify_code_report_matches(changed, baseline)
+
+    def test_code_report_cli_never_exempts_changed_bundle_resources(self):
+        receipt = self.frontend_receipt()
+        with patch.object(module, "verify_webp_evidence", return_value={"status": "verified-derived-replacement"}), \
+                patch.object(pack_macos, "verify_developer_id_signature", side_effect=self.signed_evidence) as signature:
+            baseline = module.verify_app(self.app, expected_team_id="ABCDEFGHIJ", frontend_input_report=receipt)
+            report_path = self.root / "before-notarization.json"
+            report_path.write_text(json.dumps(baseline))
+            (self.app_licenses / "LICENSE").write_text("tampered resource after notarization submission")
+            signature.reset_mock()
+            arguments = ["verify-app.py", str(self.app), "--expected-team-id", "ABCDEFGHIJ",
+                         "--frontend-input-report", str(receipt), "--expected-code-report", str(report_path)]
+            with patch("sys.argv", arguments), self.assertRaisesRegex(ValueError, "license file size/hash mismatch"):
+                module.main()
+            signature.assert_not_called()
+
+    def test_dmg_cannot_downgrade_or_change_application_signing_policy(self):
+        with patch.object(pack_macos, "verify_developer_id_signature", side_effect=self.signed_evidence) as verify:
+            report = module.verify_app(self.app, expected_team_id="ABCDEFGHIJ", expected_signing_identity="a" * 40)
+            dmg = self.root / "signed.dmg"
+            dmg.write_bytes(b"signed disk image")
+            self.run.side_effect = self.fake_mount
+            result = module.verify_dmg(dmg, self.app, report)
+            self.assertEqual(result["developer_id_verification"]["team_id"], "ABCDEFGHIJ")
+            self.assertIn(dmg, {call.args[0] for call in verify.call_args_list})
+            for kwargs in [{"expected_team_id": "0123456789"}, {"expected_signing_identity": "b" * 40}]:
+                with self.subTest(kwargs=kwargs), self.assertRaisesRegex(ValueError, "differs from the verified application"):
+                    module.verify_dmg(dmg, self.app, report, **kwargs)
+        stripped = dict(report)
+        stripped.pop("developer_id_verification")
+        with self.assertRaisesRegex(ValueError, "Developer ID evidence differs"):
+            module.verify_app_report_matches(stripped, report)
 
     def test_dmg_difference_fails_and_still_detaches(self):
         report = module.verify_app(self.app)

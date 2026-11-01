@@ -26,6 +26,48 @@ def run(args: list[str | Path], **kwargs) -> str:
     return result.stdout
 
 
+def verify_developer_id_signature(path: Path, team_id: str, require_runtime: bool = False,
+                                  expected_identity: str | None = None) -> dict:
+    """Verify an Apple-issued Developer ID Application signature, not just its seal.
+
+    A TeamIdentifier string alone is not a trust decision. The explicit signing
+    requirement checks Apple's certificate chain and Developer ID certificate
+    OIDs before the display metadata is used for the remaining policy checks.
+    """
+    if not re.fullmatch(r"[A-Z0-9]{10}", team_id):
+        raise ValueError("expected a ten-character Apple Developer Team ID")
+    # codesign treats a requirement argument as a filename unless it begins
+    # with '='. Keep the inline marker even though no shell is involved.
+    requirement = ('=anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists '
+                   'and certificate leaf[field.1.2.840.113635.100.6.1.13] exists '
+                   f'and certificate leaf[subject.OU] = "{team_id}"')
+    if expected_identity is not None:
+        if not re.fullmatch(r"[0-9a-fA-F]{40}", expected_identity):
+            raise ValueError("expected signing identity must be a certificate SHA-1 fingerprint")
+        expected_identity = expected_identity.upper()
+        requirement += f' and certificate leaf = H"{expected_identity}"'
+    run(["/usr/bin/codesign", "--verify", "--strict", "--test-requirement", requirement, path], timeout=120)
+    displayed = subprocess.run(["/usr/bin/codesign", "--display", "--verbose=4", str(path)],
+                               text=True, capture_output=True, timeout=120)
+    if displayed.returncode:
+        raise ValueError("cannot inspect Developer ID signature: " + displayed.stderr)
+    metadata = displayed.stdout + "\n" + displayed.stderr
+    authorities = re.findall(r"^Authority=(.+)$", metadata, re.M)
+    team = re.search(r"^TeamIdentifier=(.+)$", metadata, re.M)
+    stamp = re.search(r"^Timestamp=(.+)$", metadata, re.M)
+    flags = re.search(r"^CodeDirectory .*?flags=(0x[0-9a-fA-F]+)(?:\(|\s|$)", metadata, re.M)
+    runtime = bool(flags and int(flags[1], 16) & 0x10000)
+    if (not authorities or not authorities[0].startswith("Developer ID Application: ")
+            or not team or team[1] != team_id or re.search(r"^Signature=adhoc$", metadata, re.M)):
+        raise ValueError("signature is not the expected team's Developer ID Application identity")
+    if not stamp or not stamp[1].strip() or stamp[1].strip().lower() in {"none", "not set"}:
+        raise ValueError("Developer ID signature has no secure timestamp")
+    if require_runtime and not runtime:
+        raise ValueError("Developer ID executable has no hardened runtime")
+    return {"team_id": team_id, "authorities": authorities, "timestamp": stamp[1],
+            "hardened_runtime": runtime, "requirement_verified": True, "identity_sha1": expected_identity}
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
