@@ -223,7 +223,7 @@ test('all theme, paint, font and helper inputs change the preparation identity; 
     const path = join(temporary, name);
     const original = await readFile(path);
     await rm(path);
-    await assert.rejects(signature(), (error) => error.code === 'ENOENT' && error.path.endsWith(name));
+    await assert.rejects(signature(), (error) => error.code === 'ENOENT' && error.path === path);
     await writeFile(path, original);
   }
   await rm(join(local, 'ui-theme/controls.css'));
