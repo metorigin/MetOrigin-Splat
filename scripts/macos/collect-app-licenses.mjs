@@ -3,6 +3,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { collectCopiedUiEvidence } from '../shared/copied-ui-evidence.mjs';
 import { findVerifiedNpmNotices } from '../shared/npm-notice-evidence.mjs';
+import { resolveLicenseCollectionOutput } from '../shared/license-paths.mjs';
+import { resolveEnginePaths } from '../shared/engine-paths.mjs';
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -13,10 +15,7 @@ import { distributableSparkPatchReport, verifySparkPatch } from '../../integrati
 import { distributableThreePatchReport, verifyThreePatch } from '../../integrations/three/verify-patch.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const output = resolve(root, process.argv[2] ?? 'target/macos-m4/app-license-evidence/licenses');
-const within = relative(join(root, 'target'), output);
-if (!within || within.startsWith('..') || isAbsolute(within)) throw new Error('Output must be a fresh child of target/.');
-if (existsSync(output)) throw new Error('Evidence already exists; select a new output directory.');
+const output = await resolveLicenseCollectionOutput({ repositoryRoot: root, requestedOutput: process.argv[2] });
 const sparkPatch = await verifySparkPatch(root);
 const threePatch = await verifyThreePatch(root);
 const localDerivations = new Map([
@@ -75,7 +74,7 @@ function licenses(directory, ref, label, explicit = null) {
 
 // Reuse only manifest-bound original upstream text for the exact locked crate
 // and immutable VCS revision. Ordinary source files such as copying.rs are not notices.
-const packRoot = resolve(root, process.env.APP_LICENSE_ENGINE_PACK ?? 'target/distribution/macos-arm64/engines');
+const packRoot = resolve(root, process.env.APP_LICENSE_ENGINE_PACK ?? (await resolveEnginePaths({ repositoryRoot: root })).distributionEngines);
 const packManifestPath = join(packRoot, 'engine-manifest.json');
 const packManifest = existsSync(packManifestPath) ? readJson(packManifestPath) : null;
 const packFiles = new Map(Object.values(packManifest?.engines ?? {}).flatMap(engine => engine.files).map(file => [file.path, file]));
@@ -459,9 +458,9 @@ for (const [name, path] of [
   ['Cargo.lock', 'Cargo.lock'], ['Cargo.toml', 'Cargo.toml'], ['desktop-Cargo.toml', 'apps/desktop/src-tauri/Cargo.toml'],
   ['pnpm-lock.yaml', 'pnpm-lock.yaml'], ['pnpm-workspace.yaml', 'pnpm-workspace.yaml'],
   ['desktop-package.json', 'apps/desktop/package.json'],
-  ['supersplat-package-lock.json', 'target/supersplat-source/upstream/package-lock.json'],
   ['supersplat-upstream.json', 'integrations/supersplat/upstream.json'],
 ]) copy(join(root, path), `build-inputs/${name}`);
+copy(join(supersplatSource, 'package-lock.json'), 'build-inputs/supersplat-package-lock.json');
 copy(join(root, 'integrations/spark/patch-manifest.json'), 'spark/patch-manifest.json');
 copy(join(root, sparkPatch.input_identity.patch.path), 'spark/patch.patch');
 json('spark/installed-patch.json', distributableSparkPatchReport(sparkPatch));

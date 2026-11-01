@@ -24,6 +24,8 @@ pnpm tauri dev
 
 The [commit-scope guidance](docs/development.md#what-belongs-in-git) distinguishes source and license inputs from generated engines, caches and private project data. Keep both dependency lockfiles when dependencies change.
 
+Use the four [generated-directory roles](docs/development.md#generated-files-and-cleanup): `target/` for Cargo outputs, `.cache/metorigin/` for reusable build inputs, `.engines/` for prepared runtime engines, and `artifacts/` for packages and retained reports. Ordinary test workspaces are temporary and cleaned automatically. Review modified or untracked source-cache work before cleanup.
+
 ## Branches and commits
 
 - Create a short-lived branch from the latest `main`.

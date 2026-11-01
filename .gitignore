@@ -19,6 +19,7 @@ __pycache__/
 *.py[cod]
 
 # Local engines and technical-spike artifacts
+.cache/
 .engines/
 .artifacts/
 artifacts/
@@ -58,3 +59,6 @@ logs/
 !integrations/supersplat/webp-overlay-3.10.2/evidence/logs/*.log
 coverage/
 .test-results/
+
+# Local unreviewed design working files
+design/local/

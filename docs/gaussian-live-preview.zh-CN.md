@@ -54,7 +54,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/windows/Start-Pr
 pnpm test:gaussian:native "D:/path/to/completed.splat-project"
 ```
 
-启动脚本使用离线 Cargo 构建，需要已有完整依赖缓存，并使用独立应用标识与浏览器数据目录。不要同时运行占用同一 Vite 端口的 `pnpm tauri dev`。测试输入应包含 `output/scene.ply` 和准备好的 `training/dataset`。验证程序读取该数据并运行隔离的 GPU 训练，输出写入 `.test-results/gaussian-live/`，包含截图、日志和 JSON 报告。
+启动脚本使用离线 Cargo 构建，需要已有完整依赖缓存，并使用独立应用标识与浏览器数据目录。不要同时运行占用同一 Vite 端口的 `pnpm tauri dev`。测试输入应包含 `output/scene.ply` 和准备好的 `training/dataset`。验证程序读取该数据并运行隔离的 GPU 训练；测试工程和 checkpoint 使用系统临时目录，报告、截图及日志发布到 `artifacts/verification/windows-x64/tests/gaussian-preview/current/`，失败时发布到 `failed/`。临时工作目录自动清理；失败或显式 `--keep`（也可用 `METORIGIN_KEEP_TEST_OUTPUT=1`）将必要调试数据保留在对应报告的 `debug/` 中，原始输入工程不由清理逻辑删除。详见[目录职责与保留规则](development.md#generated-files-and-cleanup)。
 
 验证结束后停止脚本启动的测试应用：
 

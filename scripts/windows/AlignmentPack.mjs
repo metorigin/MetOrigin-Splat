@@ -1,3 +1,5 @@
+import { migrateWindowsLayout } from './MigrateLocalLayout.mjs';
+import { resolveWindowsPaths } from './WindowsPaths.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import * as fs from 'node:fs/promises';
@@ -7,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 
-export const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+export const repository = path.resolve(path.dirname(await fs.realpath(fileURLToPath(import.meta.url))), '../..');
 const absolute = (value) => path.resolve(repository, value);
 const invariant = (condition, message) => { if (!condition) throw new Error(message); };
 const exists = async (file) => fs.lstat(file).then(() => true, (error) => {
@@ -191,7 +193,7 @@ export async function verifyPack(output, { runtime = true, expected } = {}) {
   return { manifest, candidate, gpu_validation: 'separate_real_compute_gate', distribution_status: candidate.distribution_status };
 }
 
-export async function bundleConfiguration(output, configFile, { expected } = {}) {
+export async function bundleConfiguration(output, configFile, { expected, verificationDirectory } = {}) {
   const verified = await verifyPack(output, { expected: expected ?? await locks() });
   const config = await readJson(absolute('apps/desktop/src-tauri/tauri.alignment.conf.json'));
   invariant(config.identifier === 'com.metorigin.splat.alignment-candidate'
@@ -200,7 +202,8 @@ export async function bundleConfiguration(output, configFile, { expected } = {})
     && config.mainBinaryName === 'MetOrigin Splat'
     && config.app.windows[0]?.title === 'MetOrigin Splat', 'Application display names differ');
   const filename = absolute(configFile);
-  invariant(filename.startsWith(`${absolute('target')}${path.sep}`), 'Generated configuration must stay under target');
+  const paths = await resolveWindowsPaths();
+  invariant(filename.startsWith(`${path.resolve(verificationDirectory ?? paths.verification)}${path.sep}`), 'Generated configuration must stay under the Windows verification directory');
   config.bundle.resources = Object.fromEntries(['engines', 'licenses', 'installer'].map((name) => [
     `${path.relative(absolute('apps/desktop/src-tauri'), path.resolve(output, name)).split(path.sep).join('/')}/`, `resources/${name}/`,
   ]));
@@ -260,15 +263,18 @@ async function findSingle(root, name) {
 }
 
 export async function preparePack({ output, cache, brush, sourceRepository, offline = false, recipe, expand } = {}) {
-  output = absolute(output ?? 'target/distribution/windows-x64-alignment');
-  cache = absolute(cache ?? '.engines/downloads');
-  brush = absolute(brush ?? 'target/windows-brush/runtime');
+  const defaults = [!output && 'alignmentRoot', !cache && 'engineDownloads', !brush && 'brushRuntime'].filter(Boolean);
+  if (defaults.length) await migrateWindowsLayout({ keys: defaults });
+  const paths = await resolveWindowsPaths();
+  output = absolute(output ?? paths.alignmentRoot);
+  cache = absolute(cache ?? paths.engineDownloads);
+  brush = absolute(brush ?? paths.brushRuntime);
   const expected = recipe ?? await locks();
-  const allowed = absolute('target/distribution');
-  invariant(output.startsWith(`${allowed}${path.sep}`), 'Candidate output must be below target/distribution');
+  invariant(output !== repository && !repository.startsWith(`${output}${path.sep}`), 'Candidate output must not contain the repository');
   await fs.mkdir(path.dirname(output), { recursive: true });
   const lockFile = `${output}.prepare.lock`;
   let handle;
+  let work;
   try { handle = await fs.open(lockFile, 'wx'); }
   catch (error) {
     if (error.code === 'EEXIST') {
@@ -287,11 +293,11 @@ export async function preparePack({ output, cache, brush, sourceRepository, offl
       return output;
     }
     if (!(await exists(path.join(brush, 'BUILD-INFO.json')))) {
-      run('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', absolute('scripts/windows/Build-BrushRuntime.ps1'), '-SourceRepository', absolute(sourceRepository ?? '../brush'), '-OutputDirectory', brush, ...(offline ? ['-Offline'] : [])], { timeout: 60 * 60 * 1000, stdio: 'inherit' });
+      run('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', absolute('scripts/windows/Build-BrushRuntime.ps1'), '-SourceRepository', absolute(sourceRepository ?? paths.brushSource), '-OutputDirectory', brush, ...(offline ? ['-Offline'] : [])], { timeout: 60 * 60 * 1000, stdio: 'inherit' });
     }
     const stage = `${output}.staging-${randomUUID()}`;
     const root = path.join(stage, 'engines');
-    const work = path.join(stage, '.work');
+    work = path.join(paths.packWork, `alignment-${randomUUID()}`);
     await fs.mkdir(work, { recursive: true });
     await fs.mkdir(cache, { recursive: true });
     await fs.mkdir(path.join(stage, 'licenses'), { recursive: true });
@@ -352,7 +358,7 @@ export async function preparePack({ output, cache, brush, sourceRepository, offl
     const notice = `Internal Windows alignment candidate ${expected.candidate.pack_version}\nFFmpeg GPLv3; COLMAP BSD; Brush Apache-2.0.\nLPIPS/VGG inference dependencies are excluded according to the frozen Brush recipe.\nWebView2 and MSVC runtime remain prerequisites.\nPublic distribution is blocked pending native macOS regression and complete dependency license review.\nSee engines/brush/BUILD-INFO.json and target-tree.txt for actual build provenance.\n`;
     await fs.writeFile(path.join(stage, 'licenses/THIRD_PARTY_NOTICES.md'), notice);
     // Only remove this invocation's verified staging work subtree.
-    const safeWork = child(await fs.realpath(stage), '.work');
+    const safeWork = child(await fs.realpath(paths.packWork), path.basename(work));
     invariant(await fs.realpath(work) === safeWork, 'Staging work directory changed identity');
     await fs.rm(safeWork, { recursive: true });
     await writeJson(path.join(stage, 'checksums.json'), await files(stage));
@@ -360,6 +366,11 @@ export async function preparePack({ output, cache, brush, sourceRepository, offl
     await publishDirectory(stage, output);
     return output;
   } finally {
+    if (work && await exists(work)) {
+      const safeWork = child(await fs.realpath(paths.packWork), path.basename(work));
+      invariant(await fs.realpath(work) === safeWork, 'Build scratch changed identity');
+      await fs.rm(safeWork, { recursive: true });
+    }
     await handle.close();
     await fs.unlink(lockFile);
   }
@@ -375,14 +386,15 @@ async function main(args) {
   }
   if (command === 'prepare') console.log(await preparePack({ ...options, sourceRepository: options.source }));
   else if (command === 'verify') {
-    const result = await verifyPack(absolute(options.output ?? 'target/distribution/windows-x64-alignment'), { runtime: !options['skip-runtime'], expected: await locks() });
+    const result = await verifyPack(absolute(options.output ?? (await resolveWindowsPaths()).alignmentRoot), { runtime: !options['skip-runtime'], expected: await locks() });
     console.log(JSON.stringify({ pack_version: result.manifest.pack_version, platform: result.manifest.platform,
       integrity: 'passed', runtime_contracts: options['skip-runtime'] ? 'not_run' : 'passed',
       gpu_validation: result.gpu_validation, distribution_status: result.distribution_status }, null, 2));
   }
-  else if (command === 'bundle-config') console.log(JSON.stringify(await bundleConfiguration(absolute(options.output ?? 'target/distribution/windows-x64-alignment'), options.config), null, 2));
+  else if (command === 'bundle-config') console.log(JSON.stringify(await bundleConfiguration(absolute(options.output ?? (await resolveWindowsPaths()).alignmentRoot), options.config), null, 2));
   else throw new Error('Expected prepare, verify or bundle-config');
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+const invokedPath = process.argv[1] ? await fs.realpath(process.argv[1]).catch(() => undefined) : undefined;
+if (invokedPath && path.relative(invokedPath, await fs.realpath(fileURLToPath(import.meta.url))) === '') {
   main(process.argv.slice(2)).catch((error) => { console.error(error.message); process.exitCode = 1; });
 }

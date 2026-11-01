@@ -11,13 +11,17 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 
 from pack_macos import collect_closure, copy_closure, run, safe_pack_path, sha256, verify_pack, write_json
-from pack_licenses import collect_ffmpeg_licenses, collect_licenses
+from pack_licenses import collect_ffmpeg_licenses, collect_licenses, deliver_rebuild_repository
 from pack_spdx import write_release_status, write_spdx
 from pack_brush_licenses import target_packages
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+from engine_paths import resolve_engine_paths
 
 
 BRUSH_SOURCE_EXCLUSIONS = {"crates/lpips/burn_mapped.bpk", "crates/lpips/apple.png", "crates/lpips/pear.png"}
@@ -86,34 +90,77 @@ def finalize_brush_audit(engine_root, metadata, source_identity):
     write_json(audit_path, audit)
     return audit
 
-def main():
+def deliver_packaging_recipes(repo_root: Path, engine_root: Path) -> dict:
+    """Keep flat source snapshots and publish the executable repository tree."""
+    flat = Path(engine_root) / "provenance/packaging"
+    flat.mkdir(parents=True, exist_ok=True)
+    for script in ("pack-engines.py", "pack_macos.py", "pack_licenses.py", "pack_sources.py",
+                   "pack_spdx.py", "pack_brush_licenses.py", "pack-brush-notices.py"):
+        shutil.copyfile(Path(repo_root) / "scripts/macos" / script, flat / script)
+    return deliver_rebuild_repository(repo_root, engine_root)
+
+
+def parse_arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     root = Path(__file__).resolve().parents[2]
     parser.add_argument("--repo-root", type=Path, default=root)
-    parser.add_argument("--output", type=Path, default=root / "target/distribution/macos-arm64/engines")
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--pack-version", default="0.1.0-alpha.1")
-    parser.add_argument("--colmap-install", type=Path, default=root / "target/macos-m4/colmap-install")
-    parser.add_argument("--colmap-build", type=Path, default=root / "target/macos-m4/colmap-build")
+    parser.add_argument("--colmap-install", type=Path)
+    parser.add_argument("--colmap-build", type=Path)
+    parser.add_argument("--colmap-source", type=Path)
+    parser.add_argument("--conda-prefix", type=Path)
+    parser.add_argument("--conda-cache", type=Path)
+    parser.add_argument("--ffmpeg-source", type=Path)
+    parser.add_argument("--ffmpeg-build", type=Path)
+    parser.add_argument("--ffmpeg-install", type=Path)
     parser.add_argument("--brush-artifact", type=Path, required=True, help="Immutable directory containing brush-cli and build-info.json")
-    parser.add_argument("--brush-source", type=Path, default=root / "target/macos-m4/brush")
+    parser.add_argument("--brush-source", type=Path)
     parser.add_argument("--brush-evidence", type=Path, help="Prepared Brush license/SBOM tree containing brush/licenses and brush/provenance")
     parser.add_argument("--source-cache", type=Path, help="Optional checksum-addressed source archive cache")
-    args = parser.parse_args()
+    return parser, parser.parse_args(argv)
+
+
+def resolve_pack_inputs(args):
+    """Resolve defaults after --repo-root, retaining explicit caller inputs."""
     repo = args.repo_root.resolve()
-    output = args.output.resolve()
+    paths = resolve_engine_paths(repo)
+    selected = {name: Path(getattr(args, name) or paths[key]).resolve() for name, key in {
+        "output": "distributionEngines", "colmap_install": "colmapAlphaInstallEvidence",
+        "colmap_build": "colmapAlphaBuildEvidence", "colmap_source": "colmapSource",
+        "conda_prefix": "colmapAlphaDependencyEvidence", "conda_cache": "condaPackageCache",
+        "ffmpeg_source": "ffmpegSource", "ffmpeg_build": "ffmpegBuildEvidence",
+        "ffmpeg_install": "ffmpegInstall",
+    }.items()}
+    selected["brush_artifact"] = args.brush_artifact.resolve()
+    if args.brush_source is not None:
+        selected["brush_source"] = args.brush_source.resolve()
+    else:
+        metadata = json.loads((selected["brush_artifact"] / "build-info.json").read_text())
+        profile = metadata.get("patch_id", "")
+        suffix = profile.removeprefix("metorigin-macos.") if profile.startswith("metorigin-macos.") else profile
+        if not suffix or "brushSource." + suffix not in paths:
+            raise ValueError("Brush artifact has no recognized source profile; supply --brush-source explicitly")
+        selected["brush_source"] = paths["brushSource." + suffix]
+    return repo, selected
+
+
+def main():
+    parser, args = parse_arguments()
+    repo, inputs = resolve_pack_inputs(args)
+    output = inputs["output"]
     if output.exists():
         parser.error("output already exists; choose a new output path to preserve existing evidence")
-    m0 = repo / "target/macos-m0"
     configs = {
-        "ffmpeg": {"executables": {"ffmpeg": m0 / "ffmpeg-install/bin/ffmpeg", "ffprobe": m0 / "ffmpeg-install/bin/ffprobe"},
-                   "roots": [m0 / "ffmpeg-install"], "source": m0 / "ffmpeg", "info": m0 / "ffmpeg-build/build-info.json",
+        "ffmpeg": {"executables": {"ffmpeg": inputs["ffmpeg_install"] / "bin/ffmpeg", "ffprobe": inputs["ffmpeg_install"] / "bin/ffprobe"},
+                   "roots": [inputs["ffmpeg_install"]], "source": inputs["ffmpeg_source"], "info": inputs["ffmpeg_build"] / "build-info.json",
                    "url": "https://github.com/FFmpeg/FFmpeg"},
-        "colmap": {"executables": {"colmap": args.colmap_install.resolve() / "bin/colmap"},
-                   "roots": [args.colmap_install.resolve(), m0 / "colmap-deps"], "source": m0 / "colmap",
-                   "info": args.colmap_build.resolve() / "build-info.json", "url": "https://github.com/colmap/colmap"},
-        "brush": {"executables": {"brush": args.brush_artifact.resolve() / "brush-cli"},
-                  "roots": [args.brush_artifact.resolve()], "source": args.brush_source.resolve(),
-                  "info": args.brush_artifact.resolve() / "build-info.json", "url": "https://github.com/ArthurBrussee/brush"},
+        "colmap": {"executables": {"colmap": inputs["colmap_install"] / "bin/colmap"},
+                   "roots": [inputs["colmap_install"], inputs["conda_prefix"]], "source": inputs["colmap_source"],
+                   "info": inputs["colmap_build"] / "build-info.json", "url": "https://github.com/colmap/colmap"},
+        "brush": {"executables": {"brush": inputs["brush_artifact"] / "brush-cli"},
+                  "roots": [inputs["brush_artifact"]], "source": inputs["brush_source"],
+                  "info": inputs["brush_artifact"] / "build-info.json", "url": "https://github.com/ArthurBrussee/brush"},
     }
     for config in configs.values():
         for origin in [*config["roots"], config["source"], config["info"].parent]:
@@ -130,7 +177,7 @@ def main():
         if expected and sha256(next(iter(config["executables"].values()))) != expected:
             raise ValueError("artifact binary disagrees with build-info: " + str(config["info"]))
     for entry in configs["ffmpeg"]["metadata"]["files"]:
-        if sha256(m0 / "ffmpeg-install" / entry["path"]) != entry["sha256"]:
+        if sha256(inputs["ffmpeg_install"] / entry["path"]) != entry["sha256"]:
             raise ValueError("FFmpeg artifact disagrees with build-info: " + entry["path"])
     brush_info = configs["brush"]["metadata"]
     if sha256(configs["brush"]["source"] / "Cargo.lock") != brush_info["cargo_lock_sha256"]:
@@ -144,10 +191,9 @@ def main():
         targets = copy_closure(stage / engine, config["executables"], config["graph"], config["edges"], runtime_fields)
         config["targets"] = targets
         provenance = stage / engine / "provenance"
-        provenance.mkdir(parents=True, exist_ok=True)
-        (provenance / "packaging").mkdir()
-        for script in ("pack-engines.py", "pack_macos.py", "pack_licenses.py", "pack_sources.py", "pack_spdx.py", "pack_brush_licenses.py", "pack-brush-notices.py"):
-            shutil.copyfile(repo / "scripts/macos" / script, provenance / "packaging" / script)
+        # Every producer, including Brush, delivers executable recipes separately
+        # from the retained flat source/evidence snapshots above.
+        deliver_packaging_recipes(repo, stage / engine)
         if runtime_fields:
             write_json(provenance / "packaging/runtime-prefix-fields.json", runtime_fields)
         shutil.copyfile(config["info"], provenance / "original-build-info.json")
@@ -183,8 +229,11 @@ def main():
             "executables": {name: str(targets[path.resolve()].relative_to(stage)) for name, path in config["executables"].items()},
             "source_url": config["url"] + "/tree/" + metadata["source_commit"], "source_sha256": source["sha256"],
             "files": [], "license_files": []}
-    audit = collect_licenses(repo, list(configs["colmap"]["graph"]), stage, colmap_build=args.colmap_build)
-    ffmpeg_audit = collect_ffmpeg_licenses(repo, stage)
+    audit = collect_licenses(repo, list(configs["colmap"]["graph"]), stage,
+                             colmap_build=inputs["colmap_build"], colmap_source=inputs["colmap_source"],
+                             conda_prefix=inputs["conda_prefix"], conda_cache=inputs["conda_cache"])
+    ffmpeg_audit = collect_ffmpeg_licenses(repo, stage, ffmpeg_build=inputs["ffmpeg_build"],
+                                          ffmpeg_source=inputs["ffmpeg_source"], ffmpeg_install=inputs["ffmpeg_install"])
     # The complete local source archive and build instructions have now been delivered.
     ffmpeg_audit["corresponding_source_status"] = "source.tar_and_build_materials_delivered"
     ffmpeg_audit["issues"] = []

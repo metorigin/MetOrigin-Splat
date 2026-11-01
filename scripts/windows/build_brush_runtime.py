@@ -18,6 +18,14 @@ import urllib.request
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'scripts/shared'))
+from engine_paths import resolve_engine_paths
+
+
+def runtime_paths():
+    return resolve_engine_paths(ROOT, 'windows-x64')
+
+
 LOCK = ROOT / 'integrations/brush-windows/source-lock.json'
 DIFF = ['diff', '--no-ext-diff', '--no-textconv', '--binary', '--no-renames',
         '--src-prefix=a/', '--dst-prefix=b/', '--unified=3', 'HEAD']
@@ -123,9 +131,22 @@ def prepare_source(source_repo, source, lock):
         raise ValueError('Isolated Brush source differs from the two ordered frozen patches')
 
 
+def prepare_source_repository(source_repo, lock, offline):
+    """Populate only the configured disposable upstream cache, never a caller's repository."""
+    if source_repo.exists():
+        return
+    if source_repo.resolve() != runtime_paths()['brushSource'].resolve():
+        raise ValueError('Explicit Brush source repository does not exist: ' + str(source_repo))
+    if offline:
+        raise ValueError('Offline build requires the pinned Brush source cache: ' + str(source_repo))
+    source_repo.parent.mkdir(parents=True, exist_ok=True)
+    run(['git', 'clone', '--no-checkout', lock['source_repository'], source_repo])
+    run(['git', '-C', source_repo, 'cat-file', '-e', lock['source_commit'] + '^{commit}'])
+
+
 def prepare_dxc(lock, offline):
     compiler = lock['dxc']
-    archive = ROOT / 'target/windows-brush/downloads' / compiler['archive_name']
+    archive = runtime_paths()['brushDxcDownloads'] / compiler['archive_name']
     if not archive.exists():
         if offline:
             raise ValueError('Offline build requires the pinned DXC archive: ' + str(archive))
@@ -157,12 +178,15 @@ def build(source_repo, output, offline=False, verify_only=False):
         return
     if verify_only:
         raise ValueError('No verified Windows Brush runtime exists at the requested output')
+    prepare_source_repository(source_repo, lock, offline)
     compiler_files = prepare_dxc(lock, offline)
-    build_root = ROOT / 'target/windows-brush' / key
+    paths = runtime_paths()
+    build_root = paths['brushRuntimeBuild'] / key
     build_root.mkdir(parents=True, exist_ok=True)
-    source = build_root / 'source'
+    source = paths['brushRuntimeSources'] / key
+    source.parent.mkdir(parents=True, exist_ok=True)
     cargo = ['cargo', '+' + lock['rust_version']]
-    cargo_target = ROOT / 'target/windows-brush/cargo'
+    cargo_target = Path(os.environ['CARGO_TARGET_DIR']).resolve() if os.environ.get('CARGO_TARGET_DIR') else paths['brushRuntimeBuild'] / 'cargo'
     common = ['--locked', '--manifest-path', source / 'Cargo.toml', '-p', 'brush-cli', '--target', lock['target']]
     if offline:
         common.append('--offline')
@@ -223,8 +247,8 @@ def build(source_repo, output, offline=False, verify_only=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--source-repository', type=Path, default=ROOT.parent / 'brush')
-    parser.add_argument('--output', type=Path, default=ROOT / 'target/windows-brush/runtime')
+    parser.add_argument('--source-repository', type=Path, default=runtime_paths()['brushSource'])
+    parser.add_argument('--output', type=Path, default=runtime_paths()['brushRuntime'])
     parser.add_argument('--offline', action='store_true')
     parser.add_argument('--verify', action='store_true')
     args = parser.parse_args()

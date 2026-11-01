@@ -4,18 +4,19 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import process from "node:process";
+import { createTestingOutput, parseTestingOutputArguments } from "../shared/testing-output.mjs";
 
 const projectPath = process.env.METORIGIN_TEST_PROJECT_PATH;
 const videoPath = process.env.METORIGIN_TEST_VIDEO;
-const reportDirectory = process.env.METORIGIN_NATIVE_REPORT_DIR;
+const outputArguments = parseTestingOutputArguments();
 const expectedSourceHash = process.env.METORIGIN_EXPECTED_SOURCE_SHA256?.toUpperCase() ?? null;
 const debugPort = Number(process.env.METORIGIN_TAURI_DEBUG_PORT ?? "9231");
 const pollIntervalMs = 100;
 const failureTimeoutMs = Number(process.env.METORIGIN_FAILURE_TIMEOUT_MS ?? String(2 * 60 * 1_000));
 const recoveryTimeoutMs = Number(process.env.METORIGIN_RECOVERY_TIMEOUT_MS ?? String(10 * 60 * 1_000));
 
-if (!projectPath || !videoPath || !reportDirectory) {
-  throw new Error("METORIGIN_TEST_PROJECT_PATH, METORIGIN_TEST_VIDEO, and report directory are required.");
+if (!projectPath || !videoPath) {
+  throw new Error("METORIGIN_TEST_PROJECT_PATH and METORIGIN_TEST_VIDEO are required.");
 }
 if (!existsSync(projectPath) || !existsSync(videoPath)) {
   throw new Error("The configured test project or source video does not exist.");
@@ -26,7 +27,6 @@ if (!Number.isInteger(debugPort) || debugPort < 1 || debugPort > 65535) {
 
 const resolvedProject = resolve(projectPath);
 const resolvedVideo = resolve(videoPath);
-const resolvedReportDirectory = resolve(reportDirectory);
 
 class CdpClient {
   constructor(url) {
@@ -419,9 +419,17 @@ async function main() {
   }
 }
 
+const testingOutput = await createTestingOutput({ tool: "native-tauri-failure-recovery", platform: "windows-x64", ...outputArguments,
+  reportRoot: outputArguments.reportRoot ?? process.env.METORIGIN_NATIVE_REPORT_DIR });
+const resolvedReportDirectory = testingOutput.reportDirectory;
+let successful = false;
 try {
   await main();
+  successful = true;
 } catch (error) {
   process.stderr.write(`Native failure recovery validation failed: ${sanitize(error?.message ?? error)}\n`);
   process.exitCode = 1;
+} finally {
+  const published = testingOutput.finish({ success: successful });
+  process.stdout.write(`Report: ${published.reportDirectory}\n`);
 }

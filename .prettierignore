@@ -10,9 +10,13 @@ pnpm-lock.yaml
 target/
 /target-*/
 .codex-cargo-target/
+.cache/
 .engines/
 .artifacts/
 artifacts/
 .test-results/
 apps/desktop/src-tauri/gen/schemas/
 *.splat-project/
+
+# Local unreviewed design working files
+design/local/

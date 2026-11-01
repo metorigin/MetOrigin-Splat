@@ -15,6 +15,14 @@ const viteRequire = createRequire(require.resolve('../../../apps/desktop/node_mo
 const parse = viteRequire('postcss').parse;
 const theme = JSON.parse(await readFile(join(root, 'integrations/jan/theme.json'), 'utf8'));
 
+async function copyCacheInputs(destination) {
+  for (const name of ['scripts/shared/cache-paths.mjs', 'packaging/shared/cache-paths.json']) {
+    const path = join(destination, name);
+    await mkdir(dirname(path), { recursive: true });
+    await cp(join(root, name), path);
+  }
+}
+
 async function presentationMigration() {
   const ts = require('../../../apps/desktop/node_modules/typescript');
   const source = await readFile(join(integration, 'ui-theme/presentation.ts'), 'utf8');
@@ -160,6 +168,7 @@ test('3.10.2 loader and fixed evidence profile changes invalidate the preparatio
   for (const name of ['prepare.mjs', 'source-checkout.mjs', 'prepared-assets.mjs', 'webp-overlay.mjs', 'webp-evidence.mjs', 'ui-theme']) {
     await cp(join(integration, name), join(local, name), { recursive: true });
   }
+  await copyCacheInputs(temporary);
   for (const input of (await themeInputs(integration)).filter((entry) => !entry.path.startsWith('integrations/supersplat/'))) {
     const path = join(temporary, input.path);
     await mkdir(dirname(path), { recursive: true });
@@ -191,6 +200,7 @@ test('all theme, paint, font and helper inputs change the preparation identity; 
   for (const name of ['prepare.mjs', 'source-checkout.mjs', 'prepared-assets.mjs', 'webp-overlay.mjs', 'webp-evidence.mjs', 'ui-theme']) {
     await cp(join(integration, name), join(local, name), { recursive: true });
   }
+  await copyCacheInputs(temporary);
   const inputs = await themeInputs(integration);
   for (const input of inputs.filter((entry) => !entry.path.startsWith('integrations/supersplat/'))) {
     const path = join(temporary, input.path);
@@ -202,11 +212,19 @@ test('all theme, paint, font and helper inputs change the preparation identity; 
   const baseline = await signature();
   for (const path of ['integrations/jan/theme.json', 'integrations/supersplat/source-checkout.mjs', 'integrations/supersplat/ui-theme/runtime.ts',
     'integrations/supersplat/ui-theme/controls.css', 'integrations/supersplat/ui-theme/apply.mjs',
+    'scripts/shared/cache-paths.mjs', 'packaging/shared/cache-paths.json',
     'apps/desktop/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2']) {
     const original = await readFile(join(temporary, path));
     await writeFile(join(temporary, path), Buffer.concat([original, Buffer.from('\nchanged')]));
     assert.notEqual(await signature(), baseline, path);
     await writeFile(join(temporary, path), original);
+  }
+  for (const name of ['scripts/shared/cache-paths.mjs', 'packaging/shared/cache-paths.json']) {
+    const path = join(temporary, name);
+    const original = await readFile(path);
+    await rm(path);
+    await assert.rejects(signature(), (error) => error.code === 'ENOENT' && error.path === path);
+    await writeFile(path, original);
   }
   await rm(join(local, 'ui-theme/controls.css'));
   // The manifest must explicitly require the adapter; removing it cannot silently

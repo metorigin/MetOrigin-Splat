@@ -20,6 +20,12 @@ On 2026-10-30, local macOS validation with Node 26.13.0 / pnpm 11.12.0 passed li
 
 The experimental macOS route uses Apple Silicon, Xcode command-line tools, the same application Rust/Node/pnpm versions, and native arm64 engines. Brush's isolated source build pins its own Rust toolchain. Follow [macOS build recipes](../scripts/macos/README.md) and [engine packaging](../packaging/macos-arm64/README.md); stock Windows binaries cannot be reused. The selected deployment target is 15.0, but acceptance on macOS 15 and 16 GB hardware is still open.
 
+Mac runtime and native-source paths are defined in [`engine-paths.json`](../packaging/shared/engine-paths.json). Debug startup uses `.engines/macos-arm64/development/` (FFmpeg 8.1.2, COLMAP 4.1.0 and Brush `metorigin-macos.5`); the full package uses the separately frozen Alpha `.6` pack under `.engines/macos-arm64/distribution/`. Explicit development environment overrides retain priority; mapping a saved path to the same verified pack preserves its engine identity. See [engine resolution and canonical paths](engine-integration.md#macos-runtime-and-source-layout-2026-11-01).
+
+Mac engines are read directly from their canonical `.engines/macos-arm64/` locations. Development/build preparation does not create `target/macos-m0` or `target/distribution/macos-arm64`; `cargo clean` removes compiled outputs without removing or recreating runtime engines. Preparation migrates saved distribution paths only after verifying that the canonical pack has the same identity; unrelated custom settings are preserved.
+
+Development COLMAP dependencies use the canonical `.engines/macos-arm64/development/colmap-deps/` prefix, installed by Conda from the pinned 171-package lock. Rebuild COLMAP 4.1.0 in the fresh native cache against this prefix, keeping the development profile with CGAL, LSD, MVS and downloads enabled; see the [current native commands](../scripts/macos/README.md#当前路径入口2026-11-01). The original dependency environment and development install are retained under `.engines/macos-arm64/archive/colmap/` for historical audit inputs. A new development build has its own hash and validation record; it does not inherit the original binary's evidence or make the environment portable.
+
 After preparing engines, a development app can be built with:
 
 ```sh
@@ -49,7 +55,7 @@ pnpm prepare:windows:engines
 pnpm verify:windows:engines
 ```
 
-The generated engine directory is `target/distribution/windows-x64/engines`; select that directory in Settings & Engines for local use. The downloaded archives remain in `.engines/downloads`. The pack preparation also builds the Brush live-preview companion.
+The generated engine directory is `.engines/windows-x64/distribution/engines`; select that directory in Settings & Engines for local use. Downloaded archives use `.cache/metorigin/downloads/engines/windows-x64/`. The pack preparation also builds the Brush live-preview companion.
 
 To build that companion separately for an existing Brush installation:
 
@@ -59,13 +65,15 @@ pnpm build:brush:live
 pnpm build:brush:live -Offline
 ```
 
-The default output is `.engines/brush-v0.3.0-windows-x64/brush_live.exe`. Use `-OutputDirectory` to place it beside another configured `brush_app.exe`. This builds the companion only, not the complete stock engine pack.
+The default output is `.engines/windows-x64/development/brush-v0.3.0/brush_live.exe`. Use `-OutputDirectory` to place it beside another configured `brush_app.exe`. This builds the companion only, not the complete stock engine pack.
 
 ## Routine checks
 
 ### Bundled SuperSplat editor
 
-The integrated editor is pinned to official SuperSplat 3.7.0, with splat-transform 3.10.2 and its matching derived WebP codec. The desktop `predev` and `prebuild` scripts run `integrations/supersplat/prepare.mjs`. On the first run this fetches the commit in `integrations/supersplat/upstream.json`, installs its exact npm lockfile, adds the local import/export bridge, and builds the editor into ignored `apps/desktop/public/supersplat/`. Source and dependency caches live under `target/supersplat-*`. Later runs reuse assets when the pinned revision and bridge/build script are unchanged. Use `pnpm prepare:supersplat` to prepare them explicitly. Git and npm are required for preparation; installed applications load these bundled assets without a development server or runtime package installation. If Node's installation has no adjacent npm CLI, set `METORIGIN_NPM_CLI` to `npm-cli.js`.
+The integrated editor is pinned to official SuperSplat 3.7.0, with splat-transform 3.10.2 and its matching derived WebP codec. The desktop `predev` and `prebuild` scripts run `integrations/supersplat/prepare.mjs`. On the first run this fetches the commit in `integrations/supersplat/upstream.json`, installs its exact npm lockfile, adds the local import/export bridge, and builds the editor into ignored `apps/desktop/public/supersplat/`. The source checkout lives at `.cache/metorigin/sources/supersplat/upstream/`, and npm uses `.cache/metorigin/downloads/npm/supersplat/`; both paths come from [`cache-paths.json`](../packaging/shared/cache-paths.json) through [`cache-paths.mjs`](../scripts/shared/cache-paths.mjs). Later runs reuse assets when the pinned revision and bridge/build script are unchanged. Use `pnpm prepare:supersplat` to prepare them explicitly. Git and npm are required for preparation; installed applications load these bundled assets without a development server or runtime package installation. If Node's installation has no adjacent npm CLI, set `METORIGIN_NPM_CLI` to `npm-cli.js`.
+
+Preparation creates the new cache directories as needed and does not fall back to the old `target/supersplat-source/` or `target/supersplat-npm-cache/` locations. When migrating an existing cache, verify the copied checkout and prepared assets at the new locations before removing the old copies; do not substitute directory links. This layout change updates the preparation signature. Before the next macOS package build, archive and regenerate application-license evidence using the [packaging guide](macos-packaging.zh-CN.md). Its current default is `artifacts/licenses/macos-arm64/current/`.
 
 The editor occupies the main workspace in a same-origin iframe and retains the project sidebar. Completed projects expose an Edit button in the workspace title bar. While editing, the project title/run bar is hidden; Back and Save share the editor toolbar. Back restores the preview and reports. Navigation checks unsaved changes and is blocked during saving. Binary saves carry an exact session ID so stale requests cannot write into a later project's session. Saves are serialized, validated and synced before replacing `output/scene.ply` by a same-directory rename. The session revision advances after each save; no history is created or listed. The bridge accepts only messages from its parent and exposes a bounded import/export protocol. Upstream license and bundled dependency notices are included under `supersplat/`, together with source maps.
 
@@ -75,7 +83,7 @@ Native verification uses an isolated copy of an existing trained model. Start a 
 node scripts/windows/Validate-ModelEditor.mjs <completed-project-path>
 ```
 
-This checks WebGPU import, workspace layout and consistent action dimensions, deletion of a subset, cancelled navigation, repeated in-place saves, failure preservation, absence of generated history, preview updates and reopening the saved PLY. It substitutes the folder picker and confirmation responses to avoid unattended OS dialogs. The isolated project is temporarily added to the recent index and removed in cleanup. Evidence and copied models are written under ignored `target/editor-evidence/`. `METORIGIN_TAURI_DEBUG_PORT` overrides the test port.
+This checks WebGPU import, workspace layout and consistent action dimensions, deletion of a subset, cancelled navigation, repeated in-place saves, failure preservation, absence of generated history, preview updates and reopening the saved PLY. It substitutes the folder picker and confirmation responses to avoid unattended OS dialogs. The isolated project is temporarily added to the recent index and removed in cleanup. Copied models use a temporary workspace; reports are published under `artifacts/verification/windows-x64/tests/model-editor/current/` or `failed/`. Failure or explicit `--keep` retains debug data with that result. `METORIGIN_TAURI_DEBUG_PORT` overrides the test port.
 
 ### Application checks
 
@@ -93,7 +101,7 @@ cargo test --workspace --all-targets
 
 Frontend tests live beside the components and pages they exercise; Rust tests live in their crates. Linux core-only CI excludes `splat-desktop`; macOS arm64 baseline CI includes the desktop crate and an app build. This baseline does not establish Metal GPU or native UI acceptance. JSON Schemas and fixtures are validated by the commands in [ci.yml](../.github/workflows/ci.yml).
 
-`pnpm test:ux:automated` builds the frontend and uses a local headless Edge session with synthetic IPC data. It covers interaction/layout checks and writes ignored evidence under `.test-results/ux-automation/`. It does not exercise real media, engines, native file dialogs or Windows sleep/resume.
+`pnpm test:ux:automated` builds the frontend and uses a local headless Edge session with synthetic IPC data. It covers interaction/layout checks and publishes reports under `artifacts/verification/<host-platform>/tests/ux-automation/current/` or `failed/`, cleaning its temporary workspace. It does not exercise real media, engines, native file dialogs or Windows sleep/resume.
 
 The Windows CI gate also runs:
 
@@ -122,18 +130,97 @@ The [2026-07-13 engine baseline](validation/engine-baseline.md) records one hist
 
 For native Gaussian rendering and a separate training run, follow [the live-preview validation procedure](gaussian-live-preview.zh-CN.md). `pnpm test:tauri:native-fast` and `pnpm test:tauri:native-failure-recovery` provide additional opt-in native scenarios. Their setup variables and behavior are documented in [Run-NativeTauriFastValidation.mjs](../scripts/windows/Run-NativeTauriFastValidation.mjs) and [Run-NativeTauriFailureRecoveryValidation.mjs](../scripts/windows/Run-NativeTauriFailureRecoveryValidation.mjs). The latter intentionally terminates its own test engine process and requires an isolated project with valid checkpoints.
 
-Keep raw screenshots, logs, generated models, browser profiles and native reports in `.test-results/` or `.artifacts/`. Record sanitized, dated outcomes only when retaining evidence is useful. Historical [acceptance protocols](../specs/README.md) remain available for broader release verification.
+Keep retained reports, screenshots and logs under `artifacts/verification/<platform>/`; test models and browser profiles are temporary work data unless explicitly retained for diagnosis. Record sanitized, dated outcomes only when retaining evidence is useful. Historical [acceptance protocols](../specs/README.md) remain available for broader release verification.
+
+## Generated files and cleanup
+
+Native build, engine, validation and packaging data use four roots. Scripts resolve them through the shared configuration under `packaging/shared/`; do not create another output root for each test or packaging run.
+
+| Root | Role and cleanup boundary |
+| --- | --- |
+| `target/` | Cargo compilation and Tauri bundle intermediates; rebuildable with the toolchain and inputs available |
+| `.cache/metorigin/` | Reusable downloads, source checkouts, native build caches and local tools; source checkouts with local changes or untracked work require review before removal |
+| `.engines/` | Prepared development, alignment and frozen distribution engines; keep the selected pack with its intrinsic notices and provenance |
+| `artifacts/` | Delivered packages, formal verification reports and license collections; prune by recorded references and retention rules |
+
+```text
+target/
+  aarch64-apple-darwin/
+  windows-release-build/
+  windows-alignment-release-build/
+.cache/metorigin/
+  downloads/
+  sources/
+  build/
+  tools/macos-arm64/
+.engines/
+  macos-arm64/{development,distribution,archive}/
+  windows-x64/{development,distribution,alignment}/
+artifacts/
+  packages/{macos-arm64,windows-x64}/
+  verification/{macos-arm64,windows-x64}/
+  licenses/{macos-arm64,windows-x64}/
+```
+
+Ordinary tests use an automatically cleaned system-temporary workspace. Their retained reports use `artifacts/verification/<platform>/tests/<tool>/current/` for success and `failed/` for failure; a later success does not erase the latest failure. The shared options are `--keep` or `METORIGIN_KEEP_TEST_OUTPUT=1` to retain debug work data, and `--report <tool-root>` to select a report root under `artifacts/verification/`. Native scenarios also accept `METORIGIN_NATIVE_REPORT_DIR` as that tool root. Failures retain debug data automatically under the selected result's `debug/` directory. Explicit caller project paths are never cleanup targets. Native validation that deliberately retains a dataset must say so in its report; it must not silently add another permanent test directory.
+
+Current tool names are `ux-automation`, `gaussian-preview`, `model-editor`, `native-tauri-fast`, `native-tauri-failure-recovery` and `ui-sources`. Repeated ordinary runs update the relevant success or failure slot instead of accumulating permanent timestamped workspaces.
+
+Package retention keeps the latest registered package run per platform with its referenced verification and license evidence. Ordinary unreferenced test results keep the latest success and latest failure per tool; an unresolved failure, release baseline or explicit pin remains protected. Historical audit-manifest references also protect their inputs. Age alone is not permission to delete a referenced receipt or a modified source checkout.
+
+The retention `apply` command previews changes by default; `--apply` performs the reviewed cleanup:
+
+```sh
+node scripts/shared/artifact-retention.mjs apply --platform macos-arm64
+node scripts/shared/artifact-retention.mjs apply --platform macos-arm64 --apply
+```
+
+Use `--platform windows-x64` for Windows. Package producers register a successful final report, delivered package file or owned directory, and optional license collection with `record`, which applies package retention automatically. Explicit release baselines can be protected or released with `pin` and `unpin`:
+
+```sh
+node scripts/shared/artifact-retention.mjs record --platform macos-arm64 \
+  --report artifacts/verification/macos-arm64/build.EXAMPLE/final.json \
+  --package artifacts/packages/macos-arm64/EXAMPLE.dmg \
+  --license-root artifacts/licenses/macos-arm64/current
+node scripts/shared/artifact-retention.mjs pin --platform macos-arm64 \
+  --report artifacts/verification/macos-arm64/build.EXAMPLE/final.json
+node scripts/shared/artifact-retention.mjs unpin --platform macos-arm64 \
+  --report artifacts/verification/macos-arm64/build.EXAMPLE/final.json
+```
+
+Replace the example paths with an actual successful build; `pin` and `unpin` require a registered report. These commands do not run a build or prove acceptance. Package pruning preserves independent current and historical license collections, including audit-manifest inputs; it does not blindly remove their root. It does not target source, user projects, engines, toolchains or dirty source caches. Local Figma working files belong under ignored `design/local/figma-redesign/`, and local Rust/Corepack tools under `.cache/metorigin/tools/macos-arm64/`; they are not disposable test output.
+
+Obsolete test payloads, imported Brush M0–M4 build caches and duplicate distribution packs are removed after retaining compact build identities, migration receipts and license originals. The local cleanup receipt and compressed records are under `artifacts/verification/macos-arm64/cleanup-current/`. Historical path mappings remain as a trace; `artifacts:resolve` returns `exists: false` for payloads that have been pruned. Current engines, current license collections and the latest delivered package with its verification report are retained independently.
+
+## macOS build outputs
+
+macOS DMGs, package-verification reports and application-license evidence share a layout defined in [`packaging/shared/artifact-paths.json`](../packaging/shared/artifact-paths.json) and resolved by [`scripts/shared/artifact-paths.mjs`](../scripts/shared/artifact-paths.mjs). Stable engine paths come from [`engine-paths.json`](../packaging/shared/engine-paths.json). The current defaults are:
+
+| Output | Path |
+| --- | --- |
+| Compiled release application | `target/aarch64-apple-darwin/release/bundle/macos/MetOrigin Splat.app` |
+| New release or debug DMG | `artifacts/packages/macos-arm64/` |
+| New build reports and preflight logs | `artifacts/verification/macos-arm64/build.XXXXXX/` |
+| Last successful selected build report | `artifacts/verification/macos-arm64/latest.json` |
+| Current application-license evidence | `artifacts/licenses/macos-arm64/current/` |
+| Archived application-license evidence | `artifacts/licenses/macos-arm64/archive/` |
+| Mac development engines | `.engines/macos-arm64/development/` |
+| Frozen full-package engine input | `.engines/macos-arm64/distribution/` |
+
+Run `bash scripts/macos/build-macos-app.sh --internal-alpha`; see the [macOS packaging guide (中文)](macos-packaging.zh-CN.md) for inputs and options. The compiled debug application remains under `target/aarch64-apple-darwin/debug/`. A failed build does not replace `latest.json`; `--app-only` can update it without a DMG.
+
+SuperSplat and native-engine sources/downloads use `.cache/metorigin/`; stable Mac development and distribution engines use `.engines/macos-arm64/`. Imported native build trees are retained under `.cache/metorigin/build/engines/macos-arm64/imported/` as historical records. Fresh native builds use the separate `native/` tree and do not resume those path-bound caches. No target compatibility aliases are prepared; Mac runtime engines are read directly from the canonical `.engines/` paths. The collector refuses to overwrite current application-license evidence; archive it before recollecting when its inputs change. The builder generates its Tauri resource configuration from the shared paths and still embeds the evidence as `resources/app-licenses/`. Historical evidence contents and their recorded paths remain unchanged; the local [migration map](../artifacts/licenses/macos-arm64/migration-map.json) records relocated license directories. Historical receipt contents and original path fields remain unchanged when archived; migration records identify their current locations. Design sources belong under `design/`, while local toolchains belong under `.cache/metorigin/tools/`.
 
 ## Windows build outputs
 
 | Command | Result |
 | --- | --- |
 | `pnpm build` | Frontend production assets in `apps/desktop/dist/` |
-| `pnpm build:windows:release` | Application executable, checksum and metadata in `artifacts/windows/app/` |
-| `pnpm prepare:windows:engines` | Engine/license staging tree in `target/distribution/windows-x64/` |
-| `pnpm package:windows:full` | Internal NSIS installer, checksum and metadata in `artifacts/windows/installer/` |
+| `pnpm build:windows:release` | Application executable and delivery files in `artifacts/packages/windows-x64/build.<stamp>/` |
+| `pnpm prepare:windows:engines` | Engine/license staging tree in `.engines/windows-x64/distribution/` |
+| `pnpm package:windows:full` | Internal NSIS installer and delivery files in `artifacts/packages/windows-x64/build.<stamp>/` |
 
-The release application build uses `target/windows-release-build` as an isolated Cargo cache. Do not distribute executables directly from a Cargo cache. The standalone app build and the full engine installer are separate operations; public binary distribution remains subject to [release gates](release-process.md).
+Windows build reports use `artifacts/verification/windows-x64/build.<stamp>/final.json`; `latest.json` selects the most recent successful package report. The release application build uses `target/windows-release-build` as an isolated Cargo cache. Do not distribute executables directly from a Cargo cache. The standalone app build and the full engine installer are separate operations; public binary distribution remains subject to [release gates](release-process.md).
 
 ## What belongs in Git
 
@@ -143,8 +230,8 @@ The pinned WebP dependency under `integrations/supersplat/webp-overlay-3.10.2/` 
 
 Do not commit:
 
-- Cargo targets (`target/`, root `target-*/`, `.codex-cargo-target/`), frontend output or dependency caches.
-- `.engines/`, `artifacts/`, `.artifacts/`, `.test-results/`, coverage or raw logs.
+- `target/`, `.cache/metorigin/`, `.engines/`, `artifacts/`, frontend output, dependency caches, coverage or raw logs.
+- Local design drafts under `design/local/`.
 - User project directories (ordinary names or legacy `.splat-project`), source media, generated PLY/checkpoints or private datasets.
 - Local environment files, credentials, signing keys or personal editor settings.
 
@@ -160,3 +247,5 @@ git diff --cached --stat
 ```
 
 Keep persisted state atomic, external execution inside adapters/`splat-process`, and frontend IPC behind the service layer. See [architecture](architecture.md), [CONTRIBUTING.md](../CONTRIBUTING.md) and [SECURITY.md](../SECURITY.md).
+
+Historical local paths can be located with `pnpm artifacts:resolve -- <old-path>`. Immutable receipts keep their original text; the local migration index resolves their current location. Package retention also protects runs referenced by the current `latest*.json` selectors, in addition to explicitly pinned runs.

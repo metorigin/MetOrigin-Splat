@@ -5,9 +5,9 @@
       "app"
     ],
     "resources": {
-      "../../../target/distribution/macos-arm64/engines/": "resources/engines/",
-      "../../../target/distribution/macos-arm64/release-status.json": "resources/release-status.json",
-      "../../../target/macos-m4/app-license-evidence/licenses/": "resources/app-licenses/"
+      "../../../.engines/macos-arm64/distribution/engines/": "resources/engines/",
+      "../../../.engines/macos-arm64/distribution/release-status.json": "resources/release-status.json",
+      "../../../artifacts/licenses/macos-arm64/current/": "resources/app-licenses/"
     },
     "macOS": {
       "minimumSystemVersion": "15.0"

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { overlayIdentity, preparationSignature, verifyPreparedAssets } from '../../integrations/supersplat/prepared-assets.mjs';
 import { verifyWebpBuildEvidence } from '../../integrations/supersplat/webp-evidence.mjs';
 import { sourceGitEnvironment } from '../../integrations/supersplat/source-checkout.mjs';
+import { resolveCachePaths } from './cache-paths.mjs';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 export const CURRENT_SUPERSPLAT = Object.freeze({
@@ -67,7 +68,7 @@ export function bundledSupersplatPackages(map, moduleBytes) {
 /** Current build only. Historical 3.4.2 evidence stays in its original profile. */
 export async function currentSupersplatEvidenceInputs(root) {
   const integration = join(root, 'integrations/supersplat');
-  const source = join(root, 'target/supersplat-source/upstream');
+  const { supersplatSource: source } = resolveCachePaths({ repositoryRoot: root });
   const publicRoot = join(root, 'apps/desktop/public/supersplat');
   const overlayRoot = join(integration, CURRENT_OVERLAY_DIRECTORY);
   const { loadWebpOverlay, verifyWebpOverlayInstalled } = await import('../../integrations/supersplat/webp-overlay-3.10.2/overlay.mjs');

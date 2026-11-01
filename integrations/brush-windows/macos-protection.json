@@ -1,11 +1,15 @@
 {
   "schema_version": 1,
   "baseline_commit": "69a699044b498ef0f3748807571ed13b7fdbd042",
-  "scope": "Frozen macOS recipes, engine inputs and configuration. Shared Rust behavior is protected by tests, not these file hashes. Native Mac acceptance is separate.",
+  "scope": "Frozen macOS recipes, engine inputs and configuration. Shared Rust behavior is protected by tests, not these file hashes. Native Mac acceptance is separate. The baseline_commit identifies the original freeze; dated amendments record approved changes reflected in the current file hashes.",
   "files": [
     {
       "path": "apps/desktop/src-tauri/tauri.macos.conf.json",
       "sha256": "72353719959d2225fbd57faa1e29742707fc4ae851382c5e7467d23fe59a6156"
+    },
+    {
+      "path": "apps/desktop/src-tauri/tauri.macos.full.conf.json",
+      "sha256": "2f3d6636c671ee734ec61520bbb675e6399d00789dd4fe2fad6b0f0b04920702"
     },
     {
       "path": "integrations/brush-macos/LPIPS-AUDIT.md",
@@ -41,7 +45,11 @@
     },
     {
       "path": "packaging/macos-arm64/README.md",
-      "sha256": "53b117bbbcd3f6e16ee1658835f05fd9230cc28028c160c78ee5d400817a24b1"
+      "sha256": "ce6997ba9e5b063a79bfad71e9e59e3a41685ed08eea269b11ef0a30876b0911"
+    },
+    {
+      "path": "packaging/macos-arm64/REBUILD.md",
+      "sha256": "951cf46de3634d878ac14956e734c7becae803765a2a4b67d45bed5724766541"
     },
     {
       "path": "packaging/macos-arm64/alpha-source-index.json",
@@ -156,6 +164,18 @@
       "sha256": "d571b708df93048f66453dbf7514a710fb0c49c260b7896e262b8c0184411c47"
     },
     {
+      "path": "packaging/shared/artifact-paths.json",
+      "sha256": "330b2052024527af75635a392db1d7ea2220d429a4d46cd4d3191e4e061b62fe"
+    },
+    {
+      "path": "packaging/shared/cache-paths.json",
+      "sha256": "f17617440b57076292613b4886c3dc54bd20f6ba558da40834752eecbf296238"
+    },
+    {
+      "path": "packaging/shared/engine-paths.json",
+      "sha256": "e6b49c1256c0411dfc76b7caa6cd5260ca7830e12665becab47729c018ec95a5"
+    },
+    {
       "path": "scripts/macos/BRUSH-M0.md",
       "sha256": "0e4d706cf682a7aa06aa40afc022b7e4c58c50979289f77b96db36b397d64469"
     },
@@ -165,23 +185,23 @@
     },
     {
       "path": "scripts/macos/README.md",
-      "sha256": "fa7f9f508a2ab26b95da52b0c48612439bdba64a4c9e88432f40248600f9b6c5"
+      "sha256": "19cfda5b2f757800fc660a94a00ebf9b46024dd170e4221756a2ae0bc7cdd761"
     },
     {
       "path": "scripts/macos/build-brush.sh",
-      "sha256": "0cd7704ca77bd5e1db084051492224c05854083bf7da876ac98089b188dbee53"
+      "sha256": "a8f29d4f803454d97c2fd2d95b9e809a574ce2c30fefc433666a8872a5ca892e"
     },
     {
       "path": "scripts/macos/build-colmap.sh",
-      "sha256": "83735ac0887fdb1053dbc461aa41d4fc77c416472e2e9231c2e129c963a772a3"
+      "sha256": "dc1b84445f00342cfe868b06c971765c912aad1789aa398f6fd27b5cb38c3cf2"
     },
     {
       "path": "scripts/macos/build-ffmpeg.sh",
-      "sha256": "19653cf7f3a26a1117c0a095b112083fa1473c4f64243dc923c3f7eb3c9aaf99"
+      "sha256": "f5651dea7ea845078cb9f951b088033e9e736353645def841e0e4804ec1d117a"
     },
     {
       "path": "scripts/macos/build-macos-app.sh",
-      "sha256": "f2a9dd18b4baddf2f98ccfa4568ba53c16a44cfbb9540c60fdff343bdf417067"
+      "sha256": "8272b85fba49e9bb87020bc6b688e6f34051badbad79cfebfdb231d1e7164150"
     },
     {
       "path": "scripts/macos/check-brush-contract.py",
@@ -197,7 +217,7 @@
     },
     {
       "path": "scripts/macos/collect-app-licenses.mjs",
-      "sha256": "153ad40a864e90d76a4f0cdc808cd07d54f7a3f13e02565ff72900287b1fa734"
+      "sha256": "4c55aeeabc767acbd13f2bc3971d7b23cda6cf4bd06986f00844b65215ef2410"
     },
     {
       "path": "scripts/macos/collect-environment.py",
@@ -213,7 +233,7 @@
     },
     {
       "path": "scripts/macos/pack-engines.py",
-      "sha256": "45f7c24cca33ec340a3782459a7bf49320030702146a563bf5bb53d194326d44"
+      "sha256": "786684273a01649a1968b23dff951f3cc5516fd25ae4e7491100607f017b8296"
     },
     {
       "path": "scripts/macos/pack_brush_licenses.py",
@@ -221,7 +241,7 @@
     },
     {
       "path": "scripts/macos/pack_licenses.py",
-      "sha256": "609b78ea3272c4ee99a8ab5a864c1e9af94f5bc4a6007a47e9bfcde7bf089df2"
+      "sha256": "364f27f75e1f2b11a684ed90df83133bb7070ecbe82fdab1ea909c28b0d3bbef"
     },
     {
       "path": "scripts/macos/pack_macos.py",
@@ -240,8 +260,24 @@
       "sha256": "c5b25fffdb7725cc149e58001ee635cc9765f2fca6f5523bf4ed3e3a7af97e00"
     },
     {
+      "path": "scripts/macos/prepare-engine-links.mjs",
+      "sha256": "b8d8a284e48e2bff5f12656e174a78f731a0c0dd5f80bfa9906990774b738c6f"
+    },
+    {
+      "path": "scripts/macos/prepare-engine-links.test.mjs",
+      "sha256": "7069a31595946229003759b7c58f434b190ae7ead4dad3a5b344a4e3b8bf099c"
+    },
+    {
       "path": "scripts/macos/prepare-smoke-fixture.py",
       "sha256": "f18bdaf96129c0dfaed102e0b6c760cda87579f5c666b4805b9a46794478da40"
+    },
+    {
+      "path": "scripts/macos/resource-config.mjs",
+      "sha256": "6a57defe4260c31a6779b142816c87504646bbff7aad30ed301dec1c810bb7b8"
+    },
+    {
+      "path": "scripts/macos/resource-config.test.mjs",
+      "sha256": "7b72561ebec507672c3b181f5d45d5d6102070fa91285987e52d82ba628fb2d3"
     },
     {
       "path": "scripts/macos/sample-native-resources.py",
@@ -272,6 +308,14 @@
       "sha256": "dcffe1ace82ae472b2213597d5a5a3abe8cdfd0a67b8abbbda70508e67f83beb"
     },
     {
+      "path": "scripts/macos/test_build_macos_app.py",
+      "sha256": "4f345cb0aa3c6a849ffd3ea02d82c3c56acc707ebdc2bb5928162aa52db15439"
+    },
+    {
+      "path": "scripts/macos/test_engine_paths.py",
+      "sha256": "37ffc8216fd6bfea454b49172b68b81803972a66e3f80aab9d32418008960016"
+    },
+    {
       "path": "scripts/macos/test_environment.py",
       "sha256": "e733faf879f686f928f9eb1df54729c95e8d1f421a67da8ece2239ee51109185"
     },
@@ -282,6 +326,10 @@
     {
       "path": "scripts/macos/test_prepare_brush_source.py",
       "sha256": "5e307f3641e4a949419f25fc50bdbf3c3b99ffec4684abd94fe851ff4f0ce32d"
+    },
+    {
+      "path": "scripts/macos/test_rebuild_materials.py",
+      "sha256": "1fd369942d6f2c81947426f7b1fa0cd4ae4557daf8d4f7de76c22b462c07134d"
     },
     {
       "path": "scripts/macos/test_verify_app.py",
@@ -317,7 +365,7 @@
     },
     {
       "path": "scripts/macos/verify-supersplat-inputs.mjs",
-      "sha256": "b2cccc3e735ec6f14aea04bcf0dd495d3d83ac5a09365c7720ecf60b31e908ba"
+      "sha256": "b585d28277c4cfd7567e2505c3a09450d7a0f0e81436bbbb798887e72ee9a80b"
     },
     {
       "path": "scripts/macos/verify_colmap_help.py",
@@ -334,6 +382,564 @@
     {
       "path": "scripts/macos/webp_evidence_3102.py",
       "sha256": "c5d3a2a355eac2a668d9e659ca91aea39ce9d1b8b8e0cd131ae875654d20e1ec"
+    },
+    {
+      "path": "scripts/shared/artifact-paths.mjs",
+      "sha256": "6016b8c1382d2840e648f652e4f1eeb646819b6257df239f8b46c83022f0c56c"
+    },
+    {
+      "path": "scripts/shared/artifact-paths.test.mjs",
+      "sha256": "65218eb8dfa5d9a15967232325ca920a4bfc12a8e9044811edb85ef91a9e19d7"
+    },
+    {
+      "path": "scripts/shared/artifact-retention.mjs",
+      "sha256": "f645b0fede3293def76045a77cb1a79d554275abe357059fae97d558b5cb124b"
+    },
+    {
+      "path": "scripts/shared/artifact-retention.test.mjs",
+      "sha256": "60a69ac42b883106262e24bed0cdc5c190ebbbf4cb18641c7ea6cfcbf2af4852"
+    },
+    {
+      "path": "scripts/shared/cache-paths.mjs",
+      "sha256": "9bc6aaf590ebe072278d0f3d8041b8e9e59296dd672864015e6fc868bb055897"
+    },
+    {
+      "path": "scripts/shared/cache-paths.test.mjs",
+      "sha256": "8299c005e7383af15de8364cb91736ad1fe9e1ac67c58a9091ca25c515fe47b9"
+    },
+    {
+      "path": "scripts/shared/engine-paths.mjs",
+      "sha256": "142ff8e24969f1cf1e101efbe0d060f8800012388995e26223d29b2a39b45b4c"
+    },
+    {
+      "path": "scripts/shared/engine-paths.test.mjs",
+      "sha256": "f6ef179756e3a05945557c3008a1f33ce42c5482c8bf77bd3e1cad6b439b6ceb"
+    },
+    {
+      "path": "scripts/shared/engine_paths.py",
+      "sha256": "b9713d54d80f2ec221d73191053056fbe0563ba1fbce86b12f1b329b24b29223"
+    },
+    {
+      "path": "scripts/shared/historical-paths.mjs",
+      "sha256": "55f501dbdcace688189b448da1d9acb058b5587193e6cd0a364fbc7a2398c5d9"
+    },
+    {
+      "path": "scripts/shared/historical-paths.test.mjs",
+      "sha256": "6ca97fb2c84a1aba57ac4c25f08424704018db71de068fc32da12acca4dc3d18"
+    },
+    {
+      "path": "scripts/shared/license-paths.mjs",
+      "sha256": "565bb7815e638253edd592822efda132910e31e9b417462d4ed6c10b21ed77c7"
+    },
+    {
+      "path": "scripts/shared/license-paths.test.mjs",
+      "sha256": "41a7fbdbee50e8766319a8c817ac45ee33604f24c3e96897199d9ef1b7780fe9"
+    },
+    {
+      "path": "scripts/shared/migrate-engine-settings.mjs",
+      "sha256": "65a15e951c95a42e14f3fb8a990b4ff98066e4c1aea2194fbd83cf5b58391dad"
+    },
+    {
+      "path": "scripts/shared/migrate-engine-settings.test.mjs",
+      "sha256": "a2cdd3f47654057d1d37140ce04fb864a6865d2b67f1310012085a84cb3382fe"
+    },
+    {
+      "path": "scripts/shared/testing-output.mjs",
+      "sha256": "ec4cac640ed3e937a045af129871c021a4ba10c44034047d2be428088d4fcc8e"
+    },
+    {
+      "path": "scripts/shared/testing-output.test.mjs",
+      "sha256": "6fb22ff1b54509cac681a8f774adf4be18124dc10ef39f87c48b90a69b24679d"
+    },
+    {
+      "path": "scripts/shared/verify-ui-sources.mjs",
+      "sha256": "b3b9158e6e26a4010ebcb1678533cec846a55d364d8ecf6b871b04436b168b6e"
+    },
+    {
+      "path": "scripts/shared/verify-ui-sources.test.mjs",
+      "sha256": "dc29fefd3d4a7caa167fd1bb524c467d9a1fa2dc99cff330b186d00288e53ba4"
+    }
+  ],
+  "amendments": [
+    {
+      "date": "2026-11-01",
+      "reason": "First-stage macOS output layout: route new DMGs and verification reports to artifacts. Engine recipes, engine-pack and license inputs, and the compiled app location remain unchanged. Historical acceptance results are not relabelled.",
+      "changed_files": [
+        {
+          "path": "packaging/macos-arm64/README.md",
+          "previous_sha256": "53b117bbbcd3f6e16ee1658835f05fd9230cc28028c160c78ee5d400817a24b1",
+          "sha256": "6be9a4d6494ec48e4c5f06825ccf0697a8b9269acfad1eebc50bce61955c8015"
+        },
+        {
+          "path": "scripts/macos/build-macos-app.sh",
+          "previous_sha256": "f2a9dd18b4baddf2f98ccfa4568ba53c16a44cfbb9540c60fdff343bdf417067",
+          "sha256": "e439e3c5c7c577fda80e63111890bc074c568ce71fd9ed72f6d5d966c80cff78"
+        }
+      ],
+      "added_files": [
+        {
+          "path": "packaging/shared/artifact-paths.json",
+          "sha256": "0ff9ec099d6458dcd09379d9c93ed376acfa0a1fd5e83d4d748440ffff5a57db"
+        },
+        {
+          "path": "scripts/shared/artifact-paths.mjs",
+          "sha256": "e9777e066a763c9d69d37ff54049032ea7200f225acaefe0106299b4d30dc694"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-01",
+      "phase": "supersplat-cache-layout",
+      "reason": "Move the current SuperSplat source checkout and npm cache outside Cargo target using the shared cache configuration. Editor, transform, engine and lockfile pins are unchanged; current application-license evidence is refreshed after the preparation signature changes. Historical evidence paths remain original.",
+      "changed_files": [
+        {
+          "path": "packaging/macos-arm64/README.md",
+          "previous_sha256": "6be9a4d6494ec48e4c5f06825ccf0697a8b9269acfad1eebc50bce61955c8015",
+          "sha256": "5a8adc0c084fb64d4e1f9307cd9491667accb889e5477e28630d5a1de4cf8a9b"
+        },
+        {
+          "path": "scripts/macos/build-macos-app.sh",
+          "previous_sha256": "e439e3c5c7c577fda80e63111890bc074c568ce71fd9ed72f6d5d966c80cff78",
+          "sha256": "0ce480899fac3d901f7c1cc02d3d2c2658e8c72c753792579d766bf6a7930e94"
+        },
+        {
+          "path": "scripts/macos/collect-app-licenses.mjs",
+          "previous_sha256": "153ad40a864e90d76a4f0cdc808cd07d54f7a3f13e02565ff72900287b1fa734",
+          "sha256": "a6cc6d0ad762ad612bf3fdbaa0749b8f09be4bc781bf89d05c1464337befaef0"
+        }
+      ],
+      "added_files": [
+        {
+          "path": "packaging/shared/cache-paths.json",
+          "sha256": "f17617440b57076292613b4886c3dc54bd20f6ba558da40834752eecbf296238"
+        },
+        {
+          "path": "scripts/shared/cache-paths.mjs",
+          "sha256": "b80fb919f8bc79ceb8460b4b2fb13a27d37823e8334ec638de6ac537610d2be5"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-01",
+      "phase": "application-license-layout",
+      "reason": "Relocate current and historical application license evidence into artifacts/licenses/macos-arm64. Collection and generated Tauri resource inputs use the shared current path; historical contents, engine inputs and dependency pins remain unchanged.",
+      "changed_files": [
+        {
+          "path": "packaging/macos-arm64/README.md",
+          "previous_sha256": "5a8adc0c084fb64d4e1f9307cd9491667accb889e5477e28630d5a1de4cf8a9b",
+          "sha256": "cc820c82d15f34c9cbe39464635eaa186eac3131f45f936cbfdf516af8d7f926"
+        },
+        {
+          "path": "scripts/macos/build-macos-app.sh",
+          "previous_sha256": "0ce480899fac3d901f7c1cc02d3d2c2658e8c72c753792579d766bf6a7930e94",
+          "sha256": "c66b134e17d42a2f45b9bda1998ba38b6f451e2d4c600198e24408cd5a10786f"
+        },
+        {
+          "path": "scripts/macos/collect-app-licenses.mjs",
+          "previous_sha256": "a6cc6d0ad762ad612bf3fdbaa0749b8f09be4bc781bf89d05c1464337befaef0",
+          "sha256": "7f34dfd4a61b919fb5ff6ddb05a0c3da9b26decb56b22d1cf9660bf89da85b4d"
+        },
+        {
+          "path": "scripts/shared/artifact-paths.mjs",
+          "previous_sha256": "e9777e066a763c9d69d37ff54049032ea7200f225acaefe0106299b4d30dc694",
+          "sha256": "d138a6bf094362fd6ca7577047f094a9728759791597252d9f9bb8c659dcd6d2"
+        }
+      ],
+      "added_files": [
+        {
+          "path": "apps/desktop/src-tauri/tauri.macos.full.conf.json",
+          "sha256": "8f1f4d6c9a7866c5145516b6373a496ca42608297bc093188d4a2dee751ecda4"
+        },
+        {
+          "path": "scripts/shared/license-paths.mjs",
+          "sha256": "0873badc071898e3efdc3355d1d75198d67ea65274922c6ed66c5a63c04c276b"
+        },
+        {
+          "path": "scripts/macos/resource-config.mjs",
+          "sha256": "eba0bc0c6710b9a38a21678fd910d3b4580214fc24d3372551d98b4a15cd5832"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-01",
+      "phase": "native-engine-cache-layout",
+      "reason": "Move stable development engines and the byte-identical frozen alpha.6 pack outside Cargo target. Shared paths drive runtime discovery, packaging and native recipes; imported build evidence stays separate from fresh native build output. Two narrow target aliases retain the original Conda logical prefix and existing saved engine paths. New pack producers deliver executable repository-shaped rebuild materials, leaving the frozen pack unchanged. Application-license evidence is refreshed separately for the desktop preparation hooks. Shared Rust behavior remains protected by tests rather than file hashes.",
+      "changed_files": [
+        {
+          "path": "apps/desktop/src-tauri/tauri.macos.full.conf.json",
+          "previous_sha256": "8f1f4d6c9a7866c5145516b6373a496ca42608297bc093188d4a2dee751ecda4",
+          "sha256": "2f3d6636c671ee734ec61520bbb675e6399d00789dd4fe2fad6b0f0b04920702"
+        },
+        {
+          "path": "packaging/macos-arm64/README.md",
+          "previous_sha256": "cc820c82d15f34c9cbe39464635eaa186eac3131f45f936cbfdf516af8d7f926",
+          "sha256": "4200e9d6cb0b5f84aff1005ef6e3ae2391dc8b0a1373ec31f85303b04e640701"
+        },
+        {
+          "path": "scripts/macos/README.md",
+          "previous_sha256": "fa7f9f508a2ab26b95da52b0c48612439bdba64a4c9e88432f40248600f9b6c5",
+          "sha256": "8f973651a69c1ce94513618b73070271c785df3596c4fa18674a50d639a6f635"
+        },
+        {
+          "path": "scripts/macos/build-brush.sh",
+          "previous_sha256": "0cd7704ca77bd5e1db084051492224c05854083bf7da876ac98089b188dbee53",
+          "sha256": "a8f29d4f803454d97c2fd2d95b9e809a574ce2c30fefc433666a8872a5ca892e"
+        },
+        {
+          "path": "scripts/macos/build-colmap.sh",
+          "previous_sha256": "83735ac0887fdb1053dbc461aa41d4fc77c416472e2e9231c2e129c963a772a3",
+          "sha256": "dc1b84445f00342cfe868b06c971765c912aad1789aa398f6fd27b5cb38c3cf2"
+        },
+        {
+          "path": "scripts/macos/build-ffmpeg.sh",
+          "previous_sha256": "19653cf7f3a26a1117c0a095b112083fa1473c4f64243dc923c3f7eb3c9aaf99",
+          "sha256": "f5651dea7ea845078cb9f951b088033e9e736353645def841e0e4804ec1d117a"
+        },
+        {
+          "path": "scripts/macos/build-macos-app.sh",
+          "previous_sha256": "c66b134e17d42a2f45b9bda1998ba38b6f451e2d4c600198e24408cd5a10786f",
+          "sha256": "a5d1bbfb2171ba85a651a94fbb5877089139f3c9ebe8375c0857206c1a9194d3"
+        },
+        {
+          "path": "scripts/macos/collect-app-licenses.mjs",
+          "previous_sha256": "7f34dfd4a61b919fb5ff6ddb05a0c3da9b26decb56b22d1cf9660bf89da85b4d",
+          "sha256": "4c55aeeabc767acbd13f2bc3971d7b23cda6cf4bd06986f00844b65215ef2410"
+        },
+        {
+          "path": "scripts/macos/pack-engines.py",
+          "previous_sha256": "45f7c24cca33ec340a3782459a7bf49320030702146a563bf5bb53d194326d44",
+          "sha256": "21723d2cd2769c4e5083c8293012caf021246a9b83524938cd21a573f436420f"
+        },
+        {
+          "path": "scripts/macos/pack_licenses.py",
+          "previous_sha256": "609b78ea3272c4ee99a8ab5a864c1e9af94f5bc4a6007a47e9bfcde7bf089df2",
+          "sha256": "1621fed330cb181e27ded2bf5cd36097b5bd49068f1ae8e9088e79e916e306dd"
+        },
+        {
+          "path": "scripts/macos/resource-config.mjs",
+          "previous_sha256": "eba0bc0c6710b9a38a21678fd910d3b4580214fc24d3372551d98b4a15cd5832",
+          "sha256": "9962f1004955e1493136361df4742533d2754ba9460d7975be95c007f4e31cc4"
+        }
+      ],
+      "added_files": [
+        {
+          "path": "packaging/shared/engine-paths.json",
+          "sha256": "6ec3893072c03efd8155e9ea5c7d3cc6edca052485cecc52390ee2301211a315"
+        },
+        {
+          "path": "packaging/macos-arm64/REBUILD.md",
+          "sha256": "951cf46de3634d878ac14956e734c7becae803765a2a4b67d45bed5724766541"
+        },
+        {
+          "path": "scripts/shared/engine-paths.mjs",
+          "sha256": "d322ddcc8c83736129433a5c37a5b7305725be12a440ba3c76093f6cba0ca823"
+        },
+        {
+          "path": "scripts/shared/engine_paths.py",
+          "sha256": "b9713d54d80f2ec221d73191053056fbe0563ba1fbce86b12f1b329b24b29223"
+        },
+        {
+          "path": "scripts/macos/prepare-engine-links.mjs",
+          "sha256": "b4571069da905f61ecd2667a0929a23d8c6e0a3fb4483fa85b89ca3a02aead48"
+        },
+        {
+          "path": "scripts/macos/test_engine_paths.py",
+          "sha256": "fa6f268208386999f5de08ab93dc30fb90f76d8ea9566fb8a4626700d208cf4c"
+        },
+        {
+          "path": "scripts/macos/test_rebuild_materials.py",
+          "sha256": "1fd369942d6f2c81947426f7b1fa0cd4ae4557daf8d4f7de76c22b462c07134d"
+        },
+        {
+          "path": "scripts/macos/test_build_macos_app.py",
+          "sha256": "8ddf5c88de9f62537649e1f2a84264fbdff65162da70ded2d6e3934cdedb64a2"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-01",
+      "phase": "colmap-development-prefix",
+      "reason": "Reinstall the exact locked 171 COLMAP development dependency packages at the canonical development prefix and rebuild the pinned COLMAP 4.1.0 CPU development profile. Retire the target/macos-m0 compatibility alias. Historical original dependency/install inputs remain separate from the new development identity; Alpha packaging/audit defaults select those original inputs. The frozen alpha.6 engine pack and its exact-byte prefix policy are unchanged. Existing project profiles remain subject to normal preflight identity checks.",
+      "changed_files": [
+        {
+          "path": "packaging/macos-arm64/README.md",
+          "previous_sha256": "4200e9d6cb0b5f84aff1005ef6e3ae2391dc8b0a1373ec31f85303b04e640701",
+          "sha256": "b3fa6f0fd9d658a26f019bcd57905100197fe9c88297ce9f68e8c89131a8af19"
+        },
+        {
+          "path": "packaging/shared/engine-paths.json",
+          "previous_sha256": "6ec3893072c03efd8155e9ea5c7d3cc6edca052485cecc52390ee2301211a315",
+          "sha256": "8411b05366aaba9daabecea1f24056e3cded90fdf350e58ab9de66d66c8d3f4a"
+        },
+        {
+          "path": "scripts/macos/README.md",
+          "previous_sha256": "8f973651a69c1ce94513618b73070271c785df3596c4fa18674a50d639a6f635",
+          "sha256": "4b0dd315d598e906be5260da520f33e9f255074bf4b64f23353b1c9d43f9e7cd"
+        },
+        {
+          "path": "scripts/macos/pack-engines.py",
+          "previous_sha256": "21723d2cd2769c4e5083c8293012caf021246a9b83524938cd21a573f436420f",
+          "sha256": "786684273a01649a1968b23dff951f3cc5516fd25ae4e7491100607f017b8296"
+        },
+        {
+          "path": "scripts/macos/pack_licenses.py",
+          "previous_sha256": "1621fed330cb181e27ded2bf5cd36097b5bd49068f1ae8e9088e79e916e306dd",
+          "sha256": "364f27f75e1f2b11a684ed90df83133bb7070ecbe82fdab1ea909c28b0d3bbef"
+        },
+        {
+          "path": "scripts/macos/test_engine_paths.py",
+          "previous_sha256": "fa6f268208386999f5de08ab93dc30fb90f76d8ea9566fb8a4626700d208cf4c",
+          "sha256": "37ffc8216fd6bfea454b49172b68b81803972a66e3f80aab9d32418008960016"
+        }
+      ],
+      "added_files": []
+    },
+    {
+      "date": "2026-11-01",
+      "phase": "cross-platform-layout-finalization",
+      "reason": "Unify Windows stable engines, caches and delivery paths through shared configuration; retire the last target/distribution compatibility entry after verified settings migration. Route ordinary test workspaces to system temporary storage and retain bounded success/failure reports. Package retention records complete owned inventories and preserves latest selectors, explicit pins and independent license evidence with recoverable cleanup. Historical receipts and the frozen macOS alpha.6 engine pack are unchanged. Native Windows build and installation acceptance remain separate.",
+      "changed_files": [
+        {
+          "path": "packaging/macos-arm64/README.md",
+          "previous_sha256": "b3fa6f0fd9d658a26f019bcd57905100197fe9c88297ce9f68e8c89131a8af19",
+          "sha256": "ce6997ba9e5b063a79bfad71e9e59e3a41685ed08eea269b11ef0a30876b0911"
+        },
+        {
+          "path": "packaging/shared/artifact-paths.json",
+          "previous_sha256": "0ff9ec099d6458dcd09379d9c93ed376acfa0a1fd5e83d4d748440ffff5a57db",
+          "sha256": "71a5a3711b2cbbdaa6ed92b4fd04dfa1637a7796cb94ef5fffc7034fcd417dfa"
+        },
+        {
+          "path": "packaging/shared/engine-paths.json",
+          "previous_sha256": "8411b05366aaba9daabecea1f24056e3cded90fdf350e58ab9de66d66c8d3f4a",
+          "sha256": "e6b49c1256c0411dfc76b7caa6cd5260ca7830e12665becab47729c018ec95a5"
+        },
+        {
+          "path": "scripts/macos/README.md",
+          "previous_sha256": "4b0dd315d598e906be5260da520f33e9f255074bf4b64f23353b1c9d43f9e7cd",
+          "sha256": "19cfda5b2f757800fc660a94a00ebf9b46024dd170e4221756a2ae0bc7cdd761"
+        },
+        {
+          "path": "scripts/macos/build-macos-app.sh",
+          "previous_sha256": "a5d1bbfb2171ba85a651a94fbb5877089139f3c9ebe8375c0857206c1a9194d3",
+          "sha256": "8272b85fba49e9bb87020bc6b688e6f34051badbad79cfebfdb231d1e7164150"
+        },
+        {
+          "path": "scripts/macos/prepare-engine-links.mjs",
+          "previous_sha256": "b4571069da905f61ecd2667a0929a23d8c6e0a3fb4483fa85b89ca3a02aead48",
+          "sha256": "27b934df40cbce8af82087afa91a3714c5f661b41802192fb2be4f9627ac7fc7"
+        },
+        {
+          "path": "scripts/macos/test_build_macos_app.py",
+          "previous_sha256": "8ddf5c88de9f62537649e1f2a84264fbdff65162da70ded2d6e3934cdedb64a2",
+          "sha256": "90e2eb59c9d2b15ffac69089e85623433b3bbb7ffec11d219e1588b0c0e2050b"
+        }
+      ],
+      "added_files": [
+        {
+          "path": "scripts/macos/prepare-engine-links.test.mjs",
+          "sha256": "7069a31595946229003759b7c58f434b190ae7ead4dad3a5b344a4e3b8bf099c"
+        },
+        {
+          "path": "scripts/macos/resource-config.test.mjs",
+          "sha256": "171edbe0cbab38df30bbc92cd978f82473732f5d90c6ae305a03fcd747fbe064"
+        },
+        {
+          "path": "scripts/shared/artifact-paths.test.mjs",
+          "sha256": "974131942f7677e57c383ba4a27bf6fba4e477a9ce0114f7086bdd7794731a6e"
+        },
+        {
+          "path": "scripts/shared/artifact-retention.mjs",
+          "sha256": "22bb7fe8f664daab26c513f4f0672c8fc959c79b9c16db784c0f29a24e0a04c8"
+        },
+        {
+          "path": "scripts/shared/artifact-retention.test.mjs",
+          "sha256": "405393694a2465d556e897aad76f5fd613f2e8dbf368451d1e2fd66283a2d994"
+        },
+        {
+          "path": "scripts/shared/cache-paths.test.mjs",
+          "sha256": "dcbc84522010a277e042e926e13d7d153bee4279f01121631f64ad74e6891da2"
+        },
+        {
+          "path": "scripts/shared/engine-paths.test.mjs",
+          "sha256": "f5a0f297153598efe47c84bb2fee80310e108f73449c9512e6fb8fe326e0f0f4"
+        },
+        {
+          "path": "scripts/shared/historical-paths.mjs",
+          "sha256": "a266ffbf905df61d62d96418feb1ebfbaf13349a2e128a4030208511eb8b332c"
+        },
+        {
+          "path": "scripts/shared/historical-paths.test.mjs",
+          "sha256": "12cb282f4450112d8221c1e2b63bf73619109101a34bed180b9fe8ddaf8bdf50"
+        },
+        {
+          "path": "scripts/shared/license-paths.test.mjs",
+          "sha256": "cbefc8c082561e057049c54e84ae32045ac15b960cf169c6b8e8a6b5848149b3"
+        },
+        {
+          "path": "scripts/shared/migrate-engine-settings.mjs",
+          "sha256": "c846d848c907955996b9609501b6331a0dc2f689289b4e8f45124d9bd23ed52b"
+        },
+        {
+          "path": "scripts/shared/migrate-engine-settings.test.mjs",
+          "sha256": "1949c4b6a0ca7cd4da42442dbbea96991dfed73a08a908b3e28cdc5d99d6de9b"
+        },
+        {
+          "path": "scripts/shared/testing-output.mjs",
+          "sha256": "ec4cac640ed3e937a045af129871c021a4ba10c44034047d2be428088d4fcc8e"
+        },
+        {
+          "path": "scripts/shared/testing-output.test.mjs",
+          "sha256": "6fb22ff1b54509cac681a8f774adf4be18124dc10ef39f87c48b90a69b24679d"
+        },
+        {
+          "path": "scripts/shared/verify-ui-sources.mjs",
+          "sha256": "24ee61cfd28feff158de21284360e75a079b71e573c0dc722fd263dfeb876392"
+        },
+        {
+          "path": "scripts/shared/verify-ui-sources.test.mjs",
+          "sha256": "dc29fefd3d4a7caa167fd1bb524c467d9a1fa2dc99cff330b186d00288e53ba4"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-01",
+      "phase": "historical-output-pruning",
+      "reason": "User-requested historical cleanup: keep one latest delivered package and matching report by default, while preserving explicit pins and current selectors. Retire obsolete imported Brush M0-M4 build caches, archived distribution duplicates and expired test payloads after saving compact build/migration/license records. Active development engines, frozen alpha.6 distribution bytes, current application-license inputs and the original protection baseline are unchanged.",
+      "changed_files": [
+        {
+          "path": "packaging/shared/artifact-paths.json",
+          "previous_sha256": "71a5a3711b2cbbdaa6ed92b4fd04dfa1637a7796cb94ef5fffc7034fcd417dfa",
+          "sha256": "330b2052024527af75635a392db1d7ea2220d429a4d46cd4d3191e4e061b62fe"
+        },
+        {
+          "path": "scripts/shared/artifact-retention.mjs",
+          "previous_sha256": "22bb7fe8f664daab26c513f4f0672c8fc959c79b9c16db784c0f29a24e0a04c8",
+          "sha256": "83f9b9cc85738ba1682ef9239e6a6b12591226fb0de13dbda31b0c79b3ee2952"
+        },
+        {
+          "path": "scripts/shared/artifact-retention.test.mjs",
+          "previous_sha256": "405393694a2465d556e897aad76f5fd613f2e8dbf368451d1e2fd66283a2d994",
+          "sha256": "60a69ac42b883106262e24bed0cdc5c190ebbbf4cb18641c7ea6cfcbf2af4852"
+        }
+      ],
+      "added_files": []
+    },
+    {
+      "date": "2026-11-01",
+      "phase": "precommit-layout-validation",
+      "reason": "Accept valid uppercase Windows engine SHA-256 declarations while continuing to reject malformed or mismatched digests without replacing settings. Update the macOS packaging integration test to verify the configured one-package retention policy and removal of the matching expired report. Current macOS engine identities, application-license inputs and all prior protection amendments are unchanged.",
+      "changed_files": [
+        {
+          "path": "scripts/macos/test_build_macos_app.py",
+          "previous_sha256": "90e2eb59c9d2b15ffac69089e85623433b3bbb7ffec11d219e1588b0c0e2050b",
+          "sha256": "4f345cb0aa3c6a849ffd3ea02d82c3c56acc707ebdc2bb5928162aa52db15439"
+        },
+        {
+          "path": "scripts/shared/migrate-engine-settings.mjs",
+          "previous_sha256": "c846d848c907955996b9609501b6331a0dc2f689289b4e8f45124d9bd23ed52b",
+          "sha256": "f524b9fcce4fd6e2e0920c17044ab16ce8e319667ddf09b69738e7698ca418e9"
+        },
+        {
+          "path": "scripts/shared/migrate-engine-settings.test.mjs",
+          "previous_sha256": "1949c4b6a0ca7cd4da42442dbbea96991dfed73a08a908b3e28cdc5d99d6de9b",
+          "sha256": "a2cdd3f47654057d1d37140ce04fb864a6865d2b67f1310012085a84cb3382fe"
+        }
+      ],
+      "added_files": []
+    },
+    {
+      "date": "2026-11-01",
+      "phase": "windows-checkout-path-aliases",
+      "reason": "Normalize CLI entrypoint identity and default checkout roots across Windows short/long filesystem spellings. Rebase license output paths only through verified aliases of the same checkout while preserving physical-parent and immutable-evidence checks. Interpret recorded historical roots with their original POSIX or Windows path flavor instead of the host working drive. Add cross-platform alias, traversal and CLI regressions. Existing engine pack bytes and dependency pins are unchanged; cache preparation signatures continue to bind the exact current helper inputs.",
+      "changed_files": [
+        {
+          "path": "scripts/macos/prepare-engine-links.mjs",
+          "previous_sha256": "27b934df40cbce8af82087afa91a3714c5f661b41802192fb2be4f9627ac7fc7",
+          "sha256": "b8d8a284e48e2bff5f12656e174a78f731a0c0dd5f80bfa9906990774b738c6f"
+        },
+        {
+          "path": "scripts/macos/resource-config.mjs",
+          "previous_sha256": "9962f1004955e1493136361df4742533d2754ba9460d7975be95c007f4e31cc4",
+          "sha256": "6a57defe4260c31a6779b142816c87504646bbff7aad30ed301dec1c810bb7b8"
+        },
+        {
+          "path": "scripts/macos/resource-config.test.mjs",
+          "previous_sha256": "171edbe0cbab38df30bbc92cd978f82473732f5d90c6ae305a03fcd747fbe064",
+          "sha256": "7b72561ebec507672c3b181f5d45d5d6102070fa91285987e52d82ba628fb2d3"
+        },
+        {
+          "path": "scripts/macos/verify-supersplat-inputs.mjs",
+          "previous_sha256": "b2cccc3e735ec6f14aea04bcf0dd495d3d83ac5a09365c7720ecf60b31e908ba",
+          "sha256": "b585d28277c4cfd7567e2505c3a09450d7a0f0e81436bbbb798887e72ee9a80b"
+        },
+        {
+          "path": "scripts/shared/artifact-paths.mjs",
+          "previous_sha256": "d138a6bf094362fd6ca7577047f094a9728759791597252d9f9bb8c659dcd6d2",
+          "sha256": "6016b8c1382d2840e648f652e4f1eeb646819b6257df239f8b46c83022f0c56c"
+        },
+        {
+          "path": "scripts/shared/artifact-paths.test.mjs",
+          "previous_sha256": "974131942f7677e57c383ba4a27bf6fba4e477a9ce0114f7086bdd7794731a6e",
+          "sha256": "65218eb8dfa5d9a15967232325ca920a4bfc12a8e9044811edb85ef91a9e19d7"
+        },
+        {
+          "path": "scripts/shared/artifact-retention.mjs",
+          "previous_sha256": "83f9b9cc85738ba1682ef9239e6a6b12591226fb0de13dbda31b0c79b3ee2952",
+          "sha256": "f645b0fede3293def76045a77cb1a79d554275abe357059fae97d558b5cb124b"
+        },
+        {
+          "path": "scripts/shared/cache-paths.mjs",
+          "previous_sha256": "b80fb919f8bc79ceb8460b4b2fb13a27d37823e8334ec638de6ac537610d2be5",
+          "sha256": "9bc6aaf590ebe072278d0f3d8041b8e9e59296dd672864015e6fc868bb055897"
+        },
+        {
+          "path": "scripts/shared/cache-paths.test.mjs",
+          "previous_sha256": "dcbc84522010a277e042e926e13d7d153bee4279f01121631f64ad74e6891da2",
+          "sha256": "8299c005e7383af15de8364cb91736ad1fe9e1ac67c58a9091ca25c515fe47b9"
+        },
+        {
+          "path": "scripts/shared/engine-paths.mjs",
+          "previous_sha256": "d322ddcc8c83736129433a5c37a5b7305725be12a440ba3c76093f6cba0ca823",
+          "sha256": "142ff8e24969f1cf1e101efbe0d060f8800012388995e26223d29b2a39b45b4c"
+        },
+        {
+          "path": "scripts/shared/engine-paths.test.mjs",
+          "previous_sha256": "f5a0f297153598efe47c84bb2fee80310e108f73449c9512e6fb8fe326e0f0f4",
+          "sha256": "f6ef179756e3a05945557c3008a1f33ce42c5482c8bf77bd3e1cad6b439b6ceb"
+        },
+        {
+          "path": "scripts/shared/historical-paths.mjs",
+          "previous_sha256": "a266ffbf905df61d62d96418feb1ebfbaf13349a2e128a4030208511eb8b332c",
+          "sha256": "55f501dbdcace688189b448da1d9acb058b5587193e6cd0a364fbc7a2398c5d9"
+        },
+        {
+          "path": "scripts/shared/historical-paths.test.mjs",
+          "previous_sha256": "12cb282f4450112d8221c1e2b63bf73619109101a34bed180b9fe8ddaf8bdf50",
+          "sha256": "6ca97fb2c84a1aba57ac4c25f08424704018db71de068fc32da12acca4dc3d18"
+        },
+        {
+          "path": "scripts/shared/license-paths.mjs",
+          "previous_sha256": "0873badc071898e3efdc3355d1d75198d67ea65274922c6ed66c5a63c04c276b",
+          "sha256": "565bb7815e638253edd592822efda132910e31e9b417462d4ed6c10b21ed77c7"
+        },
+        {
+          "path": "scripts/shared/license-paths.test.mjs",
+          "previous_sha256": "cbefc8c082561e057049c54e84ae32045ac15b960cf169c6b8e8a6b5848149b3",
+          "sha256": "41a7fbdbee50e8766319a8c817ac45ee33604f24c3e96897199d9ef1b7780fe9"
+        },
+        {
+          "path": "scripts/shared/migrate-engine-settings.mjs",
+          "previous_sha256": "f524b9fcce4fd6e2e0920c17044ab16ce8e319667ddf09b69738e7698ca418e9",
+          "sha256": "65a15e951c95a42e14f3fb8a990b4ff98066e4c1aea2194fbd83cf5b58391dad"
+        },
+        {
+          "path": "scripts/shared/verify-ui-sources.mjs",
+          "previous_sha256": "24ee61cfd28feff158de21284360e75a079b71e573c0dc722fd263dfeb876392",
+          "sha256": "b3b9158e6e26a4010ebcb1678533cec846a55d364d8ecf6b871b04436b168b6e"
+        }
+      ],
+      "added_files": []
     }
   ]
 }

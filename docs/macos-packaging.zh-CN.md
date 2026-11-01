@@ -2,7 +2,7 @@
 
 适用于 MetOrigin Splat 的 Apple Silicon（arm64）完整内部 Alpha 包。DMG 包含应用、FFmpeg/FFprobe、COLMAP、Brush 及对应运行资源，配置的最低系统版本为 macOS 15.0；最低系统与其他硬件的验收仍须单独完成。
 
-完整打包入口为 [`scripts/macos/build-macos-app.sh`](../scripts/macos/build-macos-app.sh)，资源配置为 [`tauri.macos.full.conf.json`](../apps/desktop/src-tauri/tauri.macos.full.conf.json)。仅复制代码框中的命令，不要复制步骤编号、终端提示符或示例输出。
+完整打包入口为 [`scripts/macos/build-macos-app.sh`](../scripts/macos/build-macos-app.sh)，基础资源配置为 [`tauri.macos.full.conf.json`](../apps/desktop/src-tauri/tauri.macos.full.conf.json)。打包脚本根据统一路径配置生成本轮 Tauri 资源配置，应用内仍使用 `resources/app-licenses/`。仅复制代码框中的命令，不要复制步骤编号、终端提示符或示例输出。
 
 ## 1. 环境与输入
 
@@ -27,17 +27,29 @@ xcode-select -p
 | Rust | 使用仓库 `rust-toolchain.toml` 指定的工具链，并准备 `aarch64-apple-darwin` 目标 |
 | Apple 工具链 | Xcode/Command Line Tools，包含 codesign、hdiutil 等工具 |
 | 应用依赖 | 首次克隆或依赖变化后执行 `pnpm install --frozen-lockfile`；已有匹配依赖时无需重复安装 |
-| 引擎包 | 必须先取得或生成下表中的 arm64 引擎包；新克隆不会自带 `target/` 产物 |
+| 引擎包 | 必须先取得或生成下表中的 arm64 引擎包；新克隆不会自带忽略的引擎、缓存和打包产物 |
 
-当前完整打包脚本和资源配置共同固定以下输入目录：
+当前完整打包脚本默认读取以下输入目录：
 
 | 输入 | 路径 |
 | --- | --- |
-| 引擎及完整性清单 | `target/distribution/macos-arm64/engines/` |
-| 引擎分发状态 | `target/distribution/macos-arm64/release-status.json` |
-| 应用许可证据 | `target/macos-m4/app-license-evidence/licenses/` |
+| 引擎及完整性清单 | `.engines/macos-arm64/distribution/engines/` |
+| 引擎分发状态 | `.engines/macos-arm64/distribution/release-status.json` |
+| 当前应用许可证据 | `artifacts/licenses/macos-arm64/current/` |
 
-应用“设置”中的本地引擎路径不会替代这些打包输入。引擎准备方法见 [macOS engine packaging](../packaging/macos-arm64/README.md)。`APP_LICENSE_ENGINE_PACK` 只改变许可收集器读取的引擎来源，不能改变完整安装包脚本的固定资源路径。
+应用“设置”中的本地引擎路径不会替代这些打包输入。引擎准备方法见 [macOS engine packaging](../packaging/macos-arm64/README.md)。`APP_LICENSE_ENGINE_PACK` 只改变许可收集器读取的引擎来源，不能改变完整安装包使用的引擎资源路径。
+
+目录整理分阶段进行：DMG、验证报告和应用许可证据的位置由 [`packaging/shared/artifact-paths.json`](../packaging/shared/artifact-paths.json) 定义，并由 [`scripts/shared/artifact-paths.mjs`](../scripts/shared/artifact-paths.mjs) 解析。当前许可证据使用 `current/`，历史备份使用 `artifacts/licenses/macos-arm64/archive/`。SuperSplat 源码检出目录为 `.cache/metorigin/sources/supersplat/upstream/`，npm 缓存为 `.cache/metorigin/downloads/npm/supersplat/`，统一配置见 [`cache-paths.json`](../packaging/shared/cache-paths.json)。引擎及其许可证仍作为整包管理，独立于应用许可证据。
+
+引擎路径统一见 [`engine-paths.json`](../packaging/shared/engine-paths.json)。当前完整包继续使用原 Alpha `.6` 的 2,999 个文件，清单 SHA-256 为 `590102d2290251ceced86320d1edef00b1667b139249326f9511ff1b75b6bc40`；目录整理不重建或改写这份引擎身份。开发引擎另位于 `.engines/macos-arm64/development/`，其 Brush 保留 `metorigin-macos.5`，不会因打包自动换成 `.6`。
+
+Mac 引擎直接读取 `.engines/macos-arm64/` 下的 canonical 路径，不保留 `target/` 兼容链接；开发和构建准备不再创建 `target/macos-m0` 或 `target/distribution/macos-arm64`。设置中若显式保存了旧路径，应重新选择对应的 canonical 引擎目录。`cargo clean` 只影响 Cargo 输出，不删除稳定引擎、源码缓存和正式报告。
+
+开发 COLMAP 依赖环境按固定的 171 包显式锁，由 Conda 原生安装到 `.engines/macos-arm64/development/colmap-deps/`；COLMAP 4.1.0 使用独立 `native/` 构建树重编译并安装到开发引擎目录，保留 CGAL、LSD、MVS、downloads 开启的开发 profile。原依赖环境和开发安装分别保留于 `.engines/macos-arm64/archive/colmap/dependencies-original/`、`development-original/`，历史 Alpha 审计默认使用单独的 `colmapAlphaDependencyEvidence`，不混用新环境。当前命令见 [原生引擎脚本](../scripts/macos/README.md#当前路径入口2026-11-01)；应用重复打包仍读取冻结的 Alpha `.6`，不需要重编译开发引擎。
+
+原生源码与缓存使用 `.cache/metorigin/`，已导入的旧构建树保留为历史记录，新重编译使用独立 `native/` 目录。旧 [引擎迁移映射](../.engines/macos-arm64/migration-map.json) 和 stage-4 回执不改写，前缀退役与新构建另记后继记录，不沿用旧开发二进制的哈希或验收结论；前缀整理也不代表开发环境已通过可移植或干净机验收。
+
+迁移前许可证据的内容和旧路径字段保留原文，本机旧位置到新位置的对应关系见 [migration-map.json](../artifacts/licenses/macos-arm64/migration-map.json)。旧安装包和历史打包报告归入 `artifacts/` 管理，原记录内容和旧路径字段不改写，由迁移记录说明当前位置；新克隆不会自带这些本地产物。
 
 ## 2. 常规重复打包
 
@@ -109,13 +121,17 @@ node integrations/supersplat/prepare.mjs
 
 命中已校验缓存时，这条命令可能没有输出，成功退出即可。
 
-收集器拒绝覆盖已有目录。更新时先归档旧清单，再在脚本固定的默认位置生成新清单；不要删除旧证据，也不要用符号链接替代默认目录。
+首次使用新缓存布局时，准备脚本会更新资源准备签名，因此需要继续按下文归档并重新收集许可证据。之后输入保持匹配时，可直接重复打包。新克隆会自动创建 `.cache/metorigin/` 下的缓存；脚本不再读取旧的 `target/supersplat-source/`、`target/supersplat-npm-cache/`，也不使用目录链接兼容旧路径。已有缓存应在新位置复制并验证成功后再清理旧副本。
+
+收集器拒绝覆盖已有目录。仅迁移已验证的目录、且输入和内容未变时，无需重新收集。确需更新时，先把当前清单归档，再在默认 `current/` 位置生成新清单；不要删除旧证据，也不要用符号链接替代默认目录。
 
 ```bash
-mac_license_dir="target/macos-m4/app-license-evidence/licenses"
+mac_license_dir="$(node scripts/shared/artifact-paths.mjs --platform macos-arm64 --kind license-current)"
+mac_license_archive="$(node scripts/shared/artifact-paths.mjs --platform macos-arm64 --kind license-archive)"
 
 if [ -e "$mac_license_dir" ]; then
-  mac_license_backup="${mac_license_dir}-backup-$(date +%Y%m%d-%H%M%S)-$$"
+  mkdir -p "$mac_license_archive"
+  mac_license_backup="$mac_license_archive/licenses-backup-$(date +%Y%m%d-%H%M%S)-$$"
   mv "$mac_license_dir" "$mac_license_backup"
 fi
 
@@ -133,15 +149,17 @@ node scripts/macos/collect-app-licenses.mjs
 如需单独核对当前清单：
 
 ```bash
+mac_license_dir="$(node scripts/shared/artifact-paths.mjs --platform macos-arm64 --kind license-current)"
+
 python3 scripts/macos/verify-app.py \
-  --check-app-license-evidence target/macos-m4/app-license-evidence/licenses \
+  --check-app-license-evidence "$mac_license_dir" \
   --internal-alpha
 
 node scripts/macos/verify-supersplat-inputs.mjs \
-  --license-root target/macos-m4/app-license-evidence/licenses
+  --license-root "$mac_license_dir"
 ```
 
-清单准备完成后，执行第 2 节的完整打包命令。将清单收集到自定义目录，不会自动切换完整打包脚本使用的默认目录。
+清单准备完成后，执行第 2 节的完整打包命令。显式指定收集输出时，只接受统一许可证平台根目录内的新子目录；自定义输出不会自动替代打包脚本使用的 `current/`。
 
 ## 4. 打包选项
 
@@ -160,7 +178,7 @@ node scripts/macos/verify-supersplat-inputs.mjs \
 完整 DMG 流程必须成功退出，并在最后出现：
 
 ```text
-Verified app packaging evidence: .../target/macos-m4/app-verification/build.XXXXXX/final.json
+Verified app packaging evidence: .../artifacts/verification/macos-arm64/build.XXXXXX/final.json
 ```
 
 `running 1 test`、`1 passed` 或编译的 `Finished` 只表示中间阶段通过。应核对本轮输出的 `final.json`，其中 DMG 路径、SHA-256、`application_matches_verified_bundle` 和 `application_signatures_verified` 对应本轮产物。
@@ -168,19 +186,28 @@ Verified app packaging evidence: .../target/macos-m4/app-verification/build.XXXX
 | 产物 | 默认 release 路径 |
 | --- | --- |
 | 完整应用 | `target/aarch64-apple-darwin/release/bundle/macos/MetOrigin Splat.app` |
-| DMG 目录 | `target/aarch64-apple-darwin/release/bundle/dmg/` |
-| 本轮报告和预检日志 | `target/macos-m4/app-verification/build.XXXXXX/` |
-| 最近一次成功报告 | `target/macos-m4/app-verification/latest.json` |
+| DMG 目录 | `artifacts/packages/macos-arm64/` |
+| 本轮报告和预检日志 | `artifacts/verification/macos-arm64/build.XXXXXX/` |
+| 最近一次成功报告 | `artifacts/verification/macos-arm64/latest.json` |
 
-DMG 名称格式为 `MetOrigin-Splat-release-<引擎清单哈希前12位>-build.<随机标识>.dmg`。使用 `--debug` 时，应用/DMG 路径中的 `release` 改为 `debug`。
+DMG 名称格式为 `MetOrigin-Splat-release-<引擎清单哈希前12位>-build.<随机标识>.dmg`。使用 `--debug` 时，应用路径中的 `release` 和 DMG 文件名中的 `release` 改为 `debug`；两种 DMG 都放在同一个平台目录中。
 
 打开产物目录：
 
 ```bash
-open target/aarch64-apple-darwin/release/bundle/dmg
+open artifacts/packages/macos-arm64
 ```
 
-DMG 使用唯一名称，目录里可能保留多次历史构建；选择与本轮 `final.json` 一致的文件。`latest.json` 仅在本轮全部选定步骤成功后更新；失败时它可能仍是旧成功记录，不能用来证明失败的本轮已经完成。`--app-only` 成功也会更新该文件，但报告没有 `dmg` 字段。
+DMG 使用唯一名称，默认只保留最新一份及对应报告；受保护的发布基线可能额外保留。选择与本轮 `final.json` 一致的文件。`latest.json` 仅在本轮全部选定步骤成功后更新；失败时它可能仍是旧成功记录，不能用来证明失败的本轮已经完成。`--app-only` 成功也会更新该文件，但报告没有 `dmg` 字段。
+
+安装包按平台仅保留最近一次已登记构建，以及它引用的全部验证、许可证据；发布基线、显式固定和未解决失败不按普通历史轮换删除。需要清理时先预览，确认候选后再加 `--apply`：
+
+```bash
+node scripts/shared/artifact-retention.mjs apply --platform macos-arm64
+node scripts/shared/artifact-retention.mjs apply --platform macos-arm64 --apply
+```
+
+引用关系和 `pin` / `unpin` 的用法见[目录职责与清理规则](development.md#generated-files-and-cleanup)。不要只按文件日期删除仍被包或审计清单引用的许可证和报告；源码缓存中的本地修改、工具链、运行引擎及用户项目不属于普通测试清理对象。
 
 ## 6. 安装与启动
 
@@ -214,7 +241,7 @@ bash scripts/macos/build-app-icon.sh
 
 源码图标的修改不会更新已安装的应用：需要重新打包、安装，并在保存编辑后完全退出旧进程，再手动启动“应用程序”中的新版。资源生成或源码检查通过，也不代表已完成安装后的原生图标验收。
 
-“系统设置 → 通用 → 存储空间 → 应用程序”可能同时列出 `/Applications/MetOrigin Splat.app` 和 `target/aarch64-apple-darwin/release/bundle/macos/MetOrigin Splat.app`；相同名称和版本会被标为重复项。逐一选中条目，通过“在访达中显示”确认实际路径，日常运行保留 `/Applications` 中的安装版。不要仅为去掉重复项就删除整个 `target/`，其中还包含打包所需的引擎和许可证据。
+“系统设置 → 通用 → 存储空间 → 应用程序”可能同时列出 `/Applications/MetOrigin Splat.app` 和 `target/aarch64-apple-darwin/release/bundle/macos/MetOrigin Splat.app`；相同名称和版本会被标为重复项。逐一选中条目，通过“在访达中显示”确认实际路径，日常运行保留 `/Applications` 中的安装版。`target/` 中只放 Cargo 构建输出；引擎、源码缓存及新安装包分别位于 `.engines/`、`.cache/`、`artifacts/`。清理时按实际路径区分已安装应用、构建输出和需要保留的产物，删除 Cargo 缓存后重新构建会增加编译时间。
 
 存储列表可能继续显示系统缓存的旧图标，不能据此判断当前应用包内的资源。安装新版后关闭并重新打开该设置页面核对；若仍显示旧图标，先确认条目路径与实际应用，不执行全局缓存清理或自动重启命令。
 

@@ -13,6 +13,30 @@ import json
 from pathlib import Path
 import re
 import shutil
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+from engine_paths import map_legacy_path, resolve_engine_paths
+
+
+REBUILD_MACOS_SCRIPTS = (
+    "pack-engines.py", "pack_macos.py", "pack_licenses.py", "pack_sources.py",
+    "pack_spdx.py", "pack_brush_licenses.py", "pack-brush-notices.py",
+    "build-ffmpeg.sh", "verify_ffmpeg_build.py", "build-colmap.sh",
+    "verify_colmap_help.py", "colmap-m0-deps.explicit.txt", "build-brush.sh",
+    "prepare-brush-source.py", "check-brush-distribution.py",
+)
+REBUILD_REPOSITORY_FILES = (
+    *(f"scripts/macos/{name}" for name in REBUILD_MACOS_SCRIPTS),
+    "scripts/shared/engine_paths.py",
+    "packaging/shared/engine-paths.json", "packaging/shared/cache-paths.json",
+    "packaging/shared/artifact-paths.json", "packaging/macos-arm64/runtime-prefix-fields.json",
+    "packaging/macos-arm64/REBUILD.md",
+    "integrations/brush-macos/LPIPS-AUDIT.md",
+    "integrations/brush-macos/patches/0001-report-initialized-adapter.patch",
+    *(f"integrations/brush-macos/patches/metorigin-macos.{number}.patch" for number in range(2, 7)),
+    "LICENSE-MIT", "LICENSE-APACHE",
+)
 
 
 def sha256(path: Path) -> str:
@@ -21,6 +45,61 @@ def sha256(path: Path) -> str:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def deliver_rebuild_repository(repo_root: Path, engine_root: Path) -> dict:
+    """Deliver executable recipe inputs without flattening their import layout.
+
+    Older flat copies remain evidence snapshots. New entry points live in one
+    repository-shaped tree so Python imports and shell-relative helpers agree.
+    """
+    source_root = Path(repo_root).resolve()
+    provenance = Path(engine_root) / "provenance"
+    destination = provenance / "packaging/repository"
+    selected = [(name, name) for name in REBUILD_REPOSITORY_FILES]
+    selected.append(("packaging/macos-arm64/REBUILD.md", "REBUILD.md"))
+    # Check the whole recipe closure before publishing any of its files.
+    for source, _ in selected:
+        path = source_root / source
+        if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(source_root):
+            raise ValueError("Missing or nonphysical rebuild input: " + source)
+
+    records = []
+    for source, relative in selected:
+        original = source_root / source
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists() or target.is_symlink():
+            if target.is_symlink() or not target.is_file() or sha256(target) != sha256(original):
+                raise ValueError("Conflicting rebuild input snapshot: " + relative)
+        else:
+            shutil.copyfile(original, target)
+            shutil.copymode(original, target)
+        records.append({"path": relative, "source": source, "sha256": sha256(target)})
+
+    flat_note = (
+        "# Build recipe locations\n\n"
+        "Run rebuild entry points from `repository/`; see `repository/REBUILD.md`.\n"
+        "Flat Python copies in this directory, shell copies in `../build/`, and\n"
+        "`../build-brush.sh` are source/evidence snapshots, not standalone entry points.\n"
+        "Their relative imports and helpers require the repository-shaped tree.\n"
+        "Original dated build receipts remain separate evidence and are not rewritten.\n"
+    )
+    (provenance / "packaging/README.md").write_text(flat_note, encoding="utf-8")
+    if (provenance / "build").is_dir():
+        (provenance / "build/README.md").write_text(
+            "# Build evidence snapshots\n\n"
+            "These files retain captured build evidence and flat recipe copies.\n"
+            "Execute the recipes under `../packaging/repository/scripts/macos/`;\n"
+            "follow `../packaging/repository/REBUILD.md`.\n", encoding="utf-8")
+    receipt = {"schema_version": 1, "repository": "provenance/packaging/repository",
+               "instructions": "provenance/packaging/repository/REBUILD.md",
+               "scope": "Executable recipe/configuration/patch inputs; source archives and native toolchains are separate.",
+               "files": records}
+    (provenance / "packaging/rebuild-materials.json").write_text(
+        json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    return {"repository": receipt["repository"], "instructions": receipt["instructions"],
+            "inventory": "provenance/packaging/rebuild-materials.json"}
 
 
 def source_records(recipe: Path) -> list[dict]:
@@ -65,6 +144,15 @@ def source_records(recipe: Path) -> list[dict]:
     return records
 
 
+def dependency_source_paths(repo_root: Path, build: Path, directory: str, cache_text: str) -> tuple[Path, Path]:
+    """Read relocated dependency sources while preserving recorded CMake text."""
+    override = re.search(r"^FETCHCONTENT_SOURCE_DIR_" + directory.upper() + r":PATH=(.+)$", cache_text, re.M)
+    recorded_source = Path(override[1]) if override else build / f"_deps/{directory}-src"
+    recorded_stamp = (recorded_source.parent /
+        f"{directory}-subbuild/{directory}-populate-prefix/src/{directory}-populate-stamp/{directory}-populate-urlinfo.txt")
+    return map_legacy_path(recorded_source, repo_root), map_legacy_path(recorded_stamp, repo_root)
+
+
 def collect_licenses(repo_root: Path, closure_paths: list[Path], output_dir: Path,
                      colmap_build: Path | None = None,
                      colmap_source: Path | None = None,
@@ -77,11 +165,13 @@ def collect_licenses(repo_root: Path, closure_paths: list[Path], output_dir: Pat
     packages owning only aliases (e.g. libblas) are recorded separately.
     """
     repo_root = Path(repo_root).resolve()
-    m0 = repo_root / "target/macos-m0"
-    build = Path(colmap_build or m0 / "colmap-build").resolve()
-    source = Path(colmap_source or m0 / "colmap").resolve()
-    prefix = Path(conda_prefix or m0 / "colmap-deps").resolve()
-    cache = Path(conda_cache or m0 / "conda-pkgs").resolve()
+    paths = resolve_engine_paths(repo_root)
+    build = Path(colmap_build or paths["colmapDevelopmentBuildEvidence"]).resolve()
+    source = Path(colmap_source or paths["colmapSource"]).resolve()
+    # Default build evidence describes the original binaries. A relocated or
+    # rebuilt development prefix is a distinct input and must be selected explicitly.
+    prefix = Path(conda_prefix or paths["colmapAlphaDependencyEvidence"]).resolve()
+    cache = Path(conda_cache or paths["condaPackageCache"]).resolve()
     output = Path(output_dir).resolve() / "colmap"
     output.mkdir(parents=True, exist_ok=True)
     closure = {Path(p).resolve() for p in closure_paths}
@@ -246,9 +336,7 @@ def collect_licenses(repo_root: Path, closure_paths: list[Path], output_dir: Pat
                                                 ("FAISS", "faiss", "libfaiss.a", "MIT")]:
         if archive not in link:
             continue
-        override = re.search(r"^FETCHCONTENT_SOURCE_DIR_" + directory.upper() + r":PATH=(.+)$", cache_text, re.M)
-        dep_source = Path(override[1]) if override else build / f"_deps/{directory}-src"
-        stamp = dep_source.parent / f"{directory}-subbuild/{directory}-populate-prefix/src/{directory}-populate-stamp/{directory}-populate-urlinfo.txt"
+        dep_source, stamp = dependency_source_paths(repo_root, build, directory, cache_text)
         stamp_text = stamp.read_text()
         url = re.search(r"^url\(s\)=(.+)$", stamp_text, re.M)
         checksum = re.search(r"^hash=SHA256=([a-f0-9]{64})$", stamp_text, re.M)
@@ -272,7 +360,9 @@ def collect_licenses(repo_root: Path, closure_paths: list[Path], output_dir: Pat
                        "license": "GPL-3.0-or-later OR LicenseRef-Commercial", "commercial_license_evidence": None})
     if any(c["name"] == "libgcc" and any("quadmath" in p for p in c["files"]) for c in components):
         issues.append({"kind": "libquadmath_file_license_needs_source_verification", "component": "libgcc"})
+    rebuild = deliver_rebuild_repository(repo_root, output)
     report = {"schema_version": 1, "scope": "COLMAP actual linked components, including header/static dependencies",
+              "rebuild_materials": rebuild,
               "release_ready": False, "corresponding_source_delivered": False,
               "closure_files": len(closure), "conda_canonical_files": len(exact),
               "canonical_owner_package_count": len(owned), "build_options": flags,
@@ -293,10 +383,10 @@ def collect_ffmpeg_licenses(repo_root: Path, output_dir: Path,
                            ffmpeg_install: Path | None = None) -> dict:
     """Collect the separate locally built LGPL FFmpeg engine's evidence."""
     repo_root = Path(repo_root).resolve()
-    m0 = repo_root / "target/macos-m0"
-    build = Path(ffmpeg_build or m0 / "ffmpeg-build")
-    source = Path(ffmpeg_source or m0 / "ffmpeg")
-    install = Path(ffmpeg_install or m0 / "ffmpeg-install")
+    paths = resolve_engine_paths(repo_root)
+    build = Path(ffmpeg_build or paths["ffmpegBuildEvidence"])
+    source = Path(ffmpeg_source or paths["ffmpegSource"])
+    install = Path(ffmpeg_install or paths["ffmpegInstall"])
     output = Path(output_dir).resolve() / "ffmpeg"
     files = []
     sources = [(p, Path("licenses") / p.name) for p in (install / "share/licenses/ffmpeg").glob("*") if p.is_file()]
@@ -310,7 +400,9 @@ def collect_ffmpeg_licenses(repo_root: Path, output_dir: Path,
         shutil.copyfile(origin, dest)
         files.append({"path": str(relative), "sha256": sha256(dest), "evidence_origin": str(origin.relative_to(repo_root))})
     info = json.loads((build / "build-info.json").read_text())
+    rebuild = deliver_rebuild_repository(repo_root, output)
     report = {"schema_version": 1, "name": "FFmpeg", "version": info["version"],
+              "rebuild_materials": rebuild,
               "license_declared": info["license"], "release_ready": False,
               "source": {"url": "https://git.ffmpeg.org/ffmpeg.git", "commit": info["source_commit"],
                          "local_checkout": str(source.relative_to(repo_root))},

@@ -2,7 +2,7 @@
 
 本文档集描述当前实现。中英文项目介绍分别见 [English README](../README.md) 和[中文 README](../README.zh-CN.md)。
 
-Windows 和 macOS 验收文档中指向 `target/` 的链接是本地构建与原生测试证据，原始产物不随 Git 提交。文档保留构建身份、结果和未通过项；新克隆需要另行生成或取得对应证据，不能把源码提交视作完整验收通过。
+Windows 和 macOS 历史验收文档中的 `target/`、`.test-results/` 链接保留当时的原始路径，迁移记录可解析其归档位置；原始产物不随 Git 提交。当前正式报告统一放 `artifacts/verification/<platform>/`，安装包放 `artifacts/packages/<platform>/`。文档保留构建身份、结果和未通过项；新克隆需要另行生成或取得对应证据，不能把源码提交视作完整验收通过。
 
 ## 使用 / Usage
 
@@ -18,6 +18,7 @@ Windows 和 macOS 验收文档中指向 `target/` 的链接是本地构建与原
 | 文档 | 内容 |
 | --- | --- |
 | [Development](development.md) | 工具链、启动、测试、构建和提交范围 |
+| [目录职责与清理](development.md#generated-files-and-cleanup) | `target/`、`.cache/metorigin/`、`.engines/`、`artifacts/` 四类职责、测试临时目录与保留规则 |
 | [Architecture](architecture.md) | 模块边界、状态流、流水线和渲染 |
 | [Engine integration](engine-integration.md) | 版本锁定、路径解析、适配器和恢复边界 |
 | [Windows 高斯生成对齐方案](windows-gaussian-alignment-plan.zh-CN.md) | 实施中：同源 Brush 1.0、Windows 运行配置、引擎准备与原生验证，以及 Mac 回归保护 |
@@ -57,6 +58,6 @@ Windows 和 macOS 验收文档中指向 `target/` 的链接是本地构建与原
 - [真实引擎基线，2026-07-13](validation/engine-baseline.md)：保留测量数据和兼容性发现，不代表当前完整兼容性矩阵。
 - [设计契约与验收协议索引](../specs/README.md)：供追踪状态、安全交互和验收方法；旧界面文案与布局以当前使用指南和代码为准。
 
-参数以 [presets](../presets/) 为准，项目格式以 [schemas](../schemas/) 和 Rust 类型为准，引擎版本以 [engine-lock.json](../packaging/windows-x64/engine-lock.json) 为准。更新实现时同步修改对应指南，不再为每次界面调整新增独立说明文件。截图、日志和临时审阅报告保存在被 Git 忽略的 `.test-results/` 中。
+参数以 [presets](../presets/) 为准，项目格式以 [schemas](../schemas/) 和 Rust 类型为准，引擎版本以 [engine-lock.json](../packaging/windows-x64/engine-lock.json) 为准。更新实现时同步修改对应指南，不再为每次界面调整新增独立说明文件。需保留的截图、日志和正式报告放在被 Git 忽略的 `artifacts/verification/<platform>/`；普通测试工作目录使用系统临时目录并自动清理，必要调试数据显式保留。
 
 本产品包含 [Menlo Research](https://menlo.ai) 开发的 Jan 软件（固定来源与 Apache-2.0 原文见迁移记录和 `integrations/jan/`）；本地适配保留原 shadcn/ui MIT 声明，不将不同来源统一重标许可。

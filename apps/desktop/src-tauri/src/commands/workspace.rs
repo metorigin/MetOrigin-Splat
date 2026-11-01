@@ -1693,9 +1693,11 @@ mod tests {
     }
 
     #[test]
-    fn current_technical_spike_artifacts_are_readable_when_present() {
-        let project = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../.artifacts/technical-spike/ffmpeg-fast.splat-project");
+    fn configured_technical_spike_artifacts_are_readable_when_present() {
+        let Some(project) = std::env::var_os("METORIGIN_TECHNICAL_SPIKE_PROJECT") else {
+            return;
+        };
+        let project = std::path::PathBuf::from(project);
         let ply = project.join("output/scene.ply");
         if !ply.is_file() {
             return;

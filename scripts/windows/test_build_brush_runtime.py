@@ -76,13 +76,13 @@ class CacheTests(unittest.TestCase):
 
     def test_offline_dxc_requires_verified_archive_and_members(self):
         root = self.output / 'recipe-root'
-        archive = root / 'target/windows-brush/downloads/dxc.zip'
+        archive = root / '.cache/metorigin/downloads/dxc/windows-x64/dxc.zip'
         archive.parent.mkdir(parents=True)
         compiler = {'archive_name': 'dxc.zip', 'url': 'https://example.invalid/never-fetch',
                     'sha256': '0' * 64, 'files': {'bin/dxcompiler.dll': {
                         'archive_path': 'bin/x64/dxcompiler.dll',
                         'sha256': hashlib.sha256(b'fixed-test-compiler').hexdigest()}}}
-        with patch.object(recipe, 'ROOT', root):
+        with patch.object(recipe, 'runtime_paths', return_value={'brushDxcDownloads': archive.parent}):
             with self.assertRaisesRegex(ValueError, 'Offline build requires'):
                 recipe.prepare_dxc({'dxc': compiler}, True)
             with zipfile.ZipFile(archive, 'w') as zipped:
@@ -95,6 +95,30 @@ class CacheTests(unittest.TestCase):
             compiler['files']['bin/dxcompiler.dll']['sha256'] = '0' * 64
             with self.assertRaisesRegex(ValueError, 'file does not match'):
                 recipe.prepare_dxc({'dxc': compiler}, True)
+
+    def test_missing_source_never_downloads_offline_or_replaces_an_explicit_repository(self):
+        source = self.output / 'cache/upstream'
+        with patch.object(recipe, 'runtime_paths', return_value={'brushSource': source}), patch.object(recipe, 'run') as invoke:
+            with self.assertRaisesRegex(ValueError, 'Offline build requires'):
+                recipe.prepare_source_repository(source, {}, True)
+            with self.assertRaisesRegex(ValueError, 'Explicit Brush source repository does not exist'):
+                recipe.prepare_source_repository(self.output / 'user-repository', {}, False)
+            invoke.assert_not_called()
+        self.assertFalse(source.exists())
+
+    def test_only_missing_default_source_cache_uses_the_locked_remote_and_commit(self):
+        source = self.output / 'cache/upstream'
+        lock = {'source_repository': 'https://example.invalid/locked-source', 'source_commit': 'a' * 40}
+        with patch.object(recipe, 'runtime_paths', return_value={'brushSource': source}), patch.object(recipe, 'run') as invoke:
+            recipe.prepare_source_repository(source, lock, False)
+            self.assertEqual(invoke.call_args_list[0].args[0], ['git', 'clone', '--no-checkout', lock['source_repository'], source])
+            self.assertEqual(invoke.call_args_list[1].args[0][-1], lock['source_commit'] + '^{commit}')
+            source.mkdir()
+            (source / 'keep.txt').write_text('existing caller source')
+            invoke.reset_mock()
+            recipe.prepare_source_repository(source, lock, False)
+            invoke.assert_not_called()
+        self.assertEqual((source / 'keep.txt').read_text(), 'existing caller source')
 
     def test_os_build_lock_releases_after_exception(self):
         path = self.output / 'build.lock'

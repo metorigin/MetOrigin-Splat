@@ -1,14 +1,18 @@
 import { mkdir, readFile, writeFile, copyFile, readdir } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { connectPreviewTest } from './PreviewTestCdp.mjs';
+import { createTestingOutput, parseTestingOutputArguments } from '../shared/testing-output.mjs';
 
-const original = process.argv[2];
-if (!original) throw new Error('Usage: node scripts/windows/Validate-ModelEditor.mjs <completed-project-path>');
+const outputArguments = parseTestingOutputArguments();
+const original = outputArguments.arguments[0];
+if (!original || outputArguments.arguments.length !== 1) throw new Error('Usage: node scripts/windows/Validate-ModelEditor.mjs <completed-project-path> [--keep] [--report DIR]');
 const port = Number(process.env.METORIGIN_TAURI_DEBUG_PORT ?? 9258);
-const output = resolve('target/editor-evidence', `run-${Date.now()}`);
-const projectPath = join(output, '编辑验证.splat-project');
+const testingOutput = await createTestingOutput({ tool: 'model-editor', platform: 'windows-x64', ...outputArguments });
+const output = testingOutput.workDirectory;
+const projectPath = join(output, '编辑验证');
 const projectId = randomUUID();
+async function run() {
 await mkdir(join(projectPath, 'output'), { recursive: true });
 const project = JSON.parse(await readFile(join(original, 'project.json'), 'utf8'));
 await writeFile(join(projectPath, 'project.json'), JSON.stringify({ ...project, id: projectId, name: 'SuperSplat 编辑验证', status: 'completed' }));
@@ -50,14 +54,14 @@ try {
   check('no-result-preview-heading', await main.evaluate(`!document.querySelector('.preview-panel > .panel-title')`), {});
   check('no-history-controls', await main.evaluate(`!document.querySelector('.model-editing-controls')&&!document.querySelector('select[aria-label="模型版本"]')&&!document.body.textContent.includes('查看训练原始版')`), {});
   await waitFor(() => main.evaluate(`document.querySelector('.gaussian-preview-label')?.textContent.includes(${JSON.stringify(source.vertex_count.toLocaleString('en-US'))})`));
-  await main.screenshot(join(output, 'completed-results.png'));
+  await main.screenshot(join(testingOutput.reportDirectory, 'completed-results.png'));
   // Delay only the editor's model read to observe the real loading state.
   await main.evaluate(`window.fetch=(url,...args)=>String(url).includes('/read_gaussian_ply')?new Promise(resolve=>{window.__releaseEditorModel=()=>resolve(window.__editorOriginalFetch(url,...args));}):window.__editorOriginalFetch(url,...args)`);
   await main.evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='编辑').click()`);
   await waitFor(() => editor.evaluate(`typeof window.__releaseEditorModel==='function'`));
   const loading = await editor.evaluate(`(() => {const overlay=document.querySelector('.model-editor-busy'),icon=overlay?.querySelector('svg'),style=icon&&getComputedStyle(icon);return {text:overlay?.textContent,animation:style?.animationName,duration:style?.animationDuration,statusRows:document.querySelectorAll('.model-editor-page > .model-editor-status').length};})()`);
   check('loading-copy-and-animation', loading.text==='正在载入' && loading.animation==='spin' && parseFloat(loading.duration)>0 && loading.statusRows===0, loading);
-  await editor.screenshot(join(output, 'editor-loading.png'));
+  await editor.screenshot(join(testingOutput.reportDirectory, 'editor-loading.png'));
   await main.evaluate(`window.__releaseEditorModel();window.fetch=window.__editorOriginalFetch`);
   await waitFor(editorReady);
   const loaded = await editor.evaluate(`(() => {const w=document.querySelector('iframe').contentWindow; return { count:w.scene.events.invoke('scene.splats')[0].numSplats, gpu:w.scene.app.graphicsDevice.deviceType, error:document.querySelector('[role=alert]')?.textContent};})()`);
@@ -70,7 +74,7 @@ try {
   check('back-save-order-icons-and-consistent-size', controls.length===2&&controls[0].label==='返回'&&controls[1].label==='保存'&&controls.every(b=>b.icon&&Math.abs(b.width-actionSize.width)<1&&Math.abs(b.height-actionSize.height)<1), controls);
   const editorStyles = await editor.evaluate(`Array.from(document.querySelectorAll('.model-editor-actions button')).map(${buttonAppearance})`);
   check('back-save-consistent-style', editorStyles.length===2&&JSON.stringify(editorStyles[0])===JSON.stringify(editorStyles[1])&&JSON.stringify(editorStyles[0])===JSON.stringify(actionStyles[0]), editorStyles);
-  await editor.screenshot(join(output, 'editor-loaded.png'));
+  await editor.screenshot(join(testingOutput.reportDirectory, 'editor-loaded.png'));
   // The same mask/select and delete commands used by SuperSplat's editing UI.
   const removed = await editor.evaluate(`(async () => {const w=document.querySelector('iframe').contentWindow, e=w.scene.events, splat=e.invoke('scene.splats')[0]; const n=Math.min(100, Math.floor(splat.numSplats/10)); const mask=new w.Uint8Array(splat.numSplats); mask.fill(255,0,n); e.fire('selection',splat); e.fire('select.mask','set',mask); await e.invoke('queue',()=>{}); const selected=splat.numSelected; e.fire('select.delete'); await e.invoke('queue',()=>{}); return {selected,remaining:splat.numSplats,dirty:e.invoke('scene.dirty')};})()`);
   check('delete-selected-Gaussians', removed.selected > 0 && removed.remaining === source.vertex_count - removed.selected && removed.dirty, removed);
@@ -106,25 +110,37 @@ try {
   check('quality-count-updates-with-model', (await invoke('get_project_artifacts', { projectPath })).splat_count===removed.remaining, {});
   check('preview-update-event', await main.evaluate('window.__editorSaveEvents.length') === 2, await main.evaluate('window.__editorSaveEvents'));
   check('saved-state-clean', !await editor.evaluate(`document.querySelector('iframe').contentWindow.scene.events.invoke('scene.dirty')`), {});
-  await editor.screenshot(join(output, 'editor-saved.png'));
+  await editor.screenshot(join(testingOutput.reportDirectory, 'editor-saved.png'));
   await editor.evaluate(`Array.from(document.querySelectorAll('.model-editor-actions button')).find(b=>b.textContent==='返回').click()`);
   await waitFor(() => main.evaluate(`!document.querySelector('iframe') && !!document.querySelector('.run-summary-row')`));
   await waitFor(() => main.evaluate(`document.querySelector('.gaussian-preview-label')?.textContent.includes(${JSON.stringify(removed.remaining.toLocaleString('en-US'))})`));
   check('returned-preview-renders-edited-count', true, removed.remaining);
-  await main.screenshot(join(output, 'returned-results.png'));
+  await main.screenshot(join(testingOutput.reportDirectory, 'returned-results.png'));
   await main.evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='编辑').click()`);
   await waitFor(editorReady);
   const count = await editor.evaluate(`document.querySelector('iframe').contentWindow.scene.events.invoke('scene.splats')[0].numSplats`);
   check('reopen-overwritten-model', count === removed.remaining, count);
   const stale = await main.evaluate(`window.__TAURI_INTERNALS__.invoke('save_edited_ply',new Uint8Array([1]),{headers:{'x-editor-session':'expired-session'}}).then(()=>false,error=>String(error).includes('编辑会话已失效'))`);
   check('reject-stale-session-save', stale, {});
-  await editor.screenshot(join(output, 'editor-reopened.png'));
+  await editor.screenshot(join(testingOutput.reportDirectory, 'editor-reopened.png'));
   await editor.evaluate(`Array.from(document.querySelectorAll('.model-editor-actions button')).find(b=>b.textContent==='返回').click()`);
   await waitFor(() => main.evaluate(`!document.querySelector('iframe')`));
 } finally {
   check('input-fixture-unchanged', hash(await readFile(join(original, 'output/scene.ply')))===inputHash, {});
   await invoke('remove_recent_project', { projectId, projectPath }).catch((error) => console.error('Recent-index cleanup:', error));
-  await writeFile(join(output, 'validation.json'), JSON.stringify({ checks, projectPath }, null, 2));
-  console.log(`Evidence: ${output}`);
+  await writeFile(join(testingOutput.reportDirectory, 'validation.json'), JSON.stringify({ checks, projectPath }, null, 2));
   main.close();
+}
+}
+
+let successful = false;
+try {
+  await run();
+  successful = true;
+} catch (error) {
+  await writeFile(join(testingOutput.reportDirectory, 'runner-failure.json'), JSON.stringify({ status: 'FAIL', message: error.message }, null, 2));
+  throw error;
+} finally {
+  const published = testingOutput.finish({ success: successful });
+  console.log(`Evidence: ${published.reportDirectory}`);
 }

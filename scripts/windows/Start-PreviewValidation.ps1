@@ -1,9 +1,14 @@
 [CmdletBinding()]
-param([int]$DebugPort = 9246, [switch]$StopOnly)
+param([int]$DebugPort = 9246, [string]$CargoTargetDirectory = 'target/windows-preview-validation', [switch]$StopOnly)
 $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$taskQa = Join-Path $taskRoot '.test-results/gaussian-live'
-$taskBinary = Join-Path $taskRoot 'target-codex-debug/debug/splat-desktop.exe'
+$taskHasher = [Security.Cryptography.SHA256]::Create()
+try { $taskIdentity = ([BitConverter]::ToString($taskHasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($taskRoot)))).Replace('-', '').Substring(0,16) }
+finally { $taskHasher.Dispose() }
+$taskQa = Join-Path ([IO.Path]::GetTempPath()) "metorigin-preview-$taskIdentity"
+$taskTarget = if ([IO.Path]::IsPathRooted($CargoTargetDirectory)) { [IO.Path]::GetFullPath($CargoTargetDirectory) } else { [IO.Path]::GetFullPath((Join-Path $taskRoot $CargoTargetDirectory)) }
+$taskBinary = Join-Path $taskTarget 'debug/splat-desktop.exe'
+if ((Test-Path -LiteralPath $taskQa) -and ((Get-Item -LiteralPath $taskQa -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Preview scratch directory cannot be a link.' }
 New-Item -ItemType Directory -Path $taskQa -Force | Out-Null
 $taskPidPath = Join-Path $taskQa 'app.pid'
 if (Test-Path -LiteralPath $taskPidPath) {
@@ -11,12 +16,12 @@ if (Test-Path -LiteralPath $taskPidPath) {
     $taskPrevious = Get-Process -Id $taskPid -ErrorAction SilentlyContinue
     if ($taskPrevious -and [IO.Path]::GetFullPath($taskPrevious.Path) -eq [IO.Path]::GetFullPath($taskBinary)) { Stop-Process -Id $taskPid }
 }
-if ($StopOnly) { Write-Output 'Owned preview test application stopped.'; return }
+if ($StopOnly) { Remove-Item -LiteralPath $taskQa -Recurse -Force; Write-Output 'Owned preview test application stopped; temporary profile and logs removed.'; return }
 # Different identifier keeps the user's preferences and recent projects isolated.
 $env:TAURI_CONFIG = '{"identifier":"com.metorigin.splat.preview-validation"}'
 Push-Location $taskRoot
 try {
-    & cargo build -p splat-desktop --no-default-features --offline --target-dir target-codex-debug
+    & cargo build -p splat-desktop --no-default-features --offline --target-dir $taskTarget
     if ($LASTEXITCODE -ne 0) { throw 'Preview test application build failed' }
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$DebugPort"
     $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $taskQa 'webview-profile'

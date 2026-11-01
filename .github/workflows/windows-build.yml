@@ -47,13 +47,24 @@ jobs:
         run: pnpm package:windows:full
 
       - name: Verify internal artifact set
+        id: internal_artifacts
         shell: powershell
         run: |
-          $bundle = Join-Path '${{ github.workspace }}' 'artifacts/windows/installer'
-          $setup = Join-Path $bundle 'MetOrigin-Splat-Full-Setup-0.1.0-internal.exe'
+          . scripts/windows/Packaging.Common.ps1
+          $verification = Get-MetOriginWindowsPath -Key 'verification'
+          $packages = Get-MetOriginWindowsPath -Key 'packages'
+          $latest = Get-Content -LiteralPath (Join-Path $verification 'latest-full-installer.json') -Raw | ConvertFrom-Json
+          $setup = Assert-MetOriginChildPath -Path $latest.package -Parent $packages
+          $report = Assert-MetOriginChildPath -Path $latest.final_report -Parent $verification
+          $bundle = Split-Path -Parent $setup
+          $reportDirectory = Split-Path -Parent $report
+          $result = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+          if ($result.status -ne 'passed' -or $result.kind -ne 'full-installer' -or $result.package -ne $setup) {
+            throw 'Latest selector does not identify the verified full installer run.'
+          }
           $sums = Join-Path $bundle 'SHA256SUMS.txt'
-          $manifest = Join-Path $bundle 'metadata/engine-manifest.json'
-          $notices = Join-Path $bundle 'metadata/THIRD_PARTY_NOTICES.md'
+          $manifest = Join-Path $reportDirectory 'metadata/engine-manifest.json'
+          $notices = Join-Path $reportDirectory 'metadata/THIRD_PARTY_NOTICES.md'
           foreach ($path in @($setup, $sums, $manifest, $notices)) {
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
               throw "Expected internal artifact is missing: $path"
@@ -61,9 +72,16 @@ jobs:
           }
           $expected = ((Get-Content -LiteralPath $sums -Raw) -split '\s+')[0]
           $actual = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
-          if ($actual -ne $expected) {
+          if ($actual -ne $expected -or $actual -ne $result.package_sha256) {
             throw "Installer SHA-256 does not match SHA256SUMS.txt"
           }
+          $metadata = Get-Content -LiteralPath (Join-Path $reportDirectory 'metadata/internal-build.json') -Raw | ConvertFrom-Json
+          $revision = (& git rev-parse HEAD | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $metadata.source_revision -ne $revision) {
+            throw 'Installer evidence is not from the selected source revision.'
+          }
+          "package_directory=$bundle" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "report_directory=$reportDirectory" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Upload unsigned internal installer
         uses: actions/upload-artifact@v4
@@ -73,6 +91,5 @@ jobs:
           retention-days: 14
           compression-level: 0
           path: |
-            artifacts/windows/installer/MetOrigin-Splat-Full-Setup-0.1.0-internal.exe
-            artifacts/windows/installer/SHA256SUMS.txt
-            artifacts/windows/installer/metadata/**
+            ${{ steps.internal_artifacts.outputs.package_directory }}/**
+            ${{ steps.internal_artifacts.outputs.report_directory }}/**

@@ -1,8 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$LockFile = "packaging/windows-x64/engine-lock.json",
-    [string]$CacheDirectory = ".engines/downloads",
-    [string]$OutputRoot = "target/distribution/windows-x64",
+    [string]$CacheDirectory,
+    [string]$OutputRoot,
     [string]$CargoTargetDirectory = "target/windows-release-build",
     [string]$VCRedistPath,
     [switch]$OfflineEngines,
@@ -12,6 +12,8 @@ param(
 )
 
 . (Join-Path $PSScriptRoot "Packaging.Common.ps1")
+if (-not $CacheDirectory) { $CacheDirectory = Get-MetOriginWindowsDefaultPath -Key 'engineDownloads' }
+
 
 if ($AlignmentCandidate) {
     $candidateArgs = @{ CacheDirectory=$CacheDirectory; OfflineEngines=$OfflineEngines; SkipAcquire=$SkipAcquire; CheckOnly=$CheckOnly }
@@ -22,6 +24,7 @@ if ($AlignmentCandidate) {
     return
 }
 if ($CheckOnly) { throw 'CheckOnly is supported with AlignmentCandidate.' }
+if (-not $OutputRoot) { $OutputRoot = Get-MetOriginWindowsDefaultPath -Key 'distributionRoot' }
 
 $repositoryRoot = Get-MetOriginRepositoryRoot
 $previousCargoTargetDirectory = $env:CARGO_TARGET_DIR
@@ -107,6 +110,11 @@ if ($rustVersion -notmatch [regex]::Escape("rustc $expectedRust")) {
 
 Push-Location $repositoryRoot
 try {
+    $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8)
+    $verificationRoot = Get-MetOriginWindowsPath -Key 'verification'
+    $reportDirectory = Join-Path $verificationRoot "build.$stamp"
+    $publishedDirectory = Join-Path (Get-MetOriginWindowsPath -Key 'packages') "build.$stamp"
+    New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null
     $env:CARGO_TARGET_DIR = Resolve-MetOriginPath -Path $CargoTargetDirectory
     $sourceRevision = (& git rev-parse HEAD | Out-String).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Cannot determine source revision.' }
@@ -155,10 +163,13 @@ try {
         Remove-Item -LiteralPath $finalInstaller -Force
     }
 
+    $generatedConfig = Join-Path $reportDirectory 'tauri.conf.json'
+    & $node (Join-Path $PSScriptRoot 'ResourceConfig.mjs') --output $OutputRoot --config $generatedConfig
+    if ($LASTEXITCODE -ne 0) { throw 'Full installer resource configuration failed.' }
     $buildStarted = [DateTime]::UtcNow
     Write-Host "Building the fully offline NSIS installer."
     & $pnpm --dir apps/desktop tauri build `
-        --config src-tauri/tauri.full.conf.json `
+        --config $generatedConfig `
         --bundles nsis
     if ($LASTEXITCODE -ne 0) {
         throw "Tauri NSIS build failed with exit code $LASTEXITCODE."
@@ -186,8 +197,8 @@ try {
     $installerSums = Join-Path $nsisDirectory "SHA256SUMS.txt"
     Write-MetOriginUtf8File -Path $installerSums -Content "$installerHash  $finalName`n"
 
-    $metadataDirectory = Join-Path $nsisDirectory "metadata"
-    Reset-MetOriginDirectory -Path $metadataDirectory -AllowedParent $nsisDirectory | Out-Null
+    $metadataDirectory = Join-Path $reportDirectory "metadata"
+    New-Item -ItemType Directory -Path $metadataDirectory | Out-Null
     $stagingRoot = Resolve-MetOriginPath -Path $OutputRoot
     Copy-Item `
         -LiteralPath (Join-Path $stagingRoot "engines\engine-manifest.json") `
@@ -222,14 +233,20 @@ try {
         -Path (Join-Path $metadataDirectory "internal-build.json") `
         -Content (($buildMetadata | ConvertTo-Json -Depth 5) + "`n")
 
-    $windowsArtifactRoot = Resolve-MetOriginPath -Path "artifacts/windows"
-    New-Item -ItemType Directory -Path $windowsArtifactRoot -Force | Out-Null
-    $publishedDirectory = Reset-MetOriginDirectory `
-        -Path (Join-Path $windowsArtifactRoot "installer") `
-        -AllowedParent $windowsArtifactRoot
-    Copy-Item -LiteralPath $finalInstaller -Destination (Join-Path $publishedDirectory $finalName)
+    New-Item -ItemType Directory -Path $publishedDirectory | Out-Null
+    $publishedInstaller = Join-Path $publishedDirectory $finalName
+    Copy-Item -LiteralPath $finalInstaller -Destination $publishedInstaller
     Copy-Item -LiteralPath $installerSums -Destination (Join-Path $publishedDirectory "SHA256SUMS.txt")
-    Copy-Item -LiteralPath $metadataDirectory -Destination (Join-Path $publishedDirectory "metadata") -Recurse
+    $finalReport = Join-Path $reportDirectory 'final.json'
+    $record = [ordered]@{ schema_version=1; status='passed'; platform='windows-x64'; kind='full-installer';
+        package=$publishedInstaller; package_sha256=$installerHash; metadata_directory='metadata';
+        engine_pack=(Resolve-MetOriginPath -Path $OutputRoot); created_utc=[DateTime]::UtcNow.ToString('o') }
+    Write-MetOriginUtf8File -Path $finalReport -Content (($record | ConvertTo-Json -Depth 6)+"`n")
+    & $node (Join-Path $repositoryRoot 'scripts/shared/artifact-retention.mjs') record --platform windows-x64 --report $finalReport --package $publishedDirectory
+    if ($LASTEXITCODE -ne 0) { throw 'Installer retention registration failed.' }
+    $latest = ([ordered]@{ final_report=$finalReport; package=$publishedInstaller } | ConvertTo-Json)+"`n"
+    Write-MetOriginUtf8File -Path (Join-Path $verificationRoot 'latest-full-installer.json') -Content $latest
+    Write-MetOriginUtf8File -Path (Join-Path $verificationRoot 'latest.json') -Content $latest
 
     Write-Host "Created internal installer: $finalInstaller"
     Write-Host "Published internal installer: $(Join-Path $publishedDirectory $finalName)"

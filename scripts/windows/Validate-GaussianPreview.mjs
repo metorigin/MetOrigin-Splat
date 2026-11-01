@@ -4,11 +4,15 @@ import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { connectPreviewTest } from "./PreviewTestCdp.mjs";
+import { createTestingOutput, parseTestingOutputArguments } from "../shared/testing-output.mjs";
 
-const original = process.argv[2];
-if (!original) throw new Error("Usage: node scripts/windows/Validate-GaussianPreview.mjs <completed-project-path>");
-const output = resolve(".test-results/gaussian-live", `run-${Date.now()}`);
-const projectPath = join(output, "preview.splat-project");
+const outputArguments = parseTestingOutputArguments();
+const original = outputArguments.arguments[0];
+if (!original || outputArguments.arguments.length !== 1) throw new Error("Usage: node scripts/windows/Validate-GaussianPreview.mjs <completed-project-path> [--keep] [--report DIR]");
+const testingOutput = await createTestingOutput({ tool: "gaussian-preview", platform: "windows-x64", ...outputArguments });
+const output = testingOutput.workDirectory;
+const projectPath = join(output, "preview");
+async function run() {
 await mkdir(join(projectPath, "output"), { recursive: true });
 const project = JSON.parse(await readFile(join(original, "project.json"), "utf8"));
 project.id = randomUUID();
@@ -53,7 +57,7 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 1500));
   const staticState = await cdp.evaluate(`({text:document.querySelector('#preview-validation').innerText, canvas:!!document.querySelector('#preview-validation canvas'), error:document.querySelector('#preview-validation [role=alert]')?.textContent})`);
   check("native-gaussian-render", staticState.canvas && !staticState.error && staticState.text.includes(source.vertex_count.toLocaleString()), staticState);
-  await cdp.screenshot(join(output, "gaussian-static.png"));
+  await cdp.screenshot(join(testingOutput.reportDirectory, "gaussian-static.png"));
 
   const sessionId = randomUUID();
   const liveRoot = join(projectPath, "training/live-preview");
@@ -79,7 +83,7 @@ try {
       revisions.push(state.iteration);
       console.log(`LIVE ${state.iteration}`);
       if (revisions.length === 2 && !pausedChecked) {
-        await cdp.screenshot(join(output, "gaussian-live.png"));
+        await cdp.screenshot(join(testingOutput.reportDirectory, "gaussian-live.png"));
         await cdp.evaluate(`(() => {const s=document.querySelector('#preview-validation select'); s.value='off';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
         await waitFor(() => cdp.evaluate(`document.querySelector('#preview-validation').innerText.includes('预览已暂停')`));
         const before = JSON.parse(await readFile(join(liveDir, "latest.json"), "utf8"));
@@ -100,10 +104,31 @@ try {
   check("bounded-preview-cache", (await readdir(liveDir)).filter((name) => name.endsWith(".ply")).length <= 2, await readdir(liveDir));
   check("no-renderer-exceptions", cdp.errors.length === 0, cdp.errors);
 } finally {
-  if (engine && engine.exitCode === null) engine.kill();
-  engineLog?.end();
+  if (engine && engine.exitCode === null && engine.signalCode === null) {
+    const exited = new Promise((done) => engine.once("exit", done));
+    engine.kill();
+    await Promise.race([exited, new Promise((done) => setTimeout(done, 3000))]);
+    if (engine.exitCode === null && engine.signalCode === null) throw new Error("Owned test engine has not stopped; retain its temporary data.");
+  }
+  if (engineLog) {
+    engine.stdout?.unpipe(engineLog);
+    engine.stderr?.unpipe(engineLog);
+    await new Promise((done, reject) => { engineLog.once("error", reject); engineLog.end(done); });
+  }
   await cdp.evaluate("window.__previewValidation?.root.unmount();document.getElementById('preview-validation')?.remove()").catch(() => {});
   cdp.close();
-  await writeFile(join(output, "report.json"), JSON.stringify({ output, checks, errors: cdp.errors }, null, 2));
-  console.log(`Report: ${output}`);
+  await writeFile(join(testingOutput.reportDirectory, "report.json"), JSON.stringify({ temporary_work: output, checks, errors: cdp.errors }, null, 2));
+}
+}
+
+let successful = false;
+try {
+  await run();
+  successful = true;
+} catch (error) {
+  await writeFile(join(testingOutput.reportDirectory, "runner-failure.json"), JSON.stringify({ status: "FAIL", message: error.message }, null, 2));
+  throw error;
+} finally {
+  const published = testingOutput.finish({ success: successful });
+  console.log(`Report: ${published.reportDirectory}`);
 }

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$ArtifactDirectory = "artifacts/windows/app",
+    [string]$ArtifactDirectory,
     [string]$CargoTargetDirectory = "target/windows-release-build",
     [switch]$AlignmentCandidate,
     [switch]$OfflineEngines,
@@ -9,6 +9,7 @@ param(
 )
 
 . (Join-Path $PSScriptRoot "Packaging.Common.ps1")
+
 
 if ($AlignmentCandidate) {
     if ($PSBoundParameters.ContainsKey('ArtifactDirectory')) { throw 'AlignmentCandidate writes a unique isolated artifact directory.' }
@@ -78,6 +79,11 @@ if ($binaryName -ne "MetOrigin Splat") {
 
 Push-Location $repositoryRoot
 try {
+    $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8)
+    $verificationRoot = Get-MetOriginWindowsPath -Key 'verification'
+    $reportDirectory = Join-Path $verificationRoot "build.$stamp"
+    New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null
+    if (-not $ArtifactDirectory) { $ArtifactDirectory = Join-Path (Get-MetOriginWindowsPath -Key 'packages') "build.$stamp" }
     New-Item -ItemType Directory -Path $isolatedCargoTargetDirectory -Force | Out-Null
     $env:CARGO_TARGET_DIR = $isolatedCargoTargetDirectory
     $cargoMetadataText = Invoke-CheckedTool `
@@ -103,12 +109,12 @@ try {
         throw "The expected executable was not refreshed by this build: '$releaseExecutable'."
     }
 
-    $windowsArtifactRoot = Resolve-MetOriginPath -Path "artifacts/windows"
+    $windowsArtifactRoot = Get-MetOriginWindowsPath -Key 'packages'
     New-Item -ItemType Directory -Path $windowsArtifactRoot -Force | Out-Null
     $requestedArtifactDirectory = Resolve-MetOriginPath -Path $ArtifactDirectory
-    $publishedDirectory = Reset-MetOriginDirectory `
-        -Path $requestedArtifactDirectory `
-        -AllowedParent $windowsArtifactRoot
+    if (Test-Path -LiteralPath $requestedArtifactDirectory) { throw 'Application output already exists; select a fresh ArtifactDirectory.' }
+    New-Item -ItemType Directory -Path $requestedArtifactDirectory -Force | Out-Null
+    $publishedDirectory = $requestedArtifactDirectory
     $publishedExecutable = Join-Path $publishedDirectory "$binaryName.exe"
     Copy-Item -LiteralPath $releaseExecutable -Destination $publishedExecutable
 
@@ -133,9 +139,21 @@ try {
         created_utc = [DateTime]::UtcNow.ToString("o")
     }
     Write-MetOriginUtf8File `
-        -Path (Join-Path $publishedDirectory "build-info.json") `
+        -Path (Join-Path $reportDirectory "build-info.json") `
         -Content (($buildMetadata | ConvertTo-Json -Depth 5) + "`n")
 
+    $finalReport = Join-Path $reportDirectory 'final.json'
+    $record = [ordered]@{ schema_version=1; status='passed'; platform='windows-x64'; kind='application';
+        package=$publishedExecutable; package_sha256=$executableHash; created_utc=[DateTime]::UtcNow.ToString('o') }
+    Write-MetOriginUtf8File -Path $finalReport -Content (($record | ConvertTo-Json -Depth 6)+"`n")
+    $managedPackagePrefix = $windowsArtifactRoot.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    if ($publishedDirectory.StartsWith($managedPackagePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        & node (Join-Path $repositoryRoot 'scripts/shared/artifact-retention.mjs') record --platform windows-x64 --report $finalReport --package $publishedDirectory
+        if ($LASTEXITCODE -ne 0) { throw 'Application retention registration failed.' }
+    } else { Write-Host 'Explicit custom output is preserved outside managed package retention.' }
+    $latest = ([ordered]@{ final_report=$finalReport; package=$publishedExecutable } | ConvertTo-Json)+"`n"
+    Write-MetOriginUtf8File -Path (Join-Path $verificationRoot 'latest-app.json') -Content $latest
+    Write-MetOriginUtf8File -Path (Join-Path $verificationRoot 'latest.json') -Content $latest
     Write-Host "Published Windows release application: $publishedExecutable"
     Write-Host "Executable SHA-256: $executableHash"
 }

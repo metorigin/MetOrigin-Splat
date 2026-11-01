@@ -3,8 +3,8 @@
 // Final app hashing remains verify-app.py's responsibility; this is not binary extraction.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { readFile, realpath, writeFile } from 'node:fs/promises';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overlayIdentity, verifyPreparedAssets } from '../../integrations/supersplat/prepared-assets.mjs';
 import { currentSupersplatEvidenceInputs } from '../shared/supersplat-evidence.mjs';
@@ -30,7 +30,7 @@ export async function verifySupersplatInputs(root, licenseRoot, includeDist = fa
 }
 
 async function main() {
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+  const root = resolve(dirname(await realpath(fileURLToPath(import.meta.url))), '../..');
   let licenseRoot, reportPath, expectedPath, includeDist = false;
   const args = process.argv.slice(2);
   while (args.length) {
@@ -55,4 +55,5 @@ async function main() {
     asset_count: report.input_identity.assets.length, webp_overlay: report.input_identity.webp_overlay }));
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+const invokedPath = process.argv[1] ? await realpath(process.argv[1]).catch(() => undefined) : undefined;
+if (invokedPath && relative(invokedPath, await realpath(fileURLToPath(import.meta.url))) === '') await main();

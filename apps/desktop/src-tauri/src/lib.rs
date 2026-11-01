@@ -103,7 +103,46 @@ pub fn run() {
         });
 }
 
-#[cfg(all(debug_assertions, not(target_os = "windows")))]
+#[cfg(all(debug_assertions, target_os = "macos", target_arch = "aarch64"))]
+fn configure_debug_engine_dir() {
+    use splat_hardware::engine_layout::macos_development_search_roots;
+    let explicit = std::env::var_os("METORIGIN_ENGINE_DIR");
+    let current_directory = std::env::current_dir().ok();
+    let executable = std::env::current_exe().ok();
+    // This existing debug-only anchor also covers an external CARGO_TARGET_DIR
+    // launched from an unrelated cwd. Release discovery never embeds it.
+    let anchor = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let roots = macos_development_search_roots(current_directory.as_deref(), executable.as_deref());
+    let selected = macos_default_debug_engine_dir(explicit.as_deref(), &anchor, &roots);
+    match selected {
+        Ok(Some(engine_dir)) => std::env::set_var("METORIGIN_ENGINE_DIR", engine_dir),
+        Ok(None) => {}
+        Err(error) => {
+            tracing::warn!(%error, "Cannot discover the configured macOS development engines")
+        }
+    }
+}
+
+#[cfg(any(
+    all(debug_assertions, target_os = "macos", target_arch = "aarch64"),
+    test
+))]
+fn macos_default_debug_engine_dir(
+    explicit: Option<&std::ffi::OsStr>,
+    anchor: &std::path::Path,
+    roots: &[std::path::PathBuf],
+) -> Result<Option<std::path::PathBuf>, splat_hardware::engine_layout::EngineLayoutError> {
+    if explicit.is_some() {
+        return Ok(None);
+    }
+    splat_hardware::engine_layout::macos_development_engine_dir_with_anchor(anchor, roots)
+}
+
+#[cfg(all(
+    debug_assertions,
+    not(target_os = "windows"),
+    not(all(target_os = "macos", target_arch = "aarch64"))
+))]
 fn configure_debug_engine_dir() {
     if std::env::var_os("METORIGIN_ENGINE_DIR").is_some() {
         return;
@@ -116,3 +155,28 @@ fn configure_debug_engine_dir() {
 
 #[cfg(any(not(debug_assertions), target_os = "windows"))]
 fn configure_debug_engine_dir() {}
+
+#[cfg(test)]
+mod macos_debug_discovery_tests {
+    use super::macos_default_debug_engine_dir;
+
+    #[test]
+    fn explicit_environment_is_not_replaced_by_a_checkout_default() {
+        let root = std::env::temp_dir().join(format!("mac-debug-{}", uuid::Uuid::now_v7()));
+        let development = splat_hardware::engine_layout::macos_development_root(&root).unwrap();
+        std::fs::create_dir_all(&development).unwrap();
+        let roots = [root.clone()];
+        assert_eq!(
+            macos_default_debug_engine_dir(None, &root, &roots).unwrap(),
+            Some(development)
+        );
+        assert!(macos_default_debug_engine_dir(
+            Some(std::ffi::OsStr::new("user-selected-engine-directory")),
+            &root,
+            &roots
+        )
+        .unwrap()
+        .is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}

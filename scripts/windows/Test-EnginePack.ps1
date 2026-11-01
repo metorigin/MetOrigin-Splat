@@ -1,11 +1,13 @@
 [CmdletBinding()]
 param(
     [string]$LockFile = "packaging/windows-x64/engine-lock.json",
-    [string]$OutputRoot = "target/distribution/windows-x64",
+    [string]$OutputRoot,
     [switch]$SkipRuntimeChecks
 )
 
 . (Join-Path $PSScriptRoot "Packaging.Common.ps1")
+if (-not $OutputRoot) { $OutputRoot = Get-MetOriginWindowsPath -Key 'distributionRoot' }
+
 
 $lock = Read-MetOriginEngineLock -Path $LockFile
 $output = Resolve-MetOriginPath -Path $OutputRoot

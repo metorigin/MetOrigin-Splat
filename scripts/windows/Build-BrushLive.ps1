@@ -1,12 +1,15 @@
 [CmdletBinding()]
 param(
-    [string]$SourceArchive = '.engines/downloads/brush-v0.3.0-source.zip',
-    [string]$OutputDirectory = '.engines/brush-v0.3.0-windows-x64',
+    [string]$SourceArchive,
+    [string]$OutputDirectory,
     [switch]$Offline
 )
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Packaging.Common.ps1')
+if (-not $SourceArchive) { $SourceArchive = Join-Path (Get-MetOriginWindowsDefaultPath -Key 'engineDownloads') 'brush-v0.3.0-source.zip' }
+if (-not $OutputDirectory) { $OutputDirectory = Get-MetOriginWindowsDefaultPath -Key 'brushLiveInstall' }
 $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$taskBuild = Join-Path $taskRoot 'target/brush-live-source'
+$taskBuild = Get-MetOriginWindowsDefaultPath -Key 'brushLiveSource'
+$taskCargoTarget = if ($env:CARGO_TARGET_DIR) { Resolve-MetOriginPath -Path $env:CARGO_TARGET_DIR } else { Get-MetOriginWindowsDefaultPath -Key 'brushLiveBuild' }
 $taskArchive = if ([IO.Path]::IsPathRooted($SourceArchive)) { [IO.Path]::GetFullPath($SourceArchive) } else { [IO.Path]::GetFullPath((Join-Path $taskRoot $SourceArchive)) }
 $taskOutput = if ([IO.Path]::IsPathRooted($OutputDirectory)) { [IO.Path]::GetFullPath($OutputDirectory) } else { [IO.Path]::GetFullPath((Join-Path $taskRoot $OutputDirectory)) }
 New-Item -ItemType Directory -Path $taskBuild, $taskOutput -Force | Out-Null
@@ -57,11 +60,11 @@ tokio = { workspace = true, features = ["rt-multi-thread", "io-util"] }
 wgpu = { workspace = true, features = ["vulkan"] }
 '@)
 [IO.File]::WriteAllText($taskManifest, $taskText, $taskEncoding)
-$taskArgs = @('build', '--release', '--manifest-path', (Join-Path $taskSource 'Cargo.toml'), '-p', 'brush-cli', '--bin', 'brush_live', '--target-dir', (Join-Path $taskRoot 'target/brush-live-build'))
+$taskArgs = @('build', '--release', '--manifest-path', (Join-Path $taskSource 'Cargo.toml'), '-p', 'brush-cli', '--bin', 'brush_live', '--target-dir', $taskCargoTarget)
 if ($Offline) { $taskArgs += '--offline' }
 & cargo @taskArgs
 if ($LASTEXITCODE -ne 0) { throw "Brush live build failed: $LASTEXITCODE" }
-$taskBinary = Join-Path $taskRoot 'target/brush-live-build/release/brush_live.exe'
+$taskBinary = Join-Path $taskCargoTarget 'release/brush_live.exe'
 Copy-Item -LiteralPath $taskBinary -Destination (Join-Path $taskOutput 'brush_live.exe') -Force
 Copy-Item -LiteralPath (Join-Path $taskSource 'LICENSE') -Destination (Join-Path $taskOutput 'BRUSH-LIVE-LICENSE') -Force
 & (Join-Path $taskOutput 'brush_live.exe') --version

@@ -2,7 +2,58 @@
 
 `scripts/macos/pack-engines.py` builds a local engine candidate from pinned native
 artifacts. `scripts/macos/verify-pack.py` checks the finished bytes. The runtime is
-kept in the ignored `target/distribution/macos-arm64/engines` directory.
+selected from the ignored `.engines/macos-arm64/distribution/engines/` directory.
+
+## Current paths (2026-11-01)
+
+[`engine-paths.json`](../shared/engine-paths.json) defines the stable engine paths,
+native-source locations and build-cache roles. Node callers use
+[`engine-paths.mjs`](../../scripts/shared/engine-paths.mjs); native recipes use
+[`engine_paths.py`](../../scripts/shared/engine_paths.py), which requires only
+Python's standard library. The cache root comes from `cache-paths.json`.
+
+Development uses `.engines/macos-arm64/development/` with FFmpeg 8.1.2,
+COLMAP 4.1.0 and Brush `metorigin-macos.5`. Full app packaging uses
+the separate `.engines/macos-arm64/distribution/` Alpha `.6` pack with its
+original 2,999-file manifest below. Older packs and immutable Brush artifacts use
+`.engines/macos-arm64/archive/`. A path migration does not rebuild or promote an
+engine or establish a new acceptance result. Saved paths can be mapped to the
+same verified pack without changing its engine identity.
+
+Imported CMake, FFmpeg and Cargo trees under
+`.cache/metorigin/build/engines/macos-arm64/imported/` retain historical records;
+they must not be treated as incrementally reusable build directories. Native
+recipes default to the separate `native/` tree. Brush still builds with Rust
+1.95.0 rather than the application's Rust 1.97.0. Explicit `CARGO_HOME` and
+`CARGO_TARGET_DIR` overrides retain priority.
+
+The development Conda environment uses
+`.engines/macos-arm64/development/colmap-deps/` as its native installation prefix,
+with the exact 171-package lock. Rebuild COLMAP in the fresh native cache and
+install it at `colmapInstall`, retaining CGAL, LSD, MVS and downloads enabled in
+the development profile. Its original dependency environment and install are
+retained under `.engines/macos-arm64/archive/colmap/dependencies-original/` and
+`development-original/` as historical audit inputs. A new development build needs
+its own hash and validation; it does not inherit the original binary's evidence.
+
+Mac runtime engines use their canonical `.engines/macos-arm64/` paths directly.
+No target compatibility aliases remain or are recreated during preparation.
+Saved settings that explicitly name a retired target path should select the
+matching canonical engine directory. The local
+[migration map](../../.engines/macos-arm64/migration-map.json), stage-4 receipts,
+and historical recipes below keep their original paths and identities. Record
+prefix retirement and the new build separately; this is not a portability or
+clean-host acceptance claim.
+
+`pack-engines.py` resolves its default audit inputs after `--repo-root` and selects
+the corresponding Brush source from the artifact's `patch_id`. The default
+`colmapAlphaDependencyEvidence` selects the archived original environment;
+imported Alpha audit inputs must not be paired with the new development prefix.
+Imported audit inputs are distinct from new native-build outputs. New packs require a fresh
+`--output`, an explicitly selected identity and independent verification. The
+historical `--pack-version` default remains `0.1.0-alpha.1`; it must not be
+represented as the existing Alpha `.6` pack. Repeated app packaging reuses the
+frozen distribution input instead of rebuilding it.
 
 The active full-app input is Brush `.6`, engine manifest SHA-256
 `590102d2290251ceced86320d1edef00b1667b139249326f9511ff1b75b6bc40`.
@@ -142,13 +193,37 @@ uniquely named DMG. The final report must match the first signed-app report's
 executable and full bundle inventory hashes. Embedded engines are never
 re-signed or silently re-hashed by this step.
 
+New DMGs use `artifacts/packages/macos-arm64/`; new reports and preflight logs use
+`artifacts/verification/macos-arm64/build.XXXXXX/`, with `latest.json` in that
+platform's verification directory updated only after success. The output
+categories are defined in [`artifact-paths.json`](../shared/artifact-paths.json)
+and resolved by [`artifact-paths.mjs`](../../scripts/shared/artifact-paths.mjs).
+SuperSplat source and npm caches use `.cache/metorigin/sources/supersplat/upstream/`
+and `.cache/metorigin/downloads/npm/supersplat/`, defined in
+[`cache-paths.json`](../shared/cache-paths.json). Preparing this cache layout
+changes the preparation signature; archive and recollect application-license
+evidence before the first package using the new preparation. Current application-license
+evidence uses `artifacts/licenses/macos-arm64/current/`; historical backups use
+`artifacts/licenses/macos-arm64/archive/`. The collector refuses to overwrite a
+collection, and its custom output must be a fresh child of the shared platform
+license root. The builder generates the Tauri resource configuration from these
+paths while retaining the in-app `resources/app-licenses/` destination. Moving an
+unchanged verified collection does not itself require recollection. The local
+[migration map](../../artifacts/licenses/macos-arm64/migration-map.json) records
+relocated license directories without changing their contents or original path fields.
+The compiled `.app` remains in `target/`; engine packs and their license inputs
+use the stable distribution directory described above. Historical packages and reports are archived under `artifacts/` without rewriting
+their contents or original path fields; migration records identify current locations. See the
+[macOS packaging guide (中文)](../../docs/macos-packaging.zh-CN.md) for the current
+commands and output locations.
+
 Before building the app, the script also runs the production Rust release
 resolver against the selected pack without an integrity cache or engine
 execution. To run this explicit integration check separately with the configured
 Rust 1.97 toolchain:
 
 ```sh
-METORIGIN_TEST_ENGINE_PACK="$PWD/target/distribution/macos-arm64/engines" \
+METORIGIN_TEST_ENGINE_PACK="$(python3 scripts/shared/engine_paths.py --repo-root "$PWD" --key distributionEngines)" \
 METORIGIN_TEST_ENGINE_MANIFEST_SHA256=590102d2290251ceced86320d1edef00b1667b139249326f9511ff1b75b6bc40 \
   cargo test --locked --target aarch64-apple-darwin -p splat-hardware --lib \
     locator::tests::frozen_macos_engine_pack_resolves_without_execution \
@@ -159,7 +234,7 @@ The following gate uses the same application's PendingWork-protected adapter and
 version checks, including FFprobe and the complete Brush build identity:
 
 ```sh
-METORIGIN_TEST_ENGINE_PACK="$PWD/target/distribution/macos-arm64/engines" \
+METORIGIN_TEST_ENGINE_PACK="$(python3 scripts/shared/engine_paths.py --repo-root "$PWD" --key distributionEngines)" \
 METORIGIN_TEST_ENGINE_MANIFEST_SHA256=590102d2290251ceced86320d1edef00b1667b139249326f9511ff1b75b6bc40 \
   cargo test --locked --target aarch64-apple-darwin -p splat-desktop --lib \
     commands::system::tests::frozen_macos_engine_pack_passes_application_version_checks \

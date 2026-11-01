@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "root": ".cache/metorigin",
+  "directories": {
+    "supersplatSource": "sources/supersplat",
+    "supersplatNpm": "downloads/npm/supersplat"
+  }
+}

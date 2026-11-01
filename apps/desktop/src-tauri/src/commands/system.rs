@@ -142,8 +142,7 @@ pub fn resolve_engine_resolution(app_handle: &tauri::AppHandle) -> EngineResolut
             });
     let require_resource_manifest = cfg!(target_os = "windows")
         && resource_engines.as_ref().is_some_and(|path| {
-            path.ends_with("target/distribution/windows-x64/engines")
-                || path.ends_with("target/distribution/windows-x64-alignment/engines")
+            splat_hardware::engine_layout::is_windows_managed_engine_dir(path)
                 || std::env::var_os("METORIGIN_PREPARED_ENGINE_DIR").is_some()
         });
     EngineLocator::resolve_detailed(EngineLocatorOptions {
@@ -156,10 +155,31 @@ pub fn resolve_engine_resolution(app_handle: &tauri::AppHandle) -> EngineResolut
     })
 }
 
-/// Finds a portable/developer `.engines` pack without embedding a machine
-/// path into the application. This covers launching from the repository root
-/// and launching `target/debug/splat-desktop.exe` directly.
-#[cfg(all(debug_assertions, not(target_os = "windows")))]
+/// Find the platform development root, retaining the existing debug-only
+/// checkout anchor and the old flat-directory fallback. Release never uses it.
+#[cfg(all(debug_assertions, target_os = "macos", target_arch = "aarch64"))]
+fn local_engine_dir() -> Option<PathBuf> {
+    use splat_hardware::engine_layout::{
+        macos_development_engine_dir_with_anchor, macos_development_search_roots,
+    };
+    let current_directory = std::env::current_dir().ok();
+    let executable = std::env::current_exe().ok();
+    let anchor = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let roots = macos_development_search_roots(current_directory.as_deref(), executable.as_deref());
+    match macos_development_engine_dir_with_anchor(&anchor, &roots) {
+        Ok(directory) => directory,
+        Err(error) => {
+            tracing::warn!(%error, "Cannot discover the configured macOS development engines");
+            None
+        }
+    }
+}
+
+#[cfg(all(
+    debug_assertions,
+    not(target_os = "windows"),
+    not(all(target_os = "macos", target_arch = "aarch64"))
+))]
 fn local_engine_dir() -> Option<PathBuf> {
     let current_directory = std::env::current_dir()
         .ok()
@@ -202,18 +222,10 @@ fn local_engine_dir() -> Option<PathBuf> {
 
 #[cfg(any(all(debug_assertions, target_os = "windows"), test))]
 fn windows_development_engine_dir(roots: &[PathBuf]) -> Option<PathBuf> {
-    // All prepared candidates precede compatibility directories. Merely having
-    // a directory selects it: a missing/damaged manifest must remain an error.
-    for suffix in ["target/distribution/windows-x64/engines", ".engines"] {
-        if let Some(path) = roots
-            .iter()
-            .map(|root| root.join(suffix))
-            .find(|path| path.is_dir())
-        {
-            return Some(path);
-        }
-    }
-    None
+    splat_hardware::engine_layout::windows_development_engine_dir(roots).unwrap_or_else(|error| {
+        eprintln!("Cannot resolve Windows development engine layout: {error}");
+        None
+    })
 }
 
 #[cfg(test)]
@@ -225,9 +237,9 @@ mod windows_discovery_tests {
         let root = std::env::temp_dir().join(format!("windows-discovery-{}", uuid::Uuid::now_v7()));
         let checkout = root.join("checkout");
         let launch = root.join("other-cwd");
-        let prepared = checkout.join("target/distribution/windows-x64/engines");
+        let prepared = checkout.join(".engines/windows-x64/distribution/engines");
         std::fs::create_dir_all(&prepared).unwrap();
-        std::fs::create_dir_all(launch.join(".engines")).unwrap();
+        std::fs::create_dir_all(launch.join(".engines/brush")).unwrap();
         assert_eq!(
             windows_development_engine_dir(&[launch.clone(), checkout.clone()]),
             Some(prepared.clone())

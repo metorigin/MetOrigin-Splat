@@ -9,6 +9,30 @@ function Get-MetOriginRepositoryRoot {
     return $script:MetOriginRepositoryRoot
 }
 
+function Get-MetOriginWindowsPath {
+    param([Parameter(Mandatory = $true)][string]$Key)
+    $previousEncoding = [Console]::OutputEncoding
+    try {
+        # Windows PowerShell 5.1 must decode Node's UTF-8 paths correctly,
+        # including checkouts with Chinese characters and spaces.
+        [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+        $value = & node (Join-Path $PSScriptRoot 'WindowsPaths.mjs') --key $Key
+        $exitCode = $LASTEXITCODE
+    } finally { [Console]::OutputEncoding = $previousEncoding }
+    if ($exitCode -ne 0 -or [string]::IsNullOrWhiteSpace([string]$value)) {
+        throw "Cannot resolve the shared Windows path '$Key'."
+    }
+    return ([string]$value).Trim()
+}
+
+function Get-MetOriginWindowsDefaultPath {
+    param([Parameter(Mandatory = $true)][string]$Key)
+    & node (Join-Path $PSScriptRoot 'MigrateLocalLayout.mjs') --key $Key |
+        ForEach-Object { Write-Host $_ }
+    if ($LASTEXITCODE -ne 0) { throw "Windows layout migration failed for '$Key'; existing data was preserved." }
+    return Get-MetOriginWindowsPath -Key $Key
+}
+
 function Resolve-MetOriginPath {
     param(
         [Parameter(Mandatory = $true)]

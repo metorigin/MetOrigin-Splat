@@ -35,17 +35,20 @@ if [[ "$actual_pnpm" != "$expected_pnpm" ]]; then
   echo "pnpm $expected_pnpm is required; found '$actual_pnpm'." >&2
   exit 1
 fi
-pack_root="$repo_root/target/distribution/macos-arm64"
+pack_root="$(node scripts/shared/engine-paths.mjs --key distributionRoot)"
+packages_root="$(node scripts/shared/artifact-paths.mjs --platform macos-arm64 --kind packages)"
+verification_root="$(node scripts/shared/artifact-paths.mjs --platform macos-arm64 --kind verification)"
+supersplat_source="$(node scripts/shared/cache-paths.mjs --kind source)"
 # Bash 3.2 (the macOS default) treats empty arrays as unset with nounset.
 python3 scripts/macos/verify-pack.py "$pack_root/engines" ${pack_checks[@]+"${pack_checks[@]}"}
 test -f "$pack_root/release-status.json"
-verification_root="$repo_root/target/macos-m4/app-verification"
 mkdir -p "$verification_root"
 work="$(mktemp -d "$verification_root/build.XXXXXX")"
 stage="$work/dmg-source"
 trap 'rm -rf "$stage"' EXIT
-license_root="$repo_root/target/macos-m4/app-license-evidence/licenses"
+license_root="$(node scripts/shared/artifact-paths.mjs --platform macos-arm64 --kind license-current)"
 python3 scripts/macos/verify-app.py --check-app-license-evidence "$license_root" ${internal[@]+"${internal[@]}"} --report "$work/app-license-preflight.json"
+node scripts/macos/resource-config.mjs > "$work/tauri-resources.conf.json"
 # Bind notice collection to the dependency inputs selected by this build.
 verify_notice_inputs() {
   local pair
@@ -57,11 +60,11 @@ verify_notice_inputs() {
     'pnpm-lock.yaml:pnpm-lock.yaml'
     'pnpm-workspace.yaml:pnpm-workspace.yaml'
     'integrations/supersplat/upstream.json:supersplat-upstream.json'
-    'target/supersplat-source/upstream/package-lock.json:supersplat-package-lock.json'
   )
   for pair in "${inputs[@]}"; do
     cmp "$repo_root/${pair%%:*}" "$license_root/build-inputs/${pair#*:}"
   done
+  cmp "$supersplat_source/package-lock.json" "$license_root/build-inputs/supersplat-package-lock.json"
 }
 verify_notice_inputs
 node scripts/macos/verify-supersplat-inputs.mjs --license-root "$license_root" --report "$work/supersplat-inputs-before.json"
@@ -88,7 +91,7 @@ METORIGIN_TEST_ENGINE_MANIFEST_SHA256="$before_manifest" \
   cargo test --locked --target aarch64-apple-darwin -p splat-desktop --lib \
     commands::system::tests::frozen_macos_engine_pack_passes_application_version_checks \
     -- --ignored --exact --nocapture 2>&1 | tee "$work/runtime-application-preflight.log"
-pnpm --dir apps/desktop tauri build --target aarch64-apple-darwin --bundles app --config src-tauri/tauri.macos.full.conf.json ${build_options[@]+"${build_options[@]}"} -- --locked
+pnpm --dir apps/desktop tauri build --target aarch64-apple-darwin --bundles app --config "$work/tauri-resources.conf.json" ${build_options[@]+"${build_options[@]}"} -- --locked
 after_manifest="$(/usr/bin/shasum -a 256 "$pack_root/engines/engine-manifest.json" | cut -d ' ' -f 1)"
 after_status="$(/usr/bin/shasum -a 256 "$pack_root/release-status.json" | cut -d ' ' -f 1)"
 test "$before_manifest" = "$after_manifest"
@@ -109,16 +112,22 @@ fi
 verify_options=(${internal[@]+"${internal[@]}"} --expected-manifest-sha256 "$before_manifest" --expected-release-status-sha256 "$before_status" --expected-app-license-manifest-sha256 "$before_licenses" --frontend-input-report "$work/supersplat-inputs-after.json")
 python3 scripts/macos/verify-app.py "$app_path" "${verify_options[@]}" --report "$work/verified-app.json"
 if [[ "$make_dmg" == true ]]; then
-  mkdir -p "$stage" "$repo_root/target/aarch64-apple-darwin/$profile/bundle/dmg"
+  mkdir -p "$stage" "$packages_root"
   /usr/bin/ditto "$app_path" "$stage/MetOrigin Splat.app"
   ln -s /Applications "$stage/Applications"
-  dmg="$repo_root/target/aarch64-apple-darwin/$profile/bundle/dmg/MetOrigin-Splat-${profile}-${before_manifest:0:12}-${work##*/}.dmg"
+  dmg="$packages_root/MetOrigin-Splat-${profile}-${before_manifest:0:12}-${work##*/}.dmg"
   # Unique name, no overwrite and no glob: stale DMGs can never become evidence.
   /usr/bin/hdiutil create -volname 'MetOrigin Splat' -srcfolder "$stage" -fs HFS+ -format UDZO "$dmg"
   python3 scripts/macos/verify-app.py "$app_path" "${verify_options[@]}" --expected-app-report "$work/verified-app.json" --dmg "$dmg" --report "$work/final.json"
 else
   cp "$work/verified-app.json" "$work/final.json"
 fi
+rm -rf "$stage"
 # A failed build keeps the previous successful report and leaves this run's evidence.
-cp "$work/final.json" "$verification_root/latest.json"
+cp "$work/final.json" "$work/latest.json"
+mv -f "$work/latest.json" "$verification_root/latest.json"
+if [[ "$make_dmg" == true ]]; then
+  node scripts/shared/artifact-retention.mjs record --platform macos-arm64 --report "$work/final.json" --package "$dmg" --license-root "$license_root"
+  echo "Verified DMG: $dmg"
+fi
 echo "Verified app packaging evidence: $work/final.json"

@@ -1,3 +1,4 @@
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
@@ -5,6 +6,9 @@ import path from 'node:path';
 import { crc32 } from 'node:zlib';
 import { spawn, spawnSync } from 'node:child_process';
 import { preparePack, verifyPack, digest, repository, run, child, publishDirectory, bundleConfiguration } from './AlignmentPack.mjs';
+
+const temporaryRoots = [];
+test.after(async () => { for (const root of temporaryRoots) await fs.rm(root, { recursive: true, force: true }); });
 
 const candidate = JSON.parse(await fs.readFile(path.join(repository, 'packaging/windows-x64/alignment-lock.json'), 'utf8'));
 const capabilities = {
@@ -16,8 +20,8 @@ const capabilities = {
 };
 
 async function fixture(machineOverrides = {}, colmapVersion = '4.1.0') {
-  await fs.mkdir(path.join(repository, 'target/distribution'), { recursive: true });
-  const root = await fs.mkdtemp(path.join(repository, 'target/distribution/alignment-test-'));
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'metorigin-alignment-test-'));
+  temporaryRoots.push(root);
   const source = JSON.parse(await fs.readFile(path.join(repository, candidate.brush_source_lock), 'utf8'));
   const machine = { ...capabilities, ...machineOverrides };
   const nativeSource = path.join(root, 'fixture.rs');
@@ -84,12 +88,12 @@ fn main() {
 test('candidate preparation executes native identities, reuses verified cache, and rejects corruption without replacing it', { skip: process.platform !== 'win32' }, async () => {
   const options = await fixture();
   await preparePack(options);
-  const verified = await verifyPack(options.output, { expected: options.recipe });
+  const verified = await verifyPack(options.output, { expected: options.recipe, verificationDirectory: options.root });
   assert.equal(verified.manifest.engines.brush.executables.brush, 'brush/bin/brush-cli.exe');
   const legacyConfig = path.join(repository, 'apps/desktop/src-tauri/tauri.full.conf.json');
   const legacyHash = await digest(legacyConfig);
   const generated = path.join(options.root, 'candidate-config/tauri.conf.json');
-  await bundleConfiguration(options.output, generated, { expected: options.recipe });
+  await bundleConfiguration(options.output, generated, { expected: options.recipe, verificationDirectory: options.root });
   const bundle = JSON.parse(await fs.readFile(generated, 'utf8'));
   assert.equal(bundle.identifier, 'com.metorigin.splat.alignment-candidate');
   assert.equal(bundle.productName, 'MetOrigin Splat');
@@ -97,10 +101,17 @@ test('candidate preparation executes native identities, reuses verified cache, a
   assert.equal(bundle.app.windows[0].title, 'MetOrigin Splat');
   assert.equal(bundle.bundle.windows.nsis.template, 'nsis/alignment-installer.nsi');
   assert.deepEqual(Object.values(bundle.bundle.resources), ['resources/engines/', 'resources/licenses/', 'resources/installer/', 'resources/licenses/tauri/NSIS-LICENSE-MIT.txt']);
-  for (const input of Object.keys(bundle.bundle.resources)) {
-    assert.ok(!path.isAbsolute(input));
-    const resource = await fs.stat(path.resolve(repository, 'apps/desktop/src-tauri', input));
-    assert.ok(resource.isDirectory() || input === 'nsis/LICENSE.tauri-mit.txt' && resource.isFile());
+  const tauriRoot = path.join(repository, 'apps/desktop/src-tauri');
+  const expectedSources = new Map(['engines', 'licenses', 'installer'].map(name =>
+    [`resources/${name}/`, path.join(options.output, name)]));
+  expectedSources.set('resources/licenses/tauri/NSIS-LICENSE-MIT.txt', path.join(tauriRoot, 'nsis/LICENSE.tauri-mit.txt'));
+  for (const [input, destination] of Object.entries(bundle.bundle.resources)) {
+    // Windows TEMP may be on C: while the checkout is on D:. Tauri accepts
+    // absolute sources, but each destination must still use the selected pack.
+    const resolved = path.resolve(tauriRoot, input);
+    assert.equal(resolved, expectedSources.get(destination), `Wrong resource source for ${destination}`);
+    const resource = await fs.stat(resolved);
+    assert.ok(resource.isDirectory() || destination === 'resources/licenses/tauri/NSIS-LICENSE-MIT.txt' && resource.isFile());
   }
   assert.equal(await digest(legacyConfig), legacyHash);
   const manifestPath = path.join(options.output, 'engines/engine-manifest.json');
@@ -177,8 +188,8 @@ test('actual ZIP extraction rejects traversal before writing outside staging', {
 });
 
 test('publish retries transient NTFS sharing failures and preserves competing output', async () => {
-  await fs.mkdir(path.join(repository, 'target/distribution'), { recursive: true });
-  const root = await fs.mkdtemp(path.join(repository, 'target/distribution/alignment-publish-'));
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'metorigin-alignment-publish-'));
+  temporaryRoots.push(root);
   const stage = path.join(root, 'stage');
   const output = path.join(root, 'published');
   await fs.mkdir(stage);

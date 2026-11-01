@@ -9,6 +9,7 @@
 #
 # OPTIONS:
 #   -Json               Output in JSON format
+#   -RequireSpec        Require spec.md to exist (for analysis phase)
 #   -RequireTasks       Require tasks.md to exist (for implementation phase)
 #   -IncludeTasks       Include tasks.md in AVAILABLE_DOCS list
 #   -PathsOnly          Only output path variables (no validation)
@@ -18,6 +19,7 @@
 [CmdletBinding()]
 param(
     [switch]$Json,
+    [switch]$RequireSpec,
     [switch]$RequireTasks,
     [switch]$IncludeTasks,
     [switch]$PathsOnly,
@@ -36,6 +38,7 @@ Consolidated prerequisite checking for Spec-Driven Development workflow.
 
 OPTIONS:
   -Json               Output in JSON format
+  -RequireSpec        Require spec.md to exist (for analysis phase)
   -RequireTasks       Require tasks.md to exist (for implementation phase)
   -IncludeTasks       Include tasks.md in AVAILABLE_DOCS list
   -PathsOnly          Only output path variables (no prerequisite validation)
@@ -91,22 +94,39 @@ if ($PathsOnly) {
 }
 
 # Validate required directories and files
-if (-not (Test-Path $paths.FEATURE_DIR -PathType Container)) {
+if (-not (Test-Path -LiteralPath $paths.FEATURE_DIR -PathType Container)) {
     [Console]::Error.WriteLine("ERROR: Feature directory not found: $($paths.FEATURE_DIR)")
     $specifyCommand = '$speckit-specify'
     [Console]::Error.WriteLine("Run $specifyCommand first to create the feature structure.")
     exit 1
 }
 
-if (-not (Test-Path $paths.IMPL_PLAN -PathType Leaf)) {
+if (-not (Test-Path -LiteralPath $paths.IMPL_PLAN -PathType Leaf)) {
     [Console]::Error.WriteLine("ERROR: plan.md not found in $($paths.FEATURE_DIR)")
     $planCommand = '$speckit-plan'
     [Console]::Error.WriteLine("Run $planCommand first to create the implementation plan.")
     exit 1
 }
 
+if ((Get-Item -LiteralPath $paths.IMPL_PLAN).Length -eq 0) {
+    [Console]::Error.WriteLine("ERROR: plan.md is empty in $($paths.FEATURE_DIR)")
+    $planCommand = '$speckit-plan'
+    [Console]::Error.WriteLine(
+        "Populate it, or remove the empty file and rerun $planCommand with a valid plan template."
+    )
+    exit 1
+}
+
+# Check for spec.md if required
+if ($RequireSpec -and -not (Test-Path -LiteralPath $paths.FEATURE_SPEC -PathType Leaf)) {
+    [Console]::Error.WriteLine("ERROR: spec.md not found in $($paths.FEATURE_DIR)")
+    $specifyCommand = '$speckit-specify'
+    [Console]::Error.WriteLine("Run $specifyCommand first to create the feature specification.")
+    exit 1
+}
+
 # Check for tasks.md if required
-if ($RequireTasks -and -not (Test-Path $paths.TASKS -PathType Leaf)) {
+if ($RequireTasks -and -not (Test-Path -LiteralPath $paths.TASKS -PathType Leaf)) {
     [Console]::Error.WriteLine("ERROR: tasks.md not found in $($paths.FEATURE_DIR)")
     $tasksCommand = '$speckit-tasks'
     [Console]::Error.WriteLine("Run $tasksCommand first to create the task list.")
@@ -117,18 +137,18 @@ if ($RequireTasks -and -not (Test-Path $paths.TASKS -PathType Leaf)) {
 $docs = @()
 
 # Always check these optional docs
-if (Test-Path $paths.RESEARCH) { $docs += 'research.md' }
-if (Test-Path $paths.DATA_MODEL) { $docs += 'data-model.md' }
+if (Test-Path -LiteralPath $paths.RESEARCH) { $docs += 'research.md' }
+if (Test-Path -LiteralPath $paths.DATA_MODEL) { $docs += 'data-model.md' }
 
 # Check contracts directory (only if it exists and has files)
-if ((Test-Path $paths.CONTRACTS_DIR) -and (Get-ChildItem -Path $paths.CONTRACTS_DIR -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+if ((Test-Path -LiteralPath $paths.CONTRACTS_DIR) -and (Get-ChildItem -LiteralPath $paths.CONTRACTS_DIR -ErrorAction SilentlyContinue | Select-Object -First 1)) {
     $docs += 'contracts/'
 }
 
-if (Test-Path $paths.QUICKSTART) { $docs += 'quickstart.md' }
+if (Test-Path -LiteralPath $paths.QUICKSTART) { $docs += 'quickstart.md' }
 
 # Include tasks.md if requested and it exists
-if ($IncludeTasks -and (Test-Path $paths.TASKS)) {
+if ($IncludeTasks -and (Test-Path -LiteralPath $paths.TASKS)) {
     $docs += 'tasks.md'
 }
 
@@ -157,13 +177,18 @@ if ($Json) {
     Write-Output "FEATURE_DIR:$($paths.FEATURE_DIR)"
     Write-Output "AVAILABLE_DOCS:"
 
-    # Show status of each potential document
-    Test-FileExists -Path $paths.RESEARCH -Description 'research.md' | Out-Null
-    Test-FileExists -Path $paths.DATA_MODEL -Description 'data-model.md' | Out-Null
-    Test-DirHasFiles -Path $paths.CONTRACTS_DIR -Description 'contracts/' | Out-Null
-    Test-FileExists -Path $paths.QUICKSTART -Description 'quickstart.md' | Out-Null
+    # Show status of each potential document.
+    # These helpers report their line with Write-Output and ALSO return a
+    # bool, both on the Success stream, so 'Out-Null' discarded the report
+    # line along with the return value and left AVAILABLE_DOCS empty. Drop
+    # only the boolean so the per-document lines reach stdout like the
+    # bash and Python twins.
+    Test-FileExists -Path $paths.RESEARCH -Description 'research.md' | Where-Object { $_ -isnot [bool] }
+    Test-FileExists -Path $paths.DATA_MODEL -Description 'data-model.md' | Where-Object { $_ -isnot [bool] }
+    Test-DirHasFiles -Path $paths.CONTRACTS_DIR -Description 'contracts/' | Where-Object { $_ -isnot [bool] }
+    Test-FileExists -Path $paths.QUICKSTART -Description 'quickstart.md' | Where-Object { $_ -isnot [bool] }
 
     if ($IncludeTasks) {
-        Test-FileExists -Path $paths.TASKS -Description 'tasks.md' | Out-Null
+        Test-FileExists -Path $paths.TASKS -Description 'tasks.md' | Where-Object { $_ -isnot [bool] }
     }
 }

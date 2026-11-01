@@ -62,6 +62,40 @@ test('new/deleted code and changed resource/config inputs prevent publication ev
   }
 });
 
+test('changed or deleted SuperSplat cache configuration prevents publication evidence', async (t) => {
+  const input = await fixture();
+  t.after(() => fs.rm(input.root, { recursive: true, force: true }));
+  const name = 'packaging/shared/cache-paths.json';
+  const config = JSON.parse(await fs.readFile(path.join(repository, name), 'utf8'));
+  await input.write(name, JSON.stringify(config));
+  const before = await captureInputs(input);
+  assert.ok(before.files.some((file) => file.kind === 'source' && file.path === name));
+  config.directories.supersplatSource = 'sources/changed-during-build';
+  await input.write(name, JSON.stringify(config));
+  const changed = await captureInputs(input);
+  assert.throws(() => assertUnchanged(before, changed), /Build inputs changed.*cache-paths\.json/);
+  await fs.unlink(path.join(input.root, name));
+  const deleted = await captureInputs(input);
+  assert.throws(() => assertUnchanged(before, deleted), /Build inputs changed.*cache-paths\.json/);
+});
+
+test('changed or deleted compile-time engine layout prevents publication evidence', async (t) => {
+  const input = await fixture();
+  t.after(() => fs.rm(input.root, { recursive: true, force: true }));
+  const name = 'packaging/shared/engine-paths.json';
+  const config = JSON.parse(await fs.readFile(path.join(repository, name), 'utf8'));
+  await input.write(name, JSON.stringify(config));
+  const before = await captureInputs(input);
+  assert.ok(before.files.some((file) => file.kind === 'source' && file.path === name));
+  config.engines_root = 'changed during build';
+  await input.write(name, JSON.stringify(config));
+  const changed = await captureInputs(input);
+  assert.throws(() => assertUnchanged(before, changed), /Build inputs changed.*engine-paths\.json/);
+  await fs.unlink(path.join(input.root, name));
+  const deleted = await captureInputs(input);
+  assert.throws(() => assertUnchanged(before, deleted), /Build inputs changed.*engine-paths\.json/);
+});
+
 test('output inventory binds built frontend payload and application separately from source', async () => {
   const input = await fixture();
   await input.write('apps/desktop/dist/assets/main.js', 'actual output');

@@ -6,7 +6,7 @@ param(
     [switch]$Offline,
     [switch]$CheckOnly
 )
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Packaging.Common.ps1')
 if ($env:OS -ne 'Windows_NT') { throw 'dev:windows requires native Windows.' }
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 Push-Location $root
@@ -32,7 +32,7 @@ try {
         $env:METORIGIN_ENGINE_DIR = $selected
     } else {
         & (Join-Path $PSScriptRoot 'Prepare-AlignmentEnginePack.ps1') -Offline:$Offline
-        $selected = Join-Path $root 'target/distribution/windows-x64-alignment/engines'
+        $selected = Get-MetOriginWindowsPath -Key 'alignmentEngines'
         # A low-priority, Windows debug-only candidate hint preserves saved settings
         # and user METORIGIN_ENGINE_DIR. The application validates the selected pack.
         $env:METORIGIN_PREPARED_ENGINE_DIR = $selected
