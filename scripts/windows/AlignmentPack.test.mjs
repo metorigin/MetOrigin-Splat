@@ -101,10 +101,17 @@ test('candidate preparation executes native identities, reuses verified cache, a
   assert.equal(bundle.app.windows[0].title, 'MetOrigin Splat');
   assert.equal(bundle.bundle.windows.nsis.template, 'nsis/alignment-installer.nsi');
   assert.deepEqual(Object.values(bundle.bundle.resources), ['resources/engines/', 'resources/licenses/', 'resources/installer/', 'resources/licenses/tauri/NSIS-LICENSE-MIT.txt']);
-  for (const input of Object.keys(bundle.bundle.resources)) {
-    assert.ok(!path.isAbsolute(input));
-    const resource = await fs.stat(path.resolve(repository, 'apps/desktop/src-tauri', input));
-    assert.ok(resource.isDirectory() || input === 'nsis/LICENSE.tauri-mit.txt' && resource.isFile());
+  const tauriRoot = path.join(repository, 'apps/desktop/src-tauri');
+  const expectedSources = new Map(['engines', 'licenses', 'installer'].map(name =>
+    [`resources/${name}/`, path.join(options.output, name)]));
+  expectedSources.set('resources/licenses/tauri/NSIS-LICENSE-MIT.txt', path.join(tauriRoot, 'nsis/LICENSE.tauri-mit.txt'));
+  for (const [input, destination] of Object.entries(bundle.bundle.resources)) {
+    // Windows TEMP may be on C: while the checkout is on D:. Tauri accepts
+    // absolute sources, but each destination must still use the selected pack.
+    const resolved = path.resolve(tauriRoot, input);
+    assert.equal(resolved, expectedSources.get(destination), `Wrong resource source for ${destination}`);
+    const resource = await fs.stat(resolved);
+    assert.ok(resource.isDirectory() || destination === 'resources/licenses/tauri/NSIS-LICENSE-MIT.txt' && resource.isFile());
   }
   assert.equal(await digest(legacyConfig), legacyHash);
   const manifestPath = path.join(options.output, 'engines/engine-manifest.json');
