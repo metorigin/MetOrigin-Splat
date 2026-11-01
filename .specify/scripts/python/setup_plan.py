@@ -23,7 +23,8 @@ except ImportError:  # pragma: no cover - direct execution from unusual cwd
 
 
 def _json_line(payload: object) -> str:
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+    # ASCII escapes keep the JSON intact on a legacy Windows stdout code page.
+    return json.dumps(payload, ensure_ascii=True, separators=(",", ":")) + "\n"
 
 
 def _help_text(argv0: str) -> str:
@@ -42,7 +43,9 @@ def main(argv: list[str] | None = None) -> int:
         elif arg in {"--help", "-h"}:
             sys.stdout.write(_help_text(sys.argv[0]))
             return 0
-        # Other arguments are accepted and silently ignored, matching setup-plan.sh.
+        else:
+            print(f"ERROR: Unknown option '{arg}'", file=sys.stderr)
+            return 1
 
     try:
         paths = get_feature_paths(script_file=Path(__file__))
@@ -68,11 +71,28 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
         if template_content is not None:
+            if template_content == "":
+                print(
+                    "ERROR: Plan template is empty; no new plan.md was created.",
+                    file=sys.stderr,
+                )
+                print(
+                    "Restore a valid plan template and rerun plan setup.",
+                    file=sys.stderr,
+                )
+                return 1
             paths.impl_plan.write_bytes(template_content.encode("utf-8"))
             print(f"Copied plan template to {paths.impl_plan}", file=status_stream)
         else:
-            print("Warning: Plan template not found", file=status_stream)
-            paths.impl_plan.touch()
+            print(
+                "ERROR: Plan template not found; no new plan.md was created.",
+                file=sys.stderr,
+            )
+            print(
+                "Restore a valid plan template and rerun plan setup.",
+                file=sys.stderr,
+            )
+            return 1
 
     if json_mode:
         sys.stdout.write(
@@ -80,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
                 {
                     "FEATURE_SPEC": str(paths.feature_spec),
                     "IMPL_PLAN": str(paths.impl_plan),
-                    "SPECS_DIR": str(paths.feature_dir),
+                    "FEATURE_DIR": str(paths.feature_dir),
                     "BRANCH": paths.current_branch,
                 }
             )
@@ -88,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"FEATURE_SPEC: {paths.feature_spec}")
         print(f"IMPL_PLAN: {paths.impl_plan}")
-        print(f"SPECS_DIR: {paths.feature_dir}")
+        print(f"FEATURE_DIR: {paths.feature_dir}")
         print(f"BRANCH: {paths.current_branch}")
     return 0
 
