@@ -46,6 +46,20 @@ Tauri starts Vite on port 1420 through `beforeDevCommand`. Start only this comma
 
 For frontend-only work, use `pnpm dev`, then open `http://localhost:1420/?ui-preview`. Add `&preview-page=new-project` and optionally `&preview-step=2` or `3` to inspect wizard steps with sample data. The sample mode is gated by `import.meta.env.DEV` and cannot replace native or GPU validation.
 
+### First Windows alignment build
+
+`pnpm dev:windows` also needs Python **3.10 or newer** on PATH. Its Brush source build uses a separately pinned Rust **1.95.0** toolchain through rustup and downloads the locked upstream sources and DXC inputs on its first online run. These inputs are independent of the application's Rust 1.97.0 build.
+
+For an internal alignment installer from a checkout with no engine or bundler cache:
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm dev:windows -CheckOnly
+./scripts/windows/Build-FullInstaller.ps1 -AlignmentCandidate -SkipAcquire
+```
+
+The candidate builder freezes the application build tools before compiling once, prepares empty NSIS/WebView2 caches with an unpublished Tauri bundle, then freezes the bundler inputs and generates the final bundle. Both tool inventories and the source inputs are rechecked before delivery. The preparation installer remains in the Cargo cache and is removed before the final bundle. Only the final package, with matching source/tool evidence and a verified NSIS WebView2 reference, is delivered. Evergreen still resolves its current download over the network even when engine preparation uses `-OfflineEngines`; a changed runtime during the final bundle rejects publication. See [Windows packaging](../packaging/windows-x64/README.md) for the separate legacy default installer and the pending candidate gates.
+
 ## Engines and live preview
 
 Source checkouts do not contain the engine binaries. See [engine integration](engine-integration.md) for configuring installed engines or preparing the pinned pack:

@@ -413,7 +413,7 @@
     },
     {
       "path": "scripts/shared/artifact-retention.test.mjs",
-      "sha256": "60a69ac42b883106262e24bed0cdc5c190ebbbf4cb18641c7ea6cfcbf2af4852"
+      "sha256": "2d1e449ff688b87973c3096ce035e05fefc537f63a2d39e78dc7c30a315033f1"
     },
     {
       "path": "scripts/shared/cache-paths.mjs",
@@ -457,7 +457,7 @@
     },
     {
       "path": "scripts/shared/migrate-engine-settings.test.mjs",
-      "sha256": "a2cdd3f47654057d1d37140ce04fb864a6865d2b67f1310012085a84cb3382fe"
+      "sha256": "c5d92247a09dedd6b171067b2d606755e0e2181fd092e1f8108605e5fb3689e3"
     },
     {
       "path": "scripts/shared/testing-output.mjs",
@@ -465,7 +465,7 @@
     },
     {
       "path": "scripts/shared/testing-output.test.mjs",
-      "sha256": "6fb22ff1b54509cac681a8f774adf4be18124dc10ef39f87c48b90a69b24679d"
+      "sha256": "68b26c066edc721798bdb01d681b65945b0087addf3162e5f845a8c7e8bee5f7"
     },
     {
       "path": "scripts/shared/verify-ui-sources.mjs",
@@ -1021,6 +1021,29 @@
           "sha256": "228d68db39e8f7453f635470137556c25ea6db98b3a4fb1be3800f20210e4289"
         }
       ]
+    },
+    {
+      "date": "2026-11-01",
+      "phase": "windows-cold-start-test-compatibility",
+      "reason": "Windows cold-start test compatibility only: split ordinary retention/debug assertions from file-symlink assertions so they always execute, skip only Windows EPERM/EACCES when creating unsupported file symlinks, and use Windows directory junctions while preserving non-Windows directory-symlink rejection assertions. Non-Windows errors still fail and all macOS safety assertions remain active. No macOS product code or engine inputs change; this records shared test-source hashes only and makes no native macOS acceptance claim. Preserve the original protection baseline and every prior amendment.",
+      "changed_files": [
+        {
+          "path": "scripts/shared/artifact-retention.test.mjs",
+          "previous_sha256": "60a69ac42b883106262e24bed0cdc5c190ebbbf4cb18641c7ea6cfcbf2af4852",
+          "sha256": "2d1e449ff688b87973c3096ce035e05fefc537f63a2d39e78dc7c30a315033f1"
+        },
+        {
+          "path": "scripts/shared/migrate-engine-settings.test.mjs",
+          "previous_sha256": "a2cdd3f47654057d1d37140ce04fb864a6865d2b67f1310012085a84cb3382fe",
+          "sha256": "c5d92247a09dedd6b171067b2d606755e0e2181fd092e1f8108605e5fb3689e3"
+        },
+        {
+          "path": "scripts/shared/testing-output.test.mjs",
+          "previous_sha256": "6fb22ff1b54509cac681a8f774adf4be18124dc10ef39f87c48b90a69b24679d",
+          "sha256": "68b26c066edc721798bdb01d681b65945b0087addf3162e5f845a8c7e8bee5f7"
+        }
+      ],
+      "added_files": []
     }
   ]
 }

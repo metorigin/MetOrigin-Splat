@@ -89,7 +89,7 @@ test('actual link map and original runtime notice inventory remain exact', async
   })), /reviewed new runtime profile/);
 });
 
-test('retained file paths reject traversal and bytes cannot be substituted with a symlink', async () => {
+test('retained file paths reject traversal and modified bytes', async () => {
   const bad = structuredClone(overlay.evidence); bad.files[0].path = '../escape';
   assert.throws(() => webpBuildEvidenceFiles(bad), /Unsafe WebP evidence path/);
   const path = join(temporary, 'evidence/licenses/splat-transform/LICENSE');
@@ -97,9 +97,25 @@ test('retained file paths reject traversal and bytes cannot be substituted with 
   try {
     await writeFile(path, Buffer.alloc(original.length, 88));
     await assert.rejects(verifyWebpBuildEvidence(temporary, overlay), /hash mismatch/);
-    await rm(path); await symlink(join(root, 'evidence/licenses/splat-transform/LICENSE'), path);
-    await assert.rejects(verifyWebpBuildEvidence(temporary, overlay), /Nonphysical/);
   } finally {
     await rm(path, { force: true }); await writeFile(path, original);
+  }
+});
+
+test('retained file bytes cannot be substituted with a symlink', async t => {
+  const path = join(temporary, 'evidence/licenses/splat-transform/LICENSE');
+  const original = await readFile(path);
+  try {
+    await rm(path);
+    try { await symlink(join(root, 'evidence/licenses/splat-transform/LICENSE'), path); }
+    catch (error) {
+      if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(error.code)) throw error;
+      t.skip('Windows file symlinks require Developer Mode or symbolic-link privileges.');
+      return;
+    }
+    await assert.rejects(verifyWebpBuildEvidence(temporary, overlay), /Nonphysical/);
+  } finally {
+    await rm(path, { force: true });
+    await writeFile(path, original);
   }
 });

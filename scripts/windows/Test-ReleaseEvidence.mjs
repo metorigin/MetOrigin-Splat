@@ -1,4 +1,5 @@
 import { resolveWindowsPaths } from './WindowsPaths.mjs';
+import { verifyUnresolvedNpmPeers } from './NpmDependencyGraph.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -27,6 +28,7 @@ assert.equal(bom.bomFormat, 'CycloneDX');
 assert.equal(bom.specVersion, '1.6');
 assert.equal(bom.compositions[0].aggregate, 'incomplete');
 assert.equal(readiness.public_distribution_ready, false);
+verifyUnresolvedNpmPeers(readiness.unresolved_peer_dependencies, bom);
 const refs = new Set([bom.metadata.component['bom-ref'], ...bom.components.map(component => component['bom-ref'])]);
 assert.equal(refs.size, bom.components.length + 1, 'Duplicate component reference');
 for (const node of bom.dependencies) {

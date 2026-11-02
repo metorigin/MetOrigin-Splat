@@ -41,14 +41,23 @@ test('rejects corrupt original source and missing local source', t => {
   assert.throws(() => collectCopiedUiEvidence(f.root, join(f.root, 'output')));
 });
 
-test('rejects path traversal, absolute paths and symlink escape', t => {
+test('rejects path traversal and absolute paths', t => {
   const f = fixture(t);
   for (const path of ['../../original.tsx', '/etc/passwd', '..\\original.tsx']) {
     f.manifest.components[0].localPath = path;
     f.save();
     assert.throws(() => collectCopiedUiEvidence(f.root, join(f.root, 'output')));
   }
-  symlinkSync(join(f.root, 'original.tsx'), join(f.desktop, 'escape.tsx'));
+});
+
+test('rejects copied-source symlink escape', t => {
+  const f = fixture(t);
+  try { symlinkSync(join(f.root, 'original.tsx'), join(f.desktop, 'escape.tsx')); }
+  catch (error) {
+    if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(error.code)) throw error;
+    t.skip('Windows file symlinks require Developer Mode or symbolic-link privileges.');
+    return;
+  }
   f.manifest.components[0].localPath = 'escape.tsx'; f.save();
   assert.throws(() => collectCopiedUiEvidence(f.root, join(f.root, 'output')), /escapes/);
 });

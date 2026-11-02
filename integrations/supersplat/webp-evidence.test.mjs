@@ -103,14 +103,29 @@ test('selected receipts cannot escape the recorded stage', () => {
   assert.throws(() => webpBuildEvidenceFiles(evidence), /escapes the recorded stage/);
 });
 
-test('unchanged metadata cannot hide modified bytes or a symlink', async () => {
+test('unchanged metadata cannot hide modified bytes', async () => {
   const path = join(temporary, 'evidence/licenses/libwebp/COPYING');
   const original = await readFile(path);
   try {
     await writeFile(path, Buffer.alloc(original.length, 88));
     await assert.rejects(verifyWebpBuildEvidence(temporary, overlay), /hash mismatch/);
+  } finally {
+    await rm(path, { force: true });
+    await writeFile(path, original);
+  }
+});
+
+test('unchanged metadata cannot hide a file symlink', async t => {
+  const path = join(temporary, 'evidence/licenses/libwebp/COPYING');
+  const original = await readFile(path);
+  try {
     await rm(path);
-    await symlink(join(root, 'evidence/licenses/libwebp/COPYING'), path);
+    try { await symlink(join(root, 'evidence/licenses/libwebp/COPYING'), path); }
+    catch (error) {
+      if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(error.code)) throw error;
+      t.skip('Windows file symlinks require Developer Mode or symbolic-link privileges.');
+      return;
+    }
     await assert.rejects(verifyWebpBuildEvidence(temporary, overlay), /Nonphysical/);
   } finally {
     await rm(path, { force: true });

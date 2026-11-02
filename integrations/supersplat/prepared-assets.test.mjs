@@ -284,12 +284,20 @@ test('a refreshed inventory cannot hide an old or missing UI theme runtime', asy
 });
 
 test('asset and build metadata symlinks are rejected', async (t) => {
-  const { root, overlay, signature } = await fixture(t);
-  await writeFile(join(root, 'other.json'), await readFile(join(root, 'build.json')));
-  await rm(join(root, 'build.json'));
-  await symlink('other.json', join(root, 'build.json'));
-  await assert.rejects(verifyPreparedAssets(root, signature, overlay), /regular file/);
-  await rm(join(root, 'build.json'));
-  await symlink('index.js', join(root, 'linked.js'));
-  await assert.rejects(inventoryPreparedAssets(root), /symlink/);
+  for (const kind of ['build metadata', 'asset']) await t.test(kind, async t => {
+    const { root, overlay, signature } = await fixture(t);
+    const metadata = kind === 'build metadata';
+    if (metadata) {
+      await writeFile(join(root, 'other.json'), await readFile(join(root, 'build.json')));
+      await rm(join(root, 'build.json'));
+    }
+    try { await symlink(metadata ? 'other.json' : 'index.js', join(root, metadata ? 'build.json' : 'linked.js')); }
+    catch (error) {
+      if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(error.code)) throw error;
+      t.skip('Windows file symlinks require Developer Mode or symbolic-link privileges.');
+      return;
+    }
+    if (metadata) await assert.rejects(verifyPreparedAssets(root, signature, overlay), /regular file/);
+    else await assert.rejects(inventoryPreparedAssets(root), /symlink/);
+  });
 });

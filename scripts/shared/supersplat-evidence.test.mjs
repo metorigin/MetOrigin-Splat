@@ -102,17 +102,22 @@ test('collected current editor evidence retains the complete checked closure and
     await write('supersplat/source-map-package-evidence.json', map);
   });
   await t.test('rejects omitted runtime notice ownership', async () => assert.rejects(verify(licenseIndex.filter(item => item.component !== splatRef)), /notice absent/));
-  await t.test('rejects a collected evidence root symlink', async () => {
+  await t.test('rejects a collected evidence root symlink', async t => {
     const link = `${directory}-link`;
-    await symlink(directory, link, 'dir');
+    await symlink(directory, link, process.platform === 'win32' ? 'junction' : 'dir');
     t.after(() => rm(link, { force: true }));
     await assert.rejects(verifyCollectedSupersplatEvidence(root, link, bom, licenseIndex, readiness), /Nonphysical/);
   });
-  await t.test('rejects a copied proof symlink even when it points to identical bytes', async () => {
+  await t.test('rejects a copied proof symlink even when it points to identical bytes', async t => {
     const selected = proof.files[0];
     const path = join(directory, 'vendored/webp', selected.path);
     await rm(path);
-    await symlink(join(overlayRoot, selected.path), path);
+    try { await symlink(join(overlayRoot, selected.path), path); }
+    catch (error) {
+      if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(error.code)) throw error;
+      t.skip('Windows file symlinks require Developer Mode or symbolic-link privileges.');
+      return;
+    }
     await assert.rejects(verify(), /Nonphysical/);
   });
 });

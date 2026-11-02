@@ -85,23 +85,40 @@ test('rejects changed metadata, non-fixed commits and incomplete member inventor
   assert.throws(() => findVerifiedNpmNotices(f.root, f.installed), /hash mismatch/);
 });
 
-test('rejects path traversal, absolute paths and source symlink escape', t => {
+test('rejects path traversal and absolute paths', t => {
   const f = fixture(t);
   for (const path of ['../../package.json', '/etc/passwd', '..\\package.json']) {
     f.entry.notices[0].path = path; f.save();
     assert.throws(() => findVerifiedNpmNotices(f.root, f.installed), /shared license collection/);
   }
-  symlinkSync(join(f.installed, 'package.json'), join(f.evidence, 'escape'));
+});
+
+test('rejects original-notice source symlink escape', t => {
+  const f = fixture(t);
+  try { symlinkSync(join(f.installed, 'package.json'), join(f.evidence, 'escape')); }
+  catch (error) {
+    if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(error.code)) throw error;
+    t.skip('Windows file symlinks require Developer Mode or symbolic-link privileges.');
+    return;
+  }
   f.entry.notices[0].path = 'packaging/shared/licenses/escape'; f.save();
   assert.throws(() => findVerifiedNpmNotices(f.root, f.installed), /escapes/);
 });
 
-test('rejects installed-member symlink escape and incorrect Git blob identity', t => {
+test('rejects installed-member symlink escape', t => {
   const f = fixture(t);
   rmSync(join(f.installed, 'dist/index.js'));
-  symlinkSync(join(f.evidence, 'LICENSE'), join(f.installed, 'dist/index.js'));
+  try { symlinkSync(join(f.evidence, 'LICENSE'), join(f.installed, 'dist/index.js')); }
+  catch (error) {
+    if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(error.code)) throw error;
+    t.skip('Windows file symlinks require Developer Mode or symbolic-link privileges.');
+    return;
+  }
   assert.throws(() => findVerifiedNpmNotices(f.root, f.installed), /escapes/);
-  rmSync(join(f.installed, 'dist/index.js')); writeFileSync(join(f.installed, 'dist/index.js'), 'export const fixture = true;\n');
+});
+
+test('rejects incorrect original-notice Git blob identity', t => {
+  const f = fixture(t);
   f.entry.notices[0].git_blob_sha1 = '0000000000000000000000000000000000000000'; f.save();
   assert.throws(() => findVerifiedNpmNotices(f.root, f.installed), /Git blob mismatch/);
 });

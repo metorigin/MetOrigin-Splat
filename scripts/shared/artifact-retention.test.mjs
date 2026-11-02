@@ -60,12 +60,21 @@ test('changed delivery or receipt blocks the entire plan before any deletion', a
   const f = await fixture(t); const a = await f.run(1); const b = await f.run(2); await f.run(3);
   await writeFile(b.pkg, 'user changed bytes'); await assert.rejects(pruneArtifacts({ ...f.options, apply: true }), /package changed/); assert(await exists(a.pkg)); assert(await exists(a.reportPath));
 });
-test('foreign markers and symlinked package files are not deleted', async t => {
+test('foreign markers are not deleted', async t => {
   const f = await fixture(t); const a = await f.run(1); await f.run(2); await f.run(3);
   await writeFile(path.join(path.dirname(a.reportPath), 'retention-run.json'), '{"owner":"foreign"}');
   await assert.rejects(pruneArtifacts({ ...f.options, apply: true }), /marker changed/); assert(await exists(a.pkg));
-  const f2 = await fixture(t); const b = await f2.run(1); await rm(b.pkg); const external = path.join(f2.root, 'user-file'); await writeFile(external, 'keep'); await symlink(external, b.pkg);
-  await assert.rejects(pruneArtifacts({ ...f2.options, apply: true }), /physical artifact file/); assert.equal(await readFile(external, 'utf8'), 'keep');
+});
+
+test('symlinked package files are not deleted', async t => {
+  const f = await fixture(t); const a = await f.run(1); await rm(a.pkg); const external = path.join(f.root, 'user-file'); await writeFile(external, 'keep');
+  try { await symlink(external, a.pkg); }
+  catch (error) {
+    if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(error.code)) throw error;
+    t.skip('Windows file symlinks require Developer Mode or symbolic-link privileges.');
+    return;
+  }
+  await assert.rejects(pruneArtifacts({ ...f.options, apply: true }), /physical artifact file/); assert.equal(await readFile(external, 'utf8'), 'keep');
 });
 test('license current and run-local license evidence are accepted; standalone evidence survives pruning', async t => {
   const f = await fixture(t); const a = await f.run(1); const current = path.join(f.root, 'artifacts/licenses/macos-arm64/current');

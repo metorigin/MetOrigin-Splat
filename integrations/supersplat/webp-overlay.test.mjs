@@ -157,23 +157,30 @@ test('requires byte-bound, valid JSON build evidence', async t => {
 
 test('rejects root, metadata, payload and installed-target symlinks', async t => {
   for (const kind of ['root', 'manifest', 'evidence', 'payload', 'payload-parent', 'package', 'package-json', 'target', 'target-parent']) {
-    const f = await fixture(t);
-    let overlay;
-    if (kind.startsWith('package') || kind.startsWith('target')) overlay = await loadWebpOverlay(f.directory);
-    const original = kind === 'root' ? f.directory : kind === 'manifest' ? join(f.directory, 'manifest.json')
-      : kind === 'evidence' ? join(f.directory, 'build-evidence.json') : kind === 'payload' ? join(f.directory, f.manifest.files[0].payload)
-        : kind === 'payload-parent' ? join(f.directory, 'payloads') : kind === 'package' ? f.packageDirectory
-          : kind === 'package-json' ? join(f.packageDirectory, 'package.json') : kind === 'target' ? join(f.packageDirectory, 'lib/webp.wasm') : join(f.packageDirectory, 'lib');
-    const link = join(f.root, `link-${kind}`);
-    const directoryLink = ['root', 'payload-parent', 'package', 'target-parent'].includes(kind);
-    if (kind === 'root' || kind === 'package') {
-      await symlink(original, link, process.platform === 'win32' ? 'junction' : 'dir');
-      await assert.rejects(kind === 'root' ? loadWebpOverlay(link) : applyWebpOverlay(link, overlay), /physical directory/);
-    } else {
-      const { rename } = await import('node:fs/promises'); await rename(original, link);
-      await symlink(link, original, directoryLink ? (process.platform === 'win32' ? 'junction' : 'dir') : 'file');
-      await assert.rejects(overlay ? applyWebpOverlay(f.packageDirectory, overlay) : loadWebpOverlay(f.directory), /symlink/);
-    }
+    await t.test(kind, async t => {
+      const f = await fixture(t);
+      let overlay;
+      if (kind.startsWith('package') || kind.startsWith('target')) overlay = await loadWebpOverlay(f.directory);
+      const original = kind === 'root' ? f.directory : kind === 'manifest' ? join(f.directory, 'manifest.json')
+        : kind === 'evidence' ? join(f.directory, 'build-evidence.json') : kind === 'payload' ? join(f.directory, f.manifest.files[0].payload)
+          : kind === 'payload-parent' ? join(f.directory, 'payloads') : kind === 'package' ? f.packageDirectory
+            : kind === 'package-json' ? join(f.packageDirectory, 'package.json') : kind === 'target' ? join(f.packageDirectory, 'lib/webp.wasm') : join(f.packageDirectory, 'lib');
+      const link = join(f.root, `link-${kind}`);
+      const directoryLink = ['root', 'payload-parent', 'package', 'target-parent'].includes(kind);
+      if (kind === 'root' || kind === 'package') {
+        await symlink(original, link, process.platform === 'win32' ? 'junction' : 'dir');
+        await assert.rejects(kind === 'root' ? loadWebpOverlay(link) : applyWebpOverlay(link, overlay), /physical directory/);
+      } else {
+        const { rename } = await import('node:fs/promises'); await rename(original, link);
+        try { await symlink(link, original, directoryLink ? (process.platform === 'win32' ? 'junction' : 'dir') : 'file'); }
+        catch (error) {
+          if (directoryLink || process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(error.code)) throw error;
+          t.skip('Windows file symlinks require Developer Mode or symbolic-link privileges.');
+          return;
+        }
+        await assert.rejects(overlay ? applyWebpOverlay(f.packageDirectory, overlay) : loadWebpOverlay(f.directory), /symlink/);
+      }
+    });
   }
 });
 

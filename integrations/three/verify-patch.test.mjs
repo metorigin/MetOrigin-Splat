@@ -98,7 +98,7 @@ test('accepts pnpm package-directory symlinks without accepting file symlinks', 
   const installed = join(f.root, 'node_modules/.pnpm/three-patched/node_modules/three');
   await mkdir(dirname(installed), { recursive: true });
   await rename(f.packageRoot, installed);
-  await symlink(installed, f.packageRoot, 'dir');
+  await symlink(installed, f.packageRoot, process.platform === 'win32' ? 'junction' : 'dir');
   assert.equal((await verifyThreePatch(f.root)).installed_package_path, installed);
 });
 
@@ -224,18 +224,24 @@ test('rejects a conditional import override even when require would resolve the 
 });
 
 test('rejects patched file symlinks and directory escapes', async t => {
-  for (const mode of ['file', 'directory']) {
+  for (const mode of ['file', 'directory']) await t.test(mode, async t => {
     const f = await fixture(t);
     const full = join(f.packageRoot, FILE);
     const bytes = await readFile(full);
     if (mode === 'file') {
-      await rm(full); await put(join(f.root, 'outside.js'), bytes); await symlink(join(f.root, 'outside.js'), full);
+      await rm(full); await put(join(f.root, 'outside.js'), bytes);
+      try { await symlink(join(f.root, 'outside.js'), full); }
+      catch (error) {
+        if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(error.code)) throw error;
+        t.skip('Windows file symlinks require Developer Mode or symbolic-link privileges.');
+        return;
+      }
     } else {
       await rename(dirname(full), join(f.root, 'outside-controls'));
-      await symlink(join(f.root, 'outside-controls'), dirname(full), 'dir');
+      await symlink(join(f.root, 'outside-controls'), dirname(full), process.platform === 'win32' ? 'junction' : 'dir');
     }
     await assert.rejects(verifyThreePatch(f.root), /Expected physical file|File escapes its root/);
-  }
+  });
 });
 
 test('rejects stale copied package/lock provenance and local paths in distributed evidence', async t => {

@@ -83,7 +83,7 @@ test('accepts the real pnpm symlink installation layout', async t => {
   const installed = join(f.root, 'node_modules/.pnpm/spark-patched/node_modules/@sparkjsdev/spark');
   await mkdir(dirname(installed), { recursive: true });
   await rename(f.packageRoot, installed);
-  await symlink(installed, f.packageRoot, 'dir');
+  await symlink(installed, f.packageRoot, process.platform === 'win32' ? 'junction' : 'dir');
   assert.equal((await verifySparkPatch(f.root)).installed_package_path, installed);
 });
 
@@ -246,7 +246,12 @@ test('rejects patched installed file symlinks', async t => {
   const bytes = await readFile(path);
   await rm(path);
   await put(join(f.root, 'outside.js'), bytes);
-  await symlink(join(f.root, 'outside.js'), path);
+  try { await symlink(join(f.root, 'outside.js'), path); }
+  catch (error) {
+    if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(error.code)) throw error;
+    t.skip('Windows file symlinks require Developer Mode or symbolic-link privileges.');
+    return;
+  }
   await assert.rejects(verifySparkPatch(f.root), /Expected physical file/);
 });
 

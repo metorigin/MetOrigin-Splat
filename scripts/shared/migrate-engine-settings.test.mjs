@@ -29,7 +29,14 @@ test('foreign checkout paths and missing new packs are preserved', async t => {
   await writeFile(f.settingsPath, JSON.stringify(f.data)); await rm(path.dirname(f.current), { recursive: true }); assert.equal((await migrateEngineSettings({ ...f.options, apply: true })).changed, false);
 });
 test('settings file links are rejected', async t => {
-  const f = await fixture(t); const linked = path.join(f.root, 'linked.json'); await symlink(f.settingsPath, linked); await assert.rejects(migrateEngineSettings({ ...f.options, settingsPath: linked, apply: true }), /physical regular/);
+  const f = await fixture(t); const linked = path.join(f.root, 'linked.json');
+  try { await symlink(f.settingsPath, linked); }
+  catch (error) {
+    if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(error.code)) throw error;
+    t.skip('Windows file symlinks require Developer Mode or symbolic-link privileges.');
+    return;
+  }
+  await assert.rejects(migrateEngineSettings({ ...f.options, settingsPath: linked, apply: true }), /physical regular/);
 });
 test('absent old assets require a matching migration identity receipt', async t => {
   const f = await fixture(t); const legacy = path.join(f.root, 'target/distribution/macos-arm64'); await rm(legacy); const raw = await readFile(f.settingsPath);

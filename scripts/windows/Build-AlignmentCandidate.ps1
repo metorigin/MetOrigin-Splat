@@ -12,6 +12,19 @@ param(
 if (-not $CacheDirectory) { $CacheDirectory = Get-MetOriginWindowsDefaultPath -Key 'engineDownloads' }
 if (-not $OutputRoot) { $OutputRoot = Get-MetOriginWindowsDefaultPath -Key 'alignmentRoot' }
 
+function Assert-PhysicalBundlerOutputDirectory {
+    param([Parameter(Mandatory = $true)][string]$TargetDirectory)
+    $targetRoot = [IO.Path]::GetFullPath($TargetDirectory)
+    foreach ($relative in @('', 'release', 'release/bundle', 'release/bundle/nsis')) {
+        $directory = if ($relative) { Join-Path $targetRoot $relative } else { $targetRoot }
+        try { $item = Get-Item -LiteralPath $directory -Force -ErrorAction Stop }
+        catch [System.Management.Automation.ItemNotFoundException] { return }
+        if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw "Candidate builds require physical bundler output directories: $directory"
+        }
+    }
+}
+
 if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitOperatingSystem) { throw 'Alignment candidates require native Windows x64.' }
 $root = Get-MetOriginRepositoryRoot
 $previousTarget = $env:CARGO_TARGET_DIR
@@ -48,6 +61,7 @@ try {
     $target = Resolve-MetOriginPath -Path $CargoTargetDirectory
     # Keep candidates away from the legacy application/installer cache.
     if ($target -eq (Resolve-MetOriginPath -Path 'target/windows-release-build')) { throw 'Candidate builds require a separate Cargo target directory.' }
+    Assert-PhysicalBundlerOutputDirectory -TargetDirectory $target
     $buildLockPath = $target + '.alignment-build.lock'
     New-Item -ItemType Directory -Path (Split-Path -Parent $buildLockPath) -Force | Out-Null
     try { $buildLockStream = [IO.File]::Open($buildLockPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite, [IO.FileShare]::Read) }
@@ -68,18 +82,20 @@ try {
     $bundleIdentity = Join-Path (Split-Path -Parent $generatedConfig) 'bundle-identity.json'
     $bundlerReceipt = Join-Path (Split-Path -Parent $generatedConfig) 'bundler-inputs.json'
     $bundlerOutputs = Join-Path (Split-Path -Parent $generatedConfig) 'bundler-outputs.json'
+    $buildToolReceipt = Join-Path (Split-Path -Parent $generatedConfig) 'build-tool-inputs.json'
     $rustSysroot = (& rustc --print sysroot | Out-String).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the actual Rust compiler.' }
     $rustCompiler = Join-Path $rustSysroot 'bin/rustc.exe'
     & $node (Join-Path $PSScriptRoot 'BuildSourceInventory.mjs') capture --pack $OutputRoot --config $generatedConfig --inventory $sourceInventory
     if ($LASTEXITCODE -ne 0) { throw 'Cannot freeze actual application source inputs.' }
     if (-not $NoBundle) {
-        & $node (Join-Path $PSScriptRoot 'BuildBundlerReceipt.mjs') capture $target $node $pnpm $rustCompiler $bundlerReceipt
-        if ($LASTEXITCODE -ne 0) { throw 'Cannot freeze cached NSIS/WebView2 and bundler tool inputs. Prewarm the Tauri NSIS cache before this provenance-bound build.' }
+        & $node (Join-Path $PSScriptRoot 'BuildBundlerReceipt.mjs') capture-tools $target $node $pnpm $rustCompiler $buildToolReceipt
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot freeze application build-tool inputs before compilation.' }
     }
-    $started = [DateTime]::UtcNow
-    if ($NoBundle) { & $pnpm --dir apps/desktop tauri build --config $generatedConfig --no-bundle }
-    else { & $pnpm --dir apps/desktop tauri build --config $generatedConfig --bundles nsis }
+    # Compile once. Tauri has no download-only command; its bundle command can
+    # then populate a completely empty local NSIS/WebView2 cache without another
+    # application compilation. Nothing is copied to delivery paths at this stage.
+    & $pnpm --dir apps/desktop tauri build --config $generatedConfig --no-bundle
     if ($LASTEXITCODE -ne 0) { throw 'Internal alignment candidate Tauri build failed.' }
     $application = Join-Path $target "release/$binaryName.exe"
     # Cargo may reuse a verified artifact and Tauri renames that executable;
@@ -87,12 +103,40 @@ try {
     if (-not (Test-Path -LiteralPath $application -PathType Leaf)) {
         throw 'Candidate build did not produce the configured application executable.'
     }
+    & $node (Join-Path $PSScriptRoot 'BuildSourceInventory.mjs') verify --pack $OutputRoot --config $generatedConfig --inventory $sourceInventory
+    if ($LASTEXITCODE -ne 0) { throw 'Application build inputs changed before bundling; no candidate will be published.' }
+    if (-not $NoBundle) {
+        Write-Host 'Preparing local NSIS/WebView2 tools with an unpublished Tauri bundle.'
+        Assert-PhysicalBundlerOutputDirectory -TargetDirectory $target
+        & $pnpm --dir apps/desktop tauri bundle --config $generatedConfig --bundles nsis --ci
+        if ($LASTEXITCODE -ne 0) { throw 'Tauri bundler tool preparation failed; no candidate will be published.' }
+        # Check again before enumerating/deleting prepared installers: a linked
+        # output directory must never turn cache cleanup into external deletion.
+        Assert-PhysicalBundlerOutputDirectory -TargetDirectory $target
+        & $node (Join-Path $PSScriptRoot 'BuildSourceInventory.mjs') verify --pack $OutputRoot --config $generatedConfig --inventory $sourceInventory
+        if ($LASTEXITCODE -ne 0) { throw 'Application inputs changed during bundler preparation; no candidate will be published.' }
+        & $node (Join-Path $PSScriptRoot 'BuildBundlerReceipt.mjs') capture $target $node $pnpm $rustCompiler $bundlerReceipt
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot freeze the prepared NSIS/WebView2 and bundler tool inputs.' }
+        # A successful final bundle must produce its own installer; never select
+        # the unpublished preparation artifact after a missing/stale output.
+        $nsisOutputDirectory = Join-Path $target 'release/bundle/nsis'
+        foreach ($preparedInstaller in @(Get-ChildItem -LiteralPath $nsisOutputDirectory -Filter '*.exe' -File)) {
+            $safePreparedInstaller = Assert-MetOriginChildPath -Path $preparedInstaller.FullName -Parent $target
+            Remove-Item -LiteralPath $safePreparedInstaller -Force
+        }
+        $started = [DateTime]::UtcNow
+        Assert-PhysicalBundlerOutputDirectory -TargetDirectory $target
+        & $pnpm --dir apps/desktop tauri bundle --config $generatedConfig --bundles nsis --ci
+        if ($LASTEXITCODE -ne 0) { throw 'Internal alignment candidate Tauri bundle failed.' }
+    }
     & $node (Join-Path $PSScriptRoot 'BuildSourceInventory.mjs') verify --pack $OutputRoot --config $generatedConfig --inventory $sourceInventory --outputs $outputInventory --application $application
     if ($LASTEXITCODE -ne 0) { throw 'Application build inputs changed; no candidate will be published.' }
     $bundleKind = if ($NoBundle) { 'none' } else { 'nsis' }
     & $node (Join-Path $PSScriptRoot 'BundleIdentity.mjs') $application $bundleKind $bundleIdentity
     if ($LASTEXITCODE -ne 0) { throw 'Cannot bind the expected bundled application identity.' }
     if (-not $NoBundle) {
+        & $node (Join-Path $PSScriptRoot 'BuildBundlerReceipt.mjs') verify-tools $target $node $pnpm $rustCompiler $buildToolReceipt
+        if ($LASTEXITCODE -ne 0) { throw 'Application build tools changed; no candidate will be published.' }
         & $node (Join-Path $PSScriptRoot 'BuildBundlerReceipt.mjs') verify $target $node $pnpm $rustCompiler $bundlerReceipt $bundlerOutputs
         if ($LASTEXITCODE -ne 0) { throw 'Bundler inputs changed; no candidate will be published.' }
     }
@@ -126,6 +170,7 @@ try {
     Copy-Item -LiteralPath $outputInventory -Destination (Join-Path $metadata 'build-outputs.json')
     Copy-Item -LiteralPath $bundleIdentity -Destination (Join-Path $metadata 'bundle-identity.json')
     if (-not $NoBundle) {
+        Copy-Item -LiteralPath $buildToolReceipt -Destination (Join-Path $metadata 'build-tool-inputs.json')
         Copy-Item -LiteralPath $bundlerReceipt -Destination (Join-Path $metadata 'bundler-inputs.json')
         Copy-Item -LiteralPath $bundlerOutputs -Destination (Join-Path $metadata 'bundler-outputs.json')
     }
@@ -144,6 +189,7 @@ try {
         application_identity_kind='expected_payload_from_raw_build'; bundle_identity_file='bundle-identity.json';
         bundler_inputs_file=$(if ($NoBundle) { $null } else { 'bundler-inputs.json' });
         bundler_outputs_file=$(if ($NoBundle) { $null } else { 'bundler-outputs.json' });
+        build_tool_inputs_file=$(if ($NoBundle) { $null } else { 'build-tool-inputs.json' });
         created_utc=[DateTime]::UtcNow.ToString('o') }
     Write-MetOriginUtf8File -Path (Join-Path $metadata 'candidate-build.json') -Content (($record | ConvertTo-Json -Depth 6)+"`n")
     Write-MetOriginSha256Sums -BasePath $artifact -OutputPath (Join-Path $artifact 'SHA256SUMS.txt') -ExcludePaths @((Join-Path $artifact 'SHA256SUMS.txt'))

@@ -63,6 +63,8 @@ highest-priority selection. Optional `-DeviceId` accepts the canonical identity
 reported by the Brush probe, not an NVIDIA or WGPU enumeration ordinal.
 `-CheckOnly` prepares/checks without launching Tauri. Build dependencies and the
 Brush Rust 1.95.0 toolchain are independently checked by its build script.
+Install Python 3.10 or newer and make `python` available on PATH for this source
+build; the application still uses its separately pinned Rust 1.97.0 toolchain.
 
 The candidate builder holds an exclusive preparation lock, stages into a unique
 sibling directory and publishes only after all file hashes, source/patch build
@@ -132,10 +134,20 @@ and the theme's selected fonts/licenses. Other node_modules, unrelated docs,
 arbitrary build/cache trees and private environment/runtime logs are excluded.
 Code should remain stable while a candidate is building; a source-change rejection
 requires a new build after edits settle.
-The NSIS path separately freezes and rechecks its cached NSIS tools, offline
-WebView2 installer and selected build-tool binaries, and records the generated
-installer script/include hashes. These cached tools must be available before a
-provenance-bound NSIS build. `bundle-identity.json` records the raw executable hash
+The NSIS path freezes the compiler, Node/pnpm and Tauri CLI inputs before
+compiling the application without bundling, then runs an
+unpublished Tauri bundle to prepare NSIS and the offline WebView2 installer even
+when the local tool cache is empty. This preparation package stays in `target/`
+and is removed before the final bundle; it never becomes a delivery or latest
+selection. The builder freezes the prepared tools and selected build-tool
+binaries, runs the final bundle without recompiling the application, then
+rechecks the source and tool inputs and records the generated installer
+script/include hashes. `build-tool-inputs.json` retains the original pre-compile
+tool identities alongside `bundler-inputs.json`. Every cached WebView2 GUID is included, and the generated
+NSIS script must embed a runtime from that frozen inventory. If Evergreen changes
+its download GUID during the final bundle, publication fails and requires a new
+build. `-OfflineEngines` applies to engine preparation; Tauri's Evergreen resolver
+still needs network access. `bundle-identity.json` records the raw executable hash
 and the expected NSIS payload hash separately: Tauri 2.11.4 temporarily changes its
 unique bundle marker from `UNK` to `NSS` and then restores the raw executable.
 An installed-file comparison is a separate observation, not implied by that

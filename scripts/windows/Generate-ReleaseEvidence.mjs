@@ -1,4 +1,5 @@
 import { resolveWindowsPaths } from './WindowsPaths.mjs';
+import { npmDependencyEdges, resolveNpmManifest, verifyUnresolvedNpmPeers } from './NpmDependencyGraph.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { collectCopiedUiEvidence } from '../shared/copied-ui-evidence.mjs';
 import { findVerifiedNpmNotices } from '../shared/npm-notice-evidence.mjs';
@@ -31,6 +32,7 @@ const applicationRef = `pkg:generic/metorigin-splat@${version}`;
 const components = new Map();
 const dependencies = new Map([[applicationRef, new Set()]]);
 const missing = [];
+const unresolvedPeers = new Map();
 const licenseRecords = [];
 
 function add(component) {
@@ -112,16 +114,10 @@ function collectCargo(manifest, rootName, parent) {
   link(parent, visit(start.id));
 }
 
-function resolveNpm(name, from) {
-  for (let current = from; ; current = dirname(current)) {
-    const candidate = join(current, 'node_modules', name, 'package.json');
-    if (existsSync(candidate)) return realpathSync(candidate);
-    if (dirname(current) === current) return null;
-  }
-}
-
 const npmVisited = new Set();
 function collectNpm(manifest, parent) {
+  manifest = realpathSync(manifest);
+  const edges = npmDependencyEdges(manifest, root);
   const pkg = readJson(manifest);
   const ref = `pkg:npm/${pkg.name.replace('@', '%40')}@${pkg.version}`;
   if (!components.has(ref)) {
@@ -134,20 +130,14 @@ function collectNpm(manifest, parent) {
   link(parent, ref);
   if (npmVisited.has(manifest)) return;
   npmVisited.add(manifest);
-  const names = new Set([...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.optionalDependencies ?? {}), ...Object.keys(pkg.peerDependencies ?? {})]);
-  for (const name of names) {
-    const child = resolveNpm(name, dirname(manifest));
-    if (child) collectNpm(child, ref);
-    else if (!pkg.optionalDependencies?.[name] && !pkg.peerDependenciesMeta?.[name]?.optional) {
-      throw new Error(`Installed dependency ${name} of ${pkg.name} is missing.`);
-    }
-  }
+  for (const peer of edges.unresolvedPeers) unresolvedPeers.set(JSON.stringify(peer), peer);
+  for (const child of edges.installed) collectNpm(child.manifest, ref);
 }
 
 collectCargo(join(root, 'Cargo.toml'), 'splat-desktop', applicationRef);
 const desktop = readJson(join(root, 'apps/desktop/package.json'));
 for (const name of Object.keys(desktop.dependencies)) {
-  const manifest = resolveNpm(name, join(root, 'apps/desktop'));
+  const manifest = resolveNpmManifest(name, join(root, 'apps/desktop'), root);
   if (!manifest) throw new Error(`Desktop dependency ${name} is not installed.`);
   collectNpm(manifest, applicationRef);
 }
@@ -287,9 +277,10 @@ const report = {
     { id: 'security-review', detail: 'Review Tauri capabilities and production content security policy; current configuration has csp=null.' },
   ],
   packages_needing_license_text_review: missing,
+  unresolved_peer_dependencies: [...unresolvedPeers.values()],
   resolved_findings: [{ id: 'supersplat-webp-provenance', evidence: 'vendored/webp/evidence.json', resolution: 'replaced-with-fixed-source-build',
     detail: 'Current fixed-source derivative replaces the historical prebuilt; original prebuilt provenance remains unresolved.' }],
-  limitations: ['Source graphs conservatively include build dependencies and pre-tree-shaking frontend dependencies.', 'Native hashes identify staged payloads, not their license grants.', 'The final installer hash and signature result must be supplied by build metadata.'],
+  limitations: ['Source graphs conservatively include build dependencies and pre-tree-shaking frontend dependencies.', 'Absent declared npm peers are recorded separately and are not claimed as bundled for that package relationship; actual SuperSplat source-map roots are independently verified.', 'Native hashes identify staged payloads, not their license grants.', 'The final installer hash and signature result must be supplied by build metadata.'],
 };
 if (missing.length) report.blockers.push({ id: 'dependency-license-texts', detail: `${missing.length} source packages need manual license-text review; see packages_needing_license_text_review.` });
 const bom = { bomFormat: 'CycloneDX', specVersion: '1.6', serialNumber: `urn:uuid:${randomUUID()}`, version: 1,
@@ -309,6 +300,7 @@ const knownRefs = new Set([applicationRef, ...components.keys()]);
 for (const { ref, dependsOn } of bom.dependencies) {
   if (!knownRefs.has(ref) || dependsOn.some(dep => !knownRefs.has(dep))) throw new Error('Dangling SBOM dependency.');
 }
+verifyUnresolvedNpmPeers(report.unresolved_peer_dependencies, bom);
 write(join(output, 'SBOM.cdx.json'), JSON.stringify(bom, null, 2) + '\n');
 write(join(output, 'release-readiness.json'), JSON.stringify(report, null, 2) + '\n');
 write(join(output, 'native-payload-inventory.json'), JSON.stringify(inventory, null, 2) + '\n');

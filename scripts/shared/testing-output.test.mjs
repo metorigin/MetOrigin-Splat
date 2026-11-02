@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,14 +48,28 @@ test('latest failure and debug survive a later success, with one directory for e
   assert.equal(existsSync(failed.temporaryDirectory), false);
 });
 
-test('explicit keep retains owned debug and copies symlinks without following them', async t => {
+test('explicit keep retains owned debug', async t => {
+  const f = fixture(t);
+  const output = await createTestingOutput({ ...f.options, keep: true });
+  writeFileSync(join(output.workDirectory, 'owned.ply'), 'owned');
+  const kept = output.finish();
+  assert.equal(readFileSync(join(kept.debugDirectory, 'owned.ply'), 'utf8'), 'owned');
+  const next = await createTestingOutput(f.options); next.finish();
+  assert.equal(existsSync(output.temporaryDirectory), false);
+});
+
+test('kept debug copies file symlinks without following them', async t => {
   const f = fixture(t);
   const output = await createTestingOutput({ ...f.options, keep: true });
   const foreign = join(f.root, 'source.ply'); writeFileSync(foreign, 'source');
-  writeFileSync(join(output.workDirectory, 'owned.ply'), 'owned');
-  symlinkSync(foreign, join(output.workDirectory, 'external.ply'));
+  try { symlinkSync(foreign, join(output.workDirectory, 'external.ply')); }
+  catch (error) {
+    if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(error.code)) throw error;
+    t.skip('Windows file symlinks require Developer Mode or symbolic-link privileges.');
+    return;
+  }
   const kept = output.finish();
-  assert.equal(readFileSync(join(kept.debugDirectory, 'owned.ply'), 'utf8'), 'owned');
+  assert(lstatSync(join(kept.debugDirectory, 'external.ply')).isSymbolicLink());
   const next = await createTestingOutput(f.options); next.finish();
   assert.equal(readFileSync(foreign, 'utf8'), 'source');
 });
@@ -66,7 +80,7 @@ test('refuses an unowned current directory and symlinked output ancestors', asyn
   writeFileSync(join(target, 'user.txt'), 'keep');
   await assert.rejects(createTestingOutput({ ...f.options, reportRoot: join(f.root, 'explicit') }), /unowned/);
   assert.equal(readFileSync(join(target, 'user.txt'), 'utf8'), 'keep');
-  symlinkSync(join(f.root, 'explicit'), join(f.root, 'alias'));
+  symlinkSync(join(f.root, 'explicit'), join(f.root, 'alias'), process.platform === 'win32' ? 'junction' : 'dir');
   await assert.rejects(createTestingOutput({ ...f.options, reportRoot: join(f.root, 'alias/tool') }), /physical/);
 });
 
