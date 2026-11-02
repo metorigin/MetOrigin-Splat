@@ -4,9 +4,9 @@
 
 A Windows desktop application that turns a video or a folder of photos into a 3D Gaussian Splatting scene. FFmpeg prepares the frames, COLMAP reconstructs the cameras and sparse geometry, and Brush trains the model locally.
 
-**Status: Alpha / v0.1.0.** The core workflow is implemented; Windows installers are for internal validation. There is no supported public binary release yet.
+**Status: Alpha / v0.1.0.** The core workflow is implemented; installers are for internal validation. There is no supported public binary release yet. The [project status](docs/status.md) is the single entry point for platform routes, candidate identities, accepted scope, remaining checks and evidence.
 
-Apple Silicon macOS support is under validation: CPU COLMAP and Metal Brush have completed real photo/video pipelines on an M1 Pro with 32 GB memory, and native viewing/editing has been exercised. macOS 15, 16 GB clean-machine acceptance and Windows regression remain open. See the [implementation and acceptance plan](docs/macos-gaussian-generation-plan.zh-CN.md) and [macOS engine packaging](packaging/macos-arm64/README.md).
+Apple Silicon macOS support is under validation: CPU COLMAP and Metal Brush have completed real photo/video pipelines on an M1 Pro with 32 GB memory, and native viewing/editing has been exercised. macOS 15, 16 GB clean-machine acceptance and Windows regression remain open. The latest local signed DMG has recorded container notarization; application license and clean-machine gates remain open. See [project status](docs/status.md), [macOS packaging](docs/macos-packaging.zh-CN.md) and the [historical implementation plan](docs/archive/plans/macos-gaussian-generation-plan.zh-CN.md).
 
 ## What you can do
 
@@ -45,6 +45,8 @@ pnpm tauri dev
 `pnpm tauri dev` starts both the desktop application and its Vite server. Do not start another `pnpm dev` on port 1420 at the same time. Restart this command after Rust/Tauri changes; frontend changes support hot reload.
 
 ### Prepare the reconstruction engines
+
+The commands below select the default Windows legacy route. For the separate Brush 1 Windows1 candidate, use the [Windows candidate setup](packaging/windows-x64/README.md#brush-1-alignment-candidate), including `pnpm dev:windows`. macOS uses its [native build instructions](docs/development.md).
 
 A source checkout does not contain engine executables. Configure existing installations through **Settings & Engines**, or prepare the pinned local engine pack:
 
@@ -105,7 +107,8 @@ Real-engine tests require explicit opt-in, local media and suitable hardware. Se
 | `presets/`, `schemas/` | Reconstruction parameters and persisted-data schemas |
 | `scripts/`, `packaging/` | Validation, Windows builds, pinned engines and third-party notices |
 | `docs/` | Current usage, implementation and release guides |
-| `specs/` | Historical design contracts and acceptance protocols |
+| `docs/archive/` | Frozen plans, design contracts and dated acceptance records |
+| `specs/` | Compatibility index for archived feature specifications |
 
 Generated files use four roots: `target/` for Cargo outputs, `.cache/metorigin/` for reusable downloads, source checkouts and tools, `.engines/` for prepared runtime engines, and `artifacts/` for packages and retained reports. Ordinary test workspaces use the system temporary directory and are cleaned automatically; see [directory roles and cleanup](docs/development.md#generated-files-and-cleanup).
 

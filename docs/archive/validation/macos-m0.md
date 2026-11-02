@@ -1,6 +1,10 @@
 # macOS M0 引擎验证记录
 
-开始日期：2026-10-26，实测更新至 2026-10-27。状态：**M0 独立引擎 smoke 已通过，正在推进 M1 应用接入**。真实 CPU 重建、实际 Metal adapter、300 步训练与有效 PLY 均已取得证据；本记录不构成完整 macOS 支持或安装包验收声明。完整范围见[实施方案](../macos-gaussian-generation-plan.zh-CN.md)。
+> 归档说明（2026-11-01）：本文件是历史实验或阶段验收快照，原路径为 `docs/validation/macos-m0.md`。文中“当前”“最新”、旧路径、工具版本和未完成项均属于原记录时点；归档不新增验收结论、不将旧结果转移到其他构建。当前支持与待验范围见[项目状态](../../status.md)，当前操作见[使用指南](../../user-operation-flow.zh-CN.md)。
+
+<!-- archive-note:end -->
+
+开始日期：2026-10-26，实测更新至 2026-10-27。状态：**M0 独立引擎 smoke 已通过，正在推进 M1 应用接入**。真实 CPU 重建、实际 Metal adapter、300 步训练与有效 PLY 均已取得证据；本记录不构成完整 macOS 支持或安装包验收声明。完整范围见[实施方案](../plans/macos-gaussian-generation-plan.zh-CN.md)。
 
 应用分支为 `codex/macos-gaussian-generation`。引擎隔离 checkout、构建依赖、日志、素材与输出均放在 Git 忽略的 `target/macos-m0/`；不修改两个用户 fork 的 main，不上传素材。
 
@@ -33,7 +37,7 @@ python3 -m unittest discover -s scripts/macos -p 'test_*.py' -v
 - 已核对应用分支，保留原方案及索引变更。
 - 已读取实施方案、constitution 与适用仓库指令。
 - 已创建两个隔离引擎 checkout；Brush 固定在审计 commit。
-- Brush 已以 Rust 1.95.0、原始 Cargo.lock、默认 WGPU features 真实构建成功，arm64 / minos15.0 / SDK27.0。初次下载的代理阻碍已解除。随后复现了本机 Xcode 27 的 `strip=debuginfo` 过程宏 LINKEDIT 对齐错误；固定配方改为 `CARGO_PROFILE_RELEASE_STRIP=none` 后通过，详见 [Brush 记录](../../scripts/macos/BRUSH-M0.md)。
+- Brush 已以 Rust 1.95.0、原始 Cargo.lock、默认 WGPU features 真实构建成功，arm64 / minos15.0 / SDK27.0。初次下载的代理阻碍已解除。随后复现了本机 Xcode 27 的 `strip=debuginfo` 过程宏 LINKEDIT 对齐错误；固定配方改为 `CARGO_PROFILE_RELEASE_STRIP=none` 后通过，详见 [Brush 记录](../engines/BRUSH-M0.md)。
 - COLMAP 已真实编译并安装，help 报告 `4.1.0 (Commit fa8e3b3f, without CUDA)`，六类命令均正常启动。主程序为 arm64，Mach-O minos=15.0 / SDK=27.0。
 - COLMAP 开发依赖安装于项目内独立 conda prefix，不改变系统工具。实测依赖包括 Ceres 2.2.0、Eigen 5.0.1、Boost 1.90.0、OpenImageIO 3.2.1.2、LLVM OpenMP 23.1.4。开发依赖含 GPL 配置及传递的 FFmpeg 9，**不是计划中的最终发行包**；FFmpeg 8.1.2 和许可证/动态库闭包仍须在 M4 单独构建、审查。
 - `global_mapper --help` 实测仍默认 `gp_use_gpu=1` 和 `ba_ceres_use_gpu=1`，CPU 构建不能代替运行时显式传 `0`。其他 CPU 参数也按方案显式传入。
@@ -43,7 +47,7 @@ python3 -m unittest discover -s scripts/macos -p 'test_*.py' -v
 
 ## 真实照片与引擎结果
 
-采用 Mike R. James / Stuart Robson 的 [CC0 样品照片集 v1](https://doi.org/10.6084/m9.figshare.9120020.v1)，固定 `IMG_1928.jpg` 至 `IMG_1967.jpg` 共 40 张。逐图 SHA-256 已纳入[fixture manifest](../../packaging/macos-arm64/fixtures/james-sample-40.json)。完整归档 611,535,084 bytes 已下载并验证 provider MD5 `a62826fd45a89551a548897cf6b62b01` 和 SHA-256 `b0d0995be5652d453fdb0d809a364ccd4a8a5040cae35fb6e748f0ff1783d2d1`；重新完整解压后的 40 图 hash 与首次 CRC 核验提取结果一致。照片和模型不进入源码仓库。
+采用 Mike R. James / Stuart Robson 的 [CC0 样品照片集 v1](https://doi.org/10.6084/m9.figshare.9120020.v1)，固定 `IMG_1928.jpg` 至 `IMG_1967.jpg` 共 40 张。逐图 SHA-256 已纳入[fixture manifest](../../../packaging/macos-arm64/fixtures/james-sample-40.json)。完整归档 611,535,084 bytes 已下载并验证 provider MD5 `a62826fd45a89551a548897cf6b62b01` 和 SHA-256 `b0d0995be5652d453fdb0d809a364ccd4a8a5040cae35fb6e748f0ff1783d2d1`；重新完整解压后的 40 图 hash 与首次 CRC 核验提取结果一致。照片和模型不进入源码仓库。
 
 | 路径 | 注册 | 稀疏点 | 平均重投影误差 | mapping | undistort |
 | --- | --- | --- | --- | --- | --- |
@@ -62,7 +66,7 @@ CPU 特征提取耗时 29.554 s，exhaustive matching 30.617 s；global 对照�
 
 另一次独立 CPU 资源记录 `smoke-incremental-02-rss`：40/40 注册、36,910 points、0.520457 px；feature 21.375 s / RSS 2,268,332,032 B，matching 23.051 s / 354,959,360 B，mapping 23.789 s / 334,970,880 B，undistort 15.469 s / 850,427,904 B。这些阶段峰值不能相加作为应用统一内存峰值，也不能代替 16 GB 机器验收。
 
-完整命令、build-info、日志与 hash 位于忽略目录的 `colmap-build/`、`brush-build/evidence/`、`smoke-incremental-01/`、`colmap-diagnostic/`、`brush-training-01/`。复现入口见[脚本 README](../../scripts/macos/README.md)及[fixture 使用说明](../../packaging/macos-arm64/fixtures/README.md)。
+完整命令、build-info、日志与 hash 位于忽略目录的 `colmap-build/`、`brush-build/evidence/`、`smoke-incremental-01/`、`colmap-diagnostic/`、`brush-training-01/`。复现入口见[脚本 README](../../../scripts/macos/README.md)及[fixture 使用说明](../../../packaging/macos-arm64/fixtures/README.md)。
 
 ## Unix 生命周期修复（MAC-08 的独立部分）
 

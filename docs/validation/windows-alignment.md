@@ -1,8 +1,10 @@
 # Windows 对齐实施记录
 
+> Historical and per-build evidence. Platform/candidate status and open acceptance are maintained in [project status](../status.md). “Current” and “final” below refer to each dated record; results do not transfer to a later build.
+
 初始记录：2026-10-30；更新：2026-10-31（Asia/Shanghai）。分支：`codex/windows-gaussian-alignment`。应用基线：`69a699044b498ef0f3748807571ed13b7fdbd042`。
 
-本记录区分代码实现、自动测试和原生验收。目标仍为进行中；Windows1 保持候选，不提前切换发布默认。实施依据为[实施方案](../windows-gaussian-alignment-plan.zh-CN.md)。
+本记录区分代码实现、自动测试和原生验收。目标仍为进行中；Windows1 保持候选，不提前切换发布默认。实施依据为[实施方案](../archive/plans/windows-gaussian-alignment-plan.zh-CN.md)。
 
 普通安装启动缺陷已另行修复：新 877 输入候选的 Windows1 无需 backend/device 环境变量即可在原生向导完成真实 DX12 计算预检，「继续」可用。新应用 NSS 身份为 `57e582…a989`，详细边界见下文普通启动补验及[原生UI记录](windows-native-ui.md)。历史 `5386…` 启动依赖外部配置，不能继承本次结果。
 

@@ -1,17 +1,16 @@
-# Design contracts and acceptance records
+# Historical feature specifications
 
-This directory retains feature design, interface contracts and acceptance protocols. It is historical implementation context, not a second description of the current product interface.
+Feature 001 has moved to the [documentation archive](../docs/archive/specs/001-frontend-ux-improvements/spec.md). Its design, task list, interface examples and acceptance results describe the implementation at that time.
 
-## Frontend UX improvements
+The [archive index](../docs/archive/README.md) records the remaining T082/T084 acceptance work and the final `PENDING` result. Archiving does not complete those tasks or approve a release. Old sidebar layouts, dependency choices and IPC examples must not be copied as the current implementation contract.
 
-The [001 feature](001-frontend-ux-improvements/) includes:
+For current behavior and engineering work, use:
 
-- [Specification](001-frontend-ux-improvements/spec.md), [plan](001-frontend-ux-improvements/plan.md) and [task record](001-frontend-ux-improvements/tasks.md)
-- [UI interaction contract](001-frontend-ux-improvements/contracts/ui-interaction-contract.md) and [Tauri IPC contract](001-frontend-ux-improvements/contracts/tauri-ipc-contract.md)
-- [Acceptance protocol](001-frontend-ux-improvements/quickstart.md) and [recorded results](001-frontend-ux-improvements/validation-results.md)
+- [Project status and acceptance boundaries](../docs/status.md)
+- [Current design system](../docs/design-system.zh-CN.md)
+- [User guide](../docs/user-guide.md) / [中文使用指南](../docs/user-operation-flow.zh-CN.md)
+- [Architecture](../docs/architecture.md), [project format](../docs/project-format.md) and [development checks](../docs/development.md)
 
-Later interface changes removed the active-project banners, redundant settings entries, global status footer and featured first recent-project card. They also introduced the current sidebar, creation wizard and Gaussian renderer. References to those earlier surfaces describe the design at the time; they are not requests to restore removed UI.
+Current application styles start at `apps/desktop/src/styles/app.css`, which imports the shared tokens and workspace styles. The former `App.css`, `buzz.css` and `interaction-surfaces.css` are historical paths.
 
-Historical references to `apps/desktop/src/App.css` now map to the active styles in `apps/desktop/src/styles/`: `buzz.css`, `tokens.css` and `interaction-surfaces.css`. The unused original stylesheet has been removed.
-
-For current behavior, use the [user guide](../docs/user-operation-flow.zh-CN.md), [architecture](../docs/architecture.md) and [development checks](../docs/development.md). Preserve the contracts and recorded evidence when revising behavior, and distinguish a historical result from a newly executed verification.
+Spec Kit workflow templates and the project constitution remain under `.specify/`; the archived feature is not automatically selected as a new implementation task.

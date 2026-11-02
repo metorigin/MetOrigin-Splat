@@ -1,5 +1,7 @@
 # macOS application dependency evidence
 
+> Historical and per-build evidence. Platform/candidate status and open acceptance are maintained in [project status](../status.md). “Current” and “final” below refer to each dated record; results do not transfer to a later build.
+
 **Directory routing update (2026-11-01):** Current application-license evidence now uses `artifacts/licenses/macos-arm64/current/`, and archived copies use `artifacts/licenses/macos-arm64/archive/`. Current commands are in the [macOS packaging guide](../macos-packaging.zh-CN.md); the local [migration map](../../artifacts/licenses/macos-arm64/migration-map.json) records relocated directories. The dated results and original paths below remain historical records, not current output defaults.
 
 Current status (2026-10-28): the complete `ee0f0bea` application and

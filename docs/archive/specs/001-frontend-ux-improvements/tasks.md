@@ -1,5 +1,9 @@
 ---
 
+> 归档说明（2026-11-01）：本文件是冻结的前端 UX 设计或验收记录，原路径为 `specs/001-frontend-ux-improvements/tasks.md`。文中“当前”“最新”、旧路径、工具版本和未完成项均属于原记录时点；归档不新增验收结论、不将旧结果转移到其他构建。当前支持与待验范围见[项目状态](../../../status.md)，当前操作见[使用指南](../../../user-operation-flow.zh-CN.md)。
+
+<!-- archive-note:end -->
+
 description: "Dependency-ordered implementation tasks for frontend interaction and UX improvements"
 ---
 
@@ -7,7 +11,7 @@ description: "Dependency-ordered implementation tasks for frontend interaction a
 
 **Input**: Design documents from `/specs/001-frontend-ux-improvements/`
 
-**Prerequisites**: [plan.md](./plan.md), [spec.md](./spec.md), [research.md](./research.md), [data-model.md](./data-model.md), [contracts/](./contracts/), [quickstart.md](./quickstart.md)
+**Prerequisites**: [plan.md](plan.md), [spec.md](spec.md), [research.md](research.md), [data-model.md](data-model.md), [contracts/](contracts/), [quickstart.md](quickstart.md)
 
 **Tests**: Tests are mandatory under the project constitution. For each behavior task, add or update the listed test first and confirm it fails for the intended reason before implementation.
 
@@ -16,7 +20,7 @@ description: "Dependency-ordered implementation tasks for frontend interaction a
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel because it changes different files and has no dependency on unfinished tasks.
-- **[Story]**: Maps the task to a user story in [spec.md](./spec.md).
+- **[Story]**: Maps the task to a user story in [spec.md](spec.md).
 - Every task includes an exact file path and an observable completion condition.
 
 ## Phase 1: Setup (Shared Infrastructure)
@@ -364,6 +368,6 @@ After upstream surfaces stabilize: T071 modal integration, T072 menu integration
 ## Notes
 
 - `[P]` means the task is safe to execute concurrently with the other listed task(s), not that its tests may be skipped.
-- Story labels provide traceability to [spec.md](./spec.md); cross-cutting setup/foundation/polish tasks intentionally have no story label.
+- Story labels provide traceability to [spec.md](spec.md); cross-cutting setup/foundation/polish tasks intentionally have no story label.
 - Commit after each task or coherent task group; do not combine unrelated architecture or dependency changes.
 - Stop at every checkpoint and verify the independent test before proceeding to the next priority.

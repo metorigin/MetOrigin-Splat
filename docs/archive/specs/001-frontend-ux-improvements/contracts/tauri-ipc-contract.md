@@ -1,5 +1,9 @@
 # Tauri IPC Contract
 
+> 归档说明（2026-11-01）：本文件是冻结的前端 UX 设计或验收记录，原路径为 `specs/001-frontend-ux-improvements/contracts/tauri-ipc-contract.md`。文中“当前”“最新”、旧路径、工具版本和未完成项均属于原记录时点；归档不新增验收结论、不将旧结果转移到其他构建。当前支持与待验范围见[项目状态](../../../../status.md)，当前操作见[使用指南](../../../../user-operation-flow.zh-CN.md)。
+
+<!-- archive-note:end -->
+
 本契约区分“必须保持的既有接口”和“为 UX 新增的向后兼容接口”。所有路径在 Rust 边界重新验证；
 前端不得把本契约当作任意本地文件访问能力。
 

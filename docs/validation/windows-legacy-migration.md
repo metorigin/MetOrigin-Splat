@@ -1,6 +1,8 @@
 # Windows legacy 迁移与回退验收
 
-核心观测日期：2026-10-30；独立 GUI 应用准备及原生只读验收：2026-10-31。关联 [Windows 对齐实施记录](windows-alignment.md) 与 [WIN-22 方案](../windows-gaussian-alignment-plan.zh-CN.md)。本记录覆盖真实旧包、匹配基线应用、生产核心迁移、独立 PLY 导入实验、匹配旧核心的回退，以及旧 GUI 的 viewer / 只读 editor / 返回 viewer / 正常关闭。旧编辑修改和保存未测，Windows1 发布默认未切换，Mac 真机门槛不由这些 Windows 结果替代。
+> Historical and per-build evidence. Platform/candidate status and open acceptance are maintained in [project status](../status.md). “Current” and “final” below refer to each dated record; results do not transfer to a later build.
+
+核心观测日期：2026-10-30；独立 GUI 应用准备及原生只读验收：2026-10-31。关联 [Windows 对齐实施记录](windows-alignment.md) 与 [WIN-22 方案](../archive/plans/windows-gaussian-alignment-plan.zh-CN.md)。本记录覆盖真实旧包、匹配基线应用、生产核心迁移、独立 PLY 导入实验、匹配旧核心的回退，以及旧 GUI 的 viewer / 只读 editor / 返回 viewer / 正常关闭。旧编辑修改和保存未测，Windows1 发布默认未切换，Mac 真机门槛不由这些 Windows 结果替代。
 
 ## 来源与隔离
 

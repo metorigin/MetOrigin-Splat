@@ -49,7 +49,7 @@ The Apple Silicon route has a separate [engine lock and packaging process](../pa
 bash scripts/macos/build-macos-app.sh --internal-alpha
 ```
 
-This explicit option permits internal validation while engine or application-license evidence still has blockers; malformed evidence and integrity failures remain fatal. Without it, both evidence gates must pass. Neither option grants public-release clearance. The builder verifies the final embedded engine inventory after signing; an external signature step must not silently change those hashed binaries.
+This explicit option permits internal validation while engine or application-license evidence still has blockers; malformed evidence and integrity failures remain fatal. Without it, both evidence gates must pass. Neither option grants public-release clearance. The builder verifies the final embedded engine inventory after signing. Explicit Developer ID signing derives a separately identified pack; an external signature step must not silently change already-bound binaries. See the [signing and notarization procedure](macos-packaging.zh-CN.md#developer-id-签名与-apple-公证).
 
 New DMGs are written to `artifacts/packages/macos-arm64/`, and each build's reports and preflight logs to `artifacts/verification/macos-arm64/build.XXXXXX/`. The latter directory's parent holds `latest.json`, updated only after the selected build steps succeed. Paths are defined in [`packaging/shared/artifact-paths.json`](../packaging/shared/artifact-paths.json). SuperSplat source and npm caches use `.cache/metorigin/sources/supersplat/upstream/` and `.cache/metorigin/downloads/npm/supersplat/`, configured in [`cache-paths.json`](../packaging/shared/cache-paths.json). The cache-layout change updates the preparation signature, so archive and recollect macOS application-license evidence before the first package using the new preparation.
 
@@ -61,37 +61,9 @@ All Mac target compatibility links are retired; preparation reads `.engines/maco
 
 The local [engine migration map](../.engines/macos-arm64/migration-map.json) and original stage-4 receipts retain their historical contents. Record prefix retirement and the new development identity in a separate successor record; do not rewrite old project hashes or claim a new native, relocation or public-release acceptance result before verification. The frozen Alpha `.6` pack retains its existing identity.
 
-The historical runtime-fixed 2026-10-27 candidate completed the entire script with exit 0,
-including the actual frozen-pack Rust release resolver without a cache, strict
-ad-hoc signature verification and a read-only DMG mount whose
-app exactly matched the initially verified bundle. Its DMG SHA-256 is
-`852180d7ba7de5d712f95abef9244494bd10c4502cc86f6f1e22be2f5c803d4b`.
-It subsequently failed native application version preflight; the complete Brush
-version matcher and FFprobe parser have since been corrected and checked against
-the actual frozen pack.
-The previous restoration-fixed candidate failed native preflight because the runtime assumed thin
-Mach-O headers and rejected a valid one-slice arm64 fat dylib. The earlier
-candidate was rejected after native restoration reused stale Export output.
-All three historical apps, DMGs and evidence sets remain preserved. Both the
-resource resolver and production application adapter/version preflight are now
-required before every full build. A subsequent full run correctly stopped before
-Tauri at COLMAP's ten-second first-path startup limit. Only macOS COLMAP `-h` now
-uses a 45-second execution deadline, with one attempt, no retry and unchanged
-64 KiB capture/process cleanup; other probes retain ten seconds. A new physical
-pack path passed the actual application gate on the same host.
+Candidate identity, signed-container notarization, application-license findings and remaining acceptance are maintained only in [project status](status.md). The latest local success pointer and the older native acceptance builds are separate evidence. The detailed 2026-10-27 packaging sequence is retained in the [archive](archive/validation/macos-packaging-2026-10-27.md).
 
-The new full internal Alpha build completed from the beginning with exit 0,
-both real gates passing, and exact signed-app/read-only DMG agreement. Its main
-executable SHA-256 is
-`8656d4e02678cd6d2f30fb92a2c19a26a5ef38ada8af93cb3f93b9b0bb9d03a3`;
-the new `build.07osYS` DMG SHA-256 is
-`77e5c8e411873037e64d8cb4e988377788a7b393a197a99262cbb4bc99402bf0`.
-See the [current candidate and retained failure evidence](validation/macos-engine-pack.md#current-internal-alpha-candidate-application-preflight-passed).
-Its `.6` 311-image balanced workload and Chinese/space-path native execution
-remain pending in this packaging record; packaging and application preflight
-success is not final app acceptance.
-
-The selected minimum deployment version is macOS 15.0. Current evidence comes from one M1 Pro / 32 GB / macOS 27.0.1 development machine. Minimum-OS and 16 GB clean-machine installation, Windows regression, and Developer ID signing/notarization remain separate acceptance requirements. Local relocation and configured CI are recorded as such, not as clean-machine or executed-CI evidence. See the [acceptance plan](macos-gaussian-generation-plan.zh-CN.md).
+The configured minimum is macOS 15.0. Minimum-OS, 16 GB, clean-machine and cross-platform native checks remain separate from signing/notarization and same-host relocation. A notarized DMG does not grant application-license or public-release clearance.
 
 ### Shared public-release requirements
 

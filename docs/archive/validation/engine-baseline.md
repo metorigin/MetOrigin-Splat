@@ -1,6 +1,10 @@
 # Real-engine baseline — 2026-07-13
 
-> Historical validation record. Measurements and coverage gaps below describe the run on this date, not the current implementation or a complete compatibility guarantee. For current setup and tests see [development](../development.md), [engine integration](../engine-integration.md) and the [engine lock](../../packaging/windows-x64/engine-lock.json).
+> 归档说明（2026-11-01）：本文件是历史实验或阶段验收快照，原路径为 `docs/validation/engine-baseline.md`。文中“当前”“最新”、旧路径、工具版本和未完成项均属于原记录时点；归档不新增验收结论、不将旧结果转移到其他构建。当前支持与待验范围见[项目状态](../../status.md)，当前操作见[使用指南](../../user-operation-flow.zh-CN.md)。
+
+<!-- archive-note:end -->
+
+> Historical validation record. Measurements and coverage gaps below describe the run on this date, not the current implementation or a complete compatibility guarantee. For current setup and tests see [development](../../development.md), [engine integration](../../engine-integration.md) and the [engine lock](../../../packaging/windows-x64/engine-lock.json).
 
 ## Scope
 

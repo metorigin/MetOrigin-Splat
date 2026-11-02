@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Consolidated platform and candidate status, extracted the current Jan design system, corrected user guidance to match the desktop UI, and archived frozen plans, feature specifications, stage records and retired icon drafts while retaining evidence boundaries.
+
 ### Added
 
 - Opt-in Developer ID signing and resumable Apple notarization for macOS applications and DMGs, including derived signed engine packs, ticket validation and Gatekeeper checks.

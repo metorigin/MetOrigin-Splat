@@ -1,41 +1,51 @@
 # 高斯渲染与训练实时预览
 
-项目详情页的训练、模型校验、导出和预览阶段使用完整的 3D Gaussian Splatting 渲染。预处理仍显示抽取帧，COLMAP 阶段仍显示稀疏点云与相机。
+项目详情页的训练、模型校验、导出和预览阶段使用完整的 3D Gaussian Splatting 渲染。预处理显示抽取帧，COLMAP 阶段显示稀疏点云与相机。平台支持、候选身份和已验范围统一见[当前状态](status.md)。
 
 ## 使用
 
-在仓库根目录运行：
-
-```powershell
-pnpm tauri dev
-```
-
-首次使用先安装前端依赖并构建配套引擎。修改 Rust / Tauri 代码后需要重新启动桌面开发进程，单独刷新前端不够：
+首次准备源码开发环境时，在仓库根目录安装依赖：
 
 ```powershell
 pnpm install --frozen-lockfile
+```
+
+按实际引擎路线准备并启动：
+
+| 路线 | 实时引擎与启动入口 |
+| --- | --- |
+| Windows legacy Brush 0.3，默认发布路线 | 准备已锁定引擎包，或将 `brush_live.exe` 放在配置的 `brush_app.exe` 旁边；用 `pnpm tauri dev` 启动源码应用 |
+| Windows Brush 1 alignment 候选 | 主 `brush-cli` 实现实时协议；用 `pnpm dev:windows` 准备/验证候选并启动，不需要另建0.3 companion |
+| Apple Silicon macOS | 开发引擎 `.5`、冻结分发引擎 `.6` 的主 CLI 实现实时协议；先按[开发指南](development.md)准备匹配引擎，再用 `pnpm tauri dev` 启动源码应用 |
+
+已安装应用使用其匹配的引擎资源，不需要Vite开发服务器。Windows Brush 1 与 Mac 路线还要求执行配置确认实时协议和能力可用；仅有同名可执行文件或成功的版本命令不足以启用实时训练预览。
+
+只有 Windows legacy 路线需要单独构建配套引擎时，运行：
+
+```powershell
 pnpm build:brush:live
 ```
 
-`build:brush:live` 从 SHA-256 固定的 Brush v0.3.0 源码构建 `brush_live.exe`，放在现有 `brush_app.exe` 旁边。首次构建需要下载 Rust 依赖；缓存齐全后可使用 `pnpm build:brush:live -Offline`。Windows 引擎打包流程也会构建并包含此引擎。
+`build:brush:live` 从 SHA-256 固定的 Brush v0.3.0 源码构建 `brush_live.exe`，默认输出到 `.engines/windows-x64/development/brush-v0.3.0/`。将其放到配置的 `brush_app.exe` 旁边，或通过 `-OutputDirectory` 直接指定该目录。首次构建需要下载 Rust 依赖；缓存齐全后可使用 `pnpm build:brush:live -Offline`。默认 Windows legacy 引擎打包流程也会包含此引擎。完整路径及配置优先级见[引擎接入](engine-integration.md)。
 
-打开已完成项目即可查看已有模型，无需重新训练。新启动的训练会自动使用旁边的实时预览引擎；已经运行的旧 Brush 进程不会被热替换。若配置了其他 Brush 路径，需要将配套引擎构建到该目录。
+打开已完成项目即可查看已有模型，无需重新训练。更换引擎或修改 Rust / Tauri 后需要重新启动开发进程；已经运行的训练进程不会被热替换。
 
 ## 界面行为
 
-- 鼠标左键拖动旋转、滚轮缩放、右键平移；`R` 或重置按钮返回初始视角。
-- 优先采用项目的拍摄相机作为初始视角；缺少相机数据时，根据模型范围取景。工具栏也提供查看模型整体和地面网格开关。
-- 训练时可选择“实时”“低频”“暂停预览”。暂停预览只停止获取新模型，训练继续。
+- 鼠标左键拖动旋转、滚轮缩放、右键平移；聚焦画布后按 `R` 返回初始视角。
+- 优先采用项目的拍摄相机作为初始视角；缺少相机数据时，根据模型范围取景。
+- 选择训练中的当前阶段后，支持实时通道的引擎自动提供模型更新。主工作台采用无工具栏画布，刷新模式、网格和整体取景按钮只保留在渲染组件的独立工具栏中。
 - 新模型准备好后替换上一帧，保留相机位置。读帧失败时保留已显示模型并提示重试。
-- 选择历史 checkpoint 后固定查看该文件；点击“跟随当前阶段”可返回当前阶段预览。
+- 选择历史 checkpoint 后固定查看该文件；重建运行时重新选择当前阶段可恢复跟随。
 - 页面隐藏或离开项目后停止请求实时快照。请求有 10 秒有效期，窗口异常退出也不会持续要求引擎导出。
-- 未安装配套引擎时，可以渲染已经保存的 checkpoint，但无法获取尚未导出的训练模型。
+- 引擎不提供实时协议时，仍可渲染已经保存的 checkpoint。
+- Mac资源策略可在内存压力升高时停止请求，在严重压力或余量不足时释放模型；预览暂停或释放不会等同于暂停训练。
 
 ## 实现与边界
 
 前端使用 Spark 2.1.0 / WebGL2 进行高斯投影、深度排序和透明度合成，加载位置、尺度、旋转、不透明度及球谐颜色。通过 Tauri 传输完整二进制 PLY，不再将训练模型裁成最多 20 万个 RGB 点。相机取景中的统计抽样只决定观察位置，不裁剪渲染数据。
 
-实时通道直接读取 Brush 的训练中模型。Brush 每 5 次迭代提供一次 TrainStep 消息；实时模式最小间隔为 5 步，低频模式为 100 步。只有前端请求且确认上一帧已安装后才生成下一帧。前端通常每 500 毫秒检查一次，低频模式每 1500 毫秒检查一次；实际模型更新速度取决于训练、模型大小、传输与解码耗时，不能理解为每 5 步都会显示一帧或固定视频帧率。
+实时通道直接读取 Brush 的训练中模型。协议的实时模式最小间隔为 5 步，低频模式为 100 步；只有前端请求且确认上一帧已安装后才生成下一帧。前端通常每 500 毫秒检查一次，底层低频模式每 1500 毫秒检查一次，资源策略可以延长轮询间隔。实际模型更新速度取决于训练、模型大小、传输与解码耗时，不能理解为每 5 步都会显示一帧或固定视频帧率。底层 `live` / `low` / `off` 协议模式不代表主工作台当前提供同名切换入口。
 
 快照位于 `training/live-preview/<session-id>/`，每个训练会话保留最近两帧；模型写完后才发布 `latest.json`。该通道独立于恢复用 checkpoint，不改变 checkpoint 间隔。新训练使用新的会话标识，避免把上次训练帧误认为当前帧。
 
@@ -45,21 +55,10 @@ pnpm build:brush:live
 
 ## 验证
 
-常规检查与真实引擎测试见[开发指南](development.md)。历史原生验证曾在 Windows / WebView2 / RTX GPU 上完成 95,563 个高斯的完整加载，以及单独的 3,000 步训练：训练结束前出现多次模型更新，暂停预览时训练继续，恢复后继续更新，快照缓存保持最多两帧。该记录是特定环境的基线，不代表每次更新都已重新完成相同 GPU 验证。
+常规检查与真实引擎测试见[开发指南](development.md)。当前候选与历史验收分别由[当前状态](status.md)链接，不把不同引擎、应用或图形环境的结果合并成一次通过。
 
-复现时先确认依赖和实时预览引擎已准备好。启动 `pnpm dev`，在另一个 PowerShell 终端启动隔离测试应用：
+检查现行工作台时，使用可丢弃项目或完整工程副本：先打开已完成模型，验证鼠标和 `R` 键；再使用匹配引擎启动独立训练，确认最终 checkpoint 前出现模型更新。选择旧 checkpoint 应固定该模型，重新选择当前阶段应恢复跟随；离开项目或隐藏页面应停止请求。记录应用与引擎身份、平台、输入来源、实际动作和快照缓存范围。Mac内存压力、不同项目切换、异常退出和清理应作为独立验收事项记录。
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/windows/Start-PreviewValidation.ps1
-pnpm test:gaussian:native "D:/path/to/completed.splat-project"
-```
+历史 Windows / WebView2 / RTX 验证曾完成 95,563 个高斯的加载与独立 3,000 步训练，并在独立渲染组件中检查刷新模式和两帧缓存。这些是原构建的历史结果。现有 `pnpm test:gaussian:native` 对应的 [Validate-GaussianPreview.mjs](../scripts/windows/Validate-GaussianPreview.mjs) 仍使用旧 companion 路径及独立组件工具栏；运行前需先核对脚本中的引擎定位和测试范围，不能作为当前三条路线的通用复现命令。
 
-启动脚本使用离线 Cargo 构建，需要已有完整依赖缓存，并使用独立应用标识与浏览器数据目录。不要同时运行占用同一 Vite 端口的 `pnpm tauri dev`。测试输入应包含 `output/scene.ply` 和准备好的 `training/dataset`。验证程序读取该数据并运行隔离的 GPU 训练；测试工程和 checkpoint 使用系统临时目录，报告、截图及日志发布到 `artifacts/verification/windows-x64/tests/gaussian-preview/current/`，失败时发布到 `failed/`。临时工作目录自动清理；失败或显式 `--keep`（也可用 `METORIGIN_KEEP_TEST_OUTPUT=1`）将必要调试数据保留在对应报告的 `debug/` 中，原始输入工程不由清理逻辑删除。详见[目录职责与保留规则](development.md#generated-files-and-cleanup)。
-
-验证结束后停止脚本启动的测试应用：
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/windows/Start-PreviewValidation.ps1 -StopOnly
-```
-
-原生 GPU 进程必须能在当前运行环境中正常启动；无法启动时，应记录环境限制，不能据此判断训练引擎通过或失败。不要将测试生成的模型、截图和日志加入 Git。
+需保留的报告、截图及日志放入 `artifacts/verification/<platform>/`，临时项目和模型按[目录职责与保留规则](development.md#generated-files-and-cleanup)管理。原生 GPU 进程无法启动时记录环境限制；不将测试模型、私人素材或原始日志加入 Git。

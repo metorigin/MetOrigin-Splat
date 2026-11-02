@@ -1,5 +1,7 @@
 # macOS 混合图片输入与失败输入验证
 
+> Historical and per-build evidence. Platform/candidate status and open acceptance are maintained in [project status](../status.md). “Current” and “final” below refer to each dated record; results do not transfer to a later build.
+
 2026-10-27：生产扫描、归一化、独立像素审查，以及 CPU SfM 与去畸变的固定门槛已通过。`4e763b58` 原生包还完成混合正例的 3,000 步训练和最终自动渲染。独立 CLI 与生产适配器均注册 40/40，但点数、track 和误差存在需继续调查的差值，比较验收保持 `quality_delta_review_required`。两个负例后端正确拒绝，原生错误卡片却丢失具体建议；修复与新包复测另行记录。对应主计划 §10.2–§10.3。
 
 ## 数据来源与覆盖范围

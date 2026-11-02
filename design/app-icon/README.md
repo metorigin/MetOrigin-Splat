@@ -22,7 +22,7 @@ node apps/desktop/node_modules/@tauri-apps/cli/tauri.js icon \
   --output target/app-icon-v4
 ```
 
-替换前的 SVG 已归档为 [`legacy/app-icon.svg`](legacy/app-icon.svg)。
+替换前的 SVG、v2 和 v3 母版、提示词及测量记录见[历史图标档案](archive/README.md)。
 
 v4 初次仅放大 PNG 时，所有尺寸可解码，但 macOS 仍把图案缩进了银色系统底板。后续原生修复见下文。运行中的应用不会自动加载源码目录中的新图标。
 
@@ -42,32 +42,8 @@ python3 scripts/macos/verify-app-icon.py
 
 在 macOS 27.0.1 / Xcode 27.1 上，独立测试 bundle 及实际构建的完整 release 应用均通过 `NSWorkspace.icon(forFile:)` 真实系统渲染检查：银色套框消失，外轮廓与常见应用一致，占 1024 画布的 824×824 区域，S 图案约占底座宽度 73%。单独使用 Apple 编译的兼容 ICNS 也未复现套框。实验和实际构建渲染文件位于忽略的 `target/icon-investigation/`；这项验证不等同于替换用户已安装应用或清除存储空间的历史图标索引。
 
-## 历史方案 v3：空间切片
+## 历史版本与来源
 
-- [v3 PNG 母版](metorigin-splat-icon-v3.png)
-- [v3 设计说明与完整提示词](metorigin-splat-icon-v3.prompt.md)
+停用的 v2、v3 和早期 SVG 已移到 [`archive/`](archive/README.md)，不参与当前生成或打包。当前 v4 metadata 中的 `source` 保留生成时记录的原始文件名；对应 v3 来源现位于归档目录，历史 metadata 不追写为新的生成记录。
 
-v3 曾通过前端 production 构建及 macOS ARM64 release 构建；当时包内 ICNS 与生成资源字节一致，DMG 已只读挂载并通过应用一致性校验。历史验证仅对应 v3，不作为 v4 的安装包验证。
-
-## 历史方案 v2：高斯原点
-
-版本：v2，2026-10-30。用途：MetOrigin Splat 桌面应用图标设计稿。
-
-- 深石墨色圆角底座，带柔和的立体边缘。
-- 珊瑚橙 M 形标记，由厚实、圆润的椭球体交叠构成，呼应 MetOrigin 与 Gaussian Splatting。
-- 下方小圆点作为原点，保留简洁的整体轮廓。
-- 延续用户参考图中的材质感、圆角和主体辨识度，采用项目现有的珊瑚橙色系。
-
-文件：[`metorigin-splat-icon-v2.png`](metorigin-splat-icon-v2.png)，1254×1254、RGBA、透明背景。原始尺寸与透明度检查见 [`metorigin-splat-icon-v2.metadata.json`](metorigin-splat-icon-v2.metadata.json)。
-
-生成方式：内置 `image_gen.imagegen`，`transparent_background: true`。这是独立新方案，保存在设计目录中。
-
-## 最终提示词
-
-```text
-Use case: logo-brand. Create ONE original, finished macOS desktop application icon for MetOrigin Splat, a professional local 3D Gaussian Splatting reconstruction and training app. The user likes the supplied reference aesthetic: compact rounded-square app tiles, one immediately recognizable bold symbol, tactile materials, selective vivid color, convincing soft depth. Translate that visual language into an original identity for this 3DGS product.
-
-Design: a deep graphite / almost-black rounded-square squircle tile, subtly convex with a fine softly illuminated rim, viewed perfectly straight on. In the center is a distinctive sculptural angular M monogram made from four interlocking short, thick, smoothly rounded and gently tapered ellipsoid strokes. It should suggest overlapping Gaussian splats becoming a coherent reconstructed shape, with a clean strong silhouette, NOT a fuzzy particle cloud. The M has a low middle valley and confident raised outer shoulders, one cohesive compact object, slightly faceted volumetric curves rather than tubular wire. One tiny luminous circular origin point sits in the central lower negative space and remains subordinate. Restrained coral-orange materials: warm vermilion #f17455 illuminated top faces, richer burnt orange #be4c30 sides, tiny apricot highlights; subtle reflected warm light on the charcoal tile. Real sculpted depth with soft studio lighting from the upper left, satin ceramic/resin finish, rich readable shadows, premium and calm. Avoid chrome, excessive shine, neon halos or a generic infinite-loop shape.
-
-Composition: square high-resolution icon asset, a single centered icon only. The tile occupies about 84% of the square canvas, equal transparent margins around it; the orange symbol occupies about 66% of the tile. Maintain broad, simple shapes and clear negative space so the silhouette reads at 32 pixels. True transparent alpha outside the complete rounded-square tile, including corners, no drawn checkerboard and no solid external background. Clean antialiased edges. No extra scene, no icon grid, no presentation board, no lettering or words beyond the abstract M-shaped symbol, no watermark, no app screenshot, no small technical decorations, no thin orbit lines, no literal camera or cube. Deliver a polished standalone production-oriented app icon, not a mockup.
-```
+当前平台与候选构建的验收边界统一见[项目状态](../../docs/status.md)。图标设计和资源验证不自动构成安装包或原生界面验收。

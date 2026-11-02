@@ -2,7 +2,13 @@
 
 [English](user-guide.md) | [简体中文](user-operation-flow.zh-CN.md)
 
-MetOrigin Splat reconstructs videos and photos into 3D Gaussian Splatting scenes on your computer. Follow the [README](../README.md) to run the Windows desktop app and prepare its engines.
+MetOrigin Splat reconstructs videos and photos into 3D Gaussian Splatting scenes on your computer. Follow the [README](../README.md) and [development guide](development.md) to start the desktop app. The [current status](status.md) distinguishes the Windows legacy route, the opt-in Windows Brush 1 candidate and Apple Silicon macOS validation.
+
+## Project center
+
+The sidebar provides **Project Hub** and **Settings & Engines**. The project center displays projects as thumbnail cards, ordered by most recently opened. Use its toolbar to search by project name or path, open a project folder, or create a project. Select a card to enter its workspace. Card menus provide file-location, availability/relinking and deletion actions as applicable.
+
+Use the window's sidebar control to hide or show navigation. In a compact window it opens a navigation dialog. Engine warnings in the project center link to settings; hardware and engine details are available there.
 
 ## Choose your language
 
@@ -20,11 +26,11 @@ The language control remains available if engine settings cannot be loaded. Proj
 
 During copying, cancelling waits for the copy task to stop and cleans up the incomplete destination. Exiting a modified wizard asks whether to keep editing or discard the draft.
 
-Capture a static subject from overlapping viewpoints with slow, continuous motion. Avoid motion blur, moving objects and reflective or transparent surfaces. Preset values are defined in [presets](../presets/); higher quality settings cannot repair missing coverage.
+Expand **Capture tips** below the media analysis for shooting advice. Capture a static subject from overlapping viewpoints with slow, continuous motion. Avoid motion blur, moving objects and reflective or transparent surfaces. Preset values are defined in [presets](../presets/); higher quality settings cannot repair missing coverage.
 
 ## Follow reconstruction
 
-The workspace shows overall progress and four phases:
+The window header shows the project name and the actions available for its task state. The stage navigator shows four phases with their status and available progress:
 
 | Phase | Work performed |
 | --- | --- |
@@ -41,18 +47,22 @@ If COLMAP requires quality confirmation, review the measured checks before accep
 
 ## Preview, edit and export
 
-Selecting a preprocessing stage shows frames; COLMAP stages show sparse points and cameras; training and export stages show Gaussian models or checkpoints. **Follow current stage** restores automatic tracking. A selected historical checkpoint stays selected as new training frames arrive.
+Selecting a preprocessing stage shows frames; COLMAP stages show sparse points and cameras; training and export stages show Gaussian models or checkpoints. Selecting the current stage during reconstruction restores automatic tracking. A selected historical checkpoint stays selected as new training frames arrive.
 
-Drag to orbit, use the mouse wheel to zoom, right-drag to pan and press **R** to reset the view. **Live**, **Low frequency** and **Pause preview** control preview refresh. Pausing the preview does not pause training. Live models require the companion `brush_live.exe`; ordinary Brush supplies saved checkpoints.
+Drag to orbit, use the mouse wheel to zoom and right-drag to pan. Focus the model canvas and press **R** to reset the view. While viewing a running training stage, the model updates automatically when the selected engine supports live preview. Leaving the project or hiding the page stops requesting new snapshots. Resource pressure can pause or release the preview while training continues.
 
-After reconstruction completes, choose **Edit** to open the bundled SuperSplat workspace. **Save** replaces the project's `output/scene.ply` with the edited model after validation. **Back** returns to the results; leaving with unsaved changes asks for confirmation. Editing requires WebView2 and GPU drivers with WebGPU support.
+The Windows legacy Brush 0.3 route uses the companion `brush_live.exe`. The opt-in Windows Brush 1 candidate and the patched Mac CLI implement live preview in their main executable. See [live preview](gaussian-live-preview.zh-CN.md) for route-specific setup.
+
+After reconstruction completes, choose **Edit** in the window header to open the bundled SuperSplat workspace. **Save** replaces the project's `output/scene.ply` with the edited model after validation. **Back** returns to the results; leaving with unsaved changes asks for confirmation. Editing requires WebGPU support in the native WebView and graphics stack: WebView2 on Windows or the corresponding WKWebView environment on macOS. Platform acceptance limits are recorded in [current status](status.md).
 
 Use **Open output folder** to access the final `output/scene.ply`. Checkpoints restore geometry, not the complete optimizer state. Review the checkpoint manager's impact preview before restoring or deleting a checkpoint.
 
 ## Projects, settings and troubleshooting
 
-Search recent projects by name or path. Relocate a moved project when prompted. **Remove from recent projects** removes only the list entry; **Permanently delete project** removes the project folder after confirmation.
+Search projects by name or path in the project center. Use **Relocate** for moved projects when offered. **Permanently delete project** in a project menu removes the project folder after an impact review and confirmation; safely stop an active task first.
 
-**Settings & Engines** contains engine locations and versions, project defaults, storage limits, interface theme, language and diagnostic export. Missing measurements remain unknown rather than being shown as zero. The Project Hub's free disk space refers to the application's drive; project preflight checks the selected destination.
+**Settings & Engines** contains engine locations and versions, project defaults, storage limits, interface theme, language and diagnostic export. Missing measurements remain unknown rather than being shown as zero. Project preflight checks the selected destination's available space.
 
 Review **View logs and activity** for user-facing events, errors and recovery guidance. **Export redacted diagnostics** includes project status, recent logs and engine/hardware information for troubleshooting. Original technical output is retained for diagnosis and is not machine-translated. See [Troubleshooting](troubleshooting.md) for engine setup and recovery details.
+
+On macOS, closing a non-editing window hides it; use the application Quit command or ⌘Q to exit. Closing during editing first handles unsaved changes. On Windows, closing requests safe exit. Exit waits for task shutdown, child-process cleanup and project persistence; a failure keeps the application open with actionable feedback.

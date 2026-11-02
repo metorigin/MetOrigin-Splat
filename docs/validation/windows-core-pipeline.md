@@ -1,5 +1,7 @@
 # Windows1 production pipeline validation
 
+> Historical and per-build evidence. Platform/candidate status and open acceptance are maintained in [project status](../status.md). “Current” and “final” below refer to each dated record; results do not transfer to a later build.
+
 Date: 2026-10-30. Scope: the twelve production Rust pipeline stages, engine adapters, process runner, execution profiles, checkpoint recovery, live file protocol, export and cache reuse. Native WebView interaction, installation and native macOS regression have separate acceptance records. These results do not switch the release default.
 
 The opt-in tests are in [real_windows_pipeline.rs](../../crates/splat-pipeline/tests/real_windows_pipeline.rs). They create isolated projects with Chinese characters and spaces in their paths, verify source hashes, freeze actual engine/device identities, then use `PipelineOrchestrator::new_default_with_config`. No SfM output is injected into these full-pipeline runs.

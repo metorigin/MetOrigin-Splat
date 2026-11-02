@@ -1,5 +1,7 @@
 # Windows alignment candidate pack verification
 
+> Historical and per-build evidence. Platform/candidate status and open acceptance are maintained in [project status](../status.md). “Current” and “final” below refer to each dated record; results do not transfer to a later build.
+
 2026-10-30. Candidate ID: `0.1.0-internal.windows-alignment.1`. Release default
 and the original Windows legacy lock/scripts remain unchanged.
 

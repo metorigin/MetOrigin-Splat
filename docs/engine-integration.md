@@ -1,12 +1,14 @@
 # Engine integration
 
+For the selected candidates, recorded validation scope and open gates, use [project status](status.md). This guide defines engine setup and compatibility, not a second candidate-status ledger.
+
 The application runs FFmpeg, COLMAP and Brush as local child processes. Engine adapters construct arguments and parse results; `splat-process` owns execution, output capture and cancellation. Pages do not build shell commands or launch engines directly.
 
 ## Version authority and setup
 
 [engine-lock.json](../packaging/windows-x64/engine-lock.json) is the authority for packaged archives, versions, download locations and SHA-256 values. The current set is FFmpeg/FFprobe **8.1.2**, COLMAP **4.1.0 CUDA** and Brush **0.3.0**, with the locked Microsoft VC++ runtime prerequisite. A different executable passing a version command does not establish full pipeline compatibility.
 
-The macOS development path uses native arm64 FFmpeg/FFprobe **8.1.2**, COLMAP **4.1.0 CPU**, and Brush **1.0.0 + metorigin-macos.5**. Recipes and actual engine evidence are in [macOS build scripts](../scripts/macos/README.md) and [M0 validation](validation/macos-m0.md). These development artifacts have not passed self-contained app/dmg acceptance. Windows retains its existing release engine lock and legacy CLI contract. The separate opt-in [Windows Brush 1 candidate](validation/windows-alignment.md) adds a paired CLI and frozen measured device selection; it is not an accepted release default.
+The macOS development path uses native arm64 FFmpeg/FFprobe **8.1.2**, COLMAP **4.1.0 CPU**, and Brush **1.0.0 + metorigin-macos.5**. Recipes and actual engine evidence are in [macOS build scripts](../scripts/macos/README.md) and [M0 validation](archive/validation/macos-m0.md). These development artifacts have not passed self-contained app/dmg acceptance. Windows retains its existing release engine lock and legacy CLI contract. The separate opt-in [Windows Brush 1 candidate](validation/windows-alignment.md) adds a paired CLI and frozen measured device selection; it is not an accepted release default.
 
 ### macOS runtime and source layout (2026-11-01)
 
@@ -80,7 +82,7 @@ Video import extracts frames; image-folder import validates and prepares existin
 
 COLMAP may produce more than one sparse model. Downstream stages use the selected model recorded in `colmap/result.json`; they must not assume model `0`. Quality checks report registration rate, sparse-point count, reprojection error and reconstruction-attempt information when available.
 
-Brush v0.3.0 uses a positional dataset path with options such as `--total-steps`, `--sh-degree`, `--export-every`, `--export-path` and `--export-name`. It has no `train` subcommand. The adapter is the authority for the emitted arguments; the [historical baseline](validation/engine-baseline.md) explains compatibility issues found during real runs.
+Brush v0.3.0 uses a positional dataset path with options such as `--total-steps`, `--sh-degree`, `--export-every`, `--export-path` and `--export-name`. It has no `train` subcommand. The adapter is the authority for the emitted arguments; the [historical baseline](archive/validation/engine-baseline.md) explains compatibility issues found during real runs.
 
 ## Brush live-preview companion
 

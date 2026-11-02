@@ -1,5 +1,7 @@
 # macOS 任务期间防空闲睡眠
 
+> Historical and per-build evidence. Platform/candidate status and open acceptance are maintained in [project status](../status.md). “Current” and “final” below refer to each dated record; results do not transfer to a later build.
+
 日期：2026-10-27。MAC-14 的本地设置为 `prevent_idle_sleep`，默认 `false`。
 旧 `settings.json` 缺少字段时仍为关闭；读失败也不会启用。设置仅影响之后启动的
 任务，前端仅在 macOS 显示选项，并说明屏幕可以休眠、合盖/手动睡眠/低电量仍可能

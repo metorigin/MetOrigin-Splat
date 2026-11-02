@@ -4,9 +4,9 @@
 
 将一段视频或一组照片重建为 3D Gaussian Splatting 场景的 Windows 桌面应用。通过 FFmpeg 准备影像、COLMAP 重建相机与稀疏几何，再由 Brush 在本机训练高斯模型。
 
-**当前状态：Alpha / v0.1.0。** 核心流程已实现，Windows 安装包用于内部验证，暂未提供受支持的公开二进制版本。
+**当前状态：Alpha / v0.1.0。** 核心流程已实现，安装包用于内部验证，暂未提供受支持的公开二进制版本。[当前状态与验收边界](docs/status.md)统一维护平台路线、候选身份、已验范围、待验事项和证据位置。
 
-Apple Silicon macOS 支持正在验收：已在 M1 Pro／32 GB 上跑通真实照片、视频的 CPU COLMAP → Metal Brush 流水线，并验证原生查看和编辑。macOS 15、16 GB 干净环境及 Windows 回归尚未通过。详见[实施与验收方案](docs/macos-gaussian-generation-plan.zh-CN.md)和 [Mac 引擎打包](packaging/macos-arm64/README.md)。
+Apple Silicon macOS 支持正在验收：已在 M1 Pro／32 GB 上跑通真实照片、视频的 CPU COLMAP → Metal Brush 流水线，并验证原生查看和编辑。macOS 15、16 GB 干净环境及 Windows 回归尚未通过。本机最新签名 DMG 已有容器公证通过回执，应用许可与干净机门槛仍开放。详见[当前状态](docs/status.md)、[Mac 打包操作](docs/macos-packaging.zh-CN.md)和[历史实施方案](docs/archive/plans/macos-gaussian-generation-plan.zh-CN.md)。
 
 ## 主要功能
 
@@ -45,6 +45,8 @@ pnpm tauri dev
 `pnpm tauri dev` 会同时启动桌面应用和 Vite 服务，不需要再启动一个占用 1420 端口的 `pnpm dev`。前端支持热更新；修改 Rust/Tauri 代码后，需要重新执行桌面启动命令。
 
 ### 准备重建引擎
+
+以下命令对应默认 Windows legacy 路线。独立的 Brush 1 Windows1 候选使用 [Windows 候选准备流程](packaging/windows-x64/README.md#brush-1-alignment-candidate)，开发入口为 `pnpm dev:windows`；Mac 使用[原生开发流程](docs/development.md)。
 
 源码仓库不包含引擎可执行文件。可以在左侧“设置与引擎”中配置已有安装，也可以准备仓库锁定版本的本地引擎包：
 
@@ -105,7 +107,8 @@ cargo test --workspace --all-targets
 | `presets/`、`schemas/` | 重建参数与持久化数据格式 |
 | `scripts/`、`packaging/` | 验证、Windows 构建、引擎版本锁定和第三方声明 |
 | `docs/` | 当前使用、实现与发布文档 |
-| `specs/` | 历史设计契约与验收协议 |
+| `docs/archive/` | 冻结方案、设计契约和历史验收记录 |
+| `specs/` | 已归档功能规格的兼容入口 |
 
 生成文件统一分四类：`target/` 放 Cargo 构建输出，`.cache/metorigin/` 放可复用的下载、源码检出与工具链，`.engines/` 放已准备的运行引擎，`artifacts/` 放安装包和需保留的正式报告。普通测试工作目录放系统临时目录并自动清理，详见[目录职责与清理规则](docs/development.md#generated-files-and-cleanup)。
 

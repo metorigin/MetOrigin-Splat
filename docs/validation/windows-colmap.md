@@ -1,5 +1,7 @@
 # Windows COLMAP 4.1 acceptance
 
+> Historical and per-build evidence. Platform/candidate status and open acceptance are maintained in [project status](../status.md). “Current” and “final” below refer to each dated record; results do not transfer to a later build.
+
 2026-10-30, Windows x64 / NVIDIA RTX 5080 Laptop GPU, driver 592.01,
 16,303 MiB reported dedicated VRAM. These results cover this development host.
 

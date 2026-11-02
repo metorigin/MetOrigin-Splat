@@ -1,5 +1,7 @@
 # macOS 原生桌面验收记录
 
+> Historical and per-build evidence. Platform/candidate status and open acceptance are maintained in [project status](../status.md). “Current” and “final” below refer to each dated record; results do not transfer to a later build.
+
 最新进展（2026-10-28）：当前 Release 候选仍为 `a2146f95`／`build.OX71fC`。生产修复与先前六轮复测后，同一包又完成预先限定的六轮 VM 分类诊断。13 张原图／AX 独立审查通过，六次均显示 614,263 高斯及可辨鞋／地毯；正常 ⌘Q 后八个精确实例均为 ESRCH，439 个测试副本文件不变。490 样本压力均 normal，系统 swap used 全程 1460.38M；WebContent 增长主要落在 WebKit Malloc／Untagged 分类，尚未建立分配归属或泄漏结论。**M3 内存与完整 M4 仍未通过**。详见[新诊断收尾](../../target/macos-m4/native-orbit-category-20261028/native/closeout.json)与[资源分类及边界](macos-m3-resources.md#2026-10-28-unchanged-release-vm-category-diagnostic)。上一轮 460 样本的压力／swap 未知状态保留，不由新数据补写。真实睡眠继续暂留。
 
 本记录是当前 Apple M1 Pro / 32 GB / macOS 27.0.1 的原生验证证据，各节分别注明开发构建或 Release 候选，不代表 macOS 15、16 GB 机器、干净机或 Windows 回归已通过。
@@ -15,7 +17,7 @@
 使用真实 Tauri `.app` 的 WKWebView，通过原生文件夹对话框打开 M1 照片生成工程（中文及空格路径）。没有用浏览器预览替代原生操作。
 
 - 应用可执行文件 SHA-256：`69f34a5e342e96b11c29ba6aa6368166dfe0b4985478e2900769f61c10f6abfc`。
-- 输入为 [M1 验证记录](macos-m1.md) 中的 40 张 CC0 照片工程，300 步、SH0；质量仅是链路 smoke。
+- 输入为 [M1 验证记录](../archive/validation/macos-m1.md) 中的 40 张 CC0 照片工程，300 步、SH0；质量仅是链路 smoke。
 - 原生结果面板显示 14,599 个高斯，实际画面可见；整体视角切换、拖动旋转均改变画面。
 - 创建独立工程副本，改变项目 ID 和名称后进行编辑；原始工程生成的 `scene.ply` 保持原 SHA-256。
 - 内嵌 SuperSplat 3.0.1 加载全部 14,599 个高斯。位置 X 设为 0.1，⌘Z 恢复 0，⌘⇧Z 恢复 0.1。
@@ -139,7 +141,7 @@
 
 选择专用空目录 `只读目的地 🧪` 后，界面错误显示“新目录可用”，且创建按钮可用。独立文件系统检查确认目录为 0555，所有者及调用者 UID 均为 501，`os.access(W_OK)=false`，实际独占新建探针返回 errno 13。点击“仅创建项目”后应用安全拒绝，显示 `UI-PROJECT-CREATE`；目录仍为空，源视频 SHA-256 不变，没有启动生成流水线。随后 ⌘Q，独立应用清单确认已退出。
 
-问题在预检只查询磁盘空间，没有验证写入能力；创建时拒绝不能弥补此前误报。证据位于 `target/macos-m4/final-native-video-20261027/` 的 `readonly-preflight-accepted.*`、`readonly-filesystem-evidence.json`、`readonly-create-rejected.*`、`readonly-result.json` 及 `readonly-app-stopped.json`。后续修复须重新打包并复测；本候选的离线核心成功另见 [M1 记录](macos-m1.md)，不能据此标记原生视频全流程通过。
+问题在预检只查询磁盘空间，没有验证写入能力；创建时拒绝不能弥补此前误报。证据位于 `target/macos-m4/final-native-video-20261027/` 的 `readonly-preflight-accepted.*`、`readonly-filesystem-evidence.json`、`readonly-create-rejected.*`、`readonly-result.json` 及 `readonly-app-stopped.json`。后续修复须重新打包并复测；本候选的离线核心成功另见 [M1 记录](../archive/validation/macos-m1.md)，不能据此标记原生视频全流程通过。
 
 ## 2026-10-27：bb13 只读目录、工程视频与最终渲染
 
