@@ -1,5 +1,7 @@
 # macOS arm64 engine pack validation
 
+> Historical and per-build evidence. Platform/candidate status and open acceptance are maintained in [project status](../status.md). “Current” and “final” below refer to each dated record; results do not transfer to a later build.
+
 Validated on 2026-10-27 and 2026-10-28, native arm64, macOS 27.0.1. This is same-host relocation
 evidence, not acceptance on a clean macOS 15 machine.
 
@@ -642,7 +644,7 @@ The independent receipt is under
 `target/macos-m4/final-gates-20261027/schema-gates/run-091339Z-kqcu16gm/`;
 the original packaging receipt and test totals remain unchanged. Its embedded
 engines also passed the process-level offline core smoke recorded in
-[M1 validation](macos-m1.md).
+[M1 validation](../archive/validation/macos-m1.md).
 
 Native testing then found that the project wizard incorrectly accepted a
 non-writable destination during preflight; actual project creation safely

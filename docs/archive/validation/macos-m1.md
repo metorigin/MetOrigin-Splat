@@ -1,5 +1,9 @@
 # macOS M1 应用接入验证
 
+> 归档说明（2026-11-01）：本文件是历史实验或阶段验收快照，原路径为 `docs/validation/macos-m1.md`。文中“当前”“最新”、旧路径、工具版本和未完成项均属于原记录时点；归档不新增验收结论、不将旧结果转移到其他构建。当前支持与待验范围见[项目状态](../../status.md)，当前操作见[使用指南](../../user-operation-flow.zh-CN.md)。
+
+<!-- archive-note:end -->
+
 日期：2026-10-27。状态：**照片、视频的完整应用核心流水线 smoke 已通过；原生窗口验收进行中**。本记录不是完整 Mac 支持或独立安装包声明。环境仍为 [M0](macos-m0.md) 的 Apple M1 Pro / 32 GB / macOS 27.0.1。
 
 ## 固定引擎
@@ -29,11 +33,11 @@
 
 证据位于 `target/macos-m1/app-core-photos-01/` 与 `app-core-video-01/` 内项目的 `runtime/acceptance-evidence.json`，原始子进程命令/输出在对应 `logs/`。独立应用 Brush adapter 另完成 `.3` 真实 300 步、44,010 Gaussian、SH0、loader4 测试，记录在 `target/macos-m2/adapter-contract-02/evidence.json`。
 
-应用 adapter 的真实 GPU probe 在默认受限 sandbox 中失败并保留失败记录；允许本机 Metal 访问后通过。失败返回非零退出码和结构化 failed JSON，未被当作支持。`.3` 还通过显式默认值覆盖 args.txt、中文/空格 token、线程限制、原子完整 checkpoint、导出失败非零、中断后 warm start、降低 max-splats 拒绝等真实 CLI 检查，见 [Brush 补丁记录](../../integrations/brush-macos/README.md)。
+应用 adapter 的真实 GPU probe 在默认受限 sandbox 中失败并保留失败记录；允许本机 Metal 访问后通过。失败返回非零退出码和结构化 failed JSON，未被当作支持。`.3` 还通过显式默认值覆盖 args.txt、中文/空格 token、线程限制、原子完整 checkpoint、导出失败非零、中断后 warm start、降低 max-splats 拒绝等真实 CLI 检查，见 [Brush 补丁记录](../../../integrations/brush-macos/README.md)。
 
 ## 复现与未完成项
 
-[真实核心测试](../../crates/splat-pipeline/tests/real_macos_pipeline.rs) 默认忽略，需设置绝对路径环境变量 `METORIGIN_TEST_PROJECT_ROOT`、`METORIGIN_TEST_IMAGE_DIR`、`METORIGIN_TEST_FFMPEG`、`METORIGIN_TEST_FFPROBE`、`METORIGIN_TEST_COLMAP`、`METORIGIN_TEST_BRUSH`；视频另需 `METORIGIN_TEST_VIDEO`。项目根必须已存在且未包含对应同名验收项目。每次使用新的输出根，禁止覆盖前次证据。
+[真实核心测试](../../../crates/splat-pipeline/tests/real_macos_pipeline.rs) 默认忽略，需设置绝对路径环境变量 `METORIGIN_TEST_PROJECT_ROOT`、`METORIGIN_TEST_IMAGE_DIR`、`METORIGIN_TEST_FFMPEG`、`METORIGIN_TEST_FFPROBE`、`METORIGIN_TEST_COLMAP`、`METORIGIN_TEST_BRUSH`；视频另需 `METORIGIN_TEST_VIDEO`。项目根必须已存在且未包含对应同名验收项目。每次使用新的输出根，禁止覆盖前次证据。
 
 ```sh
 cargo test --locked --offline -p splat-pipeline --test real_macos_pipeline \

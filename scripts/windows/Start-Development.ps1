@@ -39,7 +39,7 @@ try {
     }
     if ($PSBoundParameters.ContainsKey('Backend')) { $env:METORIGIN_BRUSH_BACKEND = $Backend }
     if ($PSBoundParameters.ContainsKey('DeviceId')) { $env:METORIGIN_BRUSH_DEVICE_ID = $DeviceId }
-    $selection = if ($env:METORIGIN_BRUSH_BACKEND) { $env:METORIGIN_BRUSH_BACKEND } else { 'dx12 (application default)' }
+    $selection = if ($env:METORIGIN_BRUSH_BACKEND) { $env:METORIGIN_BRUSH_BACKEND } else { 'saved application preference (default Auto: DX12, then eligible Vulkan fallback)' }
     Write-Host "Windows candidate prepared: $selected; WGPU $selection (compute preflight still required)."
     if (-not $CheckOnly) {
         # Tauri owns beforeDevCommand and starts the only Vite server.

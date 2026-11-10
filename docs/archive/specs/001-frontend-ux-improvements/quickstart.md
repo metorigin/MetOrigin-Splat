@@ -1,7 +1,11 @@
 # Quickstart Validation: 前端页面交互与用户体验优化
 
-本指南用于验证实现满足 [spec.md](./spec.md)、[data-model.md](./data-model.md) 以及
-[UI](./contracts/ui-interaction-contract.md)/[IPC](./contracts/tauri-ipc-contract.md) 契约。
+> 归档说明（2026-11-01）：本文件是冻结的前端 UX 设计或验收记录，原路径为 `specs/001-frontend-ux-improvements/quickstart.md`。文中“当前”“最新”、旧路径、工具版本和未完成项均属于原记录时点；归档不新增验收结论、不将旧结果转移到其他构建。当前支持与待验范围见[项目状态](../../../status.md)，当前操作见[使用指南](../../../user-operation-flow.zh-CN.md)。
+
+<!-- archive-note:end -->
+
+本指南用于验证实现满足 [spec.md](spec.md)、[data-model.md](data-model.md) 以及
+[UI](contracts/ui-interaction-contract.md)/[IPC](contracts/tauri-ipc-contract.md) 契约。
 
 ## 1. Prerequisites
 
@@ -299,7 +303,7 @@ pnpm tauri dev
 ### 7.1 Controlled usability protocol
 
 1. 招募至少 10 名此前未使用本应用、但具备桌面创作工具基础经验的目标用户；分配匿名参与者编号。
-2. 使用 [spec.md](./spec.md) `Acceptance Measurement Protocol` 定义的固定环境、任务脚本、计时起止点、
+2. 使用 [spec.md](spec.md) `Acceptance Measurement Protocol` 定义的固定环境、任务脚本、计时起止点、
    错误清单和 5 分量表；测试期间不给操作提示。
 3. 对 SC-001/002/004/005 记录每个匿名参与者或恢复尝试的 pass/fail 与耗时，对 SC-012 仅记录两个
    固定问题的分值；比例阈值人数向上取整并报告中位数，不记录姓名、声音、私人路径或媒体。

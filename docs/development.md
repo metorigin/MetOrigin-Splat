@@ -1,5 +1,7 @@
 # Development
 
+Platform routes, candidate identities and remaining acceptance are maintained in [project status](status.md). Current visual rules live in the [design system](design-system.zh-CN.md); frozen specifications and dated experiments are in the [archive](archive/README.md).
+
 ## Toolchain and startup
 
 The validated desktop target is Windows 10/11 x64. Install Rust **1.97.0** with `x86_64-pc-windows-msvc`, Node.js **26**, pnpm **11.12.0**, Visual Studio C++ Build Tools, the Windows SDK and WebView2 Runtime. Development and CI use Node 26; [`.node-version`](../.node-version) is CI's version source, and [`.nvmrc`](../.nvmrc) provides the same version for nvm. Rust and pnpm versions remain pinned in [rust-toolchain.toml](../rust-toolchain.toml) and [package.json](../package.json).
@@ -140,7 +142,7 @@ After setting the appropriate variables, select a target, for example:
 cargo test -p splat-pipeline --test real_brush -- --ignored --nocapture
 ```
 
-The [2026-07-13 engine baseline](validation/engine-baseline.md) records one historical run and its compatibility findings. It is not a current all-hardware pass claim.
+The [2026-07-13 engine baseline](archive/validation/engine-baseline.md) records one historical run and its compatibility findings. It is not a current all-hardware pass claim.
 
 For native Gaussian rendering and a separate training run, follow [the live-preview validation procedure](gaussian-live-preview.zh-CN.md). `pnpm test:tauri:native-fast` and `pnpm test:tauri:native-failure-recovery` provide additional opt-in native scenarios. Their setup variables and behavior are documented in [Run-NativeTauriFastValidation.mjs](../scripts/windows/Run-NativeTauriFastValidation.mjs) and [Run-NativeTauriFailureRecoveryValidation.mjs](../scripts/windows/Run-NativeTauriFailureRecoveryValidation.mjs). The latter intentionally terminates its own test engine process and requires an isolated project with valid checkpoints.
 

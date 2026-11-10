@@ -108,7 +108,7 @@ target/macos-m0/ffmpeg-install/bin/ffmpeg -nostdin -hide_banner -n \
 
 ## COLMAP CPU
 
-固定源码为上游 4.1.0：`fa8e3b3ff591552855f8ad2806723c80f963f69c`。使用隔离 clone，保留用户 fork 的 main。[COLMAP-M0.md](COLMAP-M0.md) 给出源码获取、公开依赖锁、许可证限制和完整复现步骤。
+固定源码为上游 4.1.0：`fa8e3b3ff591552855f8ad2806723c80f963f69c`。使用隔离 clone，保留用户 fork 的 main。[COLMAP-M0.md](../../docs/archive/engines/COLMAP-M0.md) 给出源码获取、公开依赖锁、许可证限制和完整复现步骤。
 
 安装开发依赖的命令（需要已有 Conda，不改变 base）：
 
@@ -143,7 +143,7 @@ python3 scripts/macos/verify_colmap_help.py target/macos-m0/colmap-build/help
 
 ## Brush WGPU / Metal
 
-[BRUSH-M0.md](BRUSH-M0.md) 记录固定 Brush 1.0.0 的 Rust 1.95 默认 feature 构建、Xcode 27 的 strip 问题、原生测试与真实 300 步训练结果。[诊断补丁](../../integrations/brush-macos/README.md) 使用实际初始化的 AdapterInfo 补齐 Metal 证据，保留用户 fork main。构建使用 `build-brush.sh --diagnostics-patch`，成功后读取 `evidence/build-info.json`；源码准备与 recipe 的离线测试并入本目录 `test_*.py` discovery。
+[BRUSH-M0.md](../../docs/archive/engines/BRUSH-M0.md) 记录固定 Brush 1.0.0 的 Rust 1.95 默认 feature 构建、Xcode 27 的 strip 问题、原生测试与真实 300 步训练结果。[诊断补丁](../../integrations/brush-macos/README.md) 使用实际初始化的 AdapterInfo 补齐 Metal 证据，保留用户 fork main。构建使用 `build-brush.sh --diagnostics-patch`，成功后读取 `evidence/build-info.json`；源码准备与 recipe 的离线测试并入本目录 `test_*.py` discovery。
 
 真实照片 CPU SfM、去畸变、训练及 PLY 检查使用 `smoke-engines.py`。每次实验用新的输出目录和固定哈希的引擎路径，构建与训练证据分别保存。上述结果仍不能代替应用流程、视觉质量或独立安装包验收。
 

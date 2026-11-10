@@ -6,12 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Windows1 new projects default to Auto GPU preflight: DX12 first, then an independent Vulkan check only after a validated compute failure or a fully cleaned-up timeout. Explicit and frozen selections never switch backends; Windows COLMAP still requires CUDA.
+- Consolidated platform and candidate status, extracted the current Jan design system, corrected user guidance to match the desktop UI, and archived frozen plans, feature specifications, stage records and retired icon drafts while retaining evidence boundaries.
+
 ### Added
 
+- Detailed GPU failure diagnostics and redacted diagnostic export before project creation, with separate engine-version and real-compute results; native RTX 5080 and M1 Pro validation records retain their tested hardware and build boundaries.
 - Opt-in Developer ID signing and resumable Apple notarization for macOS applications and DMGs, including derived signed engine packs, ticket validation and Gatekeeper checks.
 
 ### Fixed
 
+- Save the verified backend/device during project creation, recheck frozen selections at startup, verify engine/dependency provenance through launch, and write settings atomically. Invalid configuration and legacy driver-only checks cannot silently substitute for a requested compute backend.
 - Preserve the previous successful macOS package report when verification or artifact registration fails, and keep cleanup failures recoverable after a new package is registered.
 
 ## [0.1.0-alpha.3] - 2026-09-10

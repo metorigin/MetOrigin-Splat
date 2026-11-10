@@ -2,9 +2,9 @@
 
 用户要求现有图标在 Dock 中与参考应用的视觉大小接近。保留 v3 的空间切片设计，减少外部透明留白，同时放大底座和标记。
 
-使用内置 `image_gen.imagegen` 编辑 v3，`transparent_background: true`。项目母版为 [`metorigin-splat-icon-v4.png`](metorigin-splat-icon-v4.png)，尺寸及透明度见 [`metadata`](metorigin-splat-icon-v4.metadata.json)。此前 v3 文件保留。
+使用内置 `image_gen.imagegen` 编辑 v3，`transparent_background: true`。项目母版为 [`metorigin-splat-icon-v4.png`](metorigin-splat-icon-v4.png)，尺寸及透明度见 [`metadata`](metorigin-splat-icon-v4.metadata.json)。此前 v3 文件保留于[历史档案](archive/README.md)。
 
-提示词目标为约 90% 的底座宽度，实际生成结果为 88.04%（alpha ≥ 128）。相对 v3 的 80.86% 放大约 8.9%；高度同样约放大 8.9%。PNG、ICNS 和 ICO 由 Tauri CLI 从同一母版生成。
+提示词目标为约 90% 的底座宽度，实际生成结果为 88.04%（alpha ≥ 128）。相对 v3 的 80.86% 放大约 8.9%；高度同样约放大 8.9%。通用 PNG、ICNS 和 ICO 由 Tauri CLI 从同一母版生成；当前 macOS 原生资源另由 `macos/icon.json` 与这份原始 PNG 通过 Apple `actool` 编译，Windows 使用确定性裁切后的 shared-v4 派生母版。当前平台生成与验证命令见[图标维护说明](README.md)。
 
 ## 完整编辑提示词
 

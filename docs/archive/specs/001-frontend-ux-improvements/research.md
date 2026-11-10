@@ -1,5 +1,9 @@
 # Phase 0 Research: 前端页面交互与用户体验优化
 
+> 归档说明（2026-11-01）：本文件是冻结的前端 UX 设计或验收记录，原路径为 `specs/001-frontend-ux-improvements/research.md`。文中“当前”“最新”、旧路径、工具版本和未完成项均属于原记录时点；归档不新增验收结论、不将旧结果转移到其他构建。当前支持与待验范围见[项目状态](../../../status.md)，当前操作见[使用指南](../../../user-operation-flow.zh-CN.md)。
+
+<!-- archive-note:end -->
+
 **Date**: 2026-08-14
 **Status**: Complete — five 2026-08-13 clarifications incorporated; no unresolved `NEEDS CLARIFICATION` items
 

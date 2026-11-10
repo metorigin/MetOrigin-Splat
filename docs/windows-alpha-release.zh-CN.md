@@ -1,5 +1,7 @@
 # Windows Alpha 发布材料与 GitHub 下载
 
+路线与候选验收统一见[当前状态](status.md)。本文的 FFmpeg/Gyan、Brush 0.3 companion 和内嵌 LPIPS 权重说明针对默认 legacy 分发链；Windows1 候选的主CLI和排除LPIPS政策见[候选打包](../packaging/windows-x64/README.md#brush-1-alignment-candidate)及[LPIPS审计](../integrations/brush-macos/LPIPS-AUDIT.md)，不能将两套依赖清单混用。
+
 ## 当前方案
 
 首轮采用 **未签名 Alpha**。GitHub Releases 可以托管安装包，单个附件须小于 2 GiB。代码签名不是 GitHub 上传条件，但 Windows 可能提示未知发布者，或按设备策略阻止运行。签名以后也不保证新文件立即获得 SmartScreen 信誉。

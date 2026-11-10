@@ -1,5 +1,7 @@
 # GPU 后端可靠性验证记录
 
+后续更新（2026-11-10）：远端提交 `e21bbdf` 已记录实际 M1 Pro 的 Metal 核心、原生 GUI 验收及后续签名/公证结果，见 [M1 Pro 本机验收结果](gpu-resilience-m1-pro-results.md)。该报告绑定受测源码 `2121f91` 和各阶段二进制；原始载荷在执行的 Mac 上。下文的“M1 Pro 未执行/待回传”保留为 Windows 侧当时记录，当前分项状态以新增报告和[状态总览](../status.md)为准，不将旧结果转移到重新打包的 EXE。
+
 日期：2026-11-09，补充至 2026-11-10（Asia/Shanghai）。分支：`codex/gpu-backend-resilience`。
 实现提交：`908863b4db00b22d8245eb37576aef71ede0ee40`，已推送到
 `https://github.com/metorigin/MetOrigin-Splat` 的同名分支。Mac 请通过 Git 获取分支，

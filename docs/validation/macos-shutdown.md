@@ -1,5 +1,7 @@
 # macOS task shutdown validation
 
+> Historical and per-build evidence. Platform/candidate status and open acceptance are maintained in [project status](../status.md). “Current” and “final” below refer to each dated record; results do not transfer to a later build.
+
 ## Native termination entry
 
 Native validation found that handling Tauri `RunEvent::ExitRequested` alone was
@@ -53,7 +55,7 @@ desktop event forwarder drains queued events after the worker joins.
 Cleanup keeps process lifecycle join receipts in shared storage and awaits them
 by reference. Cancelling a quit waiter or reaching its 30-second deadline does
 not detach cleanup or erase a pending save. Unix process-group guards remain in
-place. Windows taskkill behavior is unchanged.
+place. Windows now uses suspended process creation, Job Object assignment and kill-on-job-close ownership; see [windows_job.rs](../../crates/splat-process/src/windows_job.rs). This later implementation does not relabel the historical macOS tests below as Windows native acceptance.
 
 The stream reader limits each raw input chunk to 64 KiB before decoding, so a malformed
 engine producing no newline cannot grow its read buffer indefinitely. Capture

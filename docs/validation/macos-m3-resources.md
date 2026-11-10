@@ -1,5 +1,7 @@
 # macOS resource observations and preview backpressure
 
+> Historical and per-build evidence. Platform/candidate status and open acceptance are maintained in [project status](../status.md). “Current” and “final” below refer to each dated record; results do not transfer to a later build.
+
 This implementation adds runtime-only resource data. It does not migrate `project.json` v1, change shared Windows presets, infer a Metal compute result, or change training parameters while training is running.
 
 Current follow-up (2026-10-28): unchanged `a2146f95` / `build.OX71fC` has completed
@@ -98,7 +100,7 @@ Process entries contain only the application and identified Brush, COLMAP or Web
 
 Startup version/validation queries and NVIDIA status queries use `splat-process::probe_output_sync`: a dedicated thread owns a Tokio runtime, a default ten-second execution deadline and a fixed 64 KiB capture limit. macOS COLMAP `-h` version/validation/discovery queries use a single 45-second execution deadline through `probe_output_sync_with_timeout`; no automatic retry is added. Other engines and non-macOS COLMAP retain the ten-second default. Spawn and existing cleanup grace periods are separate from the execution deadline, so 45 seconds is not a strict total wall-clock guarantee.
 
-The process scope is drained before either synchronous API returns, including capture failures and worker panics; failed cleanup remains in the existing retry registry. Native arguments, added environment variables and the working directory survive the conversion to the shared runner, including COLMAP's portable Windows environment. Seven focused tests cover nested-runtime use, Unicode/environment/cwd and nonzero exit handling, excessive output, a caller-selected 100 ms timeout with descendant writers, fixed 64 KiB capture under a custom deadline, and an exited leader with inherited output pipes. No unit test waits 45 seconds. The macOS process-group cleanup is tested; Windows retains the existing runner's `taskkill` behavior and has no new real-machine acceptance claim or cross-platform hard bound on total cleanup time.
+The process scope is drained before either synchronous API returns, including capture failures and worker panics; failed cleanup remains in the existing retry registry. Native arguments, added environment variables and the working directory survive the conversion to the shared runner, including COLMAP's portable Windows environment. Seven focused tests cover nested-runtime use, Unicode/environment/cwd and nonzero exit handling, excessive output, a caller-selected 100 ms timeout with descendant writers, fixed 64 KiB capture under a custom deadline, and an exited leader with inherited output pipes. No unit test waits 45 seconds. The macOS process-group cleanup is tested. Windows now uses Job Object ownership (see [windows_job.rs](../../crates/splat-process/src/windows_job.rs)); these historical macOS tests do not establish Windows native acceptance or a cross-platform hard bound on total cleanup time.
 
 The exception follows a real application-preflight failure under the old ten-second budget. Six serial, 30-second-capped `COLMAP -h` measurements on the same host all exited 0:
 

@@ -38,12 +38,14 @@ entry CRC and per-image SHA-256, rejects missing bytes, and records
 as a successful whole-archive checksum check. The checked-in per-image hashes are
 the accepted subset identity, independent of whether other photos are downloaded.
 
-Run CPU SfM while Brush is building:
+For a new run, first build COLMAP using the [current native commands](../../../scripts/macos/README.md#当前路径入口2026-11-01). The variables below select that fresh build and its own build-info, not an archived binary. If another verified build is selected, provide its matching paths explicitly:
 
 ```sh
+fixture_colmap_install="$(python3 scripts/shared/engine_paths.py --repo-root "$PWD" --key colmapInstall)"
+fixture_colmap_build="$(python3 scripts/shared/engine_paths.py --repo-root "$PWD" --key colmapBuild)"
 python3 scripts/macos/smoke-engines.py \
-  --colmap target/macos-m0/colmap-install/bin/colmap \
-  --colmap-build-info target/macos-m0/colmap-build/build-info.json \
+  --colmap "$fixture_colmap_install/bin/colmap" \
+  --colmap-build-info "$fixture_colmap_build/build-info.json" \
   --sfm-only \
   --images target/macos-m0/datasets/james-sample-40/images \
   --fixture packaging/macos-arm64/fixtures/james-sample-40.json \

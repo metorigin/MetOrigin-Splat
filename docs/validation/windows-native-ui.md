@@ -1,5 +1,7 @@
 # Windows 原生 UI 验证
 
+> Historical and per-build evidence. Platform/candidate status and open acceptance are maintained in [project status](../status.md). “Current” and “final” below refer to each dated record; results do not transfer to a later build.
+
 日期：2026-10-30–31；下文事件时间注明 UTC。本文记录实际安装应用在 Windows 原生窗口中的操作，以及独立读取项目、模型和导出文件所得的结果。照片完整流水线的非 UI 验证见 [windows-core-pipeline.md](windows-core-pipeline.md)。这些结果不改变发布默认值；原生 macOS 回归仍是独立门禁。
 
 ## 可执行文件与证据边界

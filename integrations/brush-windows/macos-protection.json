@@ -45,7 +45,7 @@
     },
     {
       "path": "packaging/macos-arm64/README.md",
-      "sha256": "ce6997ba9e5b063a79bfad71e9e59e3a41685ed08eea269b11ef0a30876b0911"
+      "sha256": "eb6a0c04dc6a0db6a8f1705e56c9f8e2cc834fdf5519bfbbb220564b6f5d1a72"
     },
     {
       "path": "packaging/macos-arm64/REBUILD.md",
@@ -57,7 +57,7 @@
     },
     {
       "path": "packaging/macos-arm64/fixtures/README.md",
-      "sha256": "168860043121f28fde3dfce7f5d8a8fad65cecf787caafd165490d816eed4db7"
+      "sha256": "12b12f9b17a516d70d059d2cecf421da3b9ef6a576e06513624d42105368c6b8"
     },
     {
       "path": "packaging/macos-arm64/fixtures/james-sample-40.json",
@@ -177,15 +177,15 @@
     },
     {
       "path": "scripts/macos/BRUSH-M0.md",
-      "sha256": "0e4d706cf682a7aa06aa40afc022b7e4c58c50979289f77b96db36b397d64469"
+      "sha256": "56d503f0d77ad6c9bfc1914530e5498e072b14df64cde4062334364de5e10517"
     },
     {
       "path": "scripts/macos/COLMAP-M0.md",
-      "sha256": "1dd9d2fa31ebd02a61dfd5aa7ebbb643c2f44a6303bb9a9842755814e9397abc"
+      "sha256": "e5ba6ff4143c9d5f471f5baa627ab3824cc79701bc30697a89080b60358b1b46"
     },
     {
       "path": "scripts/macos/README.md",
-      "sha256": "19cfda5b2f757800fc660a94a00ebf9b46024dd170e4221756a2ae0bc7cdd761"
+      "sha256": "4ddf76788a6718eec1665431036c316238757fd8b065c316a7c39f8b1c3ceeb5"
     },
     {
       "path": "scripts/macos/build-brush.sh",
@@ -474,6 +474,14 @@
     {
       "path": "scripts/shared/verify-ui-sources.test.mjs",
       "sha256": "dc29fefd3d4a7caa167fd1bb524c467d9a1fa2dc99cff330b186d00288e53ba4"
+    },
+    {
+      "path": "docs/archive/engines/BRUSH-M0.md",
+      "sha256": "09f8224fa71ebd6cb686c6e9a8131bf0857b94780bbcb39c1937871a029fa606"
+    },
+    {
+      "path": "docs/archive/engines/COLMAP-M0.md",
+      "sha256": "00364d883a603fa3028e641215e8c67a75d2e3444e6d282ce081672a31533b6d"
     },
     {
       "path": "integrations/brush-macos/patches/metorigin-macos.6-resilience.patch",
@@ -1048,6 +1056,48 @@
         }
       ],
       "added_files": []
+    },
+    {
+      "date": "2026-11-01",
+      "phase": "documentation-consolidation",
+      "reason": "Consolidate current status and archive historical recipe notes. Stable recipe-note paths retain redirects; protected archived bodies retain historical identities and results with navigation rebased. Update packaging/fixture navigation and distinguish frozen source packs from signed derivatives. No engine binary, patch, runtime, third-party original or acceptance result is changed. This documentation amendment does not grant native regression or public release acceptance.",
+      "changed_files": [
+        {
+          "path": "packaging/macos-arm64/README.md",
+          "previous_sha256": "ce6997ba9e5b063a79bfad71e9e59e3a41685ed08eea269b11ef0a30876b0911",
+          "sha256": "eb6a0c04dc6a0db6a8f1705e56c9f8e2cc834fdf5519bfbbb220564b6f5d1a72"
+        },
+        {
+          "path": "packaging/macos-arm64/fixtures/README.md",
+          "previous_sha256": "168860043121f28fde3dfce7f5d8a8fad65cecf787caafd165490d816eed4db7",
+          "sha256": "12b12f9b17a516d70d059d2cecf421da3b9ef6a576e06513624d42105368c6b8"
+        },
+        {
+          "path": "scripts/macos/BRUSH-M0.md",
+          "previous_sha256": "0e4d706cf682a7aa06aa40afc022b7e4c58c50979289f77b96db36b397d64469",
+          "sha256": "56d503f0d77ad6c9bfc1914530e5498e072b14df64cde4062334364de5e10517"
+        },
+        {
+          "path": "scripts/macos/COLMAP-M0.md",
+          "previous_sha256": "1dd9d2fa31ebd02a61dfd5aa7ebbb643c2f44a6303bb9a9842755814e9397abc",
+          "sha256": "e5ba6ff4143c9d5f471f5baa627ab3824cc79701bc30697a89080b60358b1b46"
+        },
+        {
+          "path": "scripts/macos/README.md",
+          "previous_sha256": "19cfda5b2f757800fc660a94a00ebf9b46024dd170e4221756a2ae0bc7cdd761",
+          "sha256": "4ddf76788a6718eec1665431036c316238757fd8b065c316a7c39f8b1c3ceeb5"
+        }
+      ],
+      "added_files": [
+        {
+          "path": "docs/archive/engines/BRUSH-M0.md",
+          "sha256": "09f8224fa71ebd6cb686c6e9a8131bf0857b94780bbcb39c1937871a029fa606"
+        },
+        {
+          "path": "docs/archive/engines/COLMAP-M0.md",
+          "sha256": "00364d883a603fa3028e641215e8c67a75d2e3444e6d282ce081672a31533b6d"
+        }
+      ]
     },
     {
       "date": "2026-11-09",

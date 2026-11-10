@@ -55,20 +55,15 @@ historical `--pack-version` default remains `0.1.0-alpha.1`; it must not be
 represented as the existing Alpha `.6` pack. Repeated app packaging reuses the
 frozen distribution input instead of rebuilding it.
 
-The active full-app input is Brush `.6`, engine manifest SHA-256
+The frozen full-app source input is Brush `.6`, manifest SHA-256
 `590102d2290251ceced86320d1edef00b1667b139249326f9511ff1b75b6bc40`.
-Its engine audits and engine-only distribution/relocation checks are complete,
-subject to application acceptance. The latest full application is `a2146f95` /
-`build.OX71fC`, with verified app/DMG bytes and a complete application license
-collection. Earlier `.6` builds have native generation evidence, including the
-311-image workload and Chinese/space paths; those results retain their original
-build identities. The latest candidate has bounded Spark display, exit and
-project-integrity evidence, while memory stability and complete M3/M4 acceptance
-remain open. This is an internal Alpha, without Developer ID/notarization or
-clean macOS 15 / 16 GB / Windows acceptance.
-See the [current package and validation status](../../docs/validation/macos-engine-pack.md).
-The earlier runtime-admission and version-preflight failures remain historical
-records; the builder now checks both gates before packaging.
+Developer ID builds derive a new signed pack and manifest without rewriting this
+source identity. Candidate identities, the latest local notarized-DMG receipt,
+application-license issues and remaining native/clean-host acceptance are
+maintained only in [project status](../../docs/status.md). Historical generation,
+resource and package records remain bound to their own applications.
+The builder checks runtime admission and production version preflight before
+packaging; command details are in the [macOS guide](../../docs/macos-packaging.zh-CN.md).
 
 ```text
 macos-arm64/
@@ -152,7 +147,7 @@ library files, and rejects libraries outside the declared input prefixes.
 Every non-system load is rewritten to an engine-local `@loader_path` reference.
 All LC_RPATH commands are removed. Files must be arm64-only, target macOS, and
 declare minimum OS ≤15.0. Only `/usr/lib/` and `/System/Library/` remain external.
-All mutations happen before ad-hoc signing and final hashing. Original artifact
+All relocation mutations happen before signing and final hashing. The frozen input uses ad-hoc signatures; explicit Developer ID builds derive a separately identified signed pack. Original artifact
 hashes are checked again after packing.
 
 Several transitive libraries have optional plugin/config/data defaults compiled
@@ -189,7 +184,7 @@ local load integrity.
 `bash scripts/macos/build-macos-app.sh --internal-alpha` verifies the selected
 engine and application-license manifests, builds the app, ad-hoc signs only its
 outer bundle, verifies the final embedded bytes, then creates and verifies a
-uniquely named DMG. The final report must match the first signed-app report's
+uniquely named DMG by default. Explicit Developer ID and container notarization are opt-in modes documented in the [macOS packaging guide](../../docs/macos-packaging.zh-CN.md#developer-id-签名与-apple-公证). The final report must match the first signed-app report's
 executable and full bundle inventory hashes. Embedded engines are never
 re-signed or silently re-hashed by this step.
 
