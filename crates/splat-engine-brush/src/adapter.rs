@@ -220,6 +220,7 @@ impl BrushAdapter {
             let runtime = request.verified_runtime.ok_or_else(|| {
                 runtime_contract_error("Brush 1 training requires verified compute evidence")
             })?;
+            runtime.verify_files_unchanged(&self.brush_path)?;
             if runtime.binary_sha256 != profile.engines.brush.binary_sha256
                 || runtime.capabilities.cli_profile != cli
                 || runtime.probe.identity != runtime.capabilities.identity

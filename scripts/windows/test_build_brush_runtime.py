@@ -14,6 +14,10 @@ SPEC = importlib.util.spec_from_file_location('runtime_build', Path(__file__).wi
 recipe = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(recipe)
 
+CHECK_SPEC = importlib.util.spec_from_file_location('runtime_check', Path(__file__).with_name('check_brush_runtime.py'))
+checker = importlib.util.module_from_spec(CHECK_SPEC)
+CHECK_SPEC.loader.exec_module(checker)
+
 
 class CacheTests(unittest.TestCase):
     def setUp(self):
@@ -74,6 +78,15 @@ class CacheTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.check(cap)
 
+    def test_dll_and_rewritten_receipt_still_require_pinned_archive_hash(self):
+        path = self.output / 'bin/dxcompiler.dll'
+        path.write_bytes(b'substituted compiler')
+        self.expected['lock']['dxc'] = {'files': {'bin/dxcompiler.dll': {'sha256': 'a' * 64}}}
+        self.info['files']['bin/dxcompiler.dll'] = recipe.sha(path)
+        self.save()
+        with self.assertRaisesRegex(ValueError, 'pinned archive provenance'):
+            self.check()
+
     def test_offline_dxc_requires_verified_archive_and_members(self):
         root = self.output / 'recipe-root'
         archive = root / '.cache/metorigin/downloads/dxc/windows-x64/dxc.zip'
@@ -127,6 +140,70 @@ class CacheTests(unittest.TestCase):
                 raise RuntimeError('injected build interruption')
         with recipe.build_lock(path):
             pass
+
+
+class CliIntegrityTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.binary = self.root / 'pack/bin/brush-cli.exe'
+        self.binary.parent.mkdir(parents=True)
+        self.files = {}
+        for name in ['brush-cli.exe', 'dxcompiler.dll', 'dxil.dll']:
+            path = self.binary.with_name(name)
+            path.write_bytes(('fixture ' + name).encode())
+            self.files['bin/' + name] = recipe.sha(path)
+        self.locks = []
+        self.lock_directory = self.root / 'locks'
+        self.lock_directory.mkdir()
+        for index, name in enumerate(['source-lock.json', 'source-lock.windows1-legacy.json']):
+            lock = {'schema_version': 1, 'source_commit': 'a' * 40,
+                    'engine_version': '1.0.0+metorigin-windows.1',
+                    'build_id': 'metorigin-windows.1', 'target': 'x86_64-pc-windows-msvc',
+                    'patches': [{'path': f'patch-{index}', 'sha256': str(index) * 64}],
+                    'cargo_lock_sha256': str(index) * 64,
+                    'combined_source_diff_sha256': str(index) * 64,
+                    'dxc': {'files': {path: {'sha256': digest} for path, digest in self.files.items()
+                                     if path.endswith('.dll')}}}
+            self.locks.append(lock)
+            (self.lock_directory / name).write_text(json.dumps(lock), encoding='utf-8')
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def receipt(self, lock):
+        return {'schema_version': 1, 'inputs': {'lock': copy.deepcopy(lock)},
+                'files': self.files.copy(), 'binary_sha256': self.files['bin/brush-cli.exe']}
+
+    def check(self, info):
+        with patch.object(checker, 'SOURCE_LOCK_DIRECTORY', self.lock_directory):
+            checker.verify_integrity(self.binary, info)
+
+    def test_only_complete_current_and_shipped_recipes_are_accepted(self):
+        for lock in self.locks:
+            with self.subTest(recipe=lock['patches']):
+                self.check(self.receipt(lock))
+                for key, value in [('patches', []), ('target', 'aarch64-apple-darwin'),
+                                   ('cargo_lock_sha256', 'f' * 64),
+                                   ('combined_source_diff_sha256', 'f' * 64)]:
+                    info = self.receipt(lock)
+                    info['inputs']['lock'][key] = value
+                    with self.assertRaisesRegex(ValueError, 'complete pinned'):
+                        self.check(info)
+
+    def test_top_level_and_inventory_binary_hashes_must_agree(self):
+        info = self.receipt(self.locks[0])
+        info['binary_sha256'] = 'f' * 64
+        with self.assertRaisesRegex(ValueError, 'binary hash disagrees'):
+            self.check(info)
+
+    def test_rewritten_dll_receipt_cannot_replace_fixed_source_hash(self):
+        info = self.receipt(self.locks[0])
+        compiler = self.binary.with_name('dxcompiler.dll')
+        compiler.write_bytes(b'substituted DLL')
+        info['files']['bin/dxcompiler.dll'] = recipe.sha(compiler)
+        with self.assertRaisesRegex(ValueError, 'pinned provenance'):
+            self.check(info)
 
 
 class SourceTests(unittest.TestCase):
@@ -183,6 +260,24 @@ class SourceTests(unittest.TestCase):
         self.git('apply', '--intent-to-add', str(self.root / 'first.patch'))
         self.prepare()
         self.assertEqual(self.file.read_bytes(), b'windows\n')
+
+    def test_third_delta_resumes_only_an_exact_pinned_two_patch_prefix(self):
+        self.prepare()
+        prefix = self.git(*recipe.DIFF)
+        self.git('add', '.')
+        self.file.write_bytes(b'resilient\n')
+        third = self.git(*recipe.DIFF[:-1])
+        self.git('reset', '--mixed', 'HEAD')
+        combined = self.git(*recipe.DIFF)
+        self.file.write_bytes(b'windows\n')
+        (self.root / 'third.patch').write_bytes(third)
+        self.lock['patches'][1]['applied_source_diff_sha256'] = hashlib.sha256(prefix).hexdigest()
+        self.lock['patches'].append({'path': 'third.patch', 'sha256': hashlib.sha256(third).hexdigest()})
+        self.lock['combined_source_diff_sha256'] = hashlib.sha256(combined).hexdigest()
+        self.prepare()
+        self.assertEqual(self.file.read_bytes(), b'resilient\n')
+        self.prepare()
+        self.assertEqual(self.file.read_bytes(), b'resilient\n')
 
     def test_unrelated_source_edit_is_rejected_without_rewriting(self):
         self.file.write_bytes(b'user edit\n')

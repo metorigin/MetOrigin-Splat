@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "source_repository": "https://github.com/MinKaiZhi/brush",
+  "source_commit": "1388f74c6fe0236f68ee4915564bf00e9d2e3747",
+  "engine_version": "1.0.0+metorigin-windows.1",
+  "build_id": "metorigin-windows.1",
+  "target": "x86_64-pc-windows-msvc",
+  "rust_version": "1.95.0",
+  "patches": [
+    {
+      "path": "integrations/brush-macos/patches/metorigin-macos.6.patch",
+      "sha256": "1e342de3d80fc9ae3ac38873814b17b9bc6d8ce067159ad3eae02ef3148353d2"
+    },
+    {
+      "path": "integrations/brush-windows/patches/metorigin-windows.1.patch",
+      "sha256": "8d7ec49790ae218dbc4f5a11e25b8ca0bfb1b5811d6f32cbb19924d0ffbb7f94"
+    }
+  ],
+  "cargo_lock_sha256": "c4449255b9cfb599bd363e70511620cd9d17eacb19159733dcab63976386c49e",
+  "combined_source_diff_sha256": "e7bdb4c60f79396ec2d03817155b5cbf19fa17f6e46de9ccff0514b23b4c98eb",
+  "dxc": {
+    "version": "v1.8.2502",
+    "archive_name": "dxc_2025_02_20.zip",
+    "url": "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2502/dxc_2025_02_20.zip",
+    "sha256": "70b1913a1bfce4a3e1a5311d16246f4ecdf3a3e613abec8aa529e57668426f85",
+    "files": {
+      "bin/dxcompiler.dll": {
+        "archive_path": "bin/x64/dxcompiler.dll",
+        "sha256": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295"
+      },
+      "bin/dxil.dll": {
+        "archive_path": "bin/x64/dxil.dll",
+        "sha256": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+      },
+      "notices/DXC-LICENSE-MIT.txt": {
+        "archive_path": "LICENSE-MIT.txt",
+        "sha256": "903df5512f7d02609fed0c780a9b704f5a3eeb6e4d84ebe42a29845c81899a3c"
+      },
+      "notices/DXC-LICENSE-LLVM.txt": {
+        "archive_path": "LICENSE-LLVM.txt",
+        "sha256": "729615317e28dd03907e46f0fc3b5e88f7853cee61d1a1471d2749335516b46f"
+      },
+      "notices/DXC-LICENSE-MS.txt": {
+        "archive_path": "LICENSE-MS.txt",
+        "sha256": "734f72f239fe7b07b4c7203f294c1a7ce27095687278bab7e56d630d7c672963"
+      },
+      "notices/DXC-ReleaseNotes.md": {
+        "archive_path": "ReleaseNotes.md",
+        "sha256": "6b936ea201429298d1e7b4ffa1ab670a4c3776a34c2ab0d6e901775916b77641"
+      }
+    }
+  }
+}

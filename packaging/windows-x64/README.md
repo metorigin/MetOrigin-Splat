@@ -34,8 +34,9 @@ below remain bound to their original build identities.
 
 The separately named `alignment-lock.json` and commands below prepare an
 internal development candidate at `.engines/windows-x64/alignment/`.
-The existing installer and legacy pack remain the release default until native
-Windows, native macOS and distribution dependency gates pass.
+The legacy installer commands remain separate and select the Brush 0.3 pack;
+use the candidate build path below to include Windows1. Changing the training
+backend preference does not change the selected engine pack.
 
 ```powershell
 pnpm prepare:windows:alignment
@@ -46,16 +47,30 @@ pnpm dev:windows -Backend vulkan -Offline
 ```
 
 The rebuilt Windows1 application starts normally by double-clicking the installed
-executable. With no backend/device override it selects DX12, performs the real
-Gaussian compute preflight and freezes the returned device identity for training.
-PowerShell, a development launcher and environment variables are not prerequisites
-for ordinary use. This application default does not change the legacy 0.3 release
-pack or the Mac Metal path.
+executable. New projects default to Auto: run the real Gaussian compute preflight
+on DX12 first, then independently probe Vulkan only after a valid backend-compute
+failure or a timeout whose process cleanup completed without terminal protocol
+output. Configuration, identity, protocol, integrity and cancellation failures
+stop preflight. Explicit DX12/Vulkan selections and frozen project selections do
+not switch backends. The successful backend and device are saved with the project
+and checked again before training. PowerShell, a development launcher and
+environment variables are not prerequisites for ordinary use. Mac remains Metal.
+
+This selection applies to Brush training. Windows COLMAP still requires CUDA for
+feature extraction and matching; it has no CPU fallback in this profile. DX12 or
+Vulkan support does not establish AMD support for the complete Windows workflow.
+See the [RTX 5080 validation](../../docs/validation/gpu-backend-resilience.md) and
+[M1 Pro results](../../docs/validation/gpu-resilience-m1-pro-results.md). The M1 Pro
+Metal workflow, native editing/export and reopen checks passed on macOS 27.0.1;
+Developer ID signing/notarization has separate evidence. These results do not
+establish clean-machine installation or support for other hardware and OS versions.
 
 `dev:windows` checks Node 26, pnpm 11.12.0 and Rust 1.97.0, verifies or prepares
 the candidate, and invokes Tauri once. Its optional `-Backend` / `-DeviceId`
 arguments override selection only for that invocation; otherwise existing
-advanced process overrides or the application's DX12 default apply. Tauri starts
+advanced process overrides or the saved application preference (default Auto) apply.
+The launcher's `-Backend` parameter accepts only `dx12` or `vulkan`; omit it to use
+the application preference when no process override is present. Tauri starts
 its own Vite server. A
 Windows debug-only low-priority hint preserves saved engine overrides and
 explicit `METORIGIN_ENGINE_DIR`; `-EngineDirectory <pack>/engines` is an explicit
@@ -155,10 +170,12 @@ expected identity.
 The portable app includes its resources beside the executable;
 the NSIS variant includes the offline WebView2/VC prerequisites. These are build
 paths, not evidence that installation or clean-machine/offline relocation passed.
-For advanced troubleshooting, `METORIGIN_BRUSH_BACKEND=dx12|vulkan` and a canonical
-`METORIGIN_BRUSH_DEVICE_ID` remain optional process overrides. Supplied values must
-match a successful compute probe; unsupported overrides fail explicitly. Training
-uses the exact verified backend/device rather than switching APIs after failure.
+For advanced troubleshooting, `METORIGIN_BRUSH_BACKEND=auto|dx12|vulkan` is an
+optional process override that takes priority over the saved application preference.
+A canonical `METORIGIN_BRUSH_DEVICE_ID` requires an explicit `dx12` or `vulkan`
+backend and cannot be combined with `auto`. Unsupported values or overrides that
+conflict with a frozen project fail explicitly. Training uses the exact verified
+backend/device and does not switch APIs after failure.
 
 Application runtime fixes require a new timestamped artifact and a new source
 inventory. The existing 874-input / `5386…` candidate remains historical evidence
@@ -176,7 +193,8 @@ This opt-in native check removes the two keys from the owned Cargo child's
 environment using `ProcessStartInfo.EnvironmentVariables.Remove`. The calling
 process and machine/user environment remain untouched and are checked afterward.
 It invokes the production Rust preflight and the real eight-Gaussian forward/
-backward probe, expects DX12 and a canonical device, and writes a fresh evidence
+backward probe, accepts the verified DX12 or Vulkan backend and canonical device,
+and writes a fresh evidence
 directory under `artifacts/verification/windows-x64/default-runtime/`. It creates no
 project, runs no training and launches no application UI. A successful check and
 normal installed-application UI acceptance must be recorded against the rebuilt

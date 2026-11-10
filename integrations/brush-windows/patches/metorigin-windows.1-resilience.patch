@@ -1,0 +1,494 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 013eb76..5298f9b 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1136,6 +1136,7 @@ dependencies = [
+  "rand 0.10.2",
+  "serde",
+  "serde_json",
++ "sha2",
+  "tokio",
+  "tokio-stream",
+  "tracing",
+diff --git a/apps/brush-cli/src/lib.rs b/apps/brush-cli/src/lib.rs
+index e662bb8..64d14f9 100644
+--- a/apps/brush-cli/src/lib.rs
++++ b/apps/brush-cli/src/lib.rs
+@@ -135,6 +135,11 @@ pub fn handle_machine_mode(args: &Cli) -> anyhow::Result<bool> {
+         return Ok(true);
+     }
+     if args.probe_json {
++        // Machine mode precedes the training logger; explicitly capture WGPU/DXC errors.
++        let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
++            .target(env_logger::Target::Stderr)
++            .try_init();
++        brush_process::probe_diagnostics::stage("configuration");
+         let outcome = catch_unwind(AssertUnwindSafe(|| -> anyhow::Result<_> {
+             let runtime = tokio::runtime::Builder::new_multi_thread()
+                 .enable_all()
+@@ -152,7 +157,14 @@ pub fn handle_machine_mode(args: &Cli) -> anyhow::Result<bool> {
+                 runtime.block_on(brush_process::machine::probe())
+             }
+         }))
+-        .unwrap_or_else(|_| Err(anyhow::anyhow!("Compute probe panicked")));
++        .unwrap_or_else(|payload| {
++            let message = payload
++                .downcast_ref::<String>()
++                .map(String::as_str)
++                .or_else(|| payload.downcast_ref::<&str>().copied())
++                .unwrap_or("non-string panic");
++            Err(anyhow::anyhow!("Compute probe panicked: {message}"))
++        });
+         let (report, success) = brush_process::machine::probe_outcome(outcome);
+         writeln!(std::io::stdout().lock(), "{report}")?;
+         anyhow::ensure!(success, "GPU compute probe failed");
+@@ -179,6 +191,9 @@ pub fn build_process(args: &Cli) -> Option<RunningProcess> {
+ /// Initialize exactly the verified Windows adapter before constructing tensors.
+ #[cfg(windows)]
+ pub async fn run_windows_headless(args: Cli) -> anyhow::Result<()> {
++    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
++        .target(env_logger::Target::Stderr)
++        .try_init();
+     let backend = args
+         .graphics_backend
+         .ok_or_else(|| anyhow::anyhow!("--graphics-backend is required for Windows training"))?;
+@@ -263,9 +278,9 @@ async fn run_cli_ui_with_adapter_info(
+         let level = logger.filter();
+         let multi = MultiProgress::new();
+ 
+-        log::set_boxed_logger(Box::new(ProgressLogger::new(multi.clone(), logger)))
+-            .expect("Failed to initialize logger");
+-        log::set_max_level(level);
++        if log::set_boxed_logger(Box::new(ProgressLogger::new(multi.clone(), logger))).is_ok() {
++            log::set_max_level(level);
++        }
+ 
+         multi
+     };
+diff --git a/crates/brush-process/Cargo.toml b/crates/brush-process/Cargo.toml
+index d64f697..ddaa778 100644
+--- a/crates/brush-process/Cargo.toml
++++ b/crates/brush-process/Cargo.toml
+@@ -44,6 +44,9 @@ brush-train = { path = "../brush-train" }
+ brush-dataset = { path = "../brush-dataset"}
+ brush-rerun = { path = "../brush-rerun" }
+ 
++[target.'cfg(windows)'.dependencies]
++sha2 = "0.10.9"
++
+ [dev-dependencies]
+ wasm-bindgen-test = "0.3"
+ 
+diff --git a/crates/brush-process/src/lib.rs b/crates/brush-process/src/lib.rs
+index 904dda4..a9f274f 100644
+--- a/crates/brush-process/src/lib.rs
++++ b/crates/brush-process/src/lib.rs
+@@ -5,6 +5,7 @@ pub mod config;
+ #[cfg(not(target_family = "wasm"))]
+ pub mod live_preview;
+ pub mod machine;
++pub mod probe_diagnostics;
+ pub mod message;
+ pub mod slot;
+ pub mod snapshot;
+diff --git a/crates/brush-process/src/machine.rs b/crates/brush-process/src/machine.rs
+index 05ffb92..3772f51 100644
+--- a/crates/brush-process/src/machine.rs
++++ b/crates/brush-process/src/machine.rs
+@@ -39,6 +39,7 @@ pub fn capabilities() -> Value {
+     report["supported_features"] = json!([
+         "capabilities_json",
+         "compute_probe",
++        "probe_diagnostics_v1",
+         "ply_checkpoint",
+         "ply_warm_start",
+         "loader_thread_limit",
+@@ -83,7 +84,11 @@ pub fn failed_probe() -> Value {
+ pub fn probe_outcome(outcome: Result<Value>) -> (Value, bool) {
+     match outcome {
+         Ok(report) => (report, true),
+-        Err(_) => (failed_probe(), false),
++        Err(error) => {
++            let mut report = failed_probe();
++            crate::probe_diagnostics::failure(&error, &mut report);
++            (report, false)
++        }
+     }
+ }
+ 
+@@ -120,6 +125,7 @@ fn validate_compute(pixels: &[f32], gradients: &[f32], loss: f32) -> Result<f64>
+ /// Run real projection/rasterization and its Gaussian backward kernels.
+ /// The fixed eight visible splats keep this independent of user datasets.
+ pub async fn probe() -> Result<Value> {
++    crate::probe_diagnostics::begin("metal");
+     let (device, adapter) = crate::burn_init_setup_with_info().await;
+     compute_probe(device, adapter, None).await
+ }
+@@ -146,6 +152,8 @@ async fn compute_probe(
+         ),
+         "Expected a supported compute adapter"
+     );
++    crate::probe_diagnostics::adapter(&adapter);
++    crate::probe_diagnostics::stage("tensor_allocation");
+     let mut positions = Vec::with_capacity(GAUSSIANS * 3);
+     for index in 0..GAUSSIANS {
+         positions.extend([
+@@ -172,6 +180,7 @@ async fn compute_probe(
+         glam::vec2(0.5, 0.5),
+         CameraModel::Pinhole,
+     );
++    crate::probe_diagnostics::stage("forward");
+     let output = bwd::render_splats(
+         splats.clone(),
+         &camera,
+@@ -183,6 +192,7 @@ async fn compute_probe(
+         output.num_visible == GAUSSIANS as u32,
+         "Probe scene was not fully visible"
+     );
++    crate::probe_diagnostics::stage("forward_readback");
+     let pixels = output
+         .img
+         .clone()
+@@ -197,7 +207,9 @@ async fn compute_probe(
+         .into_scalar_async::<f32>()
+         .await
+         .context("Reading rendered loss")?;
++    crate::probe_diagnostics::stage("backward");
+     let gradients = loss.backward();
++    crate::probe_diagnostics::stage("gradient_readback");
+     let opacity_gradients = splats
+         .raw_opacities
+         .grad(&gradients)
+@@ -207,7 +219,9 @@ async fn compute_probe(
+         .context("Reading Gaussian gradients")?
+         .try_to_vec::<f32>()
+         .context("Decoding Gaussian gradients")?;
++    crate::probe_diagnostics::stage("compute_validation");
+     let gradient_l1 = validate_compute(&pixels, &opacity_gradients, loss_value)?;
++    crate::probe_diagnostics::stage("synchronization");
+     device.sync().context("Synchronizing GPU probe")?;
+     let mut report = identity();
+     report["probe_kind"] = json!("compute_smoke");
+@@ -223,6 +237,8 @@ async fn compute_probe(
+     }
+     report["device_name"] = json!(adapter.name);
+     report["device_type"] = json!(format!("{:?}", adapter.device_type));
++    report["driver"] = json!(adapter.driver);
++    report["driver_info"] = json!(adapter.driver_info);
+     report["compute"] = json!({
+         "gaussian_count": GAUSSIANS,
+         "width": SIZE, "height": SIZE,
+diff --git a/crates/brush-process/src/probe_diagnostics.rs b/crates/brush-process/src/probe_diagnostics.rs
+new file mode 100644
+index 0000000..88ac05f
+--- /dev/null
++++ b/crates/brush-process/src/probe_diagnostics.rs
+@@ -0,0 +1,206 @@
++//! Local diagnostics only: never copy raw causes or paths to machine stdout.
++use serde_json::{Value, json};
++use std::sync::{LazyLock, Mutex};
++
++static STATE: LazyLock<Mutex<Value>> = LazyLock::new(|| Mutex::new(json!({})));
++
++pub fn stage(stage: &str) {
++    STATE.lock().unwrap()["failure_stage"] = json!(stage);
++    eprintln!("[brush-probe] stage={stage}");
++}
++
++pub fn begin(backend: &str) {
++    *STATE.lock().unwrap() = json!({"backend": backend});
++    stage("initialization");
++    eprintln!(
++        "[brush-probe] os={} arch={} executable={:?}",
++        std::env::consts::OS,
++        std::env::consts::ARCH,
++        std::env::current_exe()
++    );
++}
++
++pub fn adapter(info: &wgpu::AdapterInfo) {
++    eprintln!("[brush-probe] actual_adapter={info:#?}");
++    let mut state = STATE.lock().unwrap();
++    state["device_name"] = json!(info.name);
++    state["device_type"] = json!(format!("{:?}", info.device_type));
++}
++
++pub fn failure(error: &anyhow::Error, report: &mut Value) {
++    let state = STATE.lock().unwrap();
++    eprintln!(
++        "[brush-probe] failure stage={} cause_chain={error:#}\nbacktrace={}",
++        state["failure_stage"],
++        error.backtrace()
++    );
++    for key in ["failure_stage", "backend", "device_name", "device_type"] {
++        if let Some(value) = state.get(key) {
++            report[key] = value.clone();
++        }
++    }
++    report["error"]["kind"] = json!(match state["failure_stage"].as_str() {
++        Some("adapter_selection" | "adapter_identity") => "invalid_selection",
++        Some("dependency_integrity") => "dependency_integrity",
++        Some("configuration") => "invalid_configuration",
++        _ => "backend_compute",
++    });
++}
++
++#[cfg(windows)]
++pub mod native {
++    use anyhow::{Context, Result, ensure};
++    use sha2::{Digest, Sha256};
++    use std::os::windows::process::CommandExt;
++    use std::{ffi::c_void, os::windows::ffi::OsStrExt, path::Path};
++    #[link(name = "kernel32")]
++    unsafe extern "system" {
++        fn LoadLibraryExW(path: *const u16, file: *mut c_void, flags: u32) -> *mut c_void;
++        fn GetModuleFileNameW(module: *mut c_void, path: *mut u16, size: u32) -> u32;
++    }
++    #[link(name = "version")]
++    unsafe extern "system" {
++        fn GetFileVersionInfoSizeW(path: *const u16, handle: *mut u32) -> u32;
++        fn GetFileVersionInfoW(path: *const u16, handle: u32, size: u32, data: *mut c_void) -> i32;
++        fn VerQueryValueW(
++            data: *const c_void,
++            sub: *const u16,
++            value: *mut *mut c_void,
++            len: *mut u32,
++        ) -> i32;
++    }
++    fn wide(path: &Path) -> Vec<u16> {
++        path.as_os_str().encode_wide().chain(Some(0)).collect()
++    }
++    fn version(path: &Path) -> Result<String> {
++        let path = wide(path);
++        let mut ignored = 0;
++        // SAFETY: All pointers refer to live, correctly-sized buffers during the calls.
++        unsafe {
++            let size = GetFileVersionInfoSizeW(path.as_ptr(), &mut ignored);
++            ensure!(
++                size > 0,
++                "DLL version size: {}",
++                std::io::Error::last_os_error()
++            );
++            let mut data = vec![0u32; (size as usize).div_ceil(4)];
++            ensure!(
++                GetFileVersionInfoW(path.as_ptr(), 0, size, data.as_mut_ptr().cast()) != 0,
++                "DLL version data: {}",
++                std::io::Error::last_os_error()
++            );
++            let mut value = std::ptr::null_mut();
++            let mut len = 0;
++            ensure!(
++                VerQueryValueW(
++                    data.as_ptr().cast(),
++                    [92u16, 0].as_ptr(),
++                    &mut value,
++                    &mut len
++                ) != 0
++                    && len >= 52
++                    && !value.is_null(),
++                "DLL has no fixed version resource"
++            );
++            let fixed = std::slice::from_raw_parts(value.cast::<u32>(), 13);
++            ensure!(fixed[0] == 0xfeef04bd, "Invalid version resource signature");
++            Ok(format!(
++                "{}.{}.{}.{}",
++                fixed[2] >> 16,
++                fixed[2] & 65535,
++                fixed[3] >> 16,
++                fixed[3] & 65535
++            ))
++        }
++    }
++    pub fn inventory() {
++        let Ok(exe) = std::env::current_exe() else {
++            return;
++        };
++        for path in [
++            exe.clone(),
++            exe.with_file_name("dxcompiler.dll"),
++            exe.with_file_name("dxil.dll"),
++        ] {
++            let hash = std::fs::read(&path).map(|bytes| format!("{:x}", Sha256::digest(bytes)));
++            eprintln!(
++                "[brush-probe] file={} sha256={hash:?} version={:?}",
++                path.display(),
++                version(&path)
++            );
++        }
++        // Capture OS build without writing subprocess output to machine stdout.
++        if let Ok(result) = std::process::Command::new("cmd.exe")
++            .creation_flags(0x08000000)
++            .args(["/d", "/c", "ver"])
++            .output()
++        {
++            eprintln!(
++                "[brush-probe] os_version={}",
++                String::from_utf8_lossy(&result.stdout).trim()
++            );
++        }
++    }
++    pub fn load_packaged_dxc() -> Result<String> {
++        super::stage("dxc_loading");
++        let exe = std::env::current_exe().context("Locating packaged DXC")?;
++        for (name, expected) in [
++            (
++                "dxil.dll",
++                "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056",
++            ),
++            (
++                "dxcompiler.dll",
++                "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
++            ),
++        ] {
++            let path = exe
++                .with_file_name(name)
++                .canonicalize()
++                .with_context(|| format!("Packaged {name} missing"))?;
++            let digest = format!("{:x}", Sha256::digest(std::fs::read(&path)?));
++            if digest != expected {
++                super::stage("dependency_integrity");
++                anyhow::bail!(
++                    "Packaged {name} SHA-256 mismatch: expected {expected}, actual {digest}"
++                );
++            }
++            // Load only the sibling module and its directory/system dependencies.
++            // Retain this process-lifetime reference so DXIL cannot be unloaded or substituted.
++            let handle = unsafe {
++                LoadLibraryExW(wide(&path).as_ptr(), std::ptr::null_mut(), 0x100 | 0x800)
++            };
++            ensure!(
++                !handle.is_null(),
++                "Loading {} failed: {}",
++                path.display(),
++                std::io::Error::last_os_error()
++            );
++            let mut loaded = vec![0u16; 32768];
++            let len =
++                unsafe { GetModuleFileNameW(handle, loaded.as_mut_ptr(), loaded.len() as u32) }
++                    as usize;
++            ensure!(
++                len > 0 && len < loaded.len(),
++                "Could not identify loaded DXC module"
++            );
++            let loaded = std::path::PathBuf::from(String::from_utf16_lossy(&loaded[..len]))
++                .canonicalize()?;
++            ensure!(
++                loaded == path,
++                "Loaded module differs from packaged {name}: {}",
++                loaded.display()
++            );
++            eprintln!(
++                "[brush-probe] loaded_module={} sha256={digest} version={:?}",
++                loaded.display(),
++                version(&loaded)
++            );
++        }
++        Ok(exe
++            .with_file_name("dxcompiler.dll")
++            .canonicalize()?
++            .to_string_lossy()
++            .into_owned())
++    }
++}
+diff --git a/crates/brush-process/src/windows_device.rs b/crates/brush-process/src/windows_device.rs
+index 43a7a13..e46be9c 100644
+--- a/crates/brush-process/src/windows_device.rs
++++ b/crates/brush-process/src/windows_device.rs
+@@ -62,6 +62,9 @@ fn select(infos: &[wgpu::AdapterInfo], requested: Option<&str>) -> Result<usize>
+         infos[selected].device_type == wgpu::DeviceType::DiscreteGpu,
+         "This Windows profile requires a discrete GPU"
+     );
++    if ids.iter().filter(|id| **id == ids[selected]).count() != 1 {
++        crate::probe_diagnostics::stage("adapter_identity");
++    }
+     ensure!(
+         ids.iter().filter(|id| **id == ids[selected]).count() == 1,
+         "GPU identity is ambiguous; refusing an unbound adapter"
+@@ -73,17 +76,34 @@ pub async fn initialize(
+     backend: GraphicsBackend,
+     requested: Option<&str>,
+ ) -> Result<(crate::ProcessDevice, wgpu::AdapterInfo)> {
+-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+-        backends: backend.api().into(),
+-        ..wgpu::InstanceDescriptor::new_without_display_handle()
++    use crate::probe_diagnostics as diag;
++    diag::begin(match backend {
++        GraphicsBackend::Dx12 => "dx12",
++        GraphicsBackend::Vulkan => "vulkan",
+     });
++    diag::native::inventory();
++    let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
++    descriptor.backends = backend.api().into();
++    if backend == GraphicsBackend::Dx12 {
++        descriptor.backend_options.dx12.shader_compiler = wgpu::Dx12Compiler::DynamicDxc {
++            dxc_path: diag::native::load_packaged_dxc()?,
++        };
++    }
++    diag::stage("adapter_enumeration");
++    let instance = wgpu::Instance::new(descriptor);
+     let adapters = instance.enumerate_adapters(backend.api().into()).await;
+     let infos = adapters
+         .iter()
+         .map(wgpu::Adapter::get_info)
+         .collect::<Vec<_>>();
++    eprintln!("[brush-probe] enumerated_adapters={infos:#?}");
++    if requested.is_some() {
++        diag::stage("adapter_selection");
++    }
+     let selected = select(&infos, requested)?;
+     let expected = &infos[selected];
++    diag::adapter(expected);
++    diag::stage("adapter_features");
+     ensure!(
+         adapters[selected]
+             .features()
+@@ -96,10 +116,45 @@ pub async fn initialize(
+         .iter()
+         .filter(|info| info.device_type == expected.device_type)
+         .count();
+-    let device = WgpuDevice::new(WgpuDeviceKind::DiscreteGpu(index)).on(backend.pinned());
+-    let setup =
+-        burn_wgpu::init_setup_async::<AutoGraphicsApi>(&device, crate::burn_options()).await;
+-    let actual = setup.adapter.get_info();
++    diag::stage("device_initialization");
++    let (device, actual) = if backend == GraphicsBackend::Dx12 {
++        // Use the very same instance/adapter and explicit packaged compiler for
++        // selection, probe and training. Matches pinned CubeCL WGSL requirements.
++        let adapter = adapters[selected].clone();
++        let (gpu_device, queue) = adapter
++            .request_device(&wgpu::DeviceDescriptor {
++                label: Some("MetOrigin bound DX12 compute"),
++                required_features: adapter
++                    .features()
++                    .difference(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS),
++                required_limits: adapter.limits(),
++                memory_hints: wgpu::MemoryHints::MemoryUsage,
++                trace: wgpu::Trace::Off,
++                // SAFETY: Same passthrough contract as the pinned CubeCL runtime.
++                experimental_features: unsafe { wgpu::ExperimentalFeatures::enabled() },
++            })
++            .await
++            .context("Creating the bound DX12 compute device")?;
++        let actual = adapter.get_info();
++        diag::stage("runtime_initialization");
++        let device = burn_wgpu::init_device(
++            burn_wgpu::WgpuSetup {
++                instance,
++                adapter,
++                device: gpu_device,
++                queue,
++                backend: backend.api(),
++            },
++            crate::burn_options(),
++        );
++        (device, actual)
++    } else {
++        let device = WgpuDevice::new(WgpuDeviceKind::DiscreteGpu(index)).on(backend.pinned());
++        let setup =
++            burn_wgpu::init_setup_async::<AutoGraphicsApi>(&device, crate::burn_options()).await;
++        (device, setup.adapter.get_info())
++    };
++    diag::stage("adapter_identity");
+     ensure!(
+         actual.backend == backend.api() && adapter_id(&actual)? == adapter_id(expected)?,
+         "GPU selection changed during initialization"

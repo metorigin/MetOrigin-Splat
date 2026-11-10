@@ -1281,5 +1281,20 @@
   "当前引擎未提供实际参数，当前显示预设请求。": "The current engine did not report effective settings; the preset request is shown.",
   "本次执行参数已调整，以预检结果为准。": "Settings for this run were adjusted; the preflight values apply.",
   "{0} 步 · SH{1} · {2}": "{0} steps · SH{1} · {2}",
-  "预检结果与当前预设不匹配，请重新检查。": "The preflight result does not match the selected preset. Run the check again."
+  "预检结果与当前预设不匹配，请重新检查。": "The preflight result does not match the selected preset. Run the check again.",
+  "引擎检查通过": "Engine checks passed",
+  "版本检查通过": "Version check passed",
+  "GPU 计算检查": "GPU computation check",
+  "每次项目预检和启动训练都会执行真实计算检查。已创建项目继续使用冻结的后端和设备。": "Every project preflight and training start runs a real computation check. Existing projects retain their frozen backend and device.",
+  "新项目训练后端": "Training backend for new projects",
+  "自动优先检查 DX12；计算失败后独立检查 Vulkan。显式选择只检查指定后端。高级启动配置优先于此设置。": "Auto checks DX12 first, then independently checks Vulkan after a computation failure. An explicit choice checks only that backend. Advanced launch configuration overrides this setting.",
+  "自动": "Auto",
+  "训练后端：Metal": "Training backend: Metal",
+  "当前项目后端：": "Current project backend: ",
+  "尚未获得当前项目的计算验证结果。请在新建项目中执行预检。": "No computation verification result is available for the current project. Run preflight when creating a project.",
+  "导出训练诊断": "Export training diagnostics",
+  "引擎版本检查通过，GPU 计算结果请查看项目预检。": "Engine version checks passed. See project preflight for GPU computation results.",
+  "包含引擎与硬件摘要，以及最近的训练预检日志（含自动回退前的失败记录）。无需先创建项目。": "Includes engine and hardware summaries and recent training preflight logs, including failures before automatic fallback. No project is required.",
+  "GPU 计算检查通过：": "GPU computation check passed: ",
+  "此处检查引擎是否可启动及版本；GPU 计算能力由项目预检和训练启动检查确认。": "This checks whether engines can start and their versions. Project preflight and training startup verify GPU computation."
 }

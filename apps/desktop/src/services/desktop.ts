@@ -331,5 +331,5 @@ export const desktopApi = {
   clearEngineOverride: (name?: string) => invoke<AppSettings>("clear_engine_override", { name: name ?? null }),
   getPreviewResourcePolicy: () => invoke<PreviewResourcePolicy>("get_preview_resource_policy"),
   getResourceMetrics: (projectPath?: string) => invoke<ResourceMetrics>("get_resource_metrics", { projectPath: projectPath ?? null }),
-  exportDiagnostics: (projectPath: string) => invoke<DiagnosticExport>("export_diagnostics", { projectPath }),
+  exportDiagnostics: (projectPath?: string) => invoke<DiagnosticExport>("export_diagnostics", { projectPath: projectPath ?? null }),
 };

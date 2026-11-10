@@ -8,7 +8,7 @@ readonly TARGET=aarch64-apple-darwin
 
 usage() {
   cat <<'EOF'
-Usage: build-brush.sh [--diagnostics-patch|--machine-probe-patch|--training-contract-patch|--live-preview-patch|--distribution-patch|--lpips-policy-patch|--stock] SOURCE_CHECKOUT [OUTPUT_DIRECTORY]
+Usage: build-brush.sh [--gpu-resilience-patch|--diagnostics-patch|--machine-probe-patch|--training-contract-patch|--live-preview-patch|--distribution-patch|--lpips-policy-patch|--stock] SOURCE_CHECKOUT [OUTPUT_DIRECTORY]
 
 SOURCE_CHECKOUT must be a clean, isolated checkout of the pinned Brush commit.
 OUTPUT_DIRECTORY defaults to the profile's fresh native-build cache in
@@ -22,6 +22,7 @@ This builds and captures CLI evidence; it does not certify Metal training.
 --training-contract-patch applies metorigin-macos.3 (loader threads, CLI overrides, atomic checkpoints).
 --live-preview-patch applies metorigin-macos.4 (paired Slot snapshots and protocol-1 request/ACK).
 --distribution-patch explicitly selects the default metorigin-macos.6 profile.
+--gpu-resilience-patch selects metorigin-macos.6-resilience diagnostics; requires a fresh explicit output directory.
 --lpips-policy-patch reproduces historical metorigin-macos.5 (LPIPS weight exclusion).
 --stock and older patch flags reproduce historical research builds, not release candidates.
 It requires a detached checkout and refuses any other source changes.
@@ -33,7 +34,12 @@ fail() { printf 'Brush build: %s\n' "$*" >&2; exit 1; }
 if [[ ${1:-} == --help || ${1:-} == -h ]]; then usage; exit 0; fi
 patch_id=metorigin-macos.6
 patch_sha256=1e342de3d80fc9ae3ac38873814b17b9bc6d8ce067159ad3eae02ef3148353d2
-if [[ ${1:-} == --distribution-patch ]]; then
+if [[ ${1:-} == --gpu-resilience-patch ]]; then
+  patch_id=metorigin-macos.6-resilience
+  patch_sha256=7e9e81cc0203b61ffb0f606a81a4c84816fbed5179c1a14f0870a8ca1fd5007b
+  shift
+  [[ $# -eq 2 && ! -e $2 ]] || fail 'GPU resilience builds require a fresh explicit output directory.'
+elif [[ ${1:-} == --distribution-patch ]]; then
   shift
 elif [[ ${1:-} == --lpips-policy-patch ]]; then
   patch_id=metorigin-macos.5
@@ -156,7 +162,7 @@ done
 otool -L "$binary" > "$output_dir/evidence/dynamic-libraries.txt"
 otool -l "$binary" > "$output_dir/evidence/load-commands.txt"
 shasum -a 256 "$binary" > "$output_dir/evidence/binary.sha256"
-if [[ $patch_id == metorigin-macos.5 || $patch_id == metorigin-macos.6 ]]; then
+if [[ $patch_id == metorigin-macos.5 || $patch_id == metorigin-macos.6 || $patch_id == metorigin-macos.6-resilience ]]; then
   (cd "$source_dir" && cargo tree --locked -p brush-cli --target "$TARGET" -e normal,build --format '{p} {l}') \
     > "$output_dir/evidence/cargo-target-tree.txt"
   python3 "$app_root/scripts/macos/check-brush-distribution.py" --brush "$binary" \
@@ -193,11 +199,11 @@ record = {
     "patch_sha256": patch_sha256 or None,
     "cli_version": (evidence / "version.txt").read_text().strip(),
     "metal_training_validated": False,
-    "lpips_weights_embedded": False if patch_id in {"metorigin-macos.5", "metorigin-macos.6"} else None,
-    "distribution_policy": ("optional_dependencies_excluded" if patch_id == "metorigin-macos.6"
+    "lpips_weights_embedded": False if patch_id in {"metorigin-macos.5", "metorigin-macos.6", "metorigin-macos.6-resilience"} else None,
+    "distribution_policy": ("optional_dependencies_excluded" if patch_id in {"metorigin-macos.6", "metorigin-macos.6-resilience"}
                             else "lpips_weights_excluded" if patch_id == "metorigin-macos.5" else "research_only"),
-    "native_rerun_enabled": False if patch_id == "metorigin-macos.6" else None,
-    "excluded_dependencies": ["hex-slice", "indicatif-log-bridge"] if patch_id == "metorigin-macos.6" else [],
+    "native_rerun_enabled": False if patch_id in {"metorigin-macos.6", "metorigin-macos.6-resilience"} else None,
+    "excluded_dependencies": ["hex-slice", "indicatif-log-bridge"] if patch_id in {"metorigin-macos.6", "metorigin-macos.6-resilience"} else [],
 
 }
 with tempfile.NamedTemporaryFile("w", dir=evidence, delete=False) as output:

@@ -23,6 +23,7 @@ pub(super) mod resources;
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
+    windows_training_backend: splat_engine_brush::BrushBackendPreference,
     engine_directory: Option<String>,
     engine_executables: BTreeMap<String, String>,
     default_project_root: Option<String>,
@@ -36,6 +37,7 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
+            windows_training_backend: splat_engine_brush::BrushBackendPreference::Auto,
             engine_directory: None,
             engine_executables: BTreeMap::new(),
             default_project_root: None,
@@ -422,6 +424,22 @@ pub fn save_app_settings(
     Ok(settings)
 }
 
+pub(crate) fn training_backend_preference(
+    app_handle: &tauri::AppHandle,
+) -> splat_domain::AppResult<splat_engine_brush::BrushBackendPreference> {
+    read_settings(app_handle)
+        .map(|settings| settings.windows_training_backend)
+        .map_err(|detail| {
+            splat_domain::AppError::new(
+                "E-5005",
+                splat_domain::ErrorCategory::Environment,
+                "训练后端配置不可用",
+                "无法读取训练后端设置，请在设置中修复配置后重新检查。",
+            )
+            .with_technical(detail)
+        })
+}
+
 /// Capture this opt-in once when accepting a run; never enable it on a read error.
 pub(crate) fn prevent_idle_sleep_enabled(app_handle: &tauri::AppHandle) -> bool {
     match read_settings(app_handle) {
@@ -511,18 +529,29 @@ pub fn get_resource_metrics(project_path: Option<String>) -> ResourceMetrics {
 
 #[tauri::command]
 pub fn export_diagnostics(
-    project_path: String,
+    project_path: Option<String>,
     app_handle: tauri::AppHandle,
 ) -> Result<DiagnosticExport, String> {
-    let project_dir = PathBuf::from(&project_path);
-    if !project_dir.join("project.json").is_file() {
+    let cache = app_handle
+        .path()
+        .app_cache_dir()
+        .map_err(|_| "无法定位应用诊断目录。".to_string())?;
+    let project_dir = project_path.map(PathBuf::from);
+    if project_dir
+        .as_ref()
+        .is_some_and(|path| !path.join("project.json").is_file())
+    {
         return Err("项目路径无效。".into());
     }
-    let output_dir = project_dir.join("output");
+    let output_dir = project_dir
+        .as_ref()
+        .map(|path| path.join("output"))
+        .unwrap_or_else(|| cache.join("diagnostics"));
     std::fs::create_dir_all(&output_dir).map_err(|_| "创建诊断输出目录失败。".to_string())?;
     let output = output_dir.join(format!(
-        "diagnostics-{}.zip",
-        Utc::now().format("%Y%m%d-%H%M%S")
+        "diagnostics-{}-{}.zip",
+        Utc::now().format("%Y%m%d-%H%M%S"),
+        uuid::Uuid::now_v7()
     ));
     let file = File::create(&output).map_err(|_| "创建诊断包失败。".to_string())?;
     let mut zip = zip::ZipWriter::new(file);
@@ -530,29 +559,45 @@ pub fn export_diagnostics(
         .compression_method(zip::CompressionMethod::Deflated);
     let settings = read_settings(&app_handle).unwrap_or_default();
     let engine_root = settings.engine_directory.as_deref().map(Path::new);
+    // Include the actual environment/resource-pack resolution, which may have
+    // no corresponding saved setting at all.
+    let engines = check_engines_blocking(app_handle.clone());
+    let engine_roots = diagnostic_engine_roots(&settings, &engines);
     let home = dirs_next::home_dir();
-    let redact = |content: String| redact_text(content, &project_dir, engine_root, home.as_deref());
+    let redact = |content: String| {
+        let mut content = redact_text(
+            content,
+            project_dir.as_deref().unwrap_or(&cache),
+            engine_root,
+            home.as_deref(),
+        );
+        for root in &engine_roots {
+            content = redact_path_spellings(content, root, "<ENGINE_ROOT>");
+        }
+        content
+    };
 
-    if let Ok(project_json) = std::fs::read_to_string(project_dir.join("project.json")) {
-        if let Some(sanitized) = sanitize_json_document(&project_json, &redact, true) {
-            zip.start_file("project-summary.json", options)
+    if let Some(project_dir) = &project_dir {
+        if let Ok(project_json) = std::fs::read_to_string(project_dir.join("project.json")) {
+            if let Some(sanitized) = sanitize_json_document(&project_json, &redact, true) {
+                zip.start_file("project-summary.json", options)
+                    .map_err(|_| "写入诊断包失败。".to_string())?;
+                zip.write_all(sanitized.as_bytes())
+                    .map_err(|_| "写入诊断包失败。".to_string())?;
+            }
+        }
+        if let Ok(events) = tail_file(&project_dir.join("logs/events.jsonl"), 512 * 1024) {
+            zip.start_file("events-tail.jsonl", options)
                 .map_err(|_| "写入诊断包失败。".to_string())?;
-            zip.write_all(sanitized.as_bytes())
+            zip.write_all(sanitize_event_tail(&events, &redact).as_bytes())
                 .map_err(|_| "写入诊断包失败。".to_string())?;
         }
     }
-    if let Ok(events) = tail_file(&project_dir.join("logs/events.jsonl"), 512 * 1024) {
-        zip.start_file("events-tail.jsonl", options)
-            .map_err(|_| "写入诊断包失败。".to_string())?;
-        zip.write_all(sanitize_event_tail(&events, &redact).as_bytes())
-            .map_err(|_| "写入诊断包失败。".to_string())?;
-    }
-    let metrics = collect_resource_metrics(Some(&project_dir));
+    let metrics = collect_resource_metrics(project_dir.as_deref());
     zip.start_file("system.json", options)
         .map_err(|_| "写入诊断包失败。".to_string())?;
     zip.write_all(serialize_diagnostic_system_metrics(&metrics, &redact).as_bytes())
         .map_err(|_| "写入诊断包失败。".to_string())?;
-    let engines = check_engines_blocking(app_handle);
     zip.start_file("engines.json", options)
         .map_err(|_| "写入诊断包失败。".to_string())?;
     let engine_json = serde_json::to_string_pretty(&engines).unwrap_or_default();
@@ -560,13 +605,257 @@ pub fn export_diagnostics(
         sanitize_json_document(&engine_json, &redact, false).unwrap_or_else(|| "[]".to_string());
     zip.write_all(sanitized_engines.as_bytes())
         .map_err(|_| "写入诊断包失败。".to_string())?;
+    append_runtime_diagnostics(&mut zip, &cache.join("runtime-probes"), &redact)
+        .map_err(|_| "写入训练预检诊断失败。".to_string())?;
     zip.finish().map_err(|_| "完成诊断包失败。".to_string())?;
+    // Resolve MSIX file virtualization before handing the path to Explorer,
+    // which runs outside our package and cannot see the virtual spelling.
+    let output = std::fs::canonicalize(&output).unwrap_or(output);
+    if project_dir.is_none() {
+        let reveal_path = output.clone();
+        // Shell integration is best effort after the ZIP is fully written.
+        // An unavailable Explorer must not keep the settings operation pending
+        // or turn a successfully written diagnostic archive into a failure.
+        tauri::async_runtime::spawn_blocking(move || {
+            if let Err(cause) = app_handle.opener().reveal_item_in_dir(&reveal_path) {
+                tracing::warn!(%cause, path = %reveal_path.display(), "Diagnostics saved but folder reveal failed");
+            }
+        });
+    }
     Ok(DiagnosticExport {
         path: output.to_string_lossy().to_string(),
         size_bytes: std::fs::metadata(&output)
             .map(|metadata| metadata.len())
             .unwrap_or(0),
     })
+}
+
+fn diagnostic_engine_roots(settings: &AppSettings, engines: &[serde_json::Value]) -> Vec<PathBuf> {
+    let mut roots: Vec<_> = settings
+        .engine_executables
+        .values()
+        .map(String::as_str)
+        .chain(
+            engines
+                .iter()
+                .filter_map(|engine| engine.get("path").and_then(serde_json::Value::as_str)),
+        )
+        .filter_map(|path| Path::new(path).parent())
+        .filter(|path| !path.as_os_str().is_empty())
+        .map(Path::to_path_buf)
+        .collect();
+    roots.sort_by_key(|path| std::cmp::Reverse(path.as_os_str().len()));
+    roots.dedup();
+    roots
+}
+
+fn redact_path_spellings(mut content: String, path: &Path, replacement: &str) -> String {
+    if path.as_os_str().is_empty() {
+        return content;
+    }
+    let mut spellings = Vec::new();
+    for path in [Some(path.to_path_buf()), std::fs::canonicalize(path).ok()]
+        .into_iter()
+        .flatten()
+    {
+        spellings.extend(lexical_path_spellings(&path.to_string_lossy()));
+    }
+    spellings.sort_by_key(|value| std::cmp::Reverse(value.len()));
+    spellings.dedup();
+    for spelling in spellings {
+        content = content.replace(&spelling, replacement);
+    }
+    content
+}
+
+/// Treat historical receipt paths only as text. In particular, a retired UNC
+/// executable must never cause canonicalization or network/file access.
+fn lexical_path_spellings(path: &str) -> Vec<String> {
+    let mut spellings = Vec::new();
+    let plain = path.strip_prefix(r"\\?\").unwrap_or(path);
+    for value in [path, plain] {
+        for mut spelling in [value.to_owned(), value.replace('\\', "/")] {
+            // Engine stderr includes Debug strings embedded in JSON; those
+            // paths can carry multiple levels of backslash escaping.
+            for _ in 0..=3 {
+                spellings.push(spelling.clone());
+                let escaped = serde_json::to_string(&spelling).expect("string serializes");
+                spelling = escaped[1..escaped.len() - 1].to_owned();
+            }
+        }
+    }
+    spellings
+}
+
+fn historical_runtime_path_spellings(
+    logs: &[(std::time::SystemTime, PathBuf)],
+) -> std::io::Result<Vec<String>> {
+    let mut spellings = Vec::new();
+    // The small file-integrity receipt precedes the larger process logs and
+    // can fall outside the exported 64 entries. Bound both discovery count and
+    // bytes, while considering older receipts from this same flat cache only.
+    const RECEIPT_LIMIT: usize = 128;
+    const RECEIPT_BYTES: u64 = 256 * 1024;
+    for (_, path) in logs
+        .iter()
+        .filter(|(_, path)| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .take(RECEIPT_LIMIT)
+    {
+        let mut bytes = Vec::new();
+        File::open(path)?
+            .take(RECEIPT_BYTES + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() > RECEIPT_BYTES as usize {
+            continue;
+        }
+        let Ok(receipt) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+            continue;
+        };
+        let Some(executable) = receipt
+            .get("executable")
+            .and_then(serde_json::Value::as_str)
+        else {
+            continue;
+        };
+        // Interpret both platforms lexically; an exported or retired pack need
+        // not have the host platform's path syntax or still exist on disk.
+        let bytes = executable.as_bytes();
+        let absolute = executable.starts_with(['/', '\\'])
+            || (bytes.len() > 2
+                && bytes[0].is_ascii_alphabetic()
+                && bytes[1] == b':'
+                && matches!(bytes[2], b'/' | b'\\'));
+        if absolute {
+            if let Some((parent, _)) = executable.rsplit_once(['/', '\\']) {
+                if !parent.is_empty() {
+                    spellings.extend(lexical_path_spellings(parent));
+                }
+            }
+        }
+    }
+    spellings.sort_by_key(|value| std::cmp::Reverse(value.len()));
+    spellings.dedup();
+    Ok(spellings)
+}
+
+/// Include recent receipts and both backend attempts, without following symlinks
+/// or recursing into arbitrary cache content. Original full logs stay on disk.
+fn append_runtime_diagnostics<W: Write + std::io::Seek>(
+    zip: &mut zip::ZipWriter<W>,
+    directory: &Path,
+    redact: &impl Fn(String) -> String,
+) -> std::io::Result<()> {
+    let entries = match std::fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    let mut logs = Vec::new();
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_file()
+            && matches!(
+                path.extension().and_then(|value| value.to_str()),
+                Some("log" | "json" | "jsonl")
+            )
+        {
+            logs.push((entry.metadata()?.modified()?, path));
+        }
+    }
+    logs.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    let historical_spellings = historical_runtime_path_spellings(&logs)?;
+    let redact = |content| {
+        let mut content = redact(content);
+        for spelling in &historical_spellings {
+            content = content.replace(spelling, "<ENGINE_ROOT>");
+        }
+        content
+    };
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    let mut index = Vec::new();
+    for (number, (_, path)) in logs.iter().take(64).enumerate() {
+        let content = runtime_log_tail(path, 2 * 1024 * 1024)?;
+        let truncated = std::fs::metadata(path)?.len() > 2 * 1024 * 1024;
+        let sanitized = match serde_json::from_str::<serde_json::Value>(&content) {
+            Ok(mut value) => {
+                sanitize_runtime_diagnostic(&mut value, &redact);
+                serde_json::to_string_pretty(&value)?
+            }
+            Err(_) => redact(content),
+        };
+        // User paths and filenames are kept out of archive entry names.
+        let name = format!("runtime-probes/{number:03}.txt");
+        zip.start_file(&name, options)?;
+        zip.write_all(sanitized.as_bytes())?;
+        index.push(serde_json::json!({ "entry": name, "source": redact(path.file_name().unwrap().to_string_lossy().into_owned()), "truncated": truncated }));
+    }
+    zip.start_file("runtime-probes/index.json", options)?;
+    zip.write_all(serde_json::to_string_pretty(&serde_json::json!({ "included": index, "omitted_files": logs.len().saturating_sub(64) }))?.as_bytes())?;
+    Ok(())
+}
+
+fn runtime_log_tail(path: &Path, max_bytes: u64) -> std::io::Result<String> {
+    use std::io::Seek;
+    let mut file = File::open(path)?;
+    let length = file.metadata()?.len();
+    file.seek(std::io::SeekFrom::Start(length.saturating_sub(max_bytes)))?;
+    let mut bytes = Vec::new();
+    file.take(max_bytes).read_to_end(&mut bytes)?;
+    // A bounded tail can begin in the middle of UTF-8; keep the remainder useful.
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// Runtime receipts need their cause chain and checksums. The broader project
+/// summary sanitizer intentionally removes raw output, so it is not used here.
+fn sanitize_runtime_diagnostic(value: &mut serde_json::Value, redact: &impl Fn(String) -> String) {
+    match value {
+        serde_json::Value::Object(object) => {
+            for (key, value) in object {
+                let key = key.to_ascii_lowercase();
+                if [
+                    "token",
+                    "password",
+                    "secret",
+                    "api_key",
+                    "authorization",
+                    "private_key",
+                ]
+                .contains(&key.as_str())
+                {
+                    *value = serde_json::Value::String("[REDACTED]".into());
+                } else if !key.ends_with("sha256")
+                    && (key.contains("path")
+                        || key.contains("directory")
+                        || key == "executable"
+                        || key == "source_log"
+                        || key == "process_log")
+                    && value.is_string()
+                {
+                    let name = value
+                        .as_str()
+                        .unwrap()
+                        .rsplit(['/', '\\'])
+                        .next()
+                        .unwrap_or_default();
+                    *value = serde_json::Value::String(format!("[LOCAL_PATH]/{name}"));
+                } else {
+                    sanitize_runtime_diagnostic(value, redact);
+                }
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                sanitize_runtime_diagnostic(value, redact);
+            }
+        }
+        serde_json::Value::String(text) => *text = redact(std::mem::take(text)),
+        _ => {}
+    }
 }
 
 /// Returns a list of recent projects from application state.
@@ -606,16 +895,26 @@ fn write_settings(app_handle: &tauri::AppHandle, settings: &AppSettings) -> Resu
 fn write_settings_at(path: &Path, settings: &AppSettings) -> Result<(), String> {
     std::fs::create_dir_all(path.parent().unwrap_or(Path::new(".")))
         .map_err(|_| "创建应用设置目录失败。".to_string())?;
-    let temporary = path.with_extension("json.tmp");
-    std::fs::write(
-        &temporary,
-        serde_json::to_vec_pretty(settings).map_err(|_| "序列化应用设置失败。".to_string())?,
-    )
-    .map_err(|_| "写入应用设置失败。".to_string())?;
-    if path.exists() {
-        std::fs::remove_file(path).map_err(|_| "更新应用设置失败。".to_string())?;
+    let bytes =
+        serde_json::to_vec_pretty(settings).map_err(|_| "序列化应用设置失败。".to_string())?;
+    let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::now_v7()));
+    let result = (|| -> std::io::Result<()> {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        drop(file);
+        // Same-directory rename atomically replaces an existing file on both
+        // supported platforms. Never unlink first: a preflight reader would
+        // interpret that missing-file window as the default Auto preference.
+        std::fs::rename(&temporary, path)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
     }
-    std::fs::rename(temporary, path).map_err(|_| "保存应用设置失败。".to_string())
+    result.map_err(|_| "保存应用设置失败，原设置已保留。".to_string())
 }
 
 fn unavailable_engine(name: &str, path: Option<&PathBuf>) -> EngineInfo {
@@ -978,10 +1277,7 @@ fn redact_text(
         (home, "<USER_HOME>"),
     ] {
         if let Some(path) = path {
-            let display = path.to_string_lossy();
-            content = content
-                .replace(display.as_ref(), replacement)
-                .replace(&display.replace('\\', "/"), replacement);
+            content = redact_path_spellings(content, path, replacement);
         }
     }
     redact_inline_secrets(content)
@@ -990,6 +1286,212 @@ fn redact_text(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backend_preference_defaults_auto_and_rejects_unknown_values() {
+        use splat_engine_brush::BrushBackendPreference;
+        let old: AppSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(old.windows_training_backend, BrushBackendPreference::Auto);
+        for (value, expected) in [
+            ("auto", BrushBackendPreference::Auto),
+            ("dx12", BrushBackendPreference::Dx12),
+            ("vulkan", BrushBackendPreference::Vulkan),
+        ] {
+            let settings: AppSettings =
+                serde_json::from_value(serde_json::json!({"windows_training_backend": value}))
+                    .unwrap();
+            assert_eq!(settings.windows_training_backend, expected);
+            assert_eq!(
+                serde_json::to_value(settings).unwrap()["windows_training_backend"],
+                value
+            );
+        }
+        assert!(serde_json::from_value::<AppSettings>(
+            serde_json::json!({"windows_training_backend": "metal"})
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn diagnostics_include_both_backend_logs_and_redact_private_data_without_a_project() {
+        let directory =
+            std::env::temp_dir().join(format!("runtime-export-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(
+            directory.join("dx12.log"),
+            "DX12 compiler failed: C:/private/engine token=SECRET\n",
+        )
+        .unwrap();
+        std::fs::write(directory.join("vulkan.log"), "Vulkan compute passed\n").unwrap();
+        std::fs::write(
+            directory.join("receipt.json"),
+            r#"{"source_log":"C:/private/dx12.log","executable_sha256":"abc0123456789","dependencies_sha256":{"dxil.dll":"def0123456789"},"stage":"compiler","stderr":"compiler load failed: C:/private/engine token=SECRET","reason":"load failed"}"#,
+        )
+        .unwrap();
+        std::fs::create_dir(directory.join("unrelated.log")).unwrap();
+        std::fs::write(directory.join("ignore.bin"), "UNRELATED_SECRET").unwrap();
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        append_runtime_diagnostics(&mut zip, &directory, &|text| {
+            redact_text(text, Path::new("C:/private"), None, None)
+        })
+        .unwrap();
+        let mut archive = zip::ZipArchive::new(zip.finish().unwrap()).unwrap();
+        assert_eq!(archive.len(), 4);
+        let mut exported = String::new();
+        for i in 0..archive.len() {
+            archive
+                .by_index(i)
+                .unwrap()
+                .read_to_string(&mut exported)
+                .unwrap();
+        }
+        assert!(exported.contains("DX12 compiler failed"));
+        assert!(exported.contains("Vulkan compute passed"));
+        assert!(exported.contains("load failed"));
+        assert!(exported.contains("compiler load failed"));
+        assert!(exported.contains("abc0123456789"));
+        assert!(exported.contains("def0123456789"));
+        assert!(!exported.contains("C:/private"));
+        assert!(!exported.contains("SECRET"));
+        assert!(!exported.contains("UNRELATED"));
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn diagnostics_redact_resolved_pack_and_nested_stderr_without_losing_checksums() {
+        // Reproduces a prepared/environment pack with no saved engine override.
+        let directory =
+            std::env::temp_dir().join(format!("runtime-pack-export-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let bin = directory.join("PRIVATE_SOURCE/engines/brush/bin");
+        let executable = bin.join("brush-cli.exe");
+        let settings = AppSettings::default();
+        let engines = vec![serde_json::json!({"name":"brush", "path":executable})];
+        let roots = diagnostic_engine_roots(&settings, &engines);
+        assert_eq!(roots, vec![bin.clone()]);
+        let hashes: Vec<_> = ['a', 'b', 'c', 'd']
+            .into_iter()
+            .map(|value| value.to_string().repeat(64))
+            .collect();
+        let stderr = format!("stage=dxc exe={:?} dxcompiler={} sha256={} dxil={} sha256={} cause=compiler initialization failed", executable,
+            bin.join("dxcompiler.dll").display(), hashes[1], bin.join("dxil.dll").display(), hashes[2]);
+        let nested = serde_json::to_string(&serde_json::json!({"stderr":stderr})).unwrap();
+        let receipt = serde_json::json!({"executable": executable,"executable_sha256":hashes[0],
+            "dependencies_sha256":{"dxcompiler.dll":hashes[1],"dxil.dll":hashes[2],"../BUILD-INFO.json":hashes[3]},
+            "stderr":stderr,"nested_stderr":nested,"requested_arguments":["--graphics-backend","vulkan"]});
+        std::fs::write(
+            directory.join("attempt.json"),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(directory.join("probe.log"), format!("{stderr}\n{nested}")).unwrap();
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        append_runtime_diagnostics(&mut zip, &directory, &|mut content| {
+            for root in &roots {
+                content = redact_path_spellings(content, root, "<ENGINE_ROOT>");
+            }
+            content
+        })
+        .unwrap();
+        let mut archive = zip::ZipArchive::new(zip.finish().unwrap()).unwrap();
+        let mut exported = String::new();
+        for index in 0..archive.len() {
+            archive
+                .by_index(index)
+                .unwrap()
+                .read_to_string(&mut exported)
+                .unwrap();
+        }
+        assert!(!exported.contains("PRIVATE_SOURCE"), "{exported}");
+        assert!(hashes.iter().all(|hash| exported.contains(hash)));
+        assert!(exported.contains("compiler initialization failed"));
+        assert!(exported.contains("dxcompiler.dll") && exported.contains("dxil.dll"));
+        assert!(exported.contains("vulkan"));
+        assert!(exported.contains("<ENGINE_ROOT>"));
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn diagnostics_redact_retained_engine_history_after_settings_change() {
+        let directory =
+            std::env::temp_dir().join(format!("runtime-history-export-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(&directory).unwrap();
+        // This retired custom pack is outside the home, current project, and
+        // current engine directory. Its location need not exist at export time.
+        let old_bin = r"E:\PRIVATE_RETIRED_CLIENT\Old Engine\bin";
+        let old_executable = format!(r"{old_bin}\brush-cli.exe");
+        let hashes: Vec<_> = ['a', 'b', 'c', 'd']
+            .into_iter()
+            .map(|value| value.to_string().repeat(64))
+            .collect();
+        let stderr = format!(
+            "stage=dxc executable={old_executable:?} dxcompiler={old_bin}\\dxcompiler.dll sha256={} cause=compiler initialization failed",
+            hashes[1]
+        );
+        let nested = serde_json::to_string(&serde_json::json!({"stderr": stderr})).unwrap();
+        let receipt = serde_json::json!({
+            "schema_version": 1, "executable": old_executable,
+            "executable_sha256": hashes[0],
+            "dependencies_sha256": {"dxcompiler.dll": hashes[1], "dxil.dll": hashes[2], "../BUILD-INFO.json": hashes[3]},
+            "stderr": stderr, "nested_stderr": nested,
+            "requested_backend": "dx12", "failure_kind": "BackendCompute"
+        });
+        std::fs::write(
+            directory.join("compute-attempt-retired.json"),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(directory.join("probe.log"), format!("{stderr}\n{nested}")).unwrap();
+        let redact = |text| {
+            redact_text(
+                text,
+                Path::new(r"C:\Current Project"),
+                Some(Path::new(r"D:\Current Engine")),
+                Some(Path::new(r"C:\Users\CurrentUser")),
+            )
+        };
+        let export = || {
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+            append_runtime_diagnostics(&mut zip, &directory, &redact).unwrap();
+            let mut archive = zip::ZipArchive::new(zip.finish().unwrap()).unwrap();
+            let mut exported = String::new();
+            for index in 0..archive.len() {
+                archive
+                    .by_index(index)
+                    .unwrap()
+                    .read_to_string(&mut exported)
+                    .unwrap();
+            }
+            exported
+        };
+        let exported = export();
+        assert!(!exported.contains("PRIVATE_RETIRED_CLIENT"), "{exported}");
+        assert!(hashes.iter().all(|hash| exported.contains(hash)));
+        assert!(exported.contains("compiler initialization failed"));
+        assert!(exported.contains("dxcompiler.dll"));
+        assert!(exported.contains("BackendCompute"));
+
+        // A later-written log can remain in the export after its older receipt
+        // falls outside the 64-entry inclusion limit. Still use that receipt's
+        // lexical root, without opening the referenced executable or directory.
+        let newer = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
+        for number in 0..64 {
+            let path = directory.join(format!("newer-{number:03}.log"));
+            std::fs::write(&path, format!("{stderr}\n{nested}")).unwrap();
+            File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_times(std::fs::FileTimes::new().set_modified(newer))
+                .unwrap();
+        }
+        let exported = export();
+        assert!(!exported.contains("compute-attempt-retired.json"));
+        assert!(!exported.contains("PRIVATE_RETIRED_CLIENT"), "{exported}");
+        assert!(exported.contains("compiler initialization failed"));
+        assert!(exported.contains(&hashes[1]));
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 
     #[cfg(unix)]
     struct VersionFixture(PathBuf);
@@ -1206,6 +1708,100 @@ mod tests {
         settings.prevent_idle_sleep = false;
         write_settings_at(&path, &settings).unwrap();
         assert!(!read_settings_at(&path).unwrap().prevent_idle_sleep);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn concurrent_settings_publication_never_exposes_missing_or_partial_backend_configuration() {
+        use splat_engine_brush::BrushBackendPreference;
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Barrier,
+        };
+        let dir =
+            std::env::temp_dir().join(format!("settings-concurrent-{}", uuid::Uuid::now_v7()));
+        let path = dir.join("settings.json");
+        let initial = AppSettings {
+            windows_training_backend: BrushBackendPreference::Vulkan,
+            engine_directory: Some("vulkan-fixture".into()),
+            ..Default::default()
+        };
+        write_settings_at(&path, &initial).unwrap();
+        let start = Arc::new(Barrier::new(5));
+        let done = Arc::new(AtomicUsize::new(0));
+        std::thread::scope(|scope| {
+            for writer in 0..4 {
+                let start = start.clone();
+                let done = done.clone();
+                let path = &path;
+                scope.spawn(move || {
+                    start.wait();
+                    for iteration in 0..24 {
+                        let vulkan = (writer + iteration) % 2 == 0;
+                        let settings = AppSettings {
+                            windows_training_backend: if vulkan {
+                                BrushBackendPreference::Vulkan
+                            } else {
+                                BrushBackendPreference::Dx12
+                            },
+                            engine_directory: Some(
+                                if vulkan {
+                                    "vulkan-fixture"
+                                } else {
+                                    "dx12-fixture"
+                                }
+                                .into(),
+                            ),
+                            ..Default::default()
+                        };
+                        write_settings_at(path, &settings).unwrap();
+                    }
+                    done.fetch_add(1, Ordering::SeqCst);
+                });
+            }
+            start.wait();
+            let mut reads = 0;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+            while done.load(Ordering::SeqCst) < 4 || reads == 0 {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "Concurrent writers did not finish"
+                );
+                let settings = read_settings_at(&path)
+                    .expect("Readers must see a complete published document");
+                let expected = match settings.windows_training_backend {
+                    BrushBackendPreference::Vulkan => "vulkan-fixture",
+                    BrushBackendPreference::Dx12 => "dx12-fixture",
+                    BrushBackendPreference::Auto => {
+                        panic!("Explicit preference was reset through a missing-file window")
+                    }
+                };
+                assert_eq!(settings.engine_directory.as_deref(), Some(expected));
+                reads += 1;
+                std::thread::yield_now();
+            }
+        });
+        assert_eq!(
+            std::fs::read_dir(&dir).unwrap().count(),
+            1,
+            "Temporary publications must not leak"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn invalid_backend_configuration_is_not_replaced_with_defaults_on_read() {
+        let dir = std::env::temp_dir().join(format!("settings-invalid-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        for content in [
+            r#"{"windows_training_backend":"private-invalid-value"}"#,
+            "{malformed",
+        ] {
+            std::fs::write(&path, content).unwrap();
+            assert!(read_settings_at(&path).is_err());
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
+        }
         std::fs::remove_dir_all(dir).unwrap();
     }
 

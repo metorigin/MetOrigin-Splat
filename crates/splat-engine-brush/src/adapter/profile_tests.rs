@@ -52,6 +52,7 @@ impl Fixture {
             capabilities,
             probe,
             binary_sha256: crate::runtime::hash_binary(&binary).unwrap(),
+            dependency_sha256: Default::default(),
         };
         profile.engines.brush.binary_sha256 = runtime.binary_sha256.clone();
         profile.engines.brush.version = runtime.capabilities.identity.engine_version.clone();

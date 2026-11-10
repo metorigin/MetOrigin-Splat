@@ -374,6 +374,24 @@ async fn run_pipeline(video: bool, medium: bool) {
         splat_pipeline::LockStatus::Unlocked
     ));
     let metadata = ExportManager::inspect_ply(&output).unwrap();
+    // Open through the production project reader after all training instances
+    // have stopped, then independently export and read the persisted model.
+    let reopened = manager.open_project(&project_dir).unwrap();
+    assert_eq!(reopened.id, project.id);
+    assert_eq!(
+        splat_project::load_execution_profile(&project_dir)
+            .unwrap()
+            .unwrap(),
+        profile
+    );
+    let exported = ExportManager::export(&splat_engine_brush::ExportRequest {
+        training_dir: project_dir.join("output"),
+        output_path: project_dir.join("exports/reopened-scene.ply"),
+        checkpoint_iteration: None,
+    })
+    .unwrap();
+    assert_eq!(sha256(&exported.ply_path), sha256(&output));
+    ExportManager::inspect_ply(&exported.ply_path).unwrap();
     let evidence = serde_json::json!({
         "schema_version": 1, "status": "application_core_smoke_passed",
         "source_kind": if video { "video" } else { "images" },
@@ -394,6 +412,7 @@ async fn run_pipeline(video: bool, medium: bool) {
         "elapsed_seconds": started.elapsed().as_secs_f64(),
         "cancelled_at_iteration": partial_iteration, "restore_iteration": cancel_at,
         "live_frames": frames, "prior_completed_output_preserved": true, "cache_verified": true,
+        "project_reopened": true, "export_after_reopen_sha256": sha256(&exported.ply_path),
         "native_ui_verified": false, "clean_machine_verified": false,
     });
     std::fs::write(

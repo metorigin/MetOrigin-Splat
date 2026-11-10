@@ -90,6 +90,11 @@ def verify(output, expected):
         candidate = (output / relative).resolve()
         if not candidate.is_relative_to(output.resolve()) or sha(candidate) != digest:
             raise ValueError('Cached Brush artifact is missing or corrupt: ' + relative)
+    # BUILD-INFO inventory alone is not provenance: a changed DLL and edited
+    # receipt must still fail against the independently pinned DXC archive.
+    for relative, member in expected['lock'].get('dxc', {}).get('files', {}).items():
+        if info['files'].get(relative) != member['sha256']:
+            raise ValueError('Packaged DXC differs from pinned archive provenance: ' + relative)
     binary = output / 'bin/brush-cli.exe'
     if sha(binary) != info['binary_sha256'] or info['files']['bin/brush-cli.exe'] != info['binary_sha256']:
         raise ValueError('Brush binary hash disagrees with its build identity')
@@ -119,16 +124,22 @@ def prepare_source(source_repo, source, lock):
         raise ValueError('Isolated Brush source contains staged or untracked edits')
     diff = run(['git', '-C', source, *DIFF])
     diff_hash = hashlib.sha256(diff).hexdigest()
-    # An interrupted preparation may leave the pristine detached tree or
-    # exactly the first frozen patch. Only those states can be resumed safely.
-    remaining = lock['patches'] if not diff else (
-        lock['patches'][1:] if diff_hash == lock['patches'][0]['sha256'] else [])
+    # Resume only an explicitly pinned prefix; never layer a new patch on a
+    # caller's edits. Prefix digests support additional frozen delta patches.
+    remaining = lock['patches'] if not diff else []
+    for index, patch in enumerate(lock['patches']):
+        prefix = patch.get('applied_source_diff_sha256')
+        if prefix is None and index == 0:
+            prefix = patch['sha256']
+        if diff and diff_hash == prefix:
+            remaining = lock['patches'][index + 1:]
+            break
     for patch in remaining:
         run(['git', '-C', source, 'apply', '--check', ROOT / patch['path']])
         run(['git', '-C', source, 'apply', '--intent-to-add', ROOT / patch['path']])
     diff_hash = hashlib.sha256(run(['git', '-C', source, *DIFF])).hexdigest()
     if diff_hash != lock['combined_source_diff_sha256'] or sha(source / 'Cargo.lock') != lock['cargo_lock_sha256']:
-        raise ValueError('Isolated Brush source differs from the two ordered frozen patches')
+        raise ValueError('Isolated Brush source differs from the ordered frozen patches')
 
 
 def prepare_source_repository(source_repo, lock, offline):

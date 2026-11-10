@@ -26,7 +26,7 @@ fn hash_file(path: &Path) -> String {
 }
 
 #[tokio::test]
-#[ignore = "requires the paired native Windows1 engine and a real discrete DX12 GPU; no backend/device environment overrides"]
+#[ignore = "requires the paired native Windows1 engine and a real discrete GPU; no backend/device environment overrides"]
 async fn windows_default_runtime_without_backend_or_device_environment() {
     assert!(std::env::var_os("METORIGIN_BRUSH_BACKEND").is_none());
     assert!(std::env::var_os("METORIGIN_BRUSH_DEVICE_ID").is_none());
@@ -59,12 +59,19 @@ async fn windows_default_runtime_without_backend_or_device_environment() {
     evidence["brush_sha256_after"] = json!(hash_file(&brush));
     match &result {
         Ok(TrainingRuntimeEvidence::WindowsWgpu(runtime)) => {
-            let expected_device = runtime.probe.backend == Some(BrushBackend::Dx12)
-                && runtime
-                    .probe
-                    .device_id
-                    .as_deref()
-                    .is_some_and(|id| id.starts_with("dx12:"));
+            let backend_prefix = match runtime.probe.backend {
+                Some(BrushBackend::Dx12) => "dx12:",
+                Some(BrushBackend::Vulkan) => "vulkan:",
+                _ => "invalid:",
+            };
+            let expected_device = matches!(
+                runtime.probe.backend,
+                Some(BrushBackend::Dx12 | BrushBackend::Vulkan)
+            ) && runtime
+                .probe
+                .device_id
+                .as_deref()
+                .is_some_and(|id| id.starts_with(backend_prefix));
             evidence["status"] = json!(if expected_device && binary_before == hash_file(&brush) {
                 "passed"
             } else {
@@ -87,12 +94,19 @@ async fn windows_default_runtime_without_backend_or_device_environment() {
         TrainingRuntimeEvidence::WindowsWgpu(runtime) => runtime,
         other => panic!("expected Windows1 WGPU, got {other:?}"),
     };
-    assert_eq!(runtime.probe.backend, Some(BrushBackend::Dx12));
+    assert!(matches!(
+        runtime.probe.backend,
+        Some(BrushBackend::Dx12 | BrushBackend::Vulkan)
+    ));
     assert!(runtime
         .probe
         .device_id
         .as_deref()
-        .is_some_and(|id| id.starts_with("dx12:")));
+        .is_some_and(|id| id.starts_with(match runtime.probe.backend.unwrap() {
+            BrushBackend::Dx12 => "dx12:",
+            BrushBackend::Vulkan => "vulkan:",
+            _ => unreachable!(),
+        })));
     let compute = runtime.probe.compute.as_ref().unwrap();
     assert_eq!(
         (compute.gaussian_count, compute.width, compute.height),

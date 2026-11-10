@@ -13,6 +13,8 @@ PATCH_SHA256 = "00f507d8d14290232f2ddc02d5cffed88f127044a0bb3bd9e19ea9055929aadb
 PATCH = (Path(__file__).resolve().parents[2] / "integrations/brush-macos/patches/"
          "0001-report-initialized-adapter.patch")
 PROFILES = {
+    "metorigin-macos.6-resilience": (PATCH.with_name("metorigin-macos.6-resilience.patch"),
+                          "7e9e81cc0203b61ffb0f606a81a4c84816fbed5179c1a14f0870a8ca1fd5007b"),
     PATCH_ID: (PATCH, PATCH_SHA256),
     "metorigin-macos.2": (PATCH.with_name("metorigin-macos.2.patch"),
                           "0bd728c9f1048372791eb28923a7af5dd10d3ad1dd9b5cbf62ae5de57182cfc7"),

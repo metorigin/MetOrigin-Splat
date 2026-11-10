@@ -144,6 +144,21 @@ describe("NewProjectPage", () => {
     await waitFor(() => expect(desktopApi.createProject).toHaveBeenCalledWith(expect.objectContaining({ name: "庭院扫描", startAfterCreate: false })));
   });
 
+  it("requires a new preflight after the Windows backend preference changes", async () => {
+    const settings = { engine_directory: null, engine_executables: {}, default_project_root: null,
+      default_preset: "fast", create_and_start: true, prevent_idle_sleep: false,
+      log_retention_mb: 512, thumbnail_cache_mb: 256, windows_training_backend: "auto" as const };
+    const view = render(<AppProvider><NewProjectPage settings={settings} /></AppProvider>);
+    await advanceToConfirmation();
+    view.rerender(<AppProvider><NewProjectPage settings={{ ...settings, windows_training_backend: "vulkan" }} /></AppProvider>);
+    expect(screen.queryByRole("heading", { name: "确认创建" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /下一步/ })).toBeDisabled();
+    expect(desktopApi.createProject).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "重新检查" }));
+    await waitFor(() => expect(desktopApi.preflightProject).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("button", { name: /下一步/ })).toBeEnabled();
+  });
+
   it("shows real video metadata and Fast estimate after native selection", async () => {
     render(<AppProvider><NewProjectPage /></AppProvider>);
     fireEvent.click(screen.getByRole("button", { name: /选择视频/ }));

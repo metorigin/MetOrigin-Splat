@@ -2,6 +2,10 @@
 
 > Historical and per-build evidence. Platform/candidate status and open acceptance are maintained in [project status](../status.md). “Current” and “final” below refer to each dated record; results do not transfer to a later build.
 
+2026-11-10 后续更新：`908863b` 将 Windows1 新项目默认策略改为 Auto，先真实检查 DX12，仅在符合计算失败协议或进程已完成清理且未输出终态协议的超时后独立检查 Vulkan；配置、身份、协议、完整性错误及取消不回退。显式 DX12/Vulkan 和项目冻结的后端/设备不自动切换。下文“默认 DX12”属于当时构建的历史行为，原验收和哈希保持不变；当前实现及 Windows 证据见 [GPU 后端可靠性记录](gpu-backend-resilience.md)。Windows COLMAP 特征提取和匹配仍要求 CUDA，本次不提供 AMD 完整流程支持。
+
+后续 [M1 Pro 实机结果](gpu-resilience-m1-pro-results.md) 已记录 macOS 27.0.1 上 Metal 3000 步、恢复、原生编辑保存/导出/重开及诊断导出通过；Developer ID 签名、公证与签名后 Metal smoke 另有证据。签名后的完整训练、macOS 15 和干净机器安装未执行，不能由这些结果推定。
+
 初始记录：2026-10-30；更新：2026-10-31（Asia/Shanghai）。分支：`codex/windows-gaussian-alignment`。应用基线：`69a699044b498ef0f3748807571ed13b7fdbd042`。
 
 本记录区分代码实现、自动测试和原生验收。目标仍为进行中；Windows1 保持候选，不提前切换发布默认。实施依据为[实施方案](../archive/plans/windows-gaussian-alignment-plan.zh-CN.md)。

@@ -52,9 +52,13 @@ async function files(root, base = root) {
 }
 
 function validateSource(source, candidate) {
+  const resilience = source.patches?.length === 3
+    && source.patches[2].path === 'integrations/brush-windows/patches/metorigin-windows.1-resilience.patch'
+    && /^[a-f\d]{64}$/i.test(source.patches[2].sha256)
+    && source.patches[2].applied_source_diff_sha256 === source.combined_source_diff_sha256;
   invariant(source.source_commit === '1388f74c6fe0236f68ee4915564bf00e9d2e3747'
     && source.engine_version === candidate.brush_version && source.target === candidate.target
-    && source.rust_version === '1.95.0' && source.patches?.length === 2
+    && source.rust_version === '1.95.0' && (source.patches?.length === 2 || resilience)
     && source.patches[0].path === 'integrations/brush-macos/patches/metorigin-macos.6.patch'
     && source.patches[0].sha256 === '1e342de3d80fc9ae3ac38873814b17b9bc6d8ce067159ad3eae02ef3148353d2'
     && source.patches[1].path === 'integrations/brush-windows/patches/metorigin-windows.1.patch'

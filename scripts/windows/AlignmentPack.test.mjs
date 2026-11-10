@@ -159,6 +159,22 @@ test('actual wrong platform and incompatible COLMAP identities cannot publish a 
   }
 });
 
+test('resilience source closure rejects unknown, extra or mismatched deltas', { skip: process.platform !== 'win32' }, async () => {
+  const options = await fixture();
+  const original = structuredClone(options.recipe.source);
+  assert.equal(original.patches.length, 3);
+  for (const mutate of [
+    source => { source.patches[2].path = 'unreviewed.patch'; },
+    source => { source.patches.push(structuredClone(source.patches[2])); },
+    source => { source.patches[2].applied_source_diff_sha256 = '0'.repeat(64); },
+  ]) {
+    options.recipe.source = structuredClone(original);
+    mutate(options.recipe.source);
+    await assert.rejects(preparePack(options), /Invalid Brush source chain/);
+    await assert.rejects(fs.stat(options.output), { code: 'ENOENT' });
+  }
+});
+
 function storedZip(name, content) {
   const filename = Buffer.from(name);
   const data = Buffer.from(content);

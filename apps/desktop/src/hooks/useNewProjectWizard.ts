@@ -69,6 +69,18 @@ export function useNewProjectWizard(settings: AppSettings | null) {
   const cancelInFlight = useRef<Promise<void> | null>(null);
   const cancellationRequested = useRef(false);
   const exitAfterCancellation = useRef(false);
+  const backendPreference = settings?.windows_training_backend ?? "auto";
+  const previousBackendPreference = useRef(backendPreference);
+  useEffect(() => {
+    if (previousBackendPreference.current === backendPreference) return;
+    previousBackendPreference.current = backendPreference;
+    if (createInFlight.current) return;
+    preflightRequest.current += 1;
+    setPreflight(null);
+    setChecking(false);
+    setDirectoryCheck({ status: "idle" });
+    setStep((current) => current > 0 ? 1 : current);
+  }, [backendPreference]);
 
   useEffect(() => {
     document.getElementById(`wizard-step-heading-${step}`)?.focus();

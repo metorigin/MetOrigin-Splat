@@ -88,6 +88,7 @@ chmod +x "$CARGO_TARGET_DIR/aarch64-apple-darwin/release/brush-cli"
 fi
 exec {shlex.quote(sys.executable)} "$@"''')
         for flag, profile in [(None, "metorigin-macos.6"),
+                              ("--gpu-resilience-patch", "metorigin-macos.6-resilience"),
                               ("--distribution-patch", "metorigin-macos.6"),
                               ("--lpips-policy-patch", "metorigin-macos.5")]:
             with self.subTest(flag=flag):

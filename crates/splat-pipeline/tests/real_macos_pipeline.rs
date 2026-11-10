@@ -110,19 +110,23 @@ async fn run_pipeline(video: bool) {
     .await
     .unwrap();
     // Explicit smoke overrides are frozen and recorded. This is not preset quality acceptance.
-    profile.effective_training.iterations = 300;
+    let iterations: u32 = std::env::var("METORIGIN_TEST_ITERATIONS")
+        .unwrap_or_else(|_| "300".into())
+        .parse()
+        .unwrap();
+    assert!(iterations >= 300);
+    profile.effective_training.iterations = iterations;
     profile.effective_training.max_splats = Some(300_000);
     profile.effective_training.image_cache_budget_bytes = Some(256 * 1024 * 1024);
     profile.effective_training.threads = 4;
     profile.validate_for_execution().unwrap();
-    let orchestrator = PipelineOrchestrator::new_default_with_config(
-        project_dir.clone(),
-        PipelineConfig {
-            preset: "fast".into(),
-            engine_paths: paths,
-            execution_profile: Some(Arc::new(profile.clone())),
-        },
-    );
+    let config = PipelineConfig {
+        preset: "fast".into(),
+        engine_paths: paths,
+        execution_profile: Some(Arc::new(profile.clone())),
+    };
+    let orchestrator =
+        PipelineOrchestrator::new_default_with_config(project_dir.clone(), config.clone());
     let mut events = orchestrator.subscribe();
     let events_task = tokio::spawn(async move {
         while let Ok(event) = events.recv().await {
@@ -166,7 +170,59 @@ async fn run_pipeline(video: bool) {
     let training: splat_pipeline::BrushTrainingResult =
         serde_json::from_slice(&std::fs::read(project_dir.join("training/result.json")).unwrap())
             .unwrap();
-    assert_eq!(training.total_iterations, 300);
+    assert_eq!(training.total_iterations, iterations);
+    let completed_hash = sha256(&output);
+    let checkpoints =
+        splat_engine_brush::CheckpointScanner::scan(&project_dir.join("training/checkpoints"))
+            .unwrap();
+    let partial = checkpoints
+        .iter()
+        .find(|checkpoint| checkpoint.iteration < iterations)
+        .expect("a partial checkpoint is required for recovery acceptance");
+    for checkpoint in &checkpoints {
+        ExportManager::inspect_ply(&checkpoint.path).unwrap();
+    }
+    let restore_iteration = partial.iteration;
+    splat_pipeline::stages::brush_training::restore_checkpoint(&project_dir, restore_iteration)
+        .unwrap();
+    assert!(!output.exists());
+    let restored =
+        PipelineOrchestrator::new_default_with_config(project_dir.clone(), config.clone());
+    restored
+        .start_with_lock("m1-pro-explicit-restore")
+        .await
+        .unwrap();
+    let restored_result: splat_pipeline::BrushTrainingResult =
+        serde_json::from_slice(&std::fs::read(project_dir.join("training/result.json")).unwrap())
+            .unwrap();
+    assert_eq!(restored_result.resumed_from_iteration, restore_iteration);
+    assert_eq!(restored_result.total_iterations, iterations);
+    assert!(!restored_result.optimizer_state_restored);
+    assert!(walkdir::WalkDir::new(project_dir.join("runtime/checkpoint-restores"))
+        .into_iter().filter_map(Result::ok)
+        .any(|entry| entry.file_name() == "scene.ply" && sha256(entry.path()) == completed_hash));
+    let reopened = manager.open_project(&project_dir).unwrap();
+    assert_eq!(reopened.id, project.id);
+    assert_eq!(
+        splat_project::load_execution_profile(&project_dir)
+            .unwrap()
+            .unwrap(),
+        profile
+    );
+    let cached = PipelineOrchestrator::new_default_with_config(project_dir.clone(), config);
+    cached.start_with_lock("m1-pro-reopen-cache").await.unwrap();
+    assert_eq!(
+        cached.get_state().await.stages[&PipelineStageId::BrushTraining].status,
+        StageStatus::Skipped
+    );
+    let exported = ExportManager::export(&splat_engine_brush::ExportRequest {
+        training_dir: project_dir.join("output"),
+        output_path: project_dir.join("exports/reopened-scene.ply"),
+        checkpoint_iteration: None,
+    })
+    .unwrap();
+    assert_eq!(sha256(&exported.ply_path), sha256(&output));
+    let metadata = ExportManager::inspect_ply(&exported.ply_path).unwrap();
     let evidence = serde_json::json!({
         "schema_version": 1, "status": "application_core_smoke_passed",
         "source_kind": if video { "video" } else { "images" },
@@ -178,6 +234,9 @@ async fn run_pipeline(video: bool) {
         "vertex_count": metadata.vertex_count, "sh_degree": metadata.sh_degree,
         "ply_sha256": sha256(&output), "ply_bytes": std::fs::metadata(&output).unwrap().len(),
         "elapsed_seconds": started.elapsed().as_secs_f64(),
+        "iterations": iterations, "restore_iteration": restore_iteration,
+        "project_reopened": true, "cache_verified": true, "prior_completed_output_preserved": true,
+        "export_after_reopen_sha256": sha256(&exported.ply_path),
         "native_ui_verified": false, "clean_machine_verified": false,
     });
     std::fs::write(

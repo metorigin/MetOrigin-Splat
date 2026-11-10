@@ -3,7 +3,8 @@
 use crate::state::AppState;
 use splat_domain::{AppError, AppResult, EnginePaths, ErrorCategory, ExecutionProfile};
 use splat_engine_brush::{
-    current_runtime_platform, probe_training_runtime, TrainingRuntimeEvidence,
+    current_runtime_platform, probe_training_runtime_with_preference,
+    probe_training_runtime_with_selection, BrushDeviceSelection, TrainingRuntimeEvidence,
 };
 use splat_pipeline::runtime::{
     freeze_macos_execution_profile, freeze_windows_execution_profile, MacosProfileRequest,
@@ -23,15 +24,24 @@ pub async fn check_training_runtime(
     app: &tauri::AppHandle,
     paths: &EnginePaths,
 ) -> AppResult<TrainingRuntimeEvidence> {
+    check_training_runtime_for_profile(app, paths, None).await
+}
+
+pub async fn check_training_runtime_for_profile(
+    app: &tauri::AppHandle,
+    paths: &EnginePaths,
+    frozen: Option<&ExecutionProfile>,
+) -> AppResult<TrainingRuntimeEvidence> {
     let pending = crate::lifecycle::PendingWork::begin(app.state::<AppState>().inner())
         .map_err(pending_error)?;
     let probe_app = app.clone();
     let paths = paths.clone();
+    let frozen = frozen.cloned();
     // Dropping an IPC await must not drop the shutdown receipt while a probe's
     // process or blocking identity check is still running.
     tokio::spawn(async move {
         let _pending = pending;
-        let result = check_training_runtime_inner(&probe_app, &paths).await;
+        let result = check_training_runtime_inner(&probe_app, &paths, frozen.as_ref()).await;
         result.map_err(|error| report_runtime_failure(&probe_app, error))
     })
     .await
@@ -92,6 +102,19 @@ fn training_runtime_user_message(error: &AppError) -> String {
         "E-2103" | "E-2106" => "训练检查未能完整读取引擎响应。请重新检查；若仍失败，请修复应用配套引擎。",
         "E-5004" if detail.contains("could not create probe log directory") =>
             "无法写入训练检查诊断目录。请检查应用缓存目录的访问权限后重试。",
+        "E-5004" if detail.contains("GPU compute verification was cancelled") =>
+            "训练运行检查已取消，尚未确认计算能力。请重新检查。",
+        "E-5004" if detail.contains("Some(Dx12)") && detail.contains("Some(Vulkan)")
+            && detail.lines().all(|line| line.contains("selected backend failed") || line.contains("GPU compute verification timed out")) =>
+            "DX12 与 Vulkan 均未通过 GPU 计算检查。两个后端的诊断已保留，可在设置中导出训练诊断。",
+        "E-5004" if detail.contains("GPU compute verification timed out") =>
+            "训练 GPU 计算验证超时。请关闭占用显卡的其他任务后重新检查；若仍失败，请查看本地训练诊断。",
+        "E-5004" if detail.contains("selected backend failed the real Gaussian compute check")
+            && !detail.contains("JSON") && !detail.contains("identity") && !detail.contains("protocol") =>
+            "训练 GPU 计算验证未通过。请检查显卡驱动和配套引擎是否完整，再重新检查；具体原因见本地训练诊断。",
+        "E-5004" if detail.contains("checksum") || detail.contains("dependencies changed") =>
+            "训练引擎或配套依赖未通过完整性检查。请修复应用配套引擎后重新检查，具体原因见本地训练诊断。",
+        "E-5004" if detail.contains("frozen platform") => return error.user_message_zh(),
         "E-5004" if detail.starts_with("--probe-json:") && detail.contains("timed_out=true") =>
             "训练 GPU 计算验证超时。请关闭占用显卡的其他任务后重新检查；若仍失败，请查看本地训练诊断。",
         "E-5004" if detail.contains("timed_out=true") =>
@@ -185,8 +208,19 @@ fn save_runtime_failure(directory: &Path, error: &AppError) -> std::io::Result<P
 async fn check_training_runtime_inner(
     app: &tauri::AppHandle,
     paths: &EnginePaths,
+    frozen: Option<&ExecutionProfile>,
 ) -> AppResult<TrainingRuntimeEvidence> {
     let platform = current_runtime_platform()?;
+    // Even a frozen project must reject unreadable or invalid configuration.
+    // Its backend stays frozen, but engine resolution must not quietly inherit
+    // defaults from a damaged settings file.
+    let preference = crate::commands::system::training_backend_preference(app)?;
+    if let Some(profile) = frozen {
+        profile.validate_for_execution()?;
+        if profile.platform != platform {
+            return Err(frozen_selection_error());
+        }
+    }
     let brush = paths.brush.as_deref().ok_or_else(|| {
         AppError::new(
             "E-4001",
@@ -208,7 +242,29 @@ async fn check_training_runtime_inner(
             .with_technical(error.to_string())
         })?
         .join("runtime-probes");
-    let runtime = probe_training_runtime(platform, brush, &logs, CancellationToken::new()).await?;
+    let runtime = if let Some(profile) = frozen {
+        let selection = BrushDeviceSelection::for_profile(profile)?;
+        probe_training_runtime_with_selection(
+            platform,
+            brush,
+            &logs,
+            CancellationToken::new(),
+            selection.as_ref(),
+        )
+        .await?
+    } else {
+        probe_training_runtime_with_preference(
+            platform,
+            brush,
+            &logs,
+            CancellationToken::new(),
+            preference,
+        )
+        .await?
+    };
+    if let Some(profile) = frozen {
+        validate_frozen_selection(profile, &runtime)?;
+    }
     if let TrainingRuntimeEvidence::Metal(verified)
     | TrainingRuntimeEvidence::WindowsWgpu(verified) = &runtime
     {
@@ -226,6 +282,33 @@ async fn check_training_runtime_inner(
         }
     }
     Ok(runtime)
+}
+
+fn frozen_selection_error() -> AppError {
+    AppError::new(
+        "E-5004",
+        ErrorCategory::Environment,
+        "冻结的训练设备不可用",
+        "当前环境无法使用项目已冻结的训练后端或设备。请恢复原设备与配套引擎后重新检查。",
+    )
+    .with_technical("Probe did not use the requested Windows backend/device or frozen platform")
+}
+
+fn validate_frozen_selection(
+    profile: &ExecutionProfile,
+    runtime: &TrainingRuntimeEvidence,
+) -> AppResult<()> {
+    validate_frozen_probe(profile, &runtime.training_probe())
+}
+
+fn validate_frozen_probe(
+    profile: &ExecutionProfile,
+    probe: &splat_domain::runtime::TrainingProbe,
+) -> AppResult<()> {
+    if probe != &profile.brush.probe_result {
+        return Err(frozen_selection_error());
+    }
+    Ok(())
 }
 
 pub async fn execution_profile(
@@ -305,6 +388,35 @@ fn pending_error(detail: String) -> AppError {
 mod tests {
     use super::*;
 
+    #[test]
+    fn frozen_projects_require_the_same_probe_backend_and_device() {
+        for bytes in [
+            include_bytes!(
+                "../../../../../schemas/examples/execution-profile/windows1-vulkan.valid.json"
+            )
+            .as_slice(),
+            include_bytes!("../../../../../schemas/examples/execution-profile/macos.valid.json")
+                .as_slice(),
+            include_bytes!(
+                "../../../../../schemas/examples/execution-profile/windows-legacy.valid.json"
+            )
+            .as_slice(),
+        ] {
+            let profile = ExecutionProfile::from_json(bytes).unwrap();
+            let probe = profile.brush.probe_result.clone();
+            assert!(validate_frozen_probe(&profile, &probe).is_ok());
+            let mut changed = probe.clone();
+            changed.backend = Some(splat_domain::runtime::BrushBackend::Dx12);
+            assert!(validate_frozen_probe(&profile, &changed).is_err());
+            changed = probe.clone();
+            changed.device_id = Some("a different adapter".into());
+            assert!(validate_frozen_probe(&profile, &changed).is_err());
+            changed = probe;
+            changed.device_name = Some("a different GPU".into());
+            assert!(validate_frozen_probe(&profile, &changed).is_err());
+        }
+    }
+
     fn error(code: &str, detail: &str) -> AppError {
         AppError::new(
             code,
@@ -326,6 +438,11 @@ mod tests {
     #[test]
     fn runtime_failures_distinguish_configuration_compute_timeout_and_identity() {
         for (code, detail, expected) in [
+            ("E-5004", "Some(Dx12): GPU compute verification timed out; process cleanup completed", "计算验证超时"),
+            ("E-5004", "Some(Dx12): GPU compute verification was cancelled", "已取消"),
+            ("E-5004", "Some(Dx12): The selected backend failed the real Gaussian compute check\nSome(Vulkan): The selected backend failed the real Gaussian compute check", "DX12 与 Vulkan 均未通过"),
+            ("E-5004", "Some(Dx12): The selected backend failed the real Gaussian compute check\nSome(Vulkan): Failed probe did not return valid machine JSON", "未通过校验"),
+            ("E-5004", "DXC dependency dxil.dll is missing or differs from its pinned source checksum", "完整性检查"),
             (
                 "E-5004",
                 "--probe-json: exit=Some(1), timed_out=false, cancelled=false",

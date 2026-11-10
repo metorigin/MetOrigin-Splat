@@ -12,6 +12,15 @@ SPEC.loader.exec_module(PREPARE)
 
 
 class BrushPatchTests(unittest.TestCase):
+    def test_resilience_is_a_separate_pinned_profile_preserving_macos_6(self):
+        original, original_hash = PREPARE.PROFILES['metorigin-macos.6']
+        candidate, candidate_hash = PREPARE.PROFILES['metorigin-macos.6-resilience']
+        self.assertNotEqual(original, candidate)
+        self.assertEqual(hashlib.sha256(original.read_bytes()).hexdigest(), original_hash)
+        self.assertEqual(original_hash, '1e342de3d80fc9ae3ac38873814b17b9bc6d8ce067159ad3eae02ef3148353d2')
+        self.assertEqual(hashlib.sha256(candidate.read_bytes()).hexdigest(), candidate_hash)
+        self.assertIn(b'probe_diagnostics_v1', candidate.read_bytes())
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="brush patch 中文 ")
         self.addCleanup(self.temp.cleanup)

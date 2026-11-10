@@ -6,6 +6,7 @@
 | --- | --- |
 | Windows实施与构建身份 | [Alignment](windows-alignment.md)、[engine pack](windows-engine-pack.md) |
 | Windows实际运行 | [Core pipeline](windows-core-pipeline.md)、[COLMAP](windows-colmap.md)、[native UI](windows-native-ui.md)、[legacy migration](windows-legacy-migration.md) |
+| GPU后端选择与诊断 | [Windows验证及实现边界](gpu-backend-resilience.md)、[M1 Pro验收结果](gpu-resilience-m1-pro-results.md)、[Mac重跑步骤](gpu-resilience-m1-pro-handoff.md) |
 | Mac包与许可 | [Engine pack](macos-engine-pack.md)、[application licenses](macos-app-licenses.md) |
 | Mac原生与资源 | [Native UI](macos-native-ui.md)、[resource measurements](macos-m3-resources.md)、[mixed input](macos-mixed-input.md) |
 | Mac生命周期机制和实验 | [Shutdown/recovery](macos-shutdown.md)、[idle/sleep](macos-idle-sleep.md) |
