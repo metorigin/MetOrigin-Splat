@@ -245,7 +245,7 @@
     },
     {
       "path": "scripts/macos/pack_licenses.py",
-      "sha256": "364f27f75e1f2b11a684ed90df83133bb7070ecbe82fdab1ea909c28b0d3bbef"
+      "sha256": "85262611b9f9b60b34f972e591f93617ed0f8ae79781acd6cc506b7655ad6f22"
     },
     {
       "path": "scripts/macos/pack_macos.py",
@@ -1129,6 +1129,18 @@
         {
           "path": "integrations/brush-macos/patches/metorigin-macos.6-resilience.patch",
           "sha256": "7e9e81cc0203b61ffb0f606a81a4c84816fbed5179c1a14f0870a8ca1fd5007b"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-10",
+      "phase": "gpu-backend-resilience-rebuild-materials",
+      "reason": "Include the existing pinned resilience patch in delivered macOS rebuild recipe trees. The source preparation script already exposes this profile, so every delivered tree must contain its patch. Preserve the baseline, all prior amendments, default build identities and binary locks; this packaging closure correction is not native Mac acceptance.",
+      "changed_files": [
+        {
+          "path": "scripts/macos/pack_licenses.py",
+          "previous_sha256": "364f27f75e1f2b11a684ed90df83133bb7070ecbe82fdab1ea909c28b0d3bbef",
+          "sha256": "85262611b9f9b60b34f972e591f93617ed0f8ae79781acd6cc506b7655ad6f22"
         }
       ]
     }

@@ -35,6 +35,7 @@ REBUILD_REPOSITORY_FILES = (
     "integrations/brush-macos/LPIPS-AUDIT.md",
     "integrations/brush-macos/patches/0001-report-initialized-adapter.patch",
     *(f"integrations/brush-macos/patches/metorigin-macos.{number}.patch" for number in range(2, 7)),
+    "integrations/brush-macos/patches/metorigin-macos.6-resilience.patch",
     "LICENSE-MIT", "LICENSE-APACHE",
 )
 
