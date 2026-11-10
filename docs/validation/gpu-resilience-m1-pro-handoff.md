@@ -1,6 +1,8 @@
 # GPU 后端可靠性：Mac M1 Pro Codex 验收交接
 
-本轮 M1 Pro 验收状态：**未执行**。由用户在实际 Mac M1 Pro 上运行本文件。
+2026-11-10 已在实际 Mac M1 Pro 上完成本分支的 GPU 验收，随后完成 Developer ID 签名与 DMG 公证；
+逐项结果、限制及证据见 [M1 Pro 本机验收结果](gpu-resilience-m1-pro-results.md)。
+该记录绑定源码 HEAD `2121f91aa268aa1b4dd0db7fd7ef0f751bd5e857`；本文件保留重跑步骤，新一轮须另行记录实际执行结果。
 Windows RTX 5080 的结果不能替代本项；旧 `macos-m1.md` 等历史结果也不能计作本分支验收。
 只覆盖 Apple M1 Pro，不扩展到其他 Mac。无需修改系统驱动或用户已安装的应用。
 
