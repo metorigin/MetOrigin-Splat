@@ -2,11 +2,27 @@
 
 The Windows engine uses Brush commit
 `1388f74c6fe0236f68ee4915564bf00e9d2e3747`, followed by the unchanged cumulative
-`metorigin-macos.6.patch`, **then** `patches/metorigin-windows.1.patch`.
+`metorigin-macos.6.patch`, **then** `patches/metorigin-windows.1.patch`, and finally
+`patches/metorigin-windows.1-resilience.patch`.
 The Windows patch is a delta against the Mac-integrated tree; it cannot be
 applied directly to stock Brush. Mac builds do not apply this delta.
-[source-lock.json](source-lock.json) pins both patches, Cargo.lock, the combined
+[source-lock.json](source-lock.json) pins all three patches, Cargo.lock, the combined
 source diff, Rust 1.95.0, the Windows MSVC target and DXC archive/file hashes.
+
+The resilience delta preserves the existing versioned CLI identity and adds
+`probe_diagnostics_v1`; the full executable hash and build receipt identify the
+new artifact. Probes keep a single JSON stdout line. Local stderr records the
+failure stage, complete cause chain, adapter/driver/OS, EXE and DLL SHA-256,
+and the actual loaded DXC/DXIL paths and file versions. Machine JSON contains
+only safe stage/kind metadata. A failure caused by configuration, selection or
+integrity is distinguishable from `backend_compute`.
+
+DX12 probes and training share one initialization function. It verifies the
+packaged DXC hashes, loads sibling DLLs through absolute paths, explicitly
+selects dynamic DXC and gives the same WGPU adapter/device to CubeCL. This
+prevents a second implicit compiler selection. Existing Mac `.6` inputs remain
+unchanged; the separate optional `metorigin-macos.6-resilience` cumulative
+profile adds Metal diagnostics and still requires actual M1 Pro acceptance.
 
 ```powershell
 scripts/windows/Build-BrushRuntime.ps1 -SourceRepository ../brush -Offline

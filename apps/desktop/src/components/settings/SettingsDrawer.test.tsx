@@ -33,6 +33,39 @@ function loadedProps(onClose = vi.fn()) {
 afterEach(() => vi.restoreAllMocks());
 
 describe("SettingsDrawer", () => {
+  it("defaults Windows backend to Auto and persists an explicit Vulkan selection", async () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
+    const save = vi.spyOn(desktopApi, "saveAppSettings").mockImplementation(async (next) => next);
+    const props = loadedProps();
+    render(<SettingsDrawer {...props} />);
+    const select = screen.getByRole("combobox", { name: "新项目训练后端" });
+    expect(select).toHaveValue("auto");
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["自动", "DX12", "Vulkan"]);
+    expect(screen.getByText(/此处检查引擎是否可启动及版本/)).toBeVisible();
+    expect(screen.queryByText("已验证")).not.toBeInTheDocument();
+    fireEvent.change(select, { target: { value: "vulkan" } });
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ ...settings, windows_training_backend: "vulkan" }));
+    expect(props.onSettings).toHaveBeenCalledWith({ ...settings, windows_training_backend: "vulkan" });
+  });
+
+  it("keeps Metal on Mac without exposing Windows backend choices", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    render(<SettingsDrawer {...loadedProps()} settings={{ ...settings, windows_training_backend: "vulkan" }} />);
+    expect(screen.getByText("训练后端：Metal")).toBeVisible();
+    expect(screen.queryByRole("combobox", { name: "新项目训练后端" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Vulkan" })).not.toBeInTheDocument();
+  });
+
+  it("exports runtime diagnostics before a project exists", async () => {
+    const exported = vi.spyOn(desktopApi, "exportDiagnostics").mockResolvedValue({ path: "C:\\private\\diagnostics.zip", size_bytes: 100 });
+    render(<SettingsDrawer {...loadedProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "导出训练诊断" }));
+    await waitFor(() => expect(exported).toHaveBeenCalledWith(undefined));
+    expect(screen.queryByText(/C:\\private/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "诊断" }));
+    expect(screen.getByRole("button", { name: "导出脱敏诊断包" })).toBeEnabled();
+  });
+
   it("keeps macOS idle-sleep prevention off until explicitly saved", async () => {
     vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
     const save = vi.spyOn(desktopApi, "saveAppSettings").mockImplementation(async (next) => next);

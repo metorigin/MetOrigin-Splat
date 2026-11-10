@@ -92,9 +92,15 @@ pub async fn start_pipeline(
     }
 
     let engine_paths = crate::commands::system::resolve_engine_paths(&app_handle);
-    let runtime = crate::commands::runtime::check_training_runtime(&app_handle, &engine_paths)
-        .await
-        .map_err(|error| format!("训练环境检查未通过：{}", error.user_message_zh()))?;
+    let frozen = splat_project::load_execution_profile(&project_dir)
+        .map_err(|error| error.user_message_zh())?;
+    let runtime = crate::commands::runtime::check_training_runtime_for_profile(
+        &app_handle,
+        &engine_paths,
+        frozen.as_ref(),
+    )
+    .await
+    .map_err(|error| format!("训练环境检查未通过：{}", error.user_message_zh()))?;
     tracing::info!(runtime = %runtime.summary(), "training runtime preflight passed");
     let execution_profile = crate::commands::runtime::execution_profile(
         state.inner(),
@@ -105,6 +111,7 @@ pub async fn start_pipeline(
     )
     .await
     .map_err(|error| error.user_message_zh())?
+    .or(frozen)
     .map(Arc::new);
     let config = PipelineConfig {
         execution_profile,

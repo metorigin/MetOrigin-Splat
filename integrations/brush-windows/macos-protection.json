@@ -189,7 +189,7 @@
     },
     {
       "path": "scripts/macos/build-brush.sh",
-      "sha256": "a8f29d4f803454d97c2fd2d95b9e809a574ce2c30fefc433666a8872a5ca892e"
+      "sha256": "efb641966418c4ca6c86d61ee3cacc1d31d289da8ada1ae9dda5a81a7eb6b829"
     },
     {
       "path": "scripts/macos/build-colmap.sh",
@@ -261,7 +261,7 @@
     },
     {
       "path": "scripts/macos/prepare-brush-source.py",
-      "sha256": "c5b25fffdb7725cc149e58001ee635cc9765f2fca6f5523bf4ed3e3a7af97e00"
+      "sha256": "5a1089c1a23fdd73395928887f7ad9f1843ed578f6b6d5b858a4f0b262a6218b"
     },
     {
       "path": "scripts/macos/prepare-engine-links.mjs",
@@ -305,7 +305,7 @@
     },
     {
       "path": "scripts/macos/test_build_brush.py",
-      "sha256": "0983b584a24b3efe4dc4215bed215e12653a41562e154644896ecdf3d9d7cdf4"
+      "sha256": "e4a05876c387cc4cec784ad77f6bb4c1095fe08eb049d71ac50847bf7388f947"
     },
     {
       "path": "scripts/macos/test_build_colmap.py",
@@ -337,7 +337,7 @@
     },
     {
       "path": "scripts/macos/test_prepare_brush_source.py",
-      "sha256": "5e307f3641e4a949419f25fc50bdbf3c3b99ffec4684abd94fe851ff4f0ce32d"
+      "sha256": "d792f070cb1eeb542ad882099935ba93f7a998b3f43b475cd1ab30c5362a61f4"
     },
     {
       "path": "scripts/macos/test_rebuild_materials.py",
@@ -474,6 +474,10 @@
     {
       "path": "scripts/shared/verify-ui-sources.test.mjs",
       "sha256": "dc29fefd3d4a7caa167fd1bb524c467d9a1fa2dc99cff330b186d00288e53ba4"
+    },
+    {
+      "path": "integrations/brush-macos/patches/metorigin-macos.6-resilience.patch",
+      "sha256": "7e9e81cc0203b61ffb0f606a81a4c84816fbed5179c1a14f0870a8ca1fd5007b"
     }
   ],
   "amendments": [
@@ -1044,6 +1048,39 @@
         }
       ],
       "added_files": []
+    },
+    {
+      "date": "2026-11-09",
+      "phase": "gpu-backend-resilience-diagnostics",
+      "reason": "User-requested GPU reliability improvement. Preserve frozen macOS.6 patch and default build identity; add an explicitly selected cumulative diagnostics profile and fresh-output build flag. Record failure stages, full local causes and Metal adapter/driver/OS/executable evidence. Patch application and script checks on Windows do not constitute native Mac validation; actual Mac M1 Pro acceptance remains pending. Preserve the baseline and every prior amendment.",
+      "changed_files": [
+        {
+          "path": "scripts/macos/build-brush.sh",
+          "previous_sha256": "a8f29d4f803454d97c2fd2d95b9e809a574ce2c30fefc433666a8872a5ca892e",
+          "sha256": "efb641966418c4ca6c86d61ee3cacc1d31d289da8ada1ae9dda5a81a7eb6b829"
+        },
+        {
+          "path": "scripts/macos/prepare-brush-source.py",
+          "previous_sha256": "c5b25fffdb7725cc149e58001ee635cc9765f2fca6f5523bf4ed3e3a7af97e00",
+          "sha256": "5a1089c1a23fdd73395928887f7ad9f1843ed578f6b6d5b858a4f0b262a6218b"
+        },
+        {
+          "path": "scripts/macos/test_prepare_brush_source.py",
+          "previous_sha256": "5e307f3641e4a949419f25fc50bdbf3c3b99ffec4684abd94fe851ff4f0ce32d",
+          "sha256": "d792f070cb1eeb542ad882099935ba93f7a998b3f43b475cd1ab30c5362a61f4"
+        },
+        {
+          "path": "scripts/macos/test_build_brush.py",
+          "previous_sha256": "0983b584a24b3efe4dc4215bed215e12653a41562e154644896ecdf3d9d7cdf4",
+          "sha256": "e4a05876c387cc4cec784ad77f6bb4c1095fe08eb049d71ac50847bf7388f947"
+        }
+      ],
+      "added_files": [
+        {
+          "path": "integrations/brush-macos/patches/metorigin-macos.6-resilience.patch",
+          "sha256": "7e9e81cc0203b61ffb0f606a81a4c84816fbed5179c1a14f0870a8ca1fd5007b"
+        }
+      ]
     }
   ]
 }

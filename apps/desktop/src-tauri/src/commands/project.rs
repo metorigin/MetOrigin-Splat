@@ -89,6 +89,8 @@ struct EngineCheck {
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ProjectPreflight {
+    #[serde(skip)]
+    frozen_profile: Option<splat_domain::ExecutionProfile>,
     preset: String,
     can_continue: bool,
     engine_checks: Vec<EngineCheck>,
@@ -425,6 +427,7 @@ async fn build_project_preflight(
         .saturating_add(5 * 1024 * 1024 * 1024);
     let mut blockers = analysis.blockers;
     let mut warnings = analysis.warnings;
+    let frozen_profile = frozen.as_ref().ok().and_then(|profile| profile.clone());
     let effective_training = match frozen {
         Ok(Some(profile)) => {
             let preview =
@@ -495,6 +498,7 @@ async fn build_project_preflight(
         blockers.push("另一个项目正在创建，请等待完成或先取消。".into());
     }
     Ok(ProjectPreflight {
+        frozen_profile,
         preset: request.preset,
         can_continue: blockers.is_empty(),
         engine_checks,
@@ -598,7 +602,13 @@ pub async fn create_project(
     let result = tokio::task::spawn_blocking(move || {
         let _pending_work = worker_pending;
         let _cleanup = worker_cleanup;
-        create_project_transaction(project, worker_request, worker_handle, cancel)
+        create_project_transaction(
+            project,
+            worker_request,
+            worker_handle,
+            cancel,
+            preflight.frozen_profile,
+        )
     })
     .await
     .map_err(|_| "项目创建后台任务异常终止，请重试。".to_string())?;
@@ -1589,6 +1599,7 @@ fn create_project_transaction(
     request: CreateProjectRequest,
     app_handle: tauri::AppHandle,
     cancel: Arc<AtomicBool>,
+    frozen_profile: Option<splat_domain::ExecutionProfile>,
 ) -> Result<(Project, PathBuf), String> {
     let project_root = request
         .project_root
@@ -1637,6 +1648,10 @@ fn create_project_transaction(
             };
             project.status = ProjectStatus::Ready;
             project.touch();
+            if let Some(profile) = &frozen_profile {
+                splat_project::save_execution_profile(creating_dir, profile)
+                    .map_err(|error| error.user_message_zh())?;
+            }
             manager
                 .save_project(&project, creating_dir)
                 .map_err(|error| error.user_message_zh())?;

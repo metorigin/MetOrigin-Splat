@@ -203,6 +203,7 @@ export function PreflightStep({ analysis, preflight, checking, selectedPreset, o
         <div className="flex flex-wrap items-center justify-between gap-2"><h3 id="wizard-preflight-heading" className="text-sm font-medium">{t("预检结果")}</h3><Button type="button" variant="outline" size="sm" className="rounded-md" onClick={onRecheck} disabled={checking}>{checking ? t("检查中…") : t("重新检查")}</Button></div>
         {checking && <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status"><SpinnerGap className="animate-spin motion-reduce:animate-none" size={16} />{t("正在按当前预设检查磁盘空间与运行环境…")}</p>}
         {selectedEstimate && <TrainingSummary preset={selectedEstimate} preflight={checked} />}
+        {checked?.engine_checks.filter((engine) => engine.source === "runtime_probe" && engine.available).map((engine) => <p key={engine.name} className="text-sm" role="status">{t("GPU 计算检查通过：")}{localizeMessage(engine.diagnostic)}</p>)}
 
         {warnings.map((warning) => {
           const executionSummary = macExecutionSummary(warning);

@@ -1,4 +1,6 @@
 export interface AppSettings {
+  /** Missing in older settings; Windows defaults to an independent DX12/Vulkan preflight. */
+  windows_training_backend?: "auto" | "dx12" | "vulkan";
   engine_directory: string | null;
   engine_executables: Record<string, string>;
   default_project_root: string | null;

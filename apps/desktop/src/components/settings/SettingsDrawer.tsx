@@ -58,6 +58,14 @@ export function SettingsDrawer({ engines, enginesLoading = false, enginesError =
   };
   const save = (next: AppSettings) => void run(async () => onSettings(await desktopApi.saveAppSettings(next)));
   const refreshEngines = () => void run(async () => onEngines(await desktopApi.checkEngines()));
+  const exportDiagnostics = () => void run(async () => {
+    const result = await desktopApi.exportDiagnostics(projectPath ?? undefined);
+    if (projectPath && projectId) {
+      const fileName = result.path.split(/[\\/]/).pop();
+      if (!fileName) throw new Error(t("诊断包路径无效。"));
+      await desktopApi.openProjectLocation({ projectId, projectPath, targetType: "artifact", relativePath: `output/${fileName}` });
+    }
+  });
   const allReady = engines.length > 0 && engines.every((engine) => engine.available);
   const logValid = validStorageLimit(logLimit, 4096);
   const cacheValid = validStorageLimit(cacheLimit, 8192);
@@ -68,12 +76,13 @@ export function SettingsDrawer({ engines, enginesLoading = false, enginesError =
       <LanguageSelector />
       <ErrorNotice error={normalizeCommandError(loadError ?? t("设置数据不可用。"), "get_app_settings")} blocking onAction={(action) => {
         if (action.kind === "retry") onRetrySettings?.();
-        if (action.kind === "export_diagnostics") onError(t("请先打开一个项目后再导出诊断。"));
+        if (action.kind === "export_diagnostics") exportDiagnostics();
       }} />
     </> : <>
       {operationError && <div className="mb-4"><ErrorNotice error={operationError} blocking /></div>}
       <TabsContent value="defaults"><GeneralSettings settings={settings} busy={busy} onSave={save} /></TabsContent>
       <TabsContent value="engines"><EngineSettings engines={engines} loading={enginesLoading} error={enginesError} allReady={allReady} busy={busy} metrics={metrics} version={version}
+        settings={settings} onSave={save} onExportDiagnostics={exportDiagnostics}
         onRefresh={refreshEngines}
         onLocateEngine={(name) => void run(async () => { const path = await selectEngineExecutable(name); if (path) { onSettings(await desktopApi.setEngineExecutable(name, path)); onEngines(await desktopApi.checkEngines()); } })}
         onOpenEngine={(name) => void run(async () => { await desktopApi.openEngineLocation(name); })}
@@ -84,8 +93,8 @@ export function SettingsDrawer({ engines, enginesLoading = false, enginesError =
         onSaveStorage={() => save({ ...settings, log_retention_mb: Number(logLimit), thumbnail_cache_mb: Number(cacheLimit) })}
       /></TabsContent>
       <TabsContent value="appearance"><AppearanceSettings theme={theme} onTheme={setTheme} /></TabsContent>
-      <TabsContent value="diagnostics"><DiagnosticsSettings allReady={allReady} canExport={!!projectPath && !!projectId} busy={busy}
-        onExport={() => projectPath && projectId && void run(async () => { const result = await desktopApi.exportDiagnostics(projectPath); const fileName = result.path.split(/[\\/]/).pop(); if (!fileName) throw new Error(t("诊断包路径无效。")); await desktopApi.openProjectLocation({ projectId, projectPath, targetType: "artifact", relativePath: `output/${fileName}` }); })}
+      <TabsContent value="diagnostics"><DiagnosticsSettings allReady={allReady} canExport busy={busy}
+        onExport={exportDiagnostics}
       /></TabsContent>
     </>}
   </SettingsShell>;

@@ -118,6 +118,13 @@ pub async fn freeze_macos_execution_profile(
         request.available_threads,
     )?;
     let paths = request.engine_paths;
+    brush.verify_files_unchanged(
+        paths
+            .brush
+            .as_deref()
+            .ok_or_else(|| runtime_error("Brush path is missing"))?,
+    )?;
+    let verified_brush_path = paths.brush.clone().expect("checked Brush path");
     let expected_brush_hash = brush.binary_sha256.clone();
     let colmap_threads = effective_training.threads;
     let identities = tokio::task::spawn_blocking(move || {
@@ -131,6 +138,7 @@ pub async fn freeze_macos_execution_profile(
     })
     .await
     .map_err(|_| runtime_error("Engine identity collection did not finish."))??;
+    brush.verify_files_unchanged(&verified_brush_path)?;
     let warm_start = brush.capabilities.supports("ply_warm_start")
         && brush.capabilities.resume_mode == ResumeMode::PlyWarmStartOptimizerReset;
     let (live_preview, live_protocol) = negotiate_live_preview(&brush.capabilities);
@@ -287,6 +295,13 @@ pub async fn freeze_windows_execution_profile(
     )?;
     let colmap = windows_colmap_execution();
     let paths = request.engine_paths;
+    brush.verify_files_unchanged(
+        paths
+            .brush
+            .as_deref()
+            .ok_or_else(|| runtime_error("Brush path is missing"))?,
+    )?;
+    let verified_brush_path = paths.brush.clone().expect("checked Brush path");
     let expected_brush_hash = brush.binary_sha256.clone();
     let settings = colmap.clone();
     let threads = effective_training.threads;
@@ -301,6 +316,7 @@ pub async fn freeze_windows_execution_profile(
     })
     .await
     .map_err(|_| runtime_error("Engine identity collection did not finish."))??;
+    brush.verify_files_unchanged(&verified_brush_path)?;
     let warm_start = caps.supports("ply_warm_start")
         && caps.resume_mode == ResumeMode::PlyWarmStartOptimizerReset;
     let (live_preview, live_protocol) = negotiate_live_preview(&caps);
@@ -517,6 +533,7 @@ mod tests {
                 compute: None,
             },
             binary_sha256: "f".repeat(64),
+            dependency_sha256: Default::default(),
         };
         let error = freeze_macos_execution_profile(
             MacosProfileRequest {

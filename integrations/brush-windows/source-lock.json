@@ -13,11 +13,17 @@
     },
     {
       "path": "integrations/brush-windows/patches/metorigin-windows.1.patch",
-      "sha256": "8d7ec49790ae218dbc4f5a11e25b8ca0bfb1b5811d6f32cbb19924d0ffbb7f94"
+      "sha256": "8d7ec49790ae218dbc4f5a11e25b8ca0bfb1b5811d6f32cbb19924d0ffbb7f94",
+      "applied_source_diff_sha256": "e7bdb4c60f79396ec2d03817155b5cbf19fa17f6e46de9ccff0514b23b4c98eb"
+    },
+    {
+      "path": "integrations/brush-windows/patches/metorigin-windows.1-resilience.patch",
+      "sha256": "38d2660988b7404cbb2d5907dddacfd5aebd642fa1e4263900410d0261fb95a0",
+      "applied_source_diff_sha256": "9f1820f581ed167bd9b9565e43a7d5f85099b6b3e85552b89faf437129990a61"
     }
   ],
-  "cargo_lock_sha256": "c4449255b9cfb599bd363e70511620cd9d17eacb19159733dcab63976386c49e",
-  "combined_source_diff_sha256": "e7bdb4c60f79396ec2d03817155b5cbf19fa17f6e46de9ccff0514b23b4c98eb",
+  "cargo_lock_sha256": "15e1b24161a4d18033a2848c5be0a073402fefd6b56a37add63af76f531c69e6",
+  "combined_source_diff_sha256": "9f1820f581ed167bd9b9565e43a7d5f85099b6b3e85552b89faf437129990a61",
   "dxc": {
     "version": "v1.8.2502",
     "archive_name": "dxc_2025_02_20.zip",

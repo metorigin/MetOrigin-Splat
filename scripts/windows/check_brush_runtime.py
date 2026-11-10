@@ -15,6 +15,8 @@ import subprocess
 import time
 import uuid
 
+SOURCE_LOCK_DIRECTORY = Path(__file__).resolve().parents[2] / 'integrations/brush-windows'
+
 
 def load_smoke():
     path = Path(__file__).resolve().parents[1] / 'macos/smoke-engines.py'
@@ -28,6 +30,7 @@ def check(binary, build_info, backend, dataset, output, iterations=300, probe_on
     smoke = load_smoke()
     output.mkdir(parents=True, exist_ok=False)
     info = json.loads(build_info.read_text(encoding='utf-8'))
+    verify_integrity(binary, info)
     if smoke.sha256(binary) != info['binary_sha256']:
         raise ValueError('Build metadata and executable differ')
     record = {'schema_version': 1, 'binary_sha256': info['binary_sha256'],
@@ -199,6 +202,7 @@ def check(binary, build_info, backend, dataset, output, iterations=300, probe_on
         entry['checkpoint'] = smoke.validate_ply(checkpoint(recovered, stopped_iteration+10))
         assert smoke.sha256(committed) == verified['sha256']
         assert smoke.sha256(binary) == record['binary_sha256']
+        verify_integrity(binary, info)
         record['status'] = 'passed_cli_contract'
     except BaseException as error:
         record['status'] = 'failed'
@@ -207,6 +211,26 @@ def check(binary, build_info, backend, dataset, output, iterations=300, probe_on
     finally:
         save()
 
+
+def verify_integrity(binary, info):
+    """Validate EXE and sibling DXC against both receipt and independent source lock."""
+    import hashlib
+    locks = [json.loads((SOURCE_LOCK_DIRECTORY / name).read_text(encoding='utf-8'))
+             for name in ['source-lock.json', 'source-lock.windows1-legacy.json']]
+    recorded = info.get('inputs', {}).get('lock')
+    if info.get('schema_version') != 1 or recorded not in locks:
+        raise ValueError('Build metadata does not match a complete pinned engine/DXC provenance recipe')
+    lock = recorded
+    if info.get('binary_sha256') != info.get('files', {}).get('bin/brush-cli.exe'):
+        raise ValueError('Brush binary hash disagrees with its build receipt')
+    pack = binary.parent.parent
+    for relative in ['bin/brush-cli.exe', 'bin/dxcompiler.dll', 'bin/dxil.dll']:
+        digest = hashlib.sha256((pack / relative).read_bytes()).hexdigest()
+        if digest != info['files'].get(relative):
+            raise ValueError('Packaged file does not match receipt: ' + relative)
+        expected = lock['dxc']['files'].get(relative, {}).get('sha256', info['binary_sha256'])
+        if digest != expected:
+            raise ValueError('Packaged file does not match pinned provenance: ' + relative)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
